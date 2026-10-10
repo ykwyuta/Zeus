@@ -6,6 +6,7 @@ use std::fmt;
 /// The coefficient holds up to 38 decimal digits, enough for COBOL
 /// intermediate results (31-digit operands under ARITH(EXTEND)).
 #[derive(Debug, Clone, Copy, Default)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct Dec {
     pub coef: i128,
     pub scale: u32,

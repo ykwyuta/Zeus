@@ -66,6 +66,63 @@ fn check(args: &Args) -> ExitCode {
     ExitCode::from(worst as u8)
 }
 
+fn compile(args: &Args) -> ExitCode {
+    let [input] = args.inputs.as_slice() else {
+        return usage();
+    };
+    let opts = FrontOptions {
+        copy_dirs: args.copy_dirs.clone(),
+    };
+    match zeus_cobol::compile_file(input, &opts) {
+        Ok(module) => {
+            let out = args
+                .output
+                .clone()
+                .unwrap_or_else(|| input.with_extension("zo"));
+            if let Err(e) = zeus_cobol::save_module(&module, &out) {
+                eprintln!("zcobc: cannot write {}: {e}", out.display());
+                return ExitCode::from(16);
+            }
+            ExitCode::SUCCESS
+        }
+        Err(d) => {
+            eprintln!("{d}");
+            ExitCode::from(d.severity.return_code() as u8)
+        }
+    }
+}
+
+fn run(args: &Args) -> ExitCode {
+    let [artifact] = args.inputs.as_slice() else {
+        return usage();
+    };
+    let module = match zeus_cobol::load_module(artifact) {
+        Ok(m) => m,
+        Err(e) => {
+            eprintln!("zcobc: cannot load {}: {e}", artifact.display());
+            return ExitCode::from(16);
+        }
+    };
+    let dir = artifact
+        .parent()
+        .map(|p| {
+            if p.as_os_str().is_empty() {
+                PathBuf::from(".")
+            } else {
+                p.to_path_buf()
+            }
+        })
+        .unwrap_or_else(|| PathBuf::from("."));
+    let mut machine = zeus_cobol::vm::Machine::new(vec![dir]);
+    match machine.run_main(module) {
+        Ok(code) => ExitCode::from((code & 0xFF) as u8),
+        Err(e) => {
+            eprintln!("zcobc: run-time error: {e}");
+            ExitCode::from(16)
+        }
+    }
+}
+
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = args.first() else {
@@ -76,10 +133,8 @@ fn main() -> ExitCode {
     };
     match cmd.as_str() {
         "check" => check(&parsed),
-        "compile" | "run" => {
-            eprintln!("zcobc: not implemented yet");
-            ExitCode::from(1)
-        }
+        "compile" => compile(&parsed),
+        "run" => run(&parsed),
         "--version" => {
             println!("zcobc {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS

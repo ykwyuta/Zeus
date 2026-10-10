@@ -8,7 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
-zeus-decimal = { path = "../zeus-decimal" }
+zeus-decimal = { path = "../zeus-decimal", features = ["serde"] }
 serde.workspace = true
 serde_json.workspace = true
 
