@@ -603,6 +603,8 @@ pub enum SetStmt {
     Switch(Vec<(String, bool)>),
     /// SET condition-name TO TRUE
     CondTrue(Vec<DataRef>),
+    /// SET ADDRESS OF linkage-items TO pointer value
+    Address(Vec<DataRef>, Operand),
 }
 
 #[derive(Debug, Clone, PartialEq)]

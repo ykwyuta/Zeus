@@ -343,6 +343,9 @@ pub enum Ex {
     Temp(u32),
     /// Length of the referenced item in bytes.
     LengthOf(Loc),
+    /// Address of the referenced item (0 for an unaddressable linkage
+    /// item).
+    AddressOf(Loc),
     Func(Func, Vec<Arg>),
 }
 
@@ -643,6 +646,8 @@ pub enum Instr {
     /// segments): entering an independent segment from another segment
     /// puts it in its initial state.
     Segment(u8),
+    /// SET ADDRESS OF a linkage record (linkage base number) TO value.
+    SetAddress(u32, Ex),
     /// Report Writer statements (report index; group index for GENERATE
     /// of a detail, None for summary reporting).
     Initiate(u32),

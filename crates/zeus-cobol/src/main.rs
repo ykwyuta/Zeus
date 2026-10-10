@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! zcobc compile [-I <dir>]... [--subprogram] -o <artifact> <source>
-//! zcobc run [--dd NAME=PATH]... <artifact>   (files: see zeus_ds::dd)
+//! zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>   (files: see zeus_ds::dd)
 //! zcobc check [-I <dir>]... <source>...     (syntax check only)
 //! ```
 
@@ -15,7 +15,7 @@ fn usage() -> ExitCode {
     eprintln!(
         "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] -o <artifact> <source>"
     );
-    eprintln!("       zcobc run [--dd NAME=PATH]... <artifact>");
+    eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>");
     eprintln!("       zcobc check [-I <dir>]... <source>...");
     ExitCode::from(2)
 }
@@ -27,6 +27,8 @@ struct Args {
     debugging_lines: bool,
     /// DD allocations (`--dd NAME=PATH`).
     dds: Vec<(String, PathBuf)>,
+    /// `--parm TEXT`: the EXEC PARM of the main program.
+    parm: String,
     inputs: Vec<PathBuf>,
 }
 
@@ -37,6 +39,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         subprogram: false,
         debugging_lines: false,
         dds: Vec::new(),
+        parm: String::new(),
         inputs: Vec::new(),
     };
     let mut it = args.iter();
@@ -46,6 +49,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "-o" => a.output = Some(PathBuf::from(it.next()?)),
             "--subprogram" => a.subprogram = true,
             "--debugging-lines" => a.debugging_lines = true,
+            "--parm" => a.parm = it.next()?.clone(),
             "--dd" => {
                 let (n, p) = it.next()?.split_once('=')?;
                 a.dds.push((n.to_string(), PathBuf::from(p)));
@@ -131,12 +135,22 @@ fn run(args: &Args) -> ExitCode {
     for (n, p) in &args.dds {
         machine.set_dd(n, p.clone());
     }
+    machine.set_step(zeus_cobol::vm::StepInfo {
+        parm: args.parm.clone(),
+        ..Default::default()
+    });
     match machine.run_main(module) {
         Ok(code) => ExitCode::from((code & 0xFF) as u8),
-        Err(e) => {
-            eprintln!("zcobc: run-time error: {e}");
-            ExitCode::from(16)
-        }
+        Err(e) => match e.abend() {
+            Some(code) => {
+                eprintln!("zcobc: ABEND {code}");
+                ExitCode::from(12)
+            }
+            None => {
+                eprintln!("zcobc: run-time error: {e}");
+                ExitCode::from(16)
+            }
+        },
     }
 }
 

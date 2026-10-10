@@ -50,6 +50,19 @@ impl DdTable {
         self.explicit.insert(name.to_ascii_uppercase(), path);
     }
 
+    /// Names allocated explicitly or by the allocation file, sorted.
+    pub fn names(&self) -> Vec<String> {
+        let mut v: Vec<String> = self
+            .explicit
+            .keys()
+            .chain(self.config.keys())
+            .cloned()
+            .collect();
+        v.sort();
+        v.dedup();
+        v
+    }
+
     /// The path allocated to the first of `names` that is allocated.
     pub fn resolve(&self, names: &[&str]) -> Option<PathBuf> {
         for n in names {

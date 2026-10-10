@@ -2096,6 +2096,23 @@ impl<'a> Gen<'a> {
                     self.emit(Instr::SetSwitch(idx, *on));
                 }
             }
+            SetStmt::Address(targets, value) => {
+                let v = self.ex_operand(value)?;
+                for t in targets {
+                    let id = self.dm.resolve(t)?;
+                    match self.dm.items[id].area {
+                        Area::Linkage(n) if self.dm.items[id].parent.is_none() => {
+                            self.emit(Instr::SetAddress(n, v.clone()));
+                        }
+                        _ => {
+                            return Err(Diag::error(
+                                t.pos,
+                                format!("{} is not a LINKAGE SECTION record", t.name),
+                            ));
+                        }
+                    }
+                }
+            }
             SetStmt::CondTrue(targets) => {
                 for t in targets {
                     let id = self.dm.resolve(t)?;

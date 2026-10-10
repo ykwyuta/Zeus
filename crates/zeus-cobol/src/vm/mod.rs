@@ -4,6 +4,7 @@ pub mod data;
 mod eval;
 mod files;
 mod func;
+mod le;
 mod report;
 mod text;
 
@@ -81,6 +82,9 @@ pub struct Machine {
     io_cond: bool,
     /// DD allocations of the run.
     dd: zeus_ds::dd::DdTable,
+    /// Job, step and procedure step names, and the DD names of the step
+    /// with whether each has a device (shown in the TIOT).
+    step: StepInfo,
     /// SUPPRESS PRINTING was executed (USE BEFORE REPORTING).
     suppress_printing: bool,
     /// Object-time debugging switch (ZEUS_DEBUG=Y): USE FOR DEBUGGING
@@ -99,6 +103,26 @@ pub struct Machine {
     sort_return: Option<(Vec<Vec<u8>>, usize)>,
     return_code: i32,
 }
+
+/// The job step a program runs in (z/OS TIOT contents).
+#[derive(Debug, Clone, Default)]
+pub struct StepInfo {
+    pub job: String,
+    pub step: String,
+    pub proc_step: String,
+    /// DD names; None: the names allocated in the DD table.
+    pub dds: Option<Vec<(String, bool)>>,
+    /// EXEC PARM, passed to the main program as a halfword length
+    /// followed by the text.
+    pub parm: String,
+}
+
+/// Size of the low-storage block at address 0 (the PSA).
+const PSA_SIZE: usize = 4096;
+/// PSA fields holding the current TCB address (PSATNEW / PSATOLD).
+const PSA_TCB: [usize; 2] = [0x218, 0x21C];
+/// TCB field holding the TIOT address (TCBTIO).
+const TCB_TIOT: usize = 0x0C;
 
 pub enum Exit {
     StopRun(i32),
@@ -120,7 +144,7 @@ impl Machine {
             switches.insert(format!("UPSI-{i}"), on);
         }
         Machine {
-            mem: Vec::new(),
+            mem: vec![0; PSA_SIZE],
             instances: Vec::new(),
             file_states: Vec::new(),
             externals: HashMap::new(),
@@ -131,6 +155,7 @@ impl Machine {
             size_error: false,
             io_cond: false,
             suppress_printing: false,
+            step: StepInfo::default(),
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -236,6 +261,57 @@ impl Machine {
         self.stdout = out;
     }
 
+    /// Sets the job step identification shown to programs (TIOT).
+    pub fn set_step(&mut self, step: StepInfo) {
+        self.step = step;
+    }
+
+    /// Builds the TCB and the TIOT of the step and anchors them in the
+    /// PSA at address 0, as programs that walk the z/OS control blocks
+    /// expect.
+    fn build_control_blocks(&mut self) {
+        let name = |s: &str| {
+            let mut b = ebcdic::encode(&format!("{s:<8}"));
+            b.truncate(8);
+            b
+        };
+        let dds = match &self.step.dds {
+            Some(d) => d.clone(),
+            None => self.dd.names().into_iter().map(|n| (n, true)).collect(),
+        };
+        let job = if self.step.job.is_empty() {
+            "ZEUSJOB"
+        } else {
+            &self.step.job
+        };
+        let step = if self.step.step.is_empty() {
+            "STEP1"
+        } else {
+            &self.step.step
+        };
+        let mut tiot = Vec::new();
+        tiot.extend(name(job));
+        tiot.extend(name(step));
+        tiot.extend(name(&self.step.proc_step));
+        for (dd, device) in &dds {
+            let mut e = vec![0u8; 20];
+            e[0] = 20; // TIOELNGH
+            e[4..12].copy_from_slice(&name(dd));
+            if *device {
+                e[17..20].copy_from_slice(&[0x00, 0x10, 0x00]); // UCB address
+            }
+            tiot.extend(e);
+        }
+        tiot.extend([0u8; 4]); // end of the TIOT
+        let tiot_addr = self.alloc(&tiot);
+        let mut tcb = vec![0u8; 256];
+        tcb[TCB_TIOT..TCB_TIOT + 4].copy_from_slice(&(tiot_addr as u32).to_be_bytes());
+        let tcb_addr = self.alloc(&tcb);
+        for f in PSA_TCB {
+            self.mem[f..f + 4].copy_from_slice(&(tcb_addr as u32).to_be_bytes());
+        }
+    }
+
     /// Assigns a file (by ASSIGN name or file name) to a path.
     pub fn set_dd(&mut self, name: &str, path: PathBuf) {
         self.dd.set(name, path);
@@ -247,8 +323,18 @@ impl Machine {
     }
 
     pub fn run_main(&mut self, module: Module) -> RResult<i32> {
+        self.build_control_blocks();
         let module = Rc::new(module);
         let main = self.instantiate(&module, 0);
+        // PARM: the first USING parameter of the main program
+        if let Some(&slot) = self.instances[main].code.using.first() {
+            let text = ebcdic::encode(&self.step.parm);
+            let mut area = (text.len() as u16).to_be_bytes().to_vec();
+            area.extend(text);
+            area.resize(area.len().max(102), ebcdic::SPACE);
+            let a = self.alloc(&area);
+            self.instances[main].linkage[slot as usize] = Some(a);
+        }
         let r = self.run(main);
         self.close_all();
         let _ = self.stdout.flush();
@@ -289,6 +375,11 @@ impl Machine {
             .trim()
             .to_ascii_uppercase();
         self.call_exception = false;
+        if matches!(name.as_str(), "CEE3ABD" | "CEEDAYS") {
+            let addrs = self.call_args(cur, args)?;
+            self.le_service(&name, &addrs)?;
+            return Ok(None);
+        }
         let Some(callee) = self.resolve_program(cur, &name) else {
             if !handled {
                 return err(format!("program {name} not found"));
@@ -415,6 +506,7 @@ impl Machine {
                     }
                 }
                 Instr::Segment(seg) => self.enter_segment(cur, *seg),
+                Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex)?,
                 Instr::Initiate(r) => self.report_initiate(cur, *r)?,
                 Instr::Generate { report, group } => self.report_generate(cur, *report, *group)?,
                 Instr::Terminate(r) => self.report_terminate(cur, *r)?,
@@ -861,6 +953,7 @@ impl Machine {
                 self.instances[cur].debug_cause = (*c, *line);
                 Ok(())
             }
+            Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex),
             Instr::Initiate(r) => self.report_initiate(cur, *r),
             Instr::Generate { report, group } => self.report_generate(cur, *report, *group),
             Instr::Terminate(r) => self.report_terminate(cur, *r),
@@ -1029,6 +1122,20 @@ impl Machine {
         self.mem[a..a + len].copy_from_slice(&buf);
         let (start, end) = code.debug_decls[decl as usize];
         Ok(Some((code.paragraphs[start as usize].start, end)))
+    }
+
+    /// SET ADDRESS OF a linkage record: NULL (0) makes it unaddressable.
+    fn set_address(&mut self, cur: usize, n: u32, ex: &zir::Ex) -> RResult<()> {
+        let v = self.eval_ex(cur, ex)?;
+        let a = v
+            .rescale(0, zeus_decimal::Rounding::Truncate)
+            .map(|d| d.coef)
+            .unwrap_or(0);
+        if a < 0 || a as usize >= self.mem.len() {
+            return err(format!("SET ADDRESS OF: address {a} outside storage"));
+        }
+        self.instances[cur].linkage[n as usize] = Some(a as usize);
+        Ok(())
     }
 
     /// Control reaches a paragraph of segment `seg`: an independent

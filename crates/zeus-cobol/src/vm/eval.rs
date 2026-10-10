@@ -56,6 +56,16 @@ impl Machine {
             .unwrap_or(0))
     }
 
+    /// Whether a location has storage (a linkage record whose address
+    /// was not set has none).
+    pub(super) fn addressable(&self, cur: usize, loc: &Loc) -> bool {
+        let desc = &self.instances[cur].code.descs[loc.desc as usize];
+        match desc.base {
+            Base::Linkage(n) => self.instances[cur].linkage[n as usize].is_some(),
+            _ => true,
+        }
+    }
+
     /// Absolute address and length of a location.
     pub(super) fn addr(&mut self, cur: usize, loc: &Loc) -> RResult<(usize, usize)> {
         let code = self.instances[cur].code.clone();
@@ -153,8 +163,21 @@ impl Machine {
                 d::value_of(&ty, &self.mem[a..a + l])
             }
             Ex::LengthOf(loc) => {
-                let (_, l) = self.addr(cur, loc)?;
+                // LENGTH OF does not need the item to be addressable
+                let l = if self.addressable(cur, loc) {
+                    self.addr(cur, loc)?.1
+                } else {
+                    self.instances[cur].code.descs[loc.desc as usize].len as usize
+                };
                 Dec::from_i64(l as i64)
+            }
+            Ex::AddressOf(loc) => {
+                let a = if self.addressable(cur, loc) {
+                    self.addr(cur, loc)?.0
+                } else {
+                    0
+                };
+                Dec::from_i64(a as i64)
             }
             Ex::Neg(x) => -self.eval_ex(cur, x)?,
             Ex::Bin(op, a, b) => {

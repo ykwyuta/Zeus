@@ -1395,6 +1395,16 @@ impl Parser {
             }
             return Ok(Stmt::Set(SetStmt::Switch(out)));
         }
+        if self.is("ADDRESS") && self.is_at(1, "OF") {
+            let mut targets = Vec::new();
+            while self.is("ADDRESS") && self.is_at(1, "OF") {
+                self.i += 2;
+                targets.push(self.data_ref()?);
+            }
+            self.expect("TO")?;
+            let v = self.operand()?;
+            return Ok(Stmt::Set(SetStmt::Address(targets, v)));
+        }
         let mut targets = Vec::new();
         while self.is_operand_start() {
             targets.push(self.data_ref()?);
