@@ -530,6 +530,8 @@ pub enum Instr {
     },
     Open(u32, OpenMode),
     Close(u32, bool),
+    /// CLOSE REEL / UNIT.
+    CloseReel(u32),
     Write {
         file: u32,
         /// Descriptor of the record named in the statement.

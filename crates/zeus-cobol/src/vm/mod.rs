@@ -379,6 +379,7 @@ impl Machine {
                 Instr::Accept { dst, from } => self.accept(cur, dst, *from)?,
                 Instr::Open(f, mode) => self.open_file(cur, *f, *mode)?,
                 Instr::Close(f, lock) => self.close_file(cur, *f, *lock)?,
+                Instr::CloseReel(f) => self.close_reel(cur, *f)?,
                 Instr::Write {
                     file,
                     record,
@@ -682,6 +683,7 @@ impl Machine {
             }
             Instr::Open(f, mode) => self.open_file(cur, *f, *mode),
             Instr::Close(f, lock) => self.close_file(cur, *f, *lock),
+            Instr::CloseReel(f) => self.close_reel(cur, *f),
             Instr::Write {
                 file,
                 record,

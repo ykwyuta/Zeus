@@ -70,6 +70,8 @@ pub struct DataModel {
     pub externals: Vec<ExternalArea>,
     /// Files visible to contained programs: name -> (FD is GLOBAL).
     pub global_files: Vec<String>,
+    /// LINAGE-COUNTER item of each file with a LINAGE clause.
+    pub linage_counters: HashMap<String, usize>,
 }
 
 pub struct Settings {
@@ -659,6 +661,17 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         Area::Linkage(n - 1)
     })?;
     dm.linkage_count = n;
+    // A linkage record redefining another shares its base address.
+    for &r in &lk {
+        if let Some(target) = dm.items[r].entry.redefines.clone()
+            && let Some(&t) = lk
+                .iter()
+                .find(|&&x| dm.items[x].name.as_deref() == Some(&target))
+        {
+            let area = dm.items[t].area;
+            dm.set_area(r, area);
+        }
+    }
     dm.analyze_pics(settings)?;
 
     // Layout: working-storage, then file record areas, each record aligned
@@ -695,10 +708,28 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     };
     place(&mut dm, &ws, &mut cursor)?;
     place(&mut dm, &ls, &mut cursor)?;
+    // SAME RECORD AREA: the files of a group share one record area.
+    let mut same_start: HashMap<usize, u32> = HashMap::new();
     for (fi, recs) in file_records.iter().enumerate() {
         let external = prog.data.files[fi].external;
+        let fname = &prog.data.files[fi].name;
+        let group = prog
+            .env
+            .same_record_area
+            .iter()
+            .position(|g| g.contains(fname));
         cursor = align(cursor, 8);
-        let start = if external { 0 } else { cursor };
+        let shared = group.and_then(|g| same_start.get(&g).copied());
+        let start = if external {
+            0
+        } else if let Some(s) = shared {
+            s
+        } else {
+            if let Some(g) = group {
+                same_start.insert(g, cursor);
+            }
+            cursor
+        };
         let mut max = 0;
         for &r in recs {
             let size = dm.layout(r, start)?;
@@ -715,7 +746,7 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             }
             Area::External(k)
         } else {
-            cursor = start + max.max(1);
+            cursor = cursor.max(start + max.max(1));
             Area::File(fi)
         };
         dm.files.insert(fd.name.clone(), (usize::MAX, recs.clone()));
@@ -776,6 +807,29 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             dm.add(it);
             cursor += 4;
         }
+    }
+    // LINAGE-COUNTER of each file with LINAGE.
+    for fd in &prog.data.files {
+        if fd.linage.is_none() {
+            continue;
+        }
+        cursor = align(cursor, 4);
+        let e = DataEntry {
+            level: 1,
+            name: Some("LINAGE-COUNTER".to_string()),
+            picture: Some("9(9)".to_string()),
+            usage: Some(Usage::Binary),
+            pos: fd.pos,
+            ..DataEntry::default()
+        };
+        let mut it = DataModel::new_item(&e, Area::Special);
+        it.pic = Some(picture::analyze("9(9)", false, '$').unwrap());
+        it.offset = cursor;
+        it.len = 4;
+        cursor += 4;
+        let id = dm.items.len();
+        dm.add(it);
+        dm.linage_counters.insert(fd.name.clone(), id);
     }
     // Special registers.
     for (name, pic, usage) in [
@@ -967,6 +1021,12 @@ impl DataModel {
 
     /// Resolves a (possibly qualified) data name to an item.
     pub fn resolve(&self, r: &DataRef) -> Result<usize> {
+        if r.name == "LINAGE-COUNTER"
+            && let Some(q) = r.qualifiers.first()
+            && let Some(&id) = self.linage_counters.get(q)
+        {
+            return Ok(id);
+        }
         let cands: Vec<usize> = self
             .by_name
             .get(&r.name)

@@ -205,6 +205,22 @@ impl<'a> Gen<'a> {
                 alternate_keys.push((l, *dup));
             }
         }
+        let linage = match &fd.linage {
+            Some(l) if owner.is_none() => {
+                let opt = |g: &mut Gen, o: &Option<Operand>| -> Result<Option<Ex>> {
+                    o.as_ref().map(|o| g.ex_operand(o)).transpose()
+                };
+                let id = self.dm.linage_counters[&fd.name];
+                Some(zir::LinageDef {
+                    lines: self.ex_operand(&l.lines)?,
+                    footing: opt(self, &l.footing)?,
+                    top: opt(self, &l.top)?,
+                    bottom: opt(self, &l.bottom)?,
+                    counter: self.dm.items[id].desc,
+                })
+            }
+            _ => None,
+        };
         let def = FileDef {
             name: fc.name.clone(),
             assign: fc.assign.clone(),
@@ -229,7 +245,7 @@ impl<'a> Gen<'a> {
             record_key,
             alternate_keys,
             print: false,
-            linage: None,
+            linage,
             sort: fd.sort,
             error_proc: None,
             external: fd.external,
@@ -1172,7 +1188,12 @@ impl<'a> Gen<'a> {
                 for (f, opt) in files {
                     let fi = self.file(f)?;
                     let lock = opt.as_deref() == Some("LOCK");
-                    self.emit(Instr::Close(fi, lock));
+                    if matches!(opt.as_deref(), Some(o) if o.starts_with("REEL") || o.starts_with("UNIT"))
+                    {
+                        self.emit(Instr::CloseReel(fi));
+                    } else {
+                        self.emit(Instr::Close(fi, lock));
+                    }
                     self.emit(Instr::UseCheck {
                         file: fi,
                         handled: 0,
