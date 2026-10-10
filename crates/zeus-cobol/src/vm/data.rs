@@ -262,6 +262,8 @@ pub fn edit_num(
 
     let mut res: Vec<u8> = Vec::with_capacity(out.len());
     let mut sig = false;
+    // Inside a zero-suppression or floating-insertion region.
+    let mut suppressing = false;
     let mut k = 0usize;
     let mut float_pos: Option<usize> = None;
     let mut float_pending = false;
@@ -286,6 +288,7 @@ pub fn edit_num(
                 k += 1;
             }
             EditSym::ZeroSuppress | EditSym::Asterisk => {
+                suppressing = true;
                 let d = ds.get(k).copied().unwrap_or(0);
                 k += 1;
                 if sig || d != 0 {
@@ -300,6 +303,7 @@ pub fn edit_num(
                 }
             }
             EditSym::Floating { first: true, .. } => {
+                suppressing = true;
                 float_pos = Some(res.len());
                 float_pending = true;
                 res.push(b' ');
@@ -320,7 +324,7 @@ pub fn edit_num(
                 res.push(0); // placeholder for the point character
             }
             EditSym::Insert(c) => {
-                if sig {
+                if sig || !suppressing {
                     res.push(c);
                 } else {
                     if float_pending {
@@ -458,6 +462,8 @@ mod tests {
         assert_eq!(edited("---9", "5"), "   5");
         assert_eq!(edited("99/99/99", "123456"), "12/34/56");
         assert_eq!(edited("ZZBZZ0", "1234"), "12 340");
+        assert_eq!(edited("$0(10)999", "492"), "$0000000000492");
+        assert_eq!(edited("ZZ/ZZ", "5"), "    5");
         assert_eq!(edited("$99.99CR", "12.34"), "$12.34  ");
     }
 

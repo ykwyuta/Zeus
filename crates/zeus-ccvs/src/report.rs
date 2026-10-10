@@ -170,7 +170,10 @@ pub fn evaluate(style: Style, report: &[u8], stdout: &[u8]) -> Counts {
                         continue;
                     }
                 };
-                if value == expected {
+                // An EBCDIC program prints HIGH-VALUE (X'FF') as X'9F' in
+                // the ISO 8859-1 report.
+                let ebcdic_high = name == b"HIGH-VALUE" && value.iter().all(|&b| b == 0x9f);
+                if value == expected || ebcdic_high {
                     c.pass += 1;
                 } else {
                     c.fail += 1;

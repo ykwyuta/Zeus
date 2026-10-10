@@ -214,8 +214,10 @@ impl DataModel {
                         ),
                     )
                 })?;
-                let sep =
-                    matches!(it.entry.sign, Some((_, true))) && p.category == Category::Numeric;
+                let sign = it.entry.sign.or_else(|| self.inherited_sign(id));
+                let sep = matches!(sign, Some((_, true)))
+                    && p.category == Category::Numeric
+                    && p.signed;
                 p.size + u32::from(sep)
             }
         })
@@ -324,6 +326,14 @@ impl DataModel {
                 digits: p.digits,
                 scale: p.scale,
                 blank_zero: it.entry.blank_when_zero,
+                currency: self.currency as u8,
+                point: ebcdic::from_latin1(if self.decimal_comma { b',' } else { b'.' }),
+            },
+            Category::Numeric if it.entry.blank_when_zero => DataType::NumericEdited {
+                edit: (0..p.digits).map(|_| super::picture::EditSym::Digit).collect(),
+                digits: p.digits,
+                scale: p.scale,
+                blank_zero: true,
                 currency: self.currency as u8,
                 point: ebcdic::from_latin1(if self.decimal_comma { b',' } else { b'.' }),
             },
@@ -471,9 +481,10 @@ impl DataModel {
             (lit::Const::All(p), _) => vdata::fill_pattern(field, p),
             (
                 lit::Const::Bytes(b),
-                DataType::Alphanumeric { just } | DataType::Alphabetic { just },
+                DataType::Alphanumeric { .. } | DataType::Alphabetic { .. },
             ) => {
-                vdata::move_alnum(b, field, *just);
+                // VALUE is not affected by JUSTIFIED.
+                vdata::move_alnum(b, field, false);
             }
             (lit::Const::Bytes(b), _) => vdata::move_alnum(b, field, false),
             (lit::Const::Null, _) => field.fill(0),
@@ -532,7 +543,8 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
                         )
                     })?;
                 let off = dm.items[t].offset;
-                dm.layout(r, off)?;
+                let size = dm.layout(r, off)?;
+                *cursor = (*cursor).max(off + size);
             } else {
                 *cursor = align(*cursor, 8);
                 let size = dm.layout(r, *cursor)?;

@@ -701,6 +701,20 @@ fn class_test(v: &Val, k: &ClassKind) -> bool {
 
 /// The MOVE statement's data conversion into a receiving field.
 pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
+    // Into an alphanumeric-edited item, a figurative constant or ALL
+    // literal is the sending item of the receiver's size, then edited.
+    if let DataType::AlphanumericEdited { edit } = ty
+        && matches!(v, Val::Fig(_) | Val::All(_))
+    {
+        let mut src = vec![0u8; out.len()];
+        match v {
+            Val::Fig(f) => src.fill(fig_byte(*f)),
+            Val::All(p) => d::fill_pattern(&mut src, p),
+            _ => {}
+        }
+        d::edit_alnum(edit, &src, out);
+        return;
+    }
     // Figurative constants and ALL literals.
     match v {
         Val::Fig(Fig::Zero) => match ty {
@@ -744,7 +758,8 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             Val::Num(x) => int_digits(*x),
             _ => Vec::new(),
         };
-        d::move_alnum(&bytes, out, false);
+        let just = matches!(ty, DataType::Alphanumeric { just: true } | DataType::Alphabetic { just: true });
+        d::move_alnum(&bytes, out, just);
         return;
     }
     // Numeric value of the source, when the source is numeric.
