@@ -1,0 +1,11 @@
+# Administrator: user list (browse of the USRSEC file), back to the menu.
+tran CC00
+type 19 44 ADMIN001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 01
+key ENTER
+expect * List Users
+expect * USER0005    LEE
+key PF3
+expect 4 Admin Menu

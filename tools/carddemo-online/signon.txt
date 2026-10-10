@@ -1,0 +1,12 @@
+# Sign-on screen, wrong password, administrator sign-on.
+tran CC00
+expect 2 COSGN00C
+expect * Type your User ID and Password
+type 19 44 ADMIN001
+type 20 44 WRONGPWD
+key ENTER
+expect 23 Wrong Password
+type 19 44 ADMIN001
+type 20 44 PASSWORD
+key ENTER
+expect 4 Admin Menu

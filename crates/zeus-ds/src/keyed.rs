@@ -239,6 +239,31 @@ impl KeyedDataset {
         Some(self.found(which, k.clone(), *seq, pk))
     }
 
+    /// The last record at or before (`inclusive`) or before `from` in the
+    /// order of key `which`; from the end when `from` is None.
+    pub fn prev(&self, which: usize, from: Option<&Position>, inclusive: bool) -> Option<Found> {
+        if which == 0 {
+            let upper = match from {
+                None => Bound::Unbounded,
+                Some(p) if inclusive => Bound::Included(p.key.clone()),
+                Some(p) => Bound::Excluded(p.key.clone()),
+            };
+            let (pk, (_, seq)) = self
+                .primary
+                .range::<Vec<u8>, _>((Bound::Unbounded, upper))
+                .next_back()?;
+            return Some(self.found(0, pk.clone(), *seq, pk));
+        }
+        let idx = &self.alternates[which - 1];
+        let upper = match from {
+            None => Bound::Unbounded,
+            Some(p) if inclusive => Bound::Included((p.key.clone(), p.seq)),
+            Some(p) => Bound::Excluded((p.key.clone(), p.seq)),
+        };
+        let ((k, seq), pk) = idx.range((Bound::Unbounded, upper)).next_back()?;
+        Some(self.found(which, k.clone(), *seq, pk))
+    }
+
     /// Positions on the first record whose key `which`, compared on the
     /// length of `search` (a leading part of the key), satisfies `rel`.
     pub fn position(&self, which: usize, search: &[u8], rel: Rel) -> Option<Found> {

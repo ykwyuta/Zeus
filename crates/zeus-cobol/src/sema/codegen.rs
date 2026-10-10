@@ -462,6 +462,41 @@ impl<'a> Gen<'a> {
                 arg,
             });
         }
+        // BMS: SEND MAP without FROM and RECEIVE MAP without INTO / SET use
+        // the symbolic map named after the map (mapO / mapI).
+        if e.kind == ExecKind::Cics && (e.command == "SEND" || e.command == "RECEIVE") {
+            let has = |n: &str| e.options.iter().any(|o| o.name == n);
+            let map = e
+                .options
+                .iter()
+                .find(|o| o.name == "MAP")
+                .and_then(|o| match &o.arg {
+                    Some(ExecArg::Expr(Expr::Operand(Operand::Lit(Literal::Str(s))))) => {
+                        Some(s.trim().to_ascii_uppercase())
+                    }
+                    _ => None,
+                });
+            let (opt, suffix, wanted) = if e.command == "SEND" {
+                ("FROM", 'O', !has("FROM") && !has("MAPONLY"))
+            } else {
+                ("INTO", 'I', !has("INTO") && !has("SET"))
+            };
+            if let (Some(map), true) = (map, wanted) {
+                let r = DataRef {
+                    name: format!("{map}{suffix}"),
+                    qualifiers: Vec::new(),
+                    subscripts: Vec::new(),
+                    refmod: None,
+                    pos: e.pos,
+                };
+                if self.dm.resolve(&r).is_ok() {
+                    options.push(zir::ExecOpt {
+                        name: opt.to_string(),
+                        arg: Some(zir::ExecVal::Area(self.loc(&r)?)),
+                    });
+                }
+            }
+        }
         let mut host = Vec::new();
         if let Some(sql) = &e.sql {
             for h in &sql.host {

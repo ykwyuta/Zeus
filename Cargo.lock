@@ -420,6 +420,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "zeus-cics"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zeus-bms",
+ "zeus-cobol",
+ "zeus-decimal",
+ "zeus-ds",
+]
+
+[[package]]
 name = "zeus-cobol"
 version = "0.1.0"
 dependencies = [

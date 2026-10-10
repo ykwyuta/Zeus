@@ -1,0 +1,177 @@
+//! `zcics` - runs CICS transactions at a scripted 3270 terminal.
+//!
+//! ```text
+//! zcics [--home DIR] [--csd FILE]... [--loadlib DIR]... [--mapsets DIR]... SCRIPT
+//! ```
+//!
+//! The catalog is DIR/catalog (default `$ZEUS_HOME` or `./zeus`). Script
+//! lines:
+//!
+//! ```text
+//! tran CC00          clear the screen, type CC00 and press ENTER
+//! type 12 43 USER01  type text at line 12, column 43
+//! eof 12 43          erase to the end of the field at line 12, column 43
+//! key PF3            press an attention key (ENTER, CLEAR, PA1-3, PF1-24)
+//! show               print the screen
+//! expect 4 Sign-on   fail unless line 4 contains the text (* any line)
+//! # comment
+//! ```
+
+use std::cell::RefCell;
+use std::path::PathBuf;
+use std::process::ExitCode;
+use std::rc::Rc;
+
+use zeus_cics::csd::Csd;
+use zeus_cics::region::{self, Event, Region, Terminal, aid};
+use zeus_ds::catalog::Catalog;
+
+fn usage() -> ExitCode {
+    eprintln!(
+        "usage: zcics [--home DIR] [--csd FILE]... [--loadlib DIR]... [--mapsets DIR]... SCRIPT"
+    );
+    ExitCode::from(2)
+}
+
+fn show(t: &Terminal) {
+    println!("+{}+", "-".repeat(80));
+    for l in t.screen.render().lines() {
+        println!("|{l:<80}|");
+    }
+    println!("+{}+", "-".repeat(80));
+}
+
+fn main() -> ExitCode {
+    let mut home = std::env::var("ZEUS_HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|_| PathBuf::from("zeus"));
+    let mut csd = Csd::default();
+    let mut loadlibs = Vec::new();
+    let mut mapsets = Vec::new();
+    let mut script = None;
+    let mut it = std::env::args().skip(1);
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--home" => home = PathBuf::from(it.next().unwrap_or_default()),
+            "--csd" => {
+                let f = it.next().unwrap_or_default();
+                match std::fs::read(&f) {
+                    Ok(t) => csd.merge(Csd::parse(&String::from_utf8_lossy(&t))),
+                    Err(e) => {
+                        eprintln!("zcics: {f}: {e}");
+                        return ExitCode::from(16);
+                    }
+                }
+            }
+            "--loadlib" => loadlibs.push(PathBuf::from(it.next().unwrap_or_default())),
+            "--mapsets" => mapsets.push(PathBuf::from(it.next().unwrap_or_default())),
+            _ => script = Some(a),
+        }
+    }
+    let Some(script) = script else {
+        return usage();
+    };
+    let catalog = match Catalog::open(&home.join("catalog")) {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("zcics: catalog: {e:?}");
+            return ExitCode::from(16);
+        }
+    };
+    let text = match std::fs::read_to_string(&script) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("zcics: {script}: {e}");
+            return ExitCode::from(16);
+        }
+    };
+    let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
+    let term = Rc::new(RefCell::new(Terminal::new("T001")));
+    for (n, line) in text.lines().enumerate() {
+        let line = line.trim_end();
+        let fail = |msg: String| {
+            eprintln!("zcics: {script}:{}: {msg}", n + 1);
+            ExitCode::from(12)
+        };
+        let mut words = line.splitn(2, ' ');
+        let cmd = words.next().unwrap_or_default();
+        let rest = words.next().unwrap_or_default();
+        let pos = |rest: &str| -> Option<(usize, usize, String)> {
+            let mut p = rest.splitn(3, ' ');
+            let l = p.next()?.parse().ok()?;
+            let c = p.next()?.parse().ok()?;
+            Some((l, c, p.next().unwrap_or_default().to_string()))
+        };
+        let press = |a: u8| {
+            let e = region::attention(&region, &term, a);
+            match &e {
+                Event::Abended { transid, code } => println!("* {transid} abended {code}"),
+                Event::Ended { transid } => println!("* {transid} ended"),
+                Event::Idle => {}
+            }
+            for msg in region.borrow_mut().log.drain(..) {
+                println!("* {msg}");
+            }
+        };
+        match cmd {
+            "" | "#" => {}
+            _ if cmd.starts_with('#') => {}
+            "tran" => {
+                {
+                    let mut t = term.borrow_mut();
+                    t.next = None;
+                    t.screen.erase();
+                    t.screen.type_at(1, 1, rest).ok();
+                }
+                println!("> tran {rest}");
+                press(aid::ENTER);
+            }
+            "type" => {
+                let Some((l, c, s)) = pos(rest) else {
+                    return fail("type LINE COLUMN TEXT expected".into());
+                };
+                if let Err(e) = term.borrow_mut().screen.type_at(l, c, &s) {
+                    return fail(e);
+                }
+            }
+            "eof" => {
+                let Some((l, c, _)) = pos(rest) else {
+                    return fail("eof LINE COLUMN expected".into());
+                };
+                if let Err(e) = term.borrow_mut().screen.erase_eof(l, c) {
+                    return fail(e);
+                }
+            }
+            "key" => {
+                let Some(a) = aid::by_name(rest) else {
+                    return fail(format!("unknown key {rest}"));
+                };
+                println!("> key {rest}");
+                press(a);
+            }
+            "show" => show(&term.borrow()),
+            "expect" => {
+                let Some((l, s)) = rest.split_once(' ') else {
+                    return fail("expect LINE TEXT expected".into());
+                };
+                let screen = term.borrow().screen.render();
+                let ok = match l {
+                    "*" => screen.contains(s),
+                    _ => match l.parse::<usize>() {
+                        Ok(l) => screen
+                            .lines()
+                            .nth(l.saturating_sub(1))
+                            .is_some_and(|got| got.contains(s)),
+                        Err(_) => return fail("expect LINE TEXT expected".into()),
+                    },
+                };
+                if !ok {
+                    show(&term.borrow());
+                    return fail(format!("line {l} does not contain '{s}'"));
+                }
+            }
+            other => return fail(format!("unknown command {other}")),
+        }
+    }
+    ExitCode::SUCCESS
+}

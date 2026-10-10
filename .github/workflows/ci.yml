@@ -61,8 +61,10 @@ jobs:
           path: work/*.json
 
   carddemo:
-    # Sets up AWS CardDemo (fetched at a pinned commit) on Zeus and runs its
-    # batch jobs through zjob; fails unless every job ends with RC 0.
+    # Sets up AWS CardDemo (fetched at a pinned commit) on Zeus, runs its
+    # batch jobs through zjob (fails unless every job ends with RC 0), then
+    # its online transactions through zcics with the scripts in
+    # tools/carddemo-online.
     runs-on: ubuntu-24.04
     needs: check
     steps:
@@ -74,6 +76,7 @@ jobs:
           path: .cache/carddemo
           key: carddemo-${{ hashFiles('tools/fetch-carddemo.sh') }}
       - run: tools/carddemo.sh all
+      - run: tools/carddemo-online.sh test
       - uses: actions/upload-artifact@v4
         if: always()
         with:

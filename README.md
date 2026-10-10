@@ -33,6 +33,11 @@ and `zbms` generates BMS symbolic maps; 111 of the 115 COBOL programs of
 CardDemo, GenApp and Bank of Z compile. The syntax usage inventory of the
 three applications is in [docs/inventory/apps.md](docs/inventory/apps.md).
 
+CICS: `zcics` runs transactions against a 3270 screen model driven by a
+script (`tools/carddemo-online.sh`). The CardDemo sign-on, menus, account
+view, card and transaction lists, bill payment and user administration
+work on the data the batch jobs set up.
+
 ## Layout
 
 | Path | Content |
@@ -40,6 +45,7 @@ three applications is in [docs/inventory/apps.md](docs/inventory/apps.md).
 | `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
 | `crates/zeus-jcl` | `zjob`: JCL parsing and PROC expansion, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT |
+| `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL symbolic maps |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |

@@ -411,6 +411,52 @@ impl Catalog {
         }
     }
 
+    /// Keyed access to a KSDS or to a path over one: the host file of the
+    /// base cluster, the key specifications of the cluster (primary key,
+    /// then the key of each alternate index), which of them `name` uses and
+    /// the maximum record length.
+    pub fn keyed_access(
+        &self,
+        name: &str,
+    ) -> Result<(PathBuf, Vec<crate::keyed::KeySpec>, usize, usize)> {
+        let entry = self.get(name).ok_or(DsError::NotFound)?;
+        let base = self.base_of(name).ok_or(DsError::NotFound)?;
+        let EntryKind::Cluster {
+            org: VsamOrg::Ksds,
+            keys: Some(keys),
+            record_size,
+            aixs,
+        } = &base.kind
+        else {
+            return Err(DsError::Damaged(format!("{name} is not a KSDS")));
+        };
+        let mut specs = vec![crate::keyed::KeySpec {
+            offset: keys.1 as usize,
+            len: keys.0 as usize,
+            duplicates: false,
+        }];
+        let via = match &entry.kind {
+            EntryKind::Path { entry } => Some(entry.to_ascii_uppercase()),
+            _ => None,
+        };
+        let mut which = 0;
+        for aix in aixs {
+            if let Some(EntryKind::AlternateIndex { keys, unique, .. }) =
+                self.get(aix).map(|e| &e.kind)
+            {
+                specs.push(crate::keyed::KeySpec {
+                    offset: keys.1 as usize,
+                    len: keys.0 as usize,
+                    duplicates: !unique,
+                });
+                if via.as_deref() == Some(aix.to_ascii_uppercase().as_str()) {
+                    which = specs.len() - 1;
+                }
+            }
+        }
+        Ok((self.path(&base.name), specs, which, record_size.1 as usize))
+    }
+
     /// Reads all records of a catalogued data set (a KSDS in key order,
     /// through a path in the order of the alternate key).
     pub fn read_records(&self, name: &str) -> Result<Vec<Vec<u8>>> {

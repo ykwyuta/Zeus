@@ -58,6 +58,14 @@ initialization, daily batch and report jobs with `zjob`. It fails unless every
 job ends with RC 0; job output is in `work/carddemo/spool/<JOB>/`. Single jobs
 can be resubmitted with `tools/carddemo.sh run POSTTRAN ...`.
 
+## CardDemo online
+
+After `tools/carddemo.sh all`, `tools/carddemo-online.sh test` compiles the
+online programs, writes the mapsets as JSON and runs the terminal scripts in
+`tools/carddemo-online/` with `zcics` (they expect freshly set up data). A
+single script runs with `tools/carddemo-online.sh run SCRIPT`; `show` in a
+script prints the screen.
+
 ## Application inventory
 
 `tools/apps-inventory.sh` fetches CardDemo, GenApp and Bank of Z, generates

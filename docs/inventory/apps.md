@@ -277,7 +277,7 @@ Not compiled:
 | READQ RESP | | 4 (7) | |
 | READQ TS | | 4 (7) | |
 | RECEIVE ASIS | | 1 (2) | 2 (2) |
-| RECEIVE INTO | 20 (20) | 9 (13) | 9 (9) |
+| RECEIVE INTO | 21 (21) | 9 (13) | 9 (9) |
 | RECEIVE LENGTH | | 4 (4) | |
 | RECEIVE MAP | 21 (21) | 5 (9) | 9 (9) |
 | RECEIVE MAPSET | 21 (21) | 5 (9) | 9 (9) |
@@ -308,7 +308,7 @@ Not compiled:
 | SEND DATAONLY | | | 9 (18) |
 | SEND ERASE | 21 (33) | 9 (14) | 9 (27) |
 | SEND FREEKB | 8 (16) | 9 (9) | 9 (45) |
-| SEND FROM | 21 (40) | 9 (43) | 9 (36) |
+| SEND FROM | 21 (40) | 9 (47) | 9 (36) |
 | SEND LENGTH | 8 (14) | 9 (9) | |
 | SEND MAP | 21 (26) | 5 (43) | 9 (28) |
 | SEND MAPONLY | | 5 (5) | 1 (1) |

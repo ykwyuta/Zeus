@@ -1,0 +1,14 @@
+# Regular user: main menu, account view of account 1.
+tran CC00
+type 19 44 USER0001
+type 20 44 PASSWORD
+key ENTER
+expect 4 Main Menu
+type 20 42 01
+key ENTER
+expect * View Account
+type 5 39 00000000001
+key ENTER
+expect * Account Number :   00000000001
+expect * Kessler
+expect * 618 Deshaun Route

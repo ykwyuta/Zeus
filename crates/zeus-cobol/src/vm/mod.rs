@@ -1048,6 +1048,11 @@ impl Machine {
                 return Some(self.instantiate(&module, idx as u32));
             }
         }
+        self.find_program(name)
+    }
+
+    /// A separately compiled program by name (loaded on first use).
+    fn find_program(&mut self, name: &str) -> Option<usize> {
         if let Some(&i) = self.by_name.get(name) {
             return Some(i);
         }

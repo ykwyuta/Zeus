@@ -1,0 +1,26 @@
+[package]
+name = "zeus-cics"
+description = "Zeus CICS: transactions, program control, file control, queues and BMS on a 3270 screen model"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+zeus-bms = { path = "../zeus-bms" }
+zeus-cobol = { path = "../zeus-cobol" }
+zeus-decimal = { path = "../zeus-decimal" }
+zeus-ds = { path = "../zeus-ds" }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "zcics"
+path = "src/main.rs"
+
+[lints]
+workspace = true

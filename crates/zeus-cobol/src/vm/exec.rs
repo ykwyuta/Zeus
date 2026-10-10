@@ -85,7 +85,62 @@ pub trait ExecHost {
     fn exec(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome>;
 }
 
+/// How a program run with [`Machine::run_program`] ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ProgramEnd {
+    /// GOBACK / EXIT PROGRAM, or a RETURN of the host interface.
+    Returned,
+    StopRun(i32),
+}
+
 impl Machine {
+    /// Allocates `len` bytes of storage set to `init` (GETMAIN).
+    pub fn getmain(&mut self, len: usize, init: u8) -> usize {
+        self.alloc(&vec![init; len])
+    }
+
+    /// Runs the separately compiled program `name` (found in the search
+    /// directories) as called by the host, with the addresses of its USING
+    /// parameters. Each run starts with the program in its initial state.
+    /// Returns None when the program does not exist.
+    pub fn run_program(
+        &mut self,
+        name: &str,
+        args: &[Option<usize>],
+    ) -> RResult<Option<ProgramEnd>> {
+        let name = name.trim().to_ascii_uppercase();
+        let Some(i) = self.find_program(&name) else {
+            return Ok(None);
+        };
+        if self.instances[i].active {
+            return Err(RunError(format!("program {name} is already active")));
+        }
+        if self.instances[i].initialized {
+            self.reset(i);
+        }
+        self.instances[i].initialized = true;
+        let using = self.instances[i].code.using.clone();
+        for (k, slot) in using.iter().enumerate() {
+            self.instances[i].linkage[*slot as usize] = args.get(k).copied().flatten();
+        }
+        self.instances[i].active = true;
+        self.instances[i].perform.clear();
+        let r = self.run_from(i, true);
+        self.instances[i].active = false;
+        match r {
+            Ok(super::Exit::Returned) => Ok(Some(ProgramEnd::Returned)),
+            Ok(super::Exit::StopRun(c)) => Ok(Some(ProgramEnd::StopRun(c))),
+            Err(e) if e.0 == super::STOP_RUN => Ok(Some(ProgramEnd::StopRun(self.return_code))),
+            Err(e) => {
+                // the programs still active ended with the error
+                for inst in &mut self.instances {
+                    inst.active = false;
+                }
+                Err(e)
+            }
+        }
+    }
+
     /// Installs the interface that runs EXEC statements.
     pub fn set_exec_host(&mut self, host: Rc<dyn ExecHost>) {
         self.exec_host = Some(host);
