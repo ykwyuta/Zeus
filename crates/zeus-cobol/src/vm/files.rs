@@ -1,20 +1,26 @@
-//! File input-output.
+//! File input-output: COBOL file semantics over the Zeus data set layer.
 //!
-//! Files are held in memory while open and written back on CLOSE:
+//! The data sets themselves (record formats, relative slots, keyed data
+//! sets with alternate indexes, DD allocation) are in `zeus-ds`. This
+//! module adds what COBOL defines: OPEN modes, FILE STATUS codes, the
+//! record area, AT END / INVALID KEY, RECORD VARYING, and the print files
+//! (ADVANCING, LINAGE, Report Writer), which are written as host text.
 //!
-//! * print files (written with ADVANCING) and LINE SEQUENTIAL files are
-//!   host text (ISO 8859-1), one line per record;
-//! * record sequential files hold EBCDIC records: fixed-length records
-//!   back to back, or variable-length records with a 4-byte record
-//!   descriptor word (as RECFM=F and RECFM=V on z/OS).
+//! Record formats on disk:
 //!
-//! The external file is found through the environment variable
-//! `DD_<assignment-name>`, or `DD_<file-name>`, or the assignment name is
-//! used as the path.
+//! * print files and LINE SEQUENTIAL files: host text (ISO 8859-1), one
+//!   line per record;
+//! * record sequential files: fixed-length EBCDIC records back to back, or
+//!   variable-length records with a record descriptor word (RECFM=F / V);
+//! * relative and indexed files: variable-length records (see `zeus-ds`).
 
-use std::collections::{BTreeMap, HashMap};
-use std::fs;
 use std::path::PathBuf;
+
+use zeus_ds::DsError;
+use zeus_ds::format::RecordFormat;
+use zeus_ds::keyed::{KeySpec, KeyedDataset, Position};
+use zeus_ds::relative::RelativeDataset;
+use zeus_ds::seq::SequentialDataset;
 
 use super::data as d;
 use super::eval::Val;
@@ -28,28 +34,33 @@ impl FileState {
     }
 }
 
+/// The records of an open file.
+#[derive(Default)]
+enum Data {
+    #[default]
+    None,
+    Seq(SequentialDataset),
+    Rel(RelativeDataset),
+    Keyed(KeyedDataset),
+}
+
 #[derive(Default)]
 pub struct FileState {
     open: Option<OpenMode>,
     path: Option<PathBuf>,
-    /// Sequential and relative records (None = empty relative slot).
-    records: Vec<Option<Vec<u8>>>,
-    /// Indexed file: primary key -> record.
-    index: BTreeMap<Vec<u8>, Vec<u8>>,
-    /// Indexed file: write sequence of each record (orders duplicates of
-    /// alternate keys).
-    seq: HashMap<Vec<u8>, u64>,
-    next_seq: u64,
-    /// Next record position for sequential reading.
-    pos: usize,
-    /// Current key position for indexed sequential reading.
-    /// Position for READ NEXT: key of reference value and duplicate order.
-    key_pos: Option<(Vec<u8>, u64)>,
+    data: Data,
+    /// Sequential files: index of the next record. Relative files: number
+    /// of the next slot to read.
+    pos: u64,
+    /// Indexed files: position for READ NEXT in the key of reference.
+    key_pos: Option<Position>,
     /// Key of reference for sequential reads (0 primary, n alternate).
     key_of_ref: u32,
     at_end: bool,
-    /// The previous READ succeeded (for REWRITE/DELETE in sequential access).
-    last_read: Option<usize>,
+    /// The previous READ succeeded (for REWRITE/DELETE in sequential
+    /// access): record index / slot number.
+    last_read: Option<u64>,
+    /// Indexed files: primary key of the last record read.
     last_key: Option<Vec<u8>>,
     /// Text output of print / line sequential files.
     pub(super) text: Vec<u8>,
@@ -70,9 +81,28 @@ pub struct FileState {
     line_used: bool,
 }
 
-/// (key of reference, primary key, record)
-/// (key of reference value, duplicate order, primary key, record)
-type KeyedRecord = (Vec<u8>, u64, Vec<u8>, Vec<u8>);
+impl FileState {
+    fn seq(&mut self) -> &mut SequentialDataset {
+        match &mut self.data {
+            Data::Seq(d) => d,
+            _ => unreachable!("not a sequential file"),
+        }
+    }
+
+    fn rel(&mut self) -> &mut RelativeDataset {
+        match &mut self.data {
+            Data::Rel(d) => d,
+            _ => unreachable!("not a relative file"),
+        }
+    }
+
+    fn keyed(&mut self) -> &mut KeyedDataset {
+        match &mut self.data {
+            Data::Keyed(d) => d,
+            _ => unreachable!("not an indexed file"),
+        }
+    }
+}
 
 pub struct SortSpec {
     pub file: u32,
@@ -83,6 +113,26 @@ pub struct SortSpec {
 
 fn fixed_length(def: &FileDef) -> bool {
     def.min_len == def.max_len && def.record_depending.is_none()
+}
+
+/// Host text files: print files and LINE SEQUENTIAL files.
+fn is_text(def: &FileDef) -> bool {
+    def.print || def.org == Org::LineSequential
+}
+
+/// Record format of a sequential file.
+fn seq_format(def: &FileDef) -> RecordFormat {
+    if is_text(def) {
+        RecordFormat::Text
+    } else if fixed_length(def) {
+        RecordFormat::Fixed(def.max_len)
+    } else {
+        RecordFormat::Variable
+    }
+}
+
+fn ds_err(e: DsError) -> super::RunError {
+    super::RunError(e.to_string())
 }
 
 impl Machine {
@@ -96,21 +146,75 @@ impl Machine {
     }
 
     fn file_path(&self, def: &FileDef) -> PathBuf {
-        for name in [&def.assign, &def.name] {
-            if let Some(p) = self.dd.get(name) {
-                return p.clone();
-            }
+        self.dd
+            .resolve(&[&def.assign, &def.name])
+            .unwrap_or_else(|| PathBuf::from(&def.assign))
+    }
+
+    /// Key specifications of an indexed file: offsets of the RECORD KEY
+    /// and ALTERNATE RECORD KEYs in the record area.
+    fn key_specs(&mut self, cur: usize, def: &FileDef) -> RResult<Vec<KeySpec>> {
+        let (ra, _) = self.addr(cur, &record_loc(def))?;
+        let mut keys = Vec::new();
+        let Some(rk) = &def.record_key else {
+            return err(format!("indexed file {} has no RECORD KEY", def.name));
+        };
+        let (ka, kl) = self.addr(cur, rk)?;
+        keys.push(KeySpec {
+            offset: ka - ra,
+            len: kl,
+            duplicates: false,
+        });
+        for (l, dup) in &def.alternate_keys {
+            let (ka, kl) = self.addr(cur, l)?;
+            keys.push(KeySpec {
+                offset: ka - ra,
+                len: kl,
+                duplicates: *dup,
+            });
         }
-        for key in [
-            format!("DD_{}", def.assign),
-            format!("DD_{}", def.name),
-            format!("dd_{}", def.assign),
-        ] {
-            if let Ok(p) = std::env::var(&key) {
-                return PathBuf::from(p);
+        Ok(keys)
+    }
+
+    /// Loads the data set of a file; None when it does not exist.
+    fn load_data(
+        &mut self,
+        cur: usize,
+        def: &FileDef,
+        path: &std::path::Path,
+    ) -> RResult<Option<Data>> {
+        Ok(match def.org {
+            Org::Indexed => {
+                let keys = self.key_specs(cur, def)?;
+                KeyedDataset::load(path, keys, ebcdic::SPACE)
+                    .map_err(ds_err)?
+                    .map(Data::Keyed)
             }
-        }
-        PathBuf::from(&def.assign)
+            Org::Relative => RelativeDataset::load(path).map_err(ds_err)?.map(Data::Rel),
+            Org::Sequential | Org::LineSequential => {
+                SequentialDataset::load(path, seq_format(def), ebcdic::SPACE)
+                    .map_err(ds_err)?
+                    .map(|mut d| {
+                        if is_text(def) {
+                            for r in &mut d.records {
+                                *r = r.iter().map(|&b| ebcdic::from_latin1(b)).collect();
+                            }
+                        }
+                        Data::Seq(d)
+                    })
+            }
+        })
+    }
+
+    /// An empty data set for a file.
+    fn empty_data(&mut self, cur: usize, def: &FileDef) -> RResult<Data> {
+        Ok(match def.org {
+            Org::Indexed => {
+                Data::Keyed(KeyedDataset::new(self.key_specs(cur, def)?, ebcdic::SPACE))
+            }
+            Org::Relative => Data::Rel(RelativeDataset::default()),
+            _ => Data::Seq(SequentialDataset::new(seq_format(def), ebcdic::SPACE)),
+        })
     }
 
     /// Sets the FILE STATUS item and the I/O condition.
@@ -154,39 +258,34 @@ impl Machine {
             return self.io_error(cur, &def, "38", "OPEN");
         }
         let path = self.file_path(&def);
-        let exists = path.is_file();
         let mut st = FileState {
             path: Some(path.clone()),
+            pos: 1,
             ..FileState::default()
         };
-        match mode {
-            OpenMode::Output => {
+        if mode == OpenMode::Output {
+            st.modified = true;
+            st.data = self.empty_data(cur, &def)?;
+        } else {
+            match self.load_data(cur, &def, &path)? {
+                Some(data) => st.data = data,
+                None if def.optional => {
+                    st.absent = true;
+                    st.data = self.empty_data(cur, &def)?;
+                }
+                None => return self.io_error(cur, &def, "35", "OPEN"),
+            }
+            if mode != OpenMode::Input {
                 st.modified = true;
             }
-            OpenMode::Input | OpenMode::InputOutput | OpenMode::Extend => {
-                if !exists {
-                    if def.optional {
-                        st.absent = true;
-                    } else if mode == OpenMode::Extend || mode == OpenMode::InputOutput {
-                        if def.optional {
-                            st.absent = true;
-                        } else {
-                            return self.io_error(cur, &def, "35", "OPEN");
-                        }
-                    } else {
-                        return self.io_error(cur, &def, "35", "OPEN");
-                    }
-                } else {
-                    let data = fs::read(&path).map_err(|e| super::RunError(e.to_string()))?;
-                    load_records(&def, &data, &mut st)?;
-                }
-                if mode != OpenMode::Input {
-                    st.modified = true;
-                }
-            }
+        }
+        if matches!(st.data, Data::Seq(_)) {
+            st.pos = 0;
         }
         if def.print && mode == OpenMode::Extend {
-            st.text = fs::read(&path).unwrap_or_default();
+            st.text = zeus_ds::format::read_file(&path)
+                .map_err(ds_err)?
+                .unwrap_or_default();
         }
         st.open = Some(mode);
         let code = if st.absent && def.optional {
@@ -325,28 +424,32 @@ impl Machine {
         if st.modified
             && let Some(path) = &st.path
         {
-            let data = if def.print || def.org == Org::LineSequential {
+            let r = if def.print {
                 let mut t = st.text.clone();
                 if def.linage.is_some() && st.line_used {
                     t.push(b'\n');
                 }
-                if def.org == Org::LineSequential && !def.print {
-                    t.clear();
-                    for r in st.records.iter().flatten() {
-                        let mut line = ebcdic::decode_latin1(r);
-                        while line.last() == Some(&b' ') {
-                            line.pop();
-                        }
-                        t.extend(line);
-                        t.push(b'\n');
-                    }
-                }
-                t
+                zeus_ds::format::write_file(path, &t)
             } else {
-                store_records(&def, &st)
+                match &st.data {
+                    Data::Seq(d) if is_text(&def) => {
+                        let mut text = d.clone();
+                        for r in &mut text.records {
+                            let mut line = ebcdic::decode_latin1(r);
+                            while line.last() == Some(&b' ') {
+                                line.pop();
+                            }
+                            *r = line;
+                        }
+                        text.store(path)
+                    }
+                    Data::Seq(d) => d.store(path),
+                    Data::Rel(d) => d.store(path),
+                    Data::Keyed(d) => d.store(path),
+                    Data::None => Ok(()),
+                }
             };
-            fs::write(path, data)
-                .map_err(|e| super::RunError(format!("writing {}: {e}", path.display())))?;
+            r.map_err(ds_err)?;
         }
         self.state(cur, f).locked = lock;
         self.set_status(cur, &def, "00")
@@ -520,7 +623,7 @@ impl Machine {
         match def.org {
             Org::Sequential | Org::LineSequential => {
                 let st = self.state(cur, f);
-                st.records.push(Some(rec));
+                st.seq().records.push(rec);
                 st.modified = true;
                 self.set_status(cur, &def, "00")
             }
@@ -557,11 +660,11 @@ impl Machine {
                 let Some(i) = st.last_read.take() else {
                     return self.io_error(cur, &def, "43", "REWRITE");
                 };
-                let old_len = st.records[i].as_ref().map_or(0, |r| r.len());
-                if old_len != rec.len() {
+                let records = &mut st.seq().records;
+                if records[i as usize].len() != rec.len() {
                     return self.io_error(cur, &def, "44", "REWRITE");
                 }
-                st.records[i] = Some(rec);
+                records[i as usize] = rec;
                 st.modified = true;
                 self.set_status(cur, &def, "00")
             }
@@ -593,15 +696,14 @@ impl Machine {
                 if st.at_end {
                     return self.io_error(cur, &def, "46", "READ");
                 }
-                if st.absent || st.pos >= st.records.len() {
+                let i = st.pos;
+                let Some(rec) = st.seq().records.get(i as usize).cloned() else {
                     st.at_end = true;
                     self.set_status(cur, &def, "10")?;
                     return Ok(());
-                }
-                let i = st.pos;
+                };
                 st.pos += 1;
                 st.last_read = Some(i);
-                let rec = st.records[i].clone().unwrap_or_default();
                 self.put_record(cur, &def, &rec, into)?;
                 let code = if rec.len() > def.max_len as usize {
                     "04"
@@ -680,29 +782,23 @@ impl Machine {
     }
 
     fn relative_write(&mut self, cur: usize, f: u32, def: &FileDef, rec: Vec<u8>) -> RResult<()> {
-        let slot = if def.access == AccessMode::Sequential {
+        if def.access == AccessMode::Sequential {
             let st = self.state(cur, f);
-            st.records.push(Some(rec));
+            let n = st.rel().append(rec);
             st.modified = true;
-            let n = self.state(cur, f).records.len();
-            self.set_relative_key(cur, def, n)?;
+            self.set_relative_key(cur, def, n as usize)?;
             return self.set_status(cur, def, "00");
-        } else {
-            self.relative_key(cur, def)?.unwrap_or(0)
-        };
-        if slot == 0 {
-            return self.set_status(cur, def, "24");
         }
+        let slot = self.relative_key(cur, def)?.unwrap_or(0) as u64;
         let st = self.state(cur, f);
-        if st.records.len() < slot {
-            st.records.resize(slot, None);
+        match st.rel().insert(slot, rec) {
+            Ok(()) => {
+                st.modified = true;
+                self.set_status(cur, def, "00")
+            }
+            Err(DsError::InvalidRecordNumber) => self.set_status(cur, def, "24"),
+            Err(_) => self.set_status(cur, def, "22"),
         }
-        if st.records[slot - 1].is_some() {
-            return self.set_status(cur, def, "22");
-        }
-        st.records[slot - 1] = Some(rec);
-        st.modified = true;
-        self.set_status(cur, def, "00")
     }
 
     fn relative_read_next(
@@ -716,28 +812,24 @@ impl Machine {
         if st.at_end {
             return self.io_error(cur, def, "46", "READ");
         }
-        while st.pos < st.records.len() && st.records[st.pos].is_none() {
-            st.pos += 1;
-        }
-        if st.pos >= st.records.len() {
+        let pos = st.pos;
+        let Some((n, rec)) = st.rel().next_from(pos).map(|(n, r)| (n, r.to_vec())) else {
             st.at_end = true;
             return self.set_status(cur, def, "10");
-        }
-        let i = st.pos;
+        };
         // the record number must fit the RELATIVE KEY item
         if let Some(k) = &def.relative_key
-            && let crate::zir::DataType::Numeric(n) =
+            && let crate::zir::DataType::Numeric(t) =
                 &self.instances[cur].code.descs[k.desc as usize].ty
-            && n.digits < 18
-            && (i + 1) as u64 >= 10u64.pow(n.digits)
+            && t.digits < 18
+            && n >= 10u64.pow(t.digits)
         {
             return self.set_status(cur, def, "14");
         }
         let st = self.state(cur, f);
-        st.pos += 1;
-        st.last_read = Some(i);
-        let rec = st.records[i].clone().unwrap();
-        self.set_relative_key(cur, def, i + 1)?;
+        st.pos = n + 1;
+        st.last_read = Some(n);
+        self.set_relative_key(cur, def, n as usize)?;
         self.put_record(cur, def, &rec, into)?;
         self.set_status(cur, def, "00")
     }
@@ -749,17 +841,12 @@ impl Machine {
         def: &FileDef,
         into: Option<&Loc>,
     ) -> RResult<()> {
-        let slot = self.relative_key(cur, def)?.unwrap_or(0);
+        let slot = self.relative_key(cur, def)?.unwrap_or(0) as u64;
         let st = self.state(cur, f);
-        let rec = if slot >= 1 {
-            st.records.get(slot - 1).cloned().flatten()
-        } else {
-            None
-        };
-        match rec {
+        match st.rel().get(slot).map(<[u8]>::to_vec) {
             Some(r) => {
-                st.last_read = Some(slot - 1);
-                st.pos = slot;
+                st.last_read = Some(slot);
+                st.pos = slot + 1;
                 self.put_record(cur, def, &r, into)?;
                 self.set_status(cur, def, "00")
             }
@@ -767,58 +854,46 @@ impl Machine {
         }
     }
 
-    fn relative_rewrite(&mut self, cur: usize, f: u32, def: &FileDef, rec: Vec<u8>) -> RResult<()> {
-        let slot = if def.access == AccessMode::Sequential {
-            match self.state(cur, f).last_read.take() {
-                Some(i) => i + 1,
-                None => return self.io_error(cur, def, "43", "REWRITE"),
-            }
+    /// Slot addressed by REWRITE / DELETE: the record read last in
+    /// sequential access, the RELATIVE KEY otherwise.
+    fn relative_target(&mut self, cur: usize, f: u32, def: &FileDef) -> RResult<Option<u64>> {
+        if def.access == AccessMode::Sequential {
+            Ok(self.state(cur, f).last_read.take())
         } else {
-            self.relative_key(cur, def)?.unwrap_or(0)
+            Ok(Some(self.relative_key(cur, def)?.unwrap_or(0) as u64))
+        }
+    }
+
+    fn relative_rewrite(&mut self, cur: usize, f: u32, def: &FileDef, rec: Vec<u8>) -> RResult<()> {
+        let Some(slot) = self.relative_target(cur, f, def)? else {
+            return self.io_error(cur, def, "43", "REWRITE");
         };
         let st = self.state(cur, f);
-        if slot == 0 || st.records.get(slot - 1).is_none_or(|r| r.is_none()) {
+        if st.rel().replace(slot, rec).is_err() {
             return self.set_status(cur, def, "23");
         }
-        st.records[slot - 1] = Some(rec);
         st.modified = true;
         self.set_status(cur, def, "00")
     }
 
     fn relative_delete(&mut self, cur: usize, f: u32, def: &FileDef) -> RResult<()> {
-        let slot = if def.access == AccessMode::Sequential {
-            match self.state(cur, f).last_read.take() {
-                Some(i) => i + 1,
-                None => return self.io_error(cur, def, "43", "DELETE"),
-            }
-        } else {
-            self.relative_key(cur, def)?.unwrap_or(0)
+        let Some(slot) = self.relative_target(cur, f, def)? else {
+            return self.io_error(cur, def, "43", "DELETE");
         };
         let st = self.state(cur, f);
-        if slot == 0 || st.records.get(slot - 1).is_none_or(|r| r.is_none()) {
+        if st.rel().delete(slot).is_err() {
             return self.set_status(cur, def, "23");
         }
-        st.records[slot - 1] = None;
         st.modified = true;
         self.set_status(cur, def, "00")
     }
 
     fn relative_start(&mut self, cur: usize, f: u32, def: &FileDef, rel: Rel) -> RResult<()> {
-        let key = self.relative_key(cur, def)?.unwrap_or(0);
+        let key = self.relative_key(cur, def)?.unwrap_or(0) as u64;
         let st = self.state(cur, f);
-        let n = st.records.len();
-        let found = (1..=n).find(|&i| {
-            st.records[i - 1].is_some()
-                && match rel {
-                    Rel::Eq => i == key,
-                    Rel::Gt => i > key,
-                    Rel::Ge => i >= key,
-                    _ => false,
-                }
-        });
-        match found {
-            Some(i) => {
-                st.pos = i - 1;
+        match st.rel().position(ds_rel(rel), key) {
+            Some(n) => {
+                st.pos = n;
                 st.at_end = false;
                 self.set_status(cur, def, "00")
             }
@@ -828,61 +903,29 @@ impl Machine {
 
     // ---- indexed files -------------------------------------------------
 
-    fn key_bytes(&mut self, cur: usize, def: &FileDef, rec: &[u8], which: u32) -> RResult<Vec<u8>> {
-        let loc = if which == 0 {
-            def.record_key.clone()
-        } else {
-            def.alternate_keys
-                .get(which as usize - 1)
-                .map(|(l, _)| l.clone())
-        };
-        let Some(loc) = loc else {
-            return err(format!("file {} has no such key", def.name));
-        };
-        // Key position relative to the record area.
-        let rec_loc = Loc {
-            desc: def.record,
-            subs: Vec::new(),
-            refmod: None,
-        };
-        let (ra, _) = self.addr(cur, &rec_loc)?;
-        let (ka, kl) = self.addr(cur, &loc)?;
-        let off = ka - ra;
-        let mut k = rec
-            .get(off..off + kl)
-            .map(<[u8]>::to_vec)
-            .unwrap_or_default();
-        k.resize(kl, ebcdic::SPACE);
-        Ok(k)
+    /// Value of key `which` in the record area.
+    fn area_key(&mut self, cur: usize, f: u32, def: &FileDef, which: usize) -> RResult<Vec<u8>> {
+        let rec = self.record_bytes(cur, def, def.max_len as usize)?;
+        Ok(self.state(cur, f).keyed().key_of(&rec, which))
     }
 
     fn indexed_write(&mut self, cur: usize, f: u32, def: &FileDef, rec: Vec<u8>) -> RResult<()> {
-        let key = self.key_bytes(cur, def, &rec, 0)?;
-        // alternate keys without duplicates must be unique
-        for (i, (_, dup)) in def.alternate_keys.iter().enumerate() {
-            if !dup {
-                let ak = self.key_bytes(cur, def, &rec, i as u32 + 1)?;
-                let others: Vec<Vec<u8>> = self.state(cur, f).index.values().cloned().collect();
-                for o in others {
-                    if self.key_bytes(cur, def, &o, i as u32 + 1)? == ak {
-                        return self.set_status(cur, def, "22");
-                    }
-                }
-            }
-        }
         let st = self.state(cur, f);
+        let ds = st.keyed();
+        let key = ds.key_of(&rec, 0);
         if def.access == AccessMode::Sequential
             && st.open == Some(OpenMode::Output)
-            && st.index.keys().next_back().is_some_and(|k| *k >= key)
+            && st
+                .keyed()
+                .last_primary()
+                .is_some_and(|k| k >= key.as_slice())
         {
             return self.set_status(cur, def, "21");
         }
-        if st.index.contains_key(&key) {
+        let st = self.state(cur, f);
+        if st.keyed().insert(rec).is_err() {
             return self.set_status(cur, def, "22");
         }
-        st.seq.insert(key.clone(), st.next_seq);
-        st.next_seq += 1;
-        st.index.insert(key, rec);
         st.modified = true;
         self.set_status(cur, def, "00")
     }
@@ -895,75 +938,20 @@ impl Machine {
         into: Option<&Loc>,
         which: u32,
     ) -> RResult<()> {
-        let rec_now = self.record_bytes(cur, def, def.max_len as usize)?;
-        let key = self.key_bytes(cur, def, &rec_now, which)?;
-        let found = if which == 0 {
-            self.state(cur, f)
-                .index
-                .get(&key)
-                .cloned()
-                .map(|r| (key.clone(), r))
-        } else {
-            self.ordered_by(cur, f, def, which)?
-                .into_iter()
-                .find(|(k, ..)| *k == key)
-                .map(|(_, _, pk, r)| (pk, r))
-        };
-        match found {
-            Some((pk, r)) => {
-                let st = self.state(cur, f);
-                st.last_key = Some(pk.clone());
+        let key = self.area_key(cur, f, def, which as usize)?;
+        let st = self.state(cur, f);
+        match st.keyed().get_by(which as usize, &key) {
+            Some(found) => {
+                st.last_key = Some(found.primary);
                 st.last_read = Some(0);
-                let seq = if which == 0 {
-                    0
-                } else {
-                    st.seq.get(&pk).copied().unwrap_or(0)
-                };
-                st.key_pos = Some((key.clone(), seq));
+                st.key_pos = Some(found.position);
                 st.key_of_ref = which;
                 st.at_end = false;
-                self.put_record(cur, def, &r, into)?;
+                self.put_record(cur, def, &found.record, into)?;
                 self.set_status(cur, def, "00")
             }
             None => self.set_status(cur, def, "23"),
         }
-    }
-
-    /// Records in the order of the key of reference.
-    fn ordered(&mut self, cur: usize, f: u32, def: &FileDef) -> RResult<Vec<KeyedRecord>> {
-        let which = self.state(cur, f).key_of_ref;
-        self.ordered_by(cur, f, def, which)
-    }
-
-    fn ordered_by(
-        &mut self,
-        cur: usize,
-        f: u32,
-        def: &FileDef,
-        which: u32,
-    ) -> RResult<Vec<KeyedRecord>> {
-        let all: Vec<(Vec<u8>, Vec<u8>)> = self
-            .state(cur, f)
-            .index
-            .iter()
-            .map(|(k, v)| (k.clone(), v.clone()))
-            .collect();
-        let mut out = Vec::new();
-        for (pk, r) in all {
-            let k = if which == 0 {
-                pk.clone()
-            } else {
-                self.key_bytes(cur, def, &r, which)?
-            };
-            let seq = if which == 0 {
-                0
-            } else {
-                self.state(cur, f).seq.get(&pk).copied().unwrap_or(0)
-            };
-            out.push((k, seq, pk, r));
-        }
-        out.sort_by(|a, b| (&a.0, a.1).cmp(&(&b.0, b.1)));
-        Ok(out)
     }
 
     fn indexed_read_next(
@@ -973,31 +961,20 @@ impl Machine {
         def: &FileDef,
         into: Option<&Loc>,
     ) -> RResult<()> {
-        if self.state(cur, f).at_end {
+        let st = self.state(cur, f);
+        if st.at_end {
             return self.io_error(cur, def, "46", "READ");
         }
-        let ordered = self.ordered(cur, f, def)?;
-        let st = self.state(cur, f);
-        let next = match (&st.key_pos, st.last_key.is_some()) {
-            (None, _) => ordered.first().cloned(),
-            (Some((pk0, s0)), false) => {
-                // positioned by START: first record >= position
-                ordered
-                    .iter()
-                    .find(|(k, s, ..)| (k, *s) >= (pk0, *s0))
-                    .cloned()
-            }
-            (Some((pk0, s0)), true) => ordered
-                .iter()
-                .find(|(k, s, ..)| (k, *s) > (pk0, *s0))
-                .cloned(),
-        };
-        match next {
-            Some((k, s, pk, r)) => {
-                st.key_pos = Some((k, s));
+        // after START the positioned record itself is read next
+        let inclusive = st.last_key.is_none();
+        let which = st.key_of_ref as usize;
+        let from = st.key_pos.clone();
+        match st.keyed().next(which, from.as_ref(), inclusive) {
+            Some(found) => {
+                st.key_pos = Some(found.position);
                 st.last_read = Some(0);
-                st.last_key = Some(pk);
-                self.put_record(cur, def, &r, into)?;
+                st.last_key = Some(found.primary);
+                self.put_record(cur, def, &found.record, into)?;
                 self.set_status(cur, def, "00")
             }
             None => {
@@ -1008,8 +985,8 @@ impl Machine {
     }
 
     fn indexed_rewrite(&mut self, cur: usize, f: u32, def: &FileDef, rec: Vec<u8>) -> RResult<()> {
-        let key = self.key_bytes(cur, def, &rec, 0)?;
         let st = self.state(cur, f);
+        let key = st.keyed().key_of(&rec, 0);
         if def.access == AccessMode::Sequential {
             if st.last_read.take().is_none() {
                 return self.io_error(cur, def, "43", "REWRITE");
@@ -1018,47 +995,17 @@ impl Machine {
                 return self.set_status(cur, def, "21");
             }
         }
-        let Some(old) = st.index.get(&key).cloned() else {
-            return self.set_status(cur, def, "23");
-        };
-        // alternate keys without duplicates must stay unique
-        for (i, (_, dup)) in def.alternate_keys.iter().enumerate() {
-            if !dup {
-                let ak = self.key_bytes(cur, def, &rec, i as u32 + 1)?;
-                let others: Vec<Vec<u8>> = self
-                    .state(cur, f)
-                    .index
-                    .iter()
-                    .filter(|(k, _)| **k != key)
-                    .map(|(_, v)| v.clone())
-                    .collect();
-                for o in others {
-                    if self.key_bytes(cur, def, &o, i as u32 + 1)? == ak {
-                        return self.set_status(cur, def, "22");
-                    }
-                }
+        match st.keyed().replace(rec) {
+            Ok(()) => {
+                st.modified = true;
+                self.set_status(cur, def, "00")
             }
+            Err(DsError::NotFound) => self.set_status(cur, def, "23"),
+            Err(_) => self.set_status(cur, def, "22"),
         }
-        // a record whose alternate key changes goes after its new
-        // duplicates
-        let mut moved = false;
-        for k in 1..=def.alternate_keys.len() as u32 {
-            if self.key_bytes(cur, def, &old, k)? != self.key_bytes(cur, def, &rec, k)? {
-                moved = true;
-            }
-        }
-        let st = self.state(cur, f);
-        if moved {
-            st.seq.insert(key.clone(), st.next_seq);
-            st.next_seq += 1;
-        }
-        st.index.insert(key, rec);
-        st.modified = true;
-        self.set_status(cur, def, "00")
     }
 
     fn indexed_delete(&mut self, cur: usize, f: u32, def: &FileDef) -> RResult<()> {
-        let rec_now = self.record_bytes(cur, def, def.max_len as usize)?;
         let key = if def.access == AccessMode::Sequential {
             let st = self.state(cur, f);
             match (st.last_read.take(), st.last_key.clone()) {
@@ -1066,10 +1013,10 @@ impl Machine {
                 _ => return self.io_error(cur, def, "43", "DELETE"),
             }
         } else {
-            self.key_bytes(cur, def, &rec_now, 0)?
+            self.area_key(cur, f, def, 0)?
         };
         let st = self.state(cur, f);
-        if st.index.remove(&key).is_none() {
+        if st.keyed().delete(&key).is_err() {
             return self.set_status(cur, def, "23");
         }
         st.modified = true;
@@ -1085,52 +1032,29 @@ impl Machine {
         key: Option<&Loc>,
     ) -> RResult<()> {
         // The key of reference: the key whose leftmost character is the
-        // leftmost character of the named item.
-        let which = match key {
+        // leftmost character of the named item; the search value is that
+        // item (a leading part of the key).
+        let (which, search) = match key {
             Some(k) => {
-                let (ka, _) = self.addr(cur, k)?;
-                let mut which = 0;
-                for (p, (l, _)) in def.alternate_keys.iter().enumerate() {
-                    if self.addr(cur, l)?.0 == ka {
-                        which = p as u32 + 1;
-                    }
-                }
-                if let Some(rk) = &def.record_key
-                    && self.addr(cur, rk)?.0 == ka
-                {
-                    which = 0;
-                }
-                which
+                let (ka, kl) = self.addr(cur, k)?;
+                let (ra, _) = self.addr(cur, &record_loc(def))?;
+                let offset = ka - ra;
+                let which = self
+                    .state(cur, f)
+                    .keyed()
+                    .keys()
+                    .iter()
+                    .position(|s| s.offset == offset)
+                    .unwrap_or(0);
+                (which, self.mem[ka..ka + kl].to_vec())
             }
-            None => 0,
+            None => (0, self.area_key(cur, f, def, 0)?),
         };
-        // The search value: the key item (or a leading part of it).
-        let search = match key {
-            Some(k) => {
-                let (a, l) = self.addr(cur, k)?;
-                self.mem[a..a + l].to_vec()
-            }
-            None => {
-                let rec_now = self.record_bytes(cur, def, def.max_len as usize)?;
-                self.key_bytes(cur, def, &rec_now, 0)?
-            }
-        };
-        self.state(cur, f).key_of_ref = which;
-        let ordered = self.ordered(cur, f, def)?;
-        let n = search.len();
-        let found = ordered.iter().find(|(k, ..)| {
-            let kp = &k[..n.min(k.len())];
-            match rel {
-                Rel::Eq => kp == search.as_slice(),
-                Rel::Gt => kp > search.as_slice(),
-                Rel::Ge => kp >= search.as_slice(),
-                _ => false,
-            }
-        });
         let st = self.state(cur, f);
-        match found {
-            Some((k, s, ..)) => {
-                st.key_pos = Some((k.clone(), *s));
+        st.key_of_ref = which as u32;
+        match st.keyed().position(which, &search, ds_rel(rel)) {
+            Some(found) => {
+                st.key_pos = Some(found.position);
                 st.last_key = None;
                 st.at_end = false;
                 self.set_status(cur, def, "00")
@@ -1163,16 +1087,23 @@ impl Machine {
     pub(super) fn sort_read_file(&mut self, cur: usize, f: u32) -> RResult<()> {
         let def = self.file_def(cur, f);
         let path = self.file_path(&def);
-        let data = fs::read(&path).unwrap_or_default();
-        let mut st = FileState::default();
-        load_records(&def, &data, &mut st)?;
-        for r in st.records.into_iter().flatten() {
-            let mut r = r;
-            r.resize(self.file_def(cur, f).max_len as usize, ebcdic::SPACE);
-            self.sort_records.push(r);
-        }
-        for r in st.index.into_values() {
-            self.sort_records.push(r);
+        let len = def.max_len as usize;
+        let add = |m: &mut Machine, r: &[u8]| {
+            let mut r = r.to_vec();
+            r.resize(len, ebcdic::SPACE);
+            m.sort_records.push(r);
+        };
+        match self.load_data(cur, &def, &path)? {
+            Some(Data::Seq(d)) => d.records.iter().for_each(|r| add(self, r)),
+            Some(Data::Rel(d)) => {
+                let mut n = 1;
+                while let Some((k, r)) = d.next_from(n) {
+                    add(self, r);
+                    n = k + 1;
+                }
+            }
+            Some(Data::Keyed(d)) => d.records().for_each(|r| add(self, r)),
+            Some(Data::None) | None => {}
         }
         Ok(())
     }
@@ -1285,115 +1216,18 @@ impl Machine {
     }
 }
 
-fn load_records(def: &FileDef, data: &[u8], st: &mut FileState) -> RResult<()> {
-    let recs: Vec<Vec<u8>> = if def.org == Org::LineSequential || def.print {
-        data.split(|&b| b == b'\n')
-            .map(|l| l.strip_suffix(b"\r").unwrap_or(l))
-            .map(|l| l.iter().map(|&b| ebcdic::from_latin1(b)).collect())
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .skip_while(|_| false)
-            .collect::<Vec<_>>()
-            .into_iter()
-            .rev()
-            .collect()
-    } else if fixed_length(def) && def.org != Org::Relative && def.org != Org::Indexed {
-        data.chunks(def.max_len.max(1) as usize)
-            .map(<[u8]>::to_vec)
-            .collect()
-    } else {
-        // RDW-prefixed records; empty relative slots have length 4.
-        let mut out = Vec::new();
-        let mut i = 0;
-        while i + 4 <= data.len() {
-            let len = u16::from_be_bytes([data[i], data[i + 1]]) as usize;
-            if len < 4 || i + len > data.len() {
-                return err(format!("file {} is damaged", def.name));
-            }
-            out.push(data[i + 4..i + len].to_vec());
-            i += len;
-        }
-        out
-    };
-    let mut recs = recs;
-    if (def.org == Org::LineSequential || def.print) && recs.last().is_some_and(|r| r.is_empty()) {
-        recs.pop();
+fn record_loc(def: &FileDef) -> Loc {
+    Loc {
+        desc: def.record,
+        subs: Vec::new(),
+        refmod: None,
     }
-    match def.org {
-        Org::Indexed => {
-            // records are stored with the key's offset known only at run
-            // time; keep them in insertion order keyed by a sequence.
-            for (n, r) in recs.into_iter().enumerate() {
-                if r.is_empty() {
-                    continue;
-                }
-                let (k, rec) = split_keyed(&r, n);
-                st.seq.insert(k.clone(), st.next_seq);
-                st.next_seq += 1;
-                st.index.insert(k, rec);
-            }
-        }
-        Org::Relative => {
-            st.records = recs
-                .into_iter()
-                .map(|r| if r.is_empty() { None } else { Some(r) })
-                .collect();
-        }
-        _ => st.records = recs.into_iter().map(Some).collect(),
-    }
-    Ok(())
 }
 
-/// Indexed files are stored as RDW records whose first two bytes give the
-/// primary key length, followed by the key and the record.
-fn split_keyed(r: &[u8], n: usize) -> (Vec<u8>, Vec<u8>) {
-    if r.len() >= 2 {
-        let kl = u16::from_be_bytes([r[0], r[1]]) as usize;
-        if 2 + kl <= r.len() {
-            return (r[2..2 + kl].to_vec(), r[2 + kl..].to_vec());
-        }
+fn ds_rel(rel: Rel) -> zeus_ds::Rel {
+    match rel {
+        Rel::Gt => zeus_ds::Rel::Gt,
+        Rel::Ge => zeus_ds::Rel::Ge,
+        _ => zeus_ds::Rel::Eq,
     }
-    ((n as u64).to_be_bytes().to_vec(), r.to_vec())
-}
-
-fn store_records(def: &FileDef, st: &FileState) -> Vec<u8> {
-    let mut out = Vec::new();
-    let rdw = |out: &mut Vec<u8>, r: &[u8]| {
-        let len = (r.len() + 4) as u16;
-        out.extend_from_slice(&len.to_be_bytes());
-        out.extend_from_slice(&[0, 0]);
-        out.extend_from_slice(r);
-    };
-    match def.org {
-        Org::Indexed => {
-            let mut all: Vec<_> = st.index.iter().collect();
-            all.sort_by_key(|(k, _)| st.seq.get(*k).copied().unwrap_or(0));
-            for (k, r) in all {
-                let mut rec = Vec::with_capacity(2 + k.len() + r.len());
-                rec.extend_from_slice(&(k.len() as u16).to_be_bytes());
-                rec.extend_from_slice(k);
-                rec.extend_from_slice(r);
-                rdw(&mut out, &rec);
-            }
-        }
-        Org::Relative => {
-            for r in &st.records {
-                rdw(&mut out, r.as_deref().unwrap_or(&[]));
-            }
-        }
-        _ if fixed_length(def) => {
-            for r in st.records.iter().flatten() {
-                let mut r = r.clone();
-                r.resize(def.max_len as usize, ebcdic::SPACE);
-                out.extend_from_slice(&r);
-            }
-        }
-        _ => {
-            for r in st.records.iter().flatten() {
-                rdw(&mut out, r);
-            }
-        }
-    }
-    out
 }

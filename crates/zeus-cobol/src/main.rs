@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! zcobc compile [-I <dir>]... [--subprogram] -o <artifact> <source>
-//! zcobc run <artifact>
+//! zcobc run [--dd NAME=PATH]... <artifact>   (files: see zeus_ds::dd)
 //! zcobc check [-I <dir>]... <source>...     (syntax check only)
 //! ```
 
@@ -15,7 +15,7 @@ fn usage() -> ExitCode {
     eprintln!(
         "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] -o <artifact> <source>"
     );
-    eprintln!("       zcobc run <artifact>");
+    eprintln!("       zcobc run [--dd NAME=PATH]... <artifact>");
     eprintln!("       zcobc check [-I <dir>]... <source>...");
     ExitCode::from(2)
 }
@@ -25,6 +25,8 @@ struct Args {
     output: Option<PathBuf>,
     subprogram: bool,
     debugging_lines: bool,
+    /// DD allocations (`--dd NAME=PATH`).
+    dds: Vec<(String, PathBuf)>,
     inputs: Vec<PathBuf>,
 }
 
@@ -34,6 +36,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         output: None,
         subprogram: false,
         debugging_lines: false,
+        dds: Vec::new(),
         inputs: Vec::new(),
     };
     let mut it = args.iter();
@@ -43,6 +46,10 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "-o" => a.output = Some(PathBuf::from(it.next()?)),
             "--subprogram" => a.subprogram = true,
             "--debugging-lines" => a.debugging_lines = true,
+            "--dd" => {
+                let (n, p) = it.next()?.split_once('=')?;
+                a.dds.push((n.to_string(), PathBuf::from(p)));
+            }
             s if s.starts_with("-I") => a.copy_dirs.push(PathBuf::from(&s[2..])),
             s => a.inputs.push(PathBuf::from(s)),
         }
@@ -121,6 +128,9 @@ fn run(args: &Args) -> ExitCode {
         })
         .unwrap_or_else(|| PathBuf::from("."));
     let mut machine = zeus_cobol::vm::Machine::new(vec![dir]);
+    for (n, p) in &args.dds {
+        machine.set_dd(n, p.clone());
+    }
     match machine.run_main(module) {
         Ok(code) => ExitCode::from((code & 0xFF) as u8),
         Err(e) => {

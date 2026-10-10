@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 zeus-decimal = { path = "../zeus-decimal", features = ["serde"] }
+zeus-ds = { path = "../zeus-ds" }
 serde.workspace = true
 serde_json.workspace = true
 

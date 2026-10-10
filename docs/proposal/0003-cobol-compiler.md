@@ -173,8 +173,8 @@ CCVS85 合格 (C0〜C3) を先に完了させ、その後でアプリケーシ�
   IF119A 等も合格)。除外 (DELETED) としたテストはない。
 - 文字コード依存の実装者定義値は `ccvs85/exec85-zeus.conf` で EBCDIC の値にしている
   (X-63/X-64 のネイティブ照合順序のみ)。
-- 残り: ファイル I/O はまだ zcobc の VM 内にあり、0002 のデータセット層 (zeus-ds) への切り出しは
-  C4 と並行して行う。
+- ファイル I/O のデータセット部分は 0002 のデータセット層 `zeus-ds` に切り出し済み
+  (zcobc の実行系は FILE STATUS などの COBOL 固有部分だけを持つ)。`zcobc run --dd NAME=PATH` で割り当てる。
 - 任意モジュール SG・OB・DB にも合格 (テスト合格数は GnuCOBOL と同数)。DB のうち通信節 (CD) を
   使う 2 本 (DB205A, DB304M) のため、CD 記述と ENABLE/DISABLE/SEND/RECEIVE/PURGE 文は
   構文だけ受け付ける (実行するとエラー)。

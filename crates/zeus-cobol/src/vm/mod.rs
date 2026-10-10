@@ -79,9 +79,8 @@ pub struct Machine {
     switches: HashMap<String, bool>,
     size_error: bool,
     io_cond: bool,
-    /// Data set assignments (DD name -> path) taking precedence over the
-    /// DD_ environment variables.
-    dd: HashMap<String, PathBuf>,
+    /// DD allocations of the run.
+    dd: zeus_ds::dd::DdTable,
     /// SUPPRESS PRINTING was executed (USE BEFORE REPORTING).
     suppress_printing: bool,
     /// Object-time debugging switch (ZEUS_DEBUG=Y): USE FOR DEBUGGING
@@ -132,7 +131,10 @@ impl Machine {
             size_error: false,
             io_cond: false,
             suppress_printing: false,
-            dd: HashMap::new(),
+            dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
+                eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
+                zeus_ds::dd::DdTable::default()
+            }),
             debug: std::env::var("ZEUS_DEBUG")
                 .is_ok_and(|v| matches!(v.to_ascii_uppercase().as_str(), "Y" | "YES" | "ON" | "1")),
             last_status: *b"00",
@@ -236,7 +238,7 @@ impl Machine {
 
     /// Assigns a file (by ASSIGN name or file name) to a path.
     pub fn set_dd(&mut self, name: &str, path: PathBuf) {
-        self.dd.insert(name.to_string(), path);
+        self.dd.set(name, path);
     }
 
     /// Sets the object-time debugging switch (default: `ZEUS_DEBUG`).

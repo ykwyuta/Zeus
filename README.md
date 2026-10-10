@@ -26,6 +26,7 @@ only module out of scope is CM (communication).
 | Path | Content |
 |---|---|
 | `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
+| `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |
