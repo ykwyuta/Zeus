@@ -4,6 +4,7 @@
 //! zcobc compile [-I <dir>]... [--subprogram] [--cics] -o <artifact> <source>
 //! zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>   (files: see zeus_ds::dd)
 //! zcobc check [-I <dir>]... [--cics] <source>...   (compile without output)
+//! zcobc inventory [-I <dir>]... <source>...  (statements, functions, EXEC usage)
 //! ```
 
 use std::path::PathBuf;
@@ -17,6 +18,7 @@ fn usage() -> ExitCode {
     );
     eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>");
     eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
+    eprintln!("       zcobc inventory [-I <dir>]... <source>...");
     ExitCode::from(2)
 }
 
@@ -88,6 +90,21 @@ fn check(args: &Args) -> ExitCode {
         }
     }
     ExitCode::from(worst as u8)
+}
+
+fn inventory(args: &Args) -> ExitCode {
+    let opts = FrontOptions {
+        copy_dirs: args.copy_dirs.clone(),
+        debugging_lines: args.debugging_lines,
+        cics: args.cics,
+    };
+    let paths: Vec<&std::path::Path> = args.inputs.iter().map(|p| p.as_path()).collect();
+    let (inv, failed) = zeus_cobol::inventory::inventory(&paths, &opts);
+    print!("{}", inv.report());
+    for (name, msg) in &failed {
+        println!("not compiled\t{name}\t1\t1\t{msg}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn compile(args: &Args) -> ExitCode {
@@ -172,6 +189,7 @@ fn main() -> ExitCode {
     };
     match cmd.as_str() {
         "check" => check(&parsed),
+        "inventory" => inventory(&parsed),
         "compile" => compile(&parsed),
         "run" => run(&parsed),
         "--version" => {

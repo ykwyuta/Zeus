@@ -80,6 +80,23 @@ jobs:
           name: carddemo-spool
           path: work/carddemo/spool
 
+  apps-inventory:
+    # Compiles every COBOL program of CardDemo, GenApp and Bank of Z and
+    # checks that docs/inventory/apps.md matches the result.
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: apps-${{ hashFiles('tools/fetch-carddemo.sh', 'tools/fetch-genapp.sh', 'tools/fetch-bankofz.sh') }}
+      - run: tools/apps-inventory.sh
+      - name: Inventory is up to date
+        run: git diff --exit-code docs/inventory/apps.md
+
   hercules-oracle:
     # Records Hercules results for packed-decimal instructions (oracle for
     # zeus-decimal), checks the pipeline against known results and compares

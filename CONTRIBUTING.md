@@ -58,6 +58,14 @@ initialization, daily batch and report jobs with `zjob`. It fails unless every
 job ends with RC 0; job output is in `work/carddemo/spool/<JOB>/`. Single jobs
 can be resubmitted with `tools/carddemo.sh run POSTTRAN ...`.
 
+## Application inventory
+
+`tools/apps-inventory.sh` fetches CardDemo, GenApp and Bank of Z, generates
+their BMS symbolic maps, compiles every COBOL program and rewrites
+`docs/inventory/apps.md` (compilation results and the statements, functions,
+data clauses and EXEC commands the programs use). Commit the regenerated
+file when a change alters it; CI checks that it is up to date.
+
 ## Hercules decimal-instruction oracle
 
 `zeus-hercdiff` generates packed-decimal instruction cases (AP, SP, ZAP, CP,

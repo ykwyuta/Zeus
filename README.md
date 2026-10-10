@@ -27,6 +27,12 @@ catalogs the sample data, compiles the batch programs and submits the
 initialization, daily batch and report jobs through `zjob`, all ending with
 RC 0.
 
+Online programs: `zcobc` compiles EXEC CICS, EXEC SQL and EXEC DLI (run
+through a host interface that the CICS, Db2 and IMS runtimes will provide)
+and `zbms` generates BMS symbolic maps; 111 of the 115 COBOL programs of
+CardDemo, GenApp and Bank of Z compile. The syntax usage inventory of the
+three applications is in [docs/inventory/apps.md](docs/inventory/apps.md).
+
 ## Layout
 
 | Path | Content |
@@ -34,11 +40,12 @@ RC 0.
 | `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
 | `crates/zeus-jcl` | `zjob`: JCL parsing and PROC expansion, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT |
+| `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL symbolic maps |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |
 | `ccvs85/` | Harness data (X-card values, Zeus overlay, reference manifest) |
-| `tools/` | Download scripts for test suites and CardDemo, `carddemo.sh` |
+| `tools/` | Download scripts for test suites and the applications, `carddemo.sh`, `apps-inventory.sh` |
 | `docs/oracle/` | Exclusions and known oracle differences |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the clean-room rules and how to

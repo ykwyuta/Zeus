@@ -162,6 +162,28 @@ pub fn parse_file(
     opts: &FrontOptions,
     files: &mut FileTable,
 ) -> Result<Vec<ast::Program>> {
+    let (tokens, cics_option) = source_tokens(path, opts, files)?;
+    let cics = opts.cics || cics_option || cics::uses(&tokens, "CICS");
+    let dli = cics::uses(&tokens, "DLI");
+    let mut programs = parser::parse(tokens)?;
+    for p in &mut programs {
+        if cics {
+            cics::insert_eib(p)?;
+        }
+        if dli {
+            cics::insert_dib(p)?;
+        }
+    }
+    Ok(programs)
+}
+
+/// The tokens of a source file after COPY and REPLACE, and whether its
+/// CBL/PROCESS statements name the CICS option.
+pub fn source_tokens(
+    path: &Path,
+    opts: &FrontOptions,
+    files: &mut FileTable,
+) -> Result<(Vec<Token>, bool)> {
     let text = std::fs::read(path).map_err(|e| {
         Diag::error(
             Default::default(),
@@ -189,18 +211,7 @@ pub fn parse_file(
     } else {
         tokens
     };
-    let cics = opts.cics || cics_option || cics::uses(&tokens, "CICS");
-    let dli = cics::uses(&tokens, "DLI");
-    let mut programs = parser::parse(tokens)?;
-    for p in &mut programs {
-        if cics {
-            cics::insert_eib(p)?;
-        }
-        if dli {
-            cics::insert_dib(p)?;
-        }
-    }
-    Ok(programs)
+    Ok((tokens, cics_option))
 }
 
 fn preprocess(
