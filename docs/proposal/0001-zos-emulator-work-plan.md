@@ -1,6 +1,6 @@
 # Proposal 0001: Rust による z/Architecture (z/OS 対応) エミュレータ開発作業計画
 
-- 状態: 提案 (Draft)
+- 状態: 主目標は [0002](0002-zos-application-runtime-plan.md) に置き換え (CPU エミュレータは 0002 §8 の任意トラックとして保留)
 - 対象リポジトリ: Zeus
 - ライセンス: GPL-3.0 (リポジトリ既定)
 
