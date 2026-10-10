@@ -13,19 +13,22 @@ Plans and design decisions are in [docs/proposal](docs/proposal):
 
 ## Status
 
-Phase 0: the CCVS85 harness and the Hercules decimal-instruction oracle are
-in place. The compiler driver `zcobc` exists
-only as a stub, so every program currently fails to compile; GnuCOBOL results
-are shown alongside as the comparison baseline.
+Phase 1 (COBOL compiler): `zcobc` compiles COBOL-85 to ZIR and runs it in a
+Rust interpreter, keeping data in EBCDIC with z/OS storage layouts. It passes
+all eight required CCVS85 modules (NC, SM, IC, SQ, RL, IX, ST, IF), with the
+same test counts as the GnuCOBOL baseline (and more programs in IF, where
+GnuCOBOL cannot compile some). The optional modules SG, OB, DB and the
+Enterprise-COBOL-unsupported RW and CM are not done yet.
 
 ## Layout
 
 | Path | Content |
 |---|---|
-| `crates/zeus-cobol` | `zcobc`, the COBOL compiler driver (stub) |
+| `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
+| `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |
-| `ccvs85/` | Harness data (X-card values, reference manifest) |
+| `ccvs85/` | Harness data (X-card values, Zeus overlay, reference manifest) |
 | `tools/` | Download scripts for test suites |
 | `docs/oracle/` | Exclusions and known oracle differences |
 

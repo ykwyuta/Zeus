@@ -129,6 +129,21 @@ impl Config {
         Ok(cfg)
     }
 
+    /// Applies an overlay control-card file (same format as the base
+    /// file): its X-cards replace the base values and its source updates
+    /// are added. Used for implementor-specific values of one toolchain.
+    pub fn overlay(&mut self, text: &str) -> Result<()> {
+        let o = Config::parse(text)?;
+        let undefined = Config::default().x_cards;
+        for (i, x) in o.x_cards.into_iter().enumerate() {
+            if x != undefined[i] {
+                self.x_cards[i] = x;
+            }
+        }
+        self.updates.extend(o.updates);
+        Ok(())
+    }
+
     /// Applies `*START` updates for `program`: a card replaces the card with
     /// the same sequence number (columns 1-6), or is inserted in sequence order.
     pub fn apply_updates(&self, program: &str, lines: &mut Vec<String>) {
@@ -240,6 +255,23 @@ mod tests {
 
     fn card(s: &str) -> String {
         format!("{s:<72}NC1014.2")
+    }
+
+    #[test]
+    fn overlay_replaces_x_cards_and_adds_updates() {
+        let mut cfg = config();
+        cfg.overlay(
+            "X-09073 \"B\"\n\
+             *END-MONITOR\n\
+             *BEGIN-UPDATE\n\
+             *START NC101A\n\
+             000100 X\n\
+             *END-UPDATE\n",
+        )
+        .unwrap();
+        assert_eq!(cfg.x_cards[89], "\"B\"");
+        assert_eq!(cfg.x_cards[54], "\"REPORT\"");
+        assert_eq!(cfg.updates.len(), 1);
     }
 
     #[test]

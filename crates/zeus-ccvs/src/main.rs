@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! zeus-ccvs extract  --newcob newcob.val --config ccvs85/exec85.conf --out work/suite \
-//!                    [--verify ccvs85/extract-manifest.txt]
+//!                    [--overlay ccvs85/exec85-zeus.conf] [--verify ccvs85/extract-manifest.txt]
 //! zeus-ccvs run      --suite work/suite --toolchain gnucobol|zeus --out results.json
 //! zeus-ccvs report   --results results.json [--baseline baseline.json] [--programs]
 //! zeus-ccvs manifest --out manifest.txt <EXEC85 newcob.tmp files>...
@@ -40,6 +40,10 @@ enum Cmd {
         /// EXEC85 control-card file (X-card values).
         #[arg(long, default_value = "ccvs85/exec85.conf")]
         config: PathBuf,
+        /// X-card overlays applied after the configuration (for example
+        /// the native collating sequence of an EBCDIC implementation).
+        #[arg(long)]
+        overlay: Vec<PathBuf>,
         #[arg(long)]
         out: PathBuf,
         /// Check the extraction against a reference manifest.
@@ -118,11 +122,15 @@ fn real_main() -> Result<ExitCode> {
         Cmd::Extract {
             newcob,
             config,
+            overlay,
             out,
             verify,
         } => {
             let members = population::parse(&read(&newcob)?)?;
-            let cfg = exec85::Config::parse(&read(&config)?)?;
+            let mut cfg = exec85::Config::parse(&read(&config)?)?;
+            for o in &overlay {
+                cfg.overlay(&read(o)?)?;
+            }
             let extracted = extract::transform(&members, &cfg);
             extract::write_tree(&extracted, &out)?;
             println!(

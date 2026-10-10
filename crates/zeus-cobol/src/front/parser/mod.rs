@@ -58,6 +58,12 @@ pub struct Parser {
     class_names: HashSet<String>,
     /// Mnemonic and switch-status condition names.
     pub(crate) mnemonics: HashSet<String>,
+    /// Names of data items that are tables or within tables (only these
+    /// take subscripts, which resolves `MAX(A B (C + 1))`, where the
+    /// parenthesis is a separate argument).
+    pub(crate) tables: HashSet<String>,
+    /// `tables` is known for the program being parsed.
+    pub(crate) in_procedure: bool,
 }
 
 pub fn parse(toks: Vec<Token>) -> Result<Vec<Program>> {
@@ -66,6 +72,8 @@ pub fn parse(toks: Vec<Token>) -> Result<Vec<Program>> {
         i: 0,
         class_names: HashSet::new(),
         mnemonics: HashSet::new(),
+        tables: HashSet::new(),
+        in_procedure: false,
     };
     let mut programs = Vec::new();
     while !p.eof() {
@@ -240,6 +248,7 @@ impl Parser {
 
     fn program(&mut self) -> Result<Program> {
         let pos = self.pos();
+        self.in_procedure = false;
         if !(self.is_division("IDENTIFICATION") || self.is_division("ID")) {
             return self.err("IDENTIFICATION DIVISION expected");
         }
@@ -290,6 +299,8 @@ impl Parser {
             self.i += 2;
             self.expect_period()?;
             prog.data = self.data_division()?;
+            self.note_tables(&prog.data);
+            self.in_procedure = true;
         }
         if self.is_division("PROCEDURE") {
             prog.procedure = self.procedure_division()?;
@@ -719,6 +730,40 @@ impl Parser {
     }
 
     // ---- procedure division --------------------------------------------
+
+    fn note_tables(&mut self, data: &DataDivision) {
+        let sections = data.files.iter().map(|f| &f.records).chain([
+            &data.working,
+            &data.local,
+            &data.linkage,
+        ]);
+        for entries in sections {
+            // (level, within a table)
+            let mut stack: Vec<(u8, bool)> = Vec::new();
+            for e in entries {
+                let level = if e.level == 88 || e.level == 66 {
+                    99
+                } else if e.level == 77 {
+                    1
+                } else {
+                    e.level
+                };
+                if level != 99 {
+                    while stack.last().is_some_and(|&(l, _)| l >= level) {
+                        stack.pop();
+                    }
+                }
+                let outer = stack.last().is_some_and(|&(_, t)| t);
+                let table = outer || (level != 99 && e.occurs.is_some());
+                if table && let Some(n) = &e.name {
+                    self.tables.insert(n.clone());
+                }
+                if level != 99 {
+                    stack.push((level, table));
+                }
+            }
+        }
+    }
 
     fn procedure_division(&mut self) -> Result<Procedure> {
         let pos = self.pos();

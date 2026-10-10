@@ -23,4 +23,4 @@ as the differential tests (0003 section 5.1) find them.
 
 | Area | GnuCOBOL behaviour | Enterprise COBOL behaviour | Found by |
 |---|---|---|---|
-| | | | |
+| Native collating sequence (X-63/X-64 cards of ST137A, ST144A, ST147A) | ASCII | EBCDIC; Zeus extracts these programs with `ccvs85/exec85-zeus.conf` | CCVS85 ST |

@@ -602,6 +602,23 @@ impl Machine {
                     pc = if !self.eval_cx(cur, c)? { *t } else { pc + 1 };
                     continue;
                 }
+                Instr::AlterableGo(slot) => {
+                    pc = self.instances[cur].alter[*slot as usize];
+                    continue;
+                }
+                Instr::GoDepending(ex, targets) => {
+                    let v = self.eval_ex(cur, ex)?;
+                    let n = v
+                        .rescale(0, zeus_decimal::Rounding::Truncate)
+                        .map(|d| d.coef)
+                        .unwrap_or(0);
+                    pc = if n >= 1 && (n as usize) <= targets.len() {
+                        targets[n as usize - 1]
+                    } else {
+                        pc + 1
+                    };
+                    continue;
+                }
                 Instr::UseCheck { file, handled } => {
                     let st = std::mem::replace(&mut self.last_status, *b"00");
                     let skip = st[0] == b'0'
@@ -716,7 +733,11 @@ impl Machine {
                 pointer.as_ref(),
                 tallying.as_ref(),
             ),
-            Instr::Nop | Instr::Alter(..) => Ok(()),
+            Instr::Alter(slot, target) => {
+                self.instances[cur].alter[*slot as usize] = *target;
+                Ok(())
+            }
+            Instr::Nop => Ok(()),
             other => err(format!(
                 "statement not supported inside a SORT procedure: {other:?}"
             )),

@@ -119,7 +119,8 @@ impl Machine {
                     } else {
                         let a = self.alnum_bytes(cur, &vals[i], 0)?;
                         let b = self.alnum_bytes(cur, &vals[best], 0)?;
-                        cmp_padded(&a, &b)
+                        let coll = self.instances[cur].code.collating.clone();
+                        cmp_padded(&a, &b, coll.as_deref())
                     };
                     let better = if func == Func::OrdMax {
                         ord == std::cmp::Ordering::Greater
@@ -167,7 +168,14 @@ impl Machine {
             Func::Char => {
                 let n = vals.first().map(|v| self.val_num(v)).unwrap_or(Dec::ZERO);
                 let n = super::data::to_raw(n, 0, false);
-                vec![(n - 1).clamp(0, 255) as u8]
+                let w = (n - 1).clamp(0, 255) as u16;
+                // the character at ordinal position n of the program
+                // collating sequence
+                let b = match &self.instances[cur].code.collating {
+                    Some(c) => (0..=255u8).find(|&b| c[b as usize] == w).unwrap_or(w as u8),
+                    None => w as u8,
+                };
+                vec![b]
             }
             Func::UpperCase | Func::LowerCase | Func::Reverse => {
                 let mut b = match vals.first() {
@@ -215,7 +223,8 @@ impl Machine {
                     best = Some(match best {
                         None => b,
                         Some(p) => {
-                            let o = cmp_padded(&b, &p);
+                            let coll = self.instances[cur].code.collating.clone();
+                            let o = cmp_padded(&b, &p, coll.as_deref());
                             if (func == Func::Max && o == std::cmp::Ordering::Greater)
                                 || (func == Func::Min && o == std::cmp::Ordering::Less)
                             {
@@ -236,13 +245,16 @@ impl Machine {
     }
 }
 
-fn cmp_padded(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
+/// Compares two alphanumeric values (the shorter padded with spaces) in
+/// the program collating sequence.
+fn cmp_padded(a: &[u8], b: &[u8], coll: Option<&[u16]>) -> std::cmp::Ordering {
+    let w = |c: u8| coll.map_or(c as u16, |t| t[c as usize]);
     let n = a.len().max(b.len());
     for i in 0..n {
         let x = a.get(i).copied().unwrap_or(ebcdic::SPACE);
         let y = b.get(i).copied().unwrap_or(ebcdic::SPACE);
-        if x != y {
-            return x.cmp(&y);
+        if w(x) != w(y) {
+            return w(x).cmp(&w(y));
         }
     }
     std::cmp::Ordering::Equal

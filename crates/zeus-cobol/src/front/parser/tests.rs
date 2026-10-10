@@ -121,3 +121,34 @@ PROCEDURE DIVISION.
     };
     assert_eq!((from.len(), giving.len()), (2, 1));
 }
+
+#[test]
+fn only_tables_take_subscripts() {
+    // `B, (C + 1)`: B is not a table, so the parenthesis is a separate
+    // function argument; T is a table and takes the subscript.
+    let p = parse_src(
+        "ID DIVISION.
+PROGRAM-ID. S.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 B PIC 9.
+01 C PIC 9.
+01 G.
+   02 T PIC 9 OCCURS 3.
+01 N PIC 99.
+PROCEDURE DIVISION.
+    COMPUTE N = FUNCTION MAX(B, (C + 1) / 2, T (2)).",
+    );
+    let s = &p.procedure.sections[0].paragraphs[0].sentences[0][0];
+    let Stmt::Compute { expr, .. } = s else {
+        panic!("{s:?}")
+    };
+    let Expr::Operand(Operand::Func(f)) = expr else {
+        panic!("{expr:?}")
+    };
+    assert_eq!(f.args.len(), 3);
+    let Expr::Operand(Operand::Ref(t)) = &f.args[2] else {
+        panic!()
+    };
+    assert_eq!(t.subscripts.len(), 1);
+}

@@ -45,8 +45,12 @@ jobs:
           --out work/suite --verify ccvs85/extract-manifest.txt
       - name: Run with GnuCOBOL
         run: target/release/zeus-ccvs run --suite work/suite --toolchain gnucobol --out work/gnucobol.json > /dev/null
+      - name: Extract suite for zcobc (EBCDIC native collating sequence)
+        run: >
+          target/release/zeus-ccvs extract --newcob .cache/ccvs85/newcob.val
+          --overlay ccvs85/exec85-zeus.conf --out work/suite-zeus
       - name: Run with zcobc
-        run: target/release/zeus-ccvs run --suite work/suite --toolchain zeus --out work/zeus.json > /dev/null
+        run: target/release/zeus-ccvs run --suite work/suite-zeus --toolchain zeus --out work/zeus.json > /dev/null
       - name: Summary
         run: >
           target/release/zeus-ccvs report --results work/zeus.json

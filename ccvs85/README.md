@@ -7,6 +7,7 @@ holds the data the harness (`crates/zeus-ccvs`) needs:
 | File | Purpose |
 |---|---|
 | `exec85.conf` | EXEC85 control cards: the implementor values substituted for the `XXXXXnnn` markers (X-cards) in the test programs. The values (file names, mnemonic names) are those used by the GnuCOBOL driver, except for X-82/X-83 (computer name `ZEUS`). |
+| `exec85-zeus.conf` | Overlay applied on top of `exec85.conf` when extracting the suite run with zcobc (`zeus-ccvs extract --overlay`). It changes only implementor-defined values that depend on the character set: X-63/X-64, the native collating sequence used by the SORT/MERGE tests (ST137A, ST144A, ST147A), which is EBCDIC for Zeus. |
 | `extract-manifest.txt` | SHA-256 of every member as extracted by the **original EXEC85 program** (compiled with GnuCOBOL) using `exec85.conf`. `zeus-ccvs extract --verify` checks that the Rust extractor produces byte-identical programs. |
 
 ## How the reference manifest was produced
@@ -21,6 +22,10 @@ zeus-ccvs manifest --out ccvs85/extract-manifest.txt <MOD>/newcob.tmp...
 ```
 
 Regenerate it only when `exec85.conf` changes.
+
+The overlay changes only the members that use X-63/X-64, so `--verify` is
+run on the plain extraction; CI extracts both (`work/suite` for GnuCOBOL,
+`work/suite-zeus` for zcobc).
 
 ## Layout of an extracted suite
 

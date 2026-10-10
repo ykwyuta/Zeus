@@ -139,6 +139,10 @@ impl Parser {
             self.i += 1;
             r.qualifiers.push(self.name()?);
         }
+        if self.in_procedure && !self.tables.contains(&r.name) && !self.paren_is_refmod() {
+            // not a table: a parenthesis here starts something else
+            return Ok(r);
+        }
         self.subscripts_and_refmod(&mut r.subscripts, &mut r.refmod)?;
         Ok(r)
     }

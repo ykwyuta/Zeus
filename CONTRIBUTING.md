@@ -43,7 +43,9 @@ cargo build --release
 target/release/zeus-ccvs extract --newcob .cache/ccvs85/newcob.val \
     --out work/suite --verify ccvs85/extract-manifest.txt
 target/release/zeus-ccvs run --suite work/suite --toolchain gnucobol --out work/gnucobol.json
-target/release/zeus-ccvs run --suite work/suite --toolchain zeus --out work/zeus.json
+target/release/zeus-ccvs extract --newcob .cache/ccvs85/newcob.val \
+    --overlay ccvs85/exec85-zeus.conf --out work/suite-zeus
+target/release/zeus-ccvs run --suite work/suite-zeus --toolchain zeus --out work/zeus.json
 target/release/zeus-ccvs report --results work/zeus.json --baseline work/gnucobol.json
 ```
 
