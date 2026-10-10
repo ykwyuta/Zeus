@@ -24,6 +24,10 @@ pub struct Gen<'a> {
     paras: Vec<(String, Option<String>, Label)>,
     /// Section name -> (first paragraph, last paragraph).
     sections: HashMap<String, (u32, u32)>,
+    /// Entry label of each named section with paragraphs (by first
+    /// paragraph): precedes the first paragraph's label so that debugging
+    /// can tell a reference to the section from one to the paragraph.
+    section_labels: HashMap<u32, Label>,
     /// Paragraph ends: label of each paragraph's ParaEnd instruction.
     para_end_labels: Vec<Label>,
     current_para: u32,
@@ -39,7 +43,41 @@ pub struct Gen<'a> {
     pub switch_conds: HashMap<String, (u32, bool)>,
     switch_names: HashMap<String, u32>,
     switches: Vec<String>,
+    /// Segment number of each paragraph, and whether any segment is
+    /// independent (50-99).
+    para_segments: Vec<u8>,
+    segmented: bool,
+    /// USE FOR DEBUGGING (WITH DEBUGGING MODE only).
+    dbg: Debugging,
+    /// Generating declaratives (no debugging triggers there).
+    in_decl: bool,
     pub pos: Pos,
+}
+
+#[derive(Default)]
+struct Debugging {
+    decls: Vec<(u32, u32)>,
+    /// Paragraph index -> (section, name).
+    paras: HashMap<u32, (u32, String)>,
+    /// Section name -> (section, name).
+    sections: HashMap<String, (u32, String)>,
+    all_procs: Option<u32>,
+    /// Item descriptor -> (section, ALL REFERENCES, name).
+    items: HashMap<u32, (u32, bool, String)>,
+    /// File index -> (section, name).
+    files: HashMap<u32, (u32, String)>,
+    /// Instruction ranges of the statements generated so far inside the
+    /// current statement.
+    stmt_ranges: Vec<(usize, usize)>,
+    /// Statements being generated: (first instruction, index into
+    /// `stmt_ranges`, triggers already placed).
+    stmt_stack: Vec<(usize, usize, bool)>,
+}
+
+impl Debugging {
+    fn procs(&self) -> bool {
+        self.all_procs.is_some() || !self.paras.is_empty() || !self.sections.is_empty()
+    }
 }
 
 fn native_ordinal_byte(ord: u32) -> u8 {
@@ -75,6 +113,7 @@ impl<'a> Gen<'a> {
             paras: Vec::new(),
             sections: HashMap::new(),
             para_end_labels: Vec::new(),
+            section_labels: HashMap::new(),
             current_para: 0,
             current_section: None,
             sentence_end: None,
@@ -88,6 +127,10 @@ impl<'a> Gen<'a> {
             switch_conds: HashMap::new(),
             switch_names: HashMap::new(),
             switches: Vec::new(),
+            para_segments: Vec::new(),
+            segmented: false,
+            dbg: Debugging::default(),
+            in_decl: false,
             pos: prog.pos,
         };
         g.environment()?;
@@ -269,6 +312,10 @@ impl<'a> Gen<'a> {
     }
 
     fn emit(&mut self, i: Instr) {
+        if matches!(i, Instr::Perform { .. }) && !self.in_decl && self.dbg.procs() {
+            self.code
+                .push(Instr::DebugCause(zir::debug_cause::PERFORM, self.pos.line));
+        }
         self.code.push(i);
     }
 
@@ -282,6 +329,14 @@ impl<'a> Gen<'a> {
     fn collect_paragraphs(&mut self, sections: &[Section]) {
         for sec in sections {
             let first = self.paras.len() as u32;
+            if sec.name.is_some() && !sec.paragraphs.is_empty() {
+                let l = self.label();
+                self.section_labels.insert(first, l);
+            }
+            let seg = sec.segment.unwrap_or(0).min(99) as u8;
+            self.segmented |= seg >= 50;
+            let n = sec.paragraphs.len().max(1);
+            self.para_segments.extend(std::iter::repeat_n(seg, n));
             for p in &sec.paragraphs {
                 // A paragraph consisting of a single GO TO can be ALTERed.
                 let alterable = p.sentences.len() == 1
@@ -356,7 +411,19 @@ impl<'a> Gen<'a> {
 
     fn proc_start(&self, p: &ProcName) -> Result<Label> {
         let (a, _) = self.proc_range(p)?;
-        Ok(self.paras[a as usize].2)
+        Ok(self.entry_label(p, a))
+    }
+
+    /// Label where control enters procedure `p` whose first paragraph is
+    /// `first`: the section entry for a section name.
+    fn entry_label(&self, p: &ProcName, first: u32) -> Label {
+        let section = p.section.is_none()
+            && self.sections.get(&p.name).is_some_and(|&(a, _)| a == first)
+            && self.paras[first as usize].0 != p.name;
+        match self.section_labels.get(&first) {
+            Some(&l) if section => l,
+            _ => self.paras[first as usize].2,
+        }
     }
 
     // ---- program -------------------------------------------------------
@@ -367,6 +434,7 @@ impl<'a> Gen<'a> {
         let decl_start = self.paras.len();
         self.collect_paragraphs(&proc.declaratives);
         self.mark_print_files(&proc.sections);
+        self.setup_debugging()?;
 
         let mut para_idx = 0u32;
         for sec in &proc.sections {
@@ -374,6 +442,7 @@ impl<'a> Gen<'a> {
         }
         // Falling off the end of the procedure division.
         self.emit(Instr::GoBack);
+        self.in_decl = true;
         let mut para_idx = decl_start as u32;
         let mut uses = Vec::new();
         for sec in &proc.declaratives {
@@ -447,6 +516,19 @@ impl<'a> Gen<'a> {
                 start: res(*l),
             })
             .collect();
+        let segments = if self.segmented {
+            self.paras
+                .iter()
+                .zip(&self.para_segments)
+                .map(|((_, _, l), &seg)| (res(*l), seg))
+                .collect()
+        } else {
+            Vec::new()
+        };
+        let mut alter_segments = vec![0u8; self.alter_init.len()];
+        for (&para, &slot) in &self.alter_slots {
+            alter_segments[slot as usize] = self.para_segments[para as usize];
+        }
         let collating = self.collating()?;
         let (low_value, high_value) = match &collating {
             Some(w) => {
@@ -487,11 +569,20 @@ impl<'a> Gen<'a> {
             temps: self.temps,
             alter_slots: alter_init.len() as u32,
             alter_init,
+            segments,
+            alter_segments,
             collating,
             high_value,
             low_value,
             switches: self.switches,
             externals: self.dm.externals.clone(),
+            debug_decls: self.dbg.decls.clone(),
+            debug_item: self
+                .dm
+                .by_name
+                .get("DEBUG-ITEM")
+                .and_then(|v| v.first())
+                .map(|&id| self.dm.items[id].desc),
             debugging: false,
             uses,
         })
@@ -629,11 +720,179 @@ impl<'a> Gen<'a> {
         }
     }
 
+    /// Resolves the USE FOR DEBUGGING statements (WITH DEBUGGING MODE).
+    fn setup_debugging(&mut self) -> Result<()> {
+        if !self.prog.env.debugging_mode {
+            return Ok(());
+        }
+        let prog = self.prog;
+        for sec in &prog.procedure.declaratives {
+            let Some(UseStmt::Debugging(targets)) = &sec.use_stmt else {
+                continue;
+            };
+            let Some(&(first, last)) = sec.name.as_ref().and_then(|n| self.sections.get(n)) else {
+                continue;
+            };
+            let decl = self.dbg.decls.len() as u32;
+            self.dbg.decls.push((first, last));
+            for t in targets {
+                let DebugTarget::Name { name: r, all_refs } = t else {
+                    self.dbg.all_procs = Some(decl);
+                    continue;
+                };
+                let mut shown = r.name.clone();
+                for q in &r.qualifiers {
+                    shown.push_str(" OF ");
+                    shown.push_str(q);
+                }
+                if r.qualifiers.is_empty()
+                    && let Some(&f) = self.file_index.get(&r.name)
+                {
+                    self.dbg.files.insert(f, (decl, shown));
+                    continue;
+                }
+                if r.qualifiers.is_empty() && self.sections.contains_key(&r.name) {
+                    self.dbg.sections.insert(r.name.clone(), (decl, shown));
+                    continue;
+                }
+                let pn = ProcName {
+                    name: r.name.clone(),
+                    section: r.qualifiers.first().cloned(),
+                    pos: r.pos,
+                };
+                if let Ok((p, _)) = self.proc_range(&pn) {
+                    self.dbg.paras.insert(p, (decl, shown));
+                    continue;
+                }
+                let id = self.dm.resolve(r)?;
+                let desc = self.dm.items[id].desc;
+                self.dbg.items.insert(desc, (decl, *all_refs, shown));
+            }
+        }
+        Ok(())
+    }
+
+    /// Debugging trigger on entering a section by its name.
+    fn debug_section_start(&mut self, para_idx: u32) {
+        if self.in_decl || !self.dbg.procs() {
+            return;
+        }
+        let Some(sname) = self.paras[para_idx as usize].1.clone() else {
+            return;
+        };
+        let d = self
+            .dbg
+            .sections
+            .get(&sname)
+            .cloned()
+            .or_else(|| self.dbg.all_procs.map(|d| (d, sname.clone())));
+        if let Some((decl, name)) = d {
+            self.emit(Instr::DebugProc {
+                decl,
+                name,
+                contents: None,
+                line: self.pos.line,
+            });
+        }
+    }
+
+    /// Debugging trigger at the start of a paragraph.
+    fn debug_para_start(&mut self, para_idx: u32) {
+        if self.in_decl || !self.dbg.procs() {
+            return;
+        }
+        let line = self.pos.line;
+        let pname = self.paras[para_idx as usize].0.clone();
+        if !pname.is_empty() {
+            let d = self
+                .dbg
+                .paras
+                .get(&para_idx)
+                .cloned()
+                .or_else(|| self.dbg.all_procs.map(|d| (d, pname.clone())));
+            if let Some((decl, name)) = d {
+                self.emit(Instr::DebugProc {
+                    decl,
+                    name,
+                    contents: None,
+                    line,
+                });
+            }
+        }
+        self.emit(Instr::DebugCause(zir::debug_cause::FALL_THROUGH, line));
+    }
+
+    fn debug_goto(&mut self) {
+        if !self.in_decl && self.dbg.procs() {
+            self.emit(Instr::DebugCause(zir::debug_cause::GO_TO, self.pos.line));
+        }
+    }
+
+    /// Debugging trigger after an input-output statement on file `f`.
+    fn debug_file(&mut self, f: u32, read: bool) {
+        if self.in_decl {
+            return;
+        }
+        if let Some((decl, name)) = self.dbg.files.get(&f).cloned() {
+            let record = read.then(|| self.files[f as usize].record);
+            self.emit(Instr::DebugFile {
+                decl,
+                name,
+                record,
+                line: self.pos.line,
+            });
+        }
+    }
+
+    /// Debugging triggers for the identifiers referenced by `instrs`:
+    /// receiving operands, or any reference for ALL REFERENCES (or when
+    /// `any` is set, as for PERFORM VARYING).
+    fn debug_data_triggers(&self, instrs: &[Instr], any: bool) -> Vec<Instr> {
+        let mut out: Vec<Instr> = Vec::new();
+        let mut seen: Vec<u32> = Vec::new();
+        for ins in instrs {
+            for (loc, receiving) in instr_locs(ins) {
+                if let Some((decl, all, name)) = self.dbg.items.get(&loc.desc)
+                    && (receiving || *all || any)
+                    && !seen.contains(&loc.desc)
+                {
+                    seen.push(loc.desc);
+                    out.push(Instr::DebugData {
+                        decl: *decl,
+                        name: name.clone(),
+                        loc,
+                        line: self.pos.line,
+                    });
+                }
+            }
+        }
+        out
+    }
+
+    fn segment_mark(&mut self, para_idx: u32) {
+        if self.segmented {
+            let seg = self.para_segments[para_idx as usize];
+            self.emit(Instr::Segment(seg));
+        }
+    }
+
     fn gen_section(&mut self, sec: &Section, mut para_idx: u32) -> Result<u32> {
         self.current_section = sec.name.clone();
+        // A USE AFTER ERROR section named in USE FOR DEBUGGING.
+        let use_debug = if self.in_decl && matches!(sec.use_stmt, Some(UseStmt::Error(..))) {
+            sec.name
+                .as_ref()
+                .and_then(|n| self.dbg.sections.get(n).cloned())
+        } else {
+            None
+        };
+        let first_para = para_idx;
         if sec.paragraphs.is_empty() {
             let l = self.paras[para_idx as usize].2;
             self.bind(l);
+            self.segment_mark(para_idx);
+            self.debug_section_start(para_idx);
+            self.debug_para_start(para_idx);
             let e = self.para_end_labels[para_idx as usize];
             self.bind(e);
             self.emit(Instr::ParaEnd(para_idx));
@@ -641,8 +900,25 @@ impl<'a> Gen<'a> {
         }
         for p in &sec.paragraphs {
             self.current_para = para_idx;
+            if let Some(&l) = self.section_labels.get(&para_idx) {
+                self.bind(l);
+                self.segment_mark(para_idx);
+                self.debug_section_start(para_idx);
+            }
             let l = self.paras[para_idx as usize].2;
             self.bind(l);
+            self.segment_mark(para_idx);
+            self.debug_para_start(para_idx);
+            if para_idx == first_para
+                && let Some((decl, name)) = use_debug.clone()
+            {
+                self.emit(Instr::DebugProc {
+                    decl,
+                    name,
+                    contents: Some("USE PROCEDURE".to_string()),
+                    line: self.pos.line,
+                });
+            }
             self.pos = p.pos;
             if let Some(&slot) = self.alter_slots.get(&para_idx) {
                 let Stmt::GoTo { targets, .. } = &p.sentences[0][0] else {
@@ -653,6 +929,7 @@ impl<'a> Gen<'a> {
                     None => self.para_end_labels[para_idx as usize],
                 };
                 self.alter_init[slot as usize] = target;
+                self.debug_goto();
                 self.emit(Instr::AlterableGo(slot));
             } else {
                 for sentence in &p.sentences {
@@ -691,6 +968,7 @@ impl<'a> Gen<'a> {
         if h.on.is_none() && h.not_on.is_none() {
             return Ok(());
         }
+        self.debug_flush();
         let not_l = self.label();
         let end = self.label();
         self.emit(Instr::JumpUnless(cond, not_l));
@@ -813,6 +1091,62 @@ impl<'a> Gen<'a> {
     }
 
     fn stmt(&mut self, s: &Stmt) -> Result<()> {
+        if self.dbg.items.is_empty() || self.in_decl {
+            return self.stmt_code(s);
+        }
+        let start = self.code.len();
+        let mark = self.dbg.stmt_ranges.len();
+        // PERFORM VARYING and GO TO DEPENDING place their own triggers.
+        let own = matches!(
+            s,
+            Stmt::Perform {
+                kind: PerformKind::Varying { .. },
+                ..
+            }
+        ) || matches!(
+            s,
+            Stmt::GoTo {
+                depending: Some(_),
+                ..
+            }
+        );
+        self.dbg.stmt_stack.push((start, mark, own));
+        let r = self.stmt_code(s);
+        self.debug_flush();
+        self.dbg.stmt_stack.pop();
+        r?;
+        self.dbg.stmt_ranges.truncate(mark);
+        self.dbg.stmt_ranges.push((start, self.code.len()));
+        Ok(())
+    }
+
+    /// Places the identifier debugging triggers of the statement being
+    /// generated (at its end, or before its exception handlers).
+    fn debug_flush(&mut self) {
+        let Some(&(start, mark, done)) = self.dbg.stmt_stack.last() else {
+            return;
+        };
+        if done || self.in_decl {
+            return;
+        }
+        self.dbg.stmt_stack.last_mut().unwrap().2 = true;
+        let inner = self.dbg.stmt_ranges[mark..].to_vec();
+        let instrs: Vec<Instr> = (start..self.code.len())
+            .filter(|i| !inner.iter().any(|&(a, b)| (a..b).contains(i)))
+            .map(|i| self.code[i].clone())
+            .filter(|i| {
+                !matches!(
+                    i,
+                    Instr::Jump(_) | Instr::JumpIf(..) | Instr::JumpUnless(..)
+                )
+            })
+            .collect();
+        for t in self.debug_data_triggers(&instrs, false) {
+            self.emit(t);
+        }
+    }
+
+    fn stmt_code(&mut self, s: &Stmt) -> Result<()> {
         match s {
             Stmt::Move {
                 from,
@@ -1082,6 +1416,7 @@ impl<'a> Gen<'a> {
                     None => match targets.first() {
                         Some(t) => {
                             let l = self.proc_start(t)?;
+                            self.debug_goto();
                             self.emit(Instr::Jump(l));
                         }
                         None => {
@@ -1097,7 +1432,23 @@ impl<'a> Gen<'a> {
                             .iter()
                             .map(|t| self.proc_start(t))
                             .collect::<Result<Vec<_>>>()?;
-                        self.emit(Instr::GoDepending(v, ls));
+                        // ALL REFERENCES: before the transfer of control
+                        let gd = Instr::GoDepending(v, ls);
+                        if !self.in_decl {
+                            let ts: Vec<Instr> = self
+                                .debug_data_triggers(std::slice::from_ref(&gd), false)
+                                .into_iter()
+                                .filter(|t| {
+                                    matches!(t, Instr::DebugData { loc, .. }
+                                        if self.dbg.items.get(&loc.desc).is_some_and(|i| i.1))
+                                })
+                                .collect();
+                            for t in ts {
+                                self.emit(t);
+                            }
+                        }
+                        self.debug_goto();
+                        self.emit(gd);
                     }
                 }
             }
@@ -1109,6 +1460,22 @@ impl<'a> Gen<'a> {
                     })?;
                     let target = self.proc_start(to)?;
                     self.emit(Instr::Alter(slot, target));
+                    if !self.in_decl {
+                        let d = self
+                            .dbg
+                            .paras
+                            .get(&p)
+                            .cloned()
+                            .or_else(|| self.dbg.all_procs.map(|d| (d, from.name.clone())));
+                        if let Some((decl, name)) = d {
+                            self.emit(Instr::DebugProc {
+                                decl,
+                                name,
+                                contents: Some(to.name.clone()),
+                                line: self.pos.line,
+                            });
+                        }
+                    }
                 }
             }
             Stmt::Perform { body, kind, pos } => {
@@ -1177,6 +1544,7 @@ impl<'a> Gen<'a> {
                     for f in files {
                         let fi = self.file(f)?;
                         self.emit(Instr::Open(fi, m));
+                        self.debug_file(fi, false);
                         self.emit(Instr::UseCheck {
                             file: fi,
                             handled: 0,
@@ -1193,6 +1561,7 @@ impl<'a> Gen<'a> {
                         self.emit(Instr::CloseReel(fi));
                     } else {
                         self.emit(Instr::Close(fi, lock));
+                        self.debug_file(fi, false);
                     }
                     self.emit(Instr::UseCheck {
                         file: fi,
@@ -1298,6 +1667,7 @@ impl<'a> Gen<'a> {
                     into,
                     key,
                 });
+                self.debug_file(fi, true);
                 self.use_check(fi, &[at_end], &[invalid_key]);
                 // AT END and INVALID KEY share one parsed phrase set.
                 self.handlers(at_end, Cx::IoCond)?;
@@ -1305,6 +1675,7 @@ impl<'a> Gen<'a> {
             Stmt::Delete { file, invalid_key } => {
                 let fi = self.file(file)?;
                 self.emit(Instr::Delete(fi));
+                self.debug_file(fi, false);
                 self.use_check(fi, &[], &[invalid_key]);
                 self.handlers(invalid_key, Cx::IoCond)?;
             }
@@ -1323,6 +1694,7 @@ impl<'a> Gen<'a> {
                     rel: r,
                     key: k,
                 });
+                self.debug_file(fi, false);
                 self.use_check(fi, &[], &[invalid_key]);
                 self.handlers(invalid_key, Cx::IoCond)?;
             }
@@ -1975,7 +2347,7 @@ impl<'a> Gen<'a> {
                     Some(b) => self.proc_range(b)?.1,
                     None => last_a,
                 };
-                let start = self.paras[first as usize].2;
+                let start = self.entry_label(a, first);
                 let ret = self.label();
                 self.emit(Instr::Perform {
                     start,
@@ -2045,8 +2417,27 @@ impl<'a> Gen<'a> {
                     let until = self.cond(&l.until)?;
                     vars.push((var, from, by, until));
                 }
+                // Debugging: after each initialization or augmentation of a
+                // variable and each evaluation of a condition.
                 let set = |g: &mut Gen, var: &Loc, v: Ex| {
-                    g.emit(Instr::SetIndex(var.clone(), v));
+                    let ins = Instr::SetIndex(var.clone(), v);
+                    let ts = if g.in_decl {
+                        vec![]
+                    } else {
+                        g.debug_data_triggers(std::slice::from_ref(&ins), true)
+                    };
+                    g.emit(ins);
+                    for t in ts {
+                        g.emit(t);
+                    }
+                };
+                let test = |g: &mut Gen, c: &Cx| {
+                    if !g.in_decl {
+                        let probe = Instr::JumpIf(c.clone(), 0);
+                        for t in g.debug_data_triggers(std::slice::from_ref(&probe), true) {
+                            g.emit(t);
+                        }
+                    }
                 };
                 let inc = |var: &Loc, by: &Ex| {
                     Ex::Bin(
@@ -2063,11 +2454,13 @@ impl<'a> Gen<'a> {
                     let tests: Vec<Label> = (0..vars.len()).map(|_| self.label()).collect();
                     // test of level 0
                     self.bind(tests[0]);
+                    test(self, &vars[0].3);
                     self.emit(Instr::JumpIf(vars[0].3.clone(), end));
                     for k in 1..vars.len() {
                         self.bind(tests[k]);
                         let over = self.label();
                         let cont = self.label();
+                        test(self, &vars[k].3);
                         self.emit(Instr::JumpUnless(vars[k].3.clone(), cont));
                         self.bind(over);
                         // level k exhausted: augment level k-1, reset level k
@@ -2091,6 +2484,7 @@ impl<'a> Gen<'a> {
                     // innermost to outermost
                     for k in (0..vars.len()).rev() {
                         let next = self.label();
+                        test(self, &vars[k].3);
                         self.emit(Instr::JumpIf(vars[k].3.clone(), next));
                         let (v, _, b, _) = vars[k].clone();
                         set(self, &v, inc(&v, &b));
@@ -2190,7 +2584,7 @@ impl<'a> Gen<'a> {
                     Some(b) => self.proc_range(b)?.1,
                     None => la,
                 };
-                in_proc = Some((self.paras[first as usize].2, last));
+                in_proc = Some((self.entry_label(a, first), last));
             }
             _ => {
                 for f in merge_using {
@@ -2212,7 +2606,7 @@ impl<'a> Gen<'a> {
                     Some(b) => self.proc_range(b)?.1,
                     None => la,
                 };
-                out_proc = Some((self.paras[first as usize].2, last));
+                out_proc = Some((self.entry_label(a, first), last));
             }
             SortIo::Using(_) => {}
         }
@@ -2287,4 +2681,72 @@ fn compile_nested<'a>(
         }
     }
     Ok(())
+}
+
+/// Data references of an instruction: (location, receiving operand).
+fn instr_locs(ins: &Instr) -> Vec<(Loc, bool)> {
+    fn walk(v: &serde_json::Value, receiving: bool, out: &mut Vec<(Loc, bool)>) {
+        match v {
+            serde_json::Value::Object(m) => {
+                if m.contains_key("desc") && m.contains_key("subs") && m.contains_key("refmod") {
+                    if let Ok(l) = serde_json::from_value::<Loc>(v.clone()) {
+                        out.push((l, receiving));
+                    }
+                    for k in ["subs", "refmod"] {
+                        if let Some(x) = m.get(k) {
+                            walk(x, false, out);
+                        }
+                    }
+                    return;
+                }
+                for (k, x) in m {
+                    let r = receiving
+                        || matches!(
+                            k.as_str(),
+                            "dst" | "quot" | "rem" | "into" | "pointer" | "tallying" | "index"
+                        );
+                    walk(x, r, out);
+                }
+            }
+            serde_json::Value::Array(a) => {
+                for x in a {
+                    walk(x, receiving, out);
+                }
+            }
+            _ => {}
+        }
+    }
+    let mut out = Vec::new();
+    let Ok(v) = serde_json::to_value(ins) else {
+        return out;
+    };
+    // positional receiving operands of tuple variants
+    let receiving_at = match ins {
+        Instr::Move(..) | Instr::Return(..) => Some(1),
+        Instr::SetIndex(..) | Instr::Inspect(..) => Some(0),
+        _ => None,
+    };
+    match (&v, receiving_at) {
+        (serde_json::Value::Object(m), Some(at)) => {
+            if let Some(serde_json::Value::Array(a)) = m.values().next() {
+                for (i, x) in a.iter().enumerate() {
+                    walk(x, i == at, &mut out);
+                }
+            }
+        }
+        _ => walk(&v, false, &mut out),
+    }
+    let record = |d: u32| Loc {
+        desc: d,
+        subs: Vec::new(),
+        refmod: None,
+    };
+    match ins {
+        // the record written counts as a receiving item
+        Instr::Write { record: d, .. } | Instr::Rewrite { record: d, .. } => {
+            out.push((record(*d), true));
+        }
+        _ => {}
+    }
+    out
 }

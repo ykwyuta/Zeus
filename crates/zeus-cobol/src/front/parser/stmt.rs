@@ -199,6 +199,25 @@ impl Parser {
             .and_then(|t| t.word().map(str::to_string))
             .unwrap();
         Ok(match verb.as_str() {
+            // Communication statements (module CM, not supported by
+            // Enterprise COBOL): accepted, fail if executed.
+            "ENABLE" | "DISABLE" | "SEND" | "RECEIVE" | "PURGE" => {
+                while !self.eof() && !self.is_period() && !self.is_verb() {
+                    if self.is("END-RECEIVE") {
+                        self.i += 1;
+                        break;
+                    }
+                    self.i += 1;
+                }
+                Stmt::Unsupported(verb, pos)
+            }
+            "ACCEPT" if self.is_at(1, "MESSAGE") => {
+                let target = self.data_ref()?;
+                self.expect("MESSAGE")?;
+                self.expect("COUNT")?;
+                let _ = target;
+                Stmt::Unsupported("ACCEPT MESSAGE COUNT".to_string(), pos)
+            }
             "ACCEPT" => {
                 let target = self.data_ref()?;
                 let from = if self.accept("FROM") {

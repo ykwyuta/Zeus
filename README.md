@@ -17,8 +17,10 @@ Phase 1 (COBOL compiler): `zcobc` compiles COBOL-85 to ZIR and runs it in a
 Rust interpreter, keeping data in EBCDIC with z/OS storage layouts. It passes
 all eight required CCVS85 modules (NC, SM, IC, SQ, RL, IX, ST, IF), with the
 same test counts as the GnuCOBOL baseline (and more programs in IF, where
-GnuCOBOL cannot compile some). The optional modules SG, OB, DB and the
-Enterprise-COBOL-unsupported RW and CM are not done yet.
+GnuCOBOL cannot compile some). The optional modules SG (segmentation), OB
+(obsolete elements) and DB (debugging) pass as well. Report Writer (RW) and
+communication (CM), which Enterprise COBOL does not support, are out of
+scope.
 
 ## Layout
 

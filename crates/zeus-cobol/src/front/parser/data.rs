@@ -18,7 +18,7 @@ impl Parser {
             } else if self.is("WORKING-STORAGE") && self.is_at(1, "SECTION") {
                 self.i += 2;
                 self.expect_period()?;
-                dd.working = self.data_entries()?;
+                dd.working.extend(self.data_entries()?);
             } else if self.is("LOCAL-STORAGE") && self.is_at(1, "SECTION") {
                 self.i += 2;
                 self.expect_period()?;
@@ -27,9 +27,41 @@ impl Parser {
                 self.i += 2;
                 self.expect_period()?;
                 dd.linkage = self.data_entries()?;
-            } else if self.is_any(&["COMMUNICATION", "REPORT", "SCREEN"])
-                && self.is_at(1, "SECTION")
-            {
+            } else if self.is("COMMUNICATION") && self.is_at(1, "SECTION") {
+                // Communication descriptions (module CM, not supported by
+                // Enterprise COBOL): the CD area and its records are kept
+                // as working-storage so that programs compile.
+                self.i += 2;
+                self.expect_period()?;
+                while self.is("CD") {
+                    let pos = self.pos();
+                    self.i += 1;
+                    let name = self.name()?;
+                    let mut len = 87;
+                    while !self.eof() && !self.is_period() {
+                        if self.is("OUTPUT") {
+                            len = 23;
+                        } else if self.is("I-O") {
+                            len = 33;
+                        }
+                        self.i += 1;
+                    }
+                    self.expect_period()?;
+                    dd.working.push(DataEntry {
+                        level: 1,
+                        name: Some(name.clone()),
+                        pos,
+                        picture: Some(format!("X({len})")),
+                        ..DataEntry::default()
+                    });
+                    for mut e in self.data_entries()? {
+                        if e.level == 1 {
+                            e.redefines = Some(name.clone());
+                        }
+                        dd.working.push(e);
+                    }
+                }
+            } else if self.is_any(&["REPORT", "SCREEN"]) && self.is_at(1, "SECTION") {
                 // Not supported: skip to the next section or division.
                 self.i += 2;
                 while !self.eof() && !self.is_at(1, "SECTION") && !self.is_at(1, "DIVISION") {

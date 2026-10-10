@@ -54,6 +54,28 @@ pub struct ProgramCode {
     pub debugging: bool,
     /// USE AFTER ERROR declaratives.
     pub uses: Vec<UseDecl>,
+    /// Segmentation: (first instruction, segment number) of every
+    /// paragraph in code order; empty when the program has no independent
+    /// segments.
+    pub segments: Vec<(u32, u8)>,
+    /// Segment number of each ALTER-able GO TO slot.
+    pub alter_segments: Vec<u8>,
+    /// USE FOR DEBUGGING sections: first and last paragraph.
+    pub debug_decls: Vec<(u32, u32)>,
+    /// Descriptor of DEBUG-ITEM.
+    pub debug_item: Option<u32>,
+}
+
+/// How control reached a procedure (DEBUG-CONTENTS of a procedure
+/// debugging section).
+pub mod debug_cause {
+    pub const FALL_THROUGH: u8 = 0;
+    pub const START_PROGRAM: u8 = 1;
+    pub const GO_TO: u8 = 2;
+    pub const PERFORM: u8 = 3;
+    pub const SORT_INPUT: u8 = 4;
+    pub const SORT_OUTPUT: u8 = 5;
+    pub const MERGE_OUTPUT: u8 = 6;
 }
 
 /// A USE AFTER STANDARD ERROR declarative section.
@@ -510,6 +532,36 @@ pub enum Instr {
     UseCheck {
         file: u32,
         handled: u8,
+    },
+    /// Start of a paragraph of segment n (programs with independent
+    /// segments): entering an independent segment from another segment
+    /// puts it in its initial state.
+    Segment(u8),
+    /// Debugging: records how control is about to reach a procedure
+    /// (a `debug_cause` value) and the source line causing it.
+    DebugCause(u8, u32),
+    /// Debugging: runs debugging section `decl` for procedure `name`.
+    /// `contents` overrides the cause text (ALTER).
+    DebugProc {
+        decl: u32,
+        name: String,
+        contents: Option<String>,
+        line: u32,
+    },
+    /// Debugging: runs debugging section `decl` for identifier `name`.
+    DebugData {
+        decl: u32,
+        name: String,
+        loc: Loc,
+        line: u32,
+    },
+    /// Debugging: runs debugging section `decl` for file `name` after a
+    /// successful input-output statement (`record`: READ).
+    DebugFile {
+        decl: u32,
+        name: String,
+        record: Option<u32>,
+        line: u32,
     },
     GoDepending(Ex, Vec<u32>),
     /// GO TO whose target can be changed by ALTER.

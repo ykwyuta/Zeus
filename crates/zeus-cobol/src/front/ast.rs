@@ -32,6 +32,8 @@ pub struct Environment {
     /// I-O-CONTROL SAME RECORD AREA groups.
     pub same_record_area: Vec<Vec<String>>,
     pub multiple_file_tape: bool,
+    /// WITH DEBUGGING MODE: debugging sections are active.
+    pub debugging_mode: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -233,8 +235,19 @@ pub enum UseStmt {
     /// (target, GLOBAL)
     Error(UseTarget, bool),
     /// USE FOR DEBUGGING ON ...
-    Debugging(Vec<String>),
+    Debugging(Vec<DebugTarget>),
     BeforeReporting(String),
+}
+
+#[derive(Debug, Clone)]
+pub enum DebugTarget {
+    AllProcedures,
+    /// A procedure-name, file-name or identifier; `all_refs` for
+    /// ALL REFERENCES OF identifier.
+    Name {
+        name: DataRef,
+        all_refs: bool,
+    },
 }
 
 #[derive(Debug, Clone)]

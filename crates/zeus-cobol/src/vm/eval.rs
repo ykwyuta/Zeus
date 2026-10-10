@@ -480,19 +480,22 @@ impl Machine {
 
     // ---- ACCEPT and CALL arguments -------------------------------------
 
+    /// Next line of standard input (the operator console), None at end.
+    pub(super) fn stdin_line(&mut self) -> Option<String> {
+        let _ = self.stdout.flush();
+        if self.stdin_lines.is_none() {
+            self.stdin_lines = Some(std::io::stdin().lock().lines());
+        }
+        self.stdin_lines
+            .as_mut()
+            .and_then(|l| l.next())
+            .and_then(|r| r.ok())
+    }
+
     pub(super) fn accept(&mut self, cur: usize, dst: &Loc, from: AcceptFrom) -> RResult<()> {
         let v = match from {
             AcceptFrom::Stdin => {
-                let _ = self.stdout.flush();
-                if self.stdin_lines.is_none() {
-                    self.stdin_lines = Some(std::io::stdin().lock().lines());
-                }
-                let line = self
-                    .stdin_lines
-                    .as_mut()
-                    .and_then(|l| l.next())
-                    .and_then(|r| r.ok())
-                    .unwrap_or_default();
+                let line = self.stdin_line().unwrap_or_default();
                 let bytes: Vec<u8> = line
                     .chars()
                     .map(|c| ebcdic::from_latin1(u32::from(c).min(255) as u8))

@@ -46,6 +46,11 @@ struct Instance {
     alter: Vec<u32>,
     /// Slots in `Machine::file_states` of the program's files.
     files: Vec<usize>,
+    /// Segment of the paragraph being executed (segmentation).
+    segment: u8,
+    /// Debugging: how control is reaching the next procedure, and the
+    /// source line responsible.
+    debug_cause: (u8, u32),
     /// Addresses of the EXTERNAL data areas the program uses.
     ext_bases: Vec<usize>,
     active: bool,
@@ -71,6 +76,9 @@ pub struct Machine {
     switches: HashMap<String, bool>,
     size_error: bool,
     io_cond: bool,
+    /// Object-time debugging switch (ZEUS_DEBUG=Y): USE FOR DEBUGGING
+    /// sections run only when it is on.
+    debug: bool,
     /// Status code of the last I/O statement (for USE procedures).
     last_status: [u8; 2],
     /// Mode of the last OPEN attempted.
@@ -87,7 +95,12 @@ pub struct Machine {
 
 pub enum Exit {
     StopRun(i32),
+    /// A program run by `run_from(_, true)` returned to its caller.
+    Returned,
 }
+
+/// Error used to unwind a STOP RUN executed below a SORT procedure.
+const STOP_RUN: &str = "\u{0}stop run";
 
 impl Machine {
     pub fn new(search_dirs: Vec<PathBuf>) -> Machine {
@@ -110,6 +123,8 @@ impl Machine {
             switches,
             size_error: false,
             io_cond: false,
+            debug: std::env::var("ZEUS_DEBUG")
+                .is_ok_and(|v| matches!(v.to_ascii_uppercase().as_str(), "Y" | "YES" | "ON" | "1")),
             last_status: *b"00",
             last_open_mode: None,
             call_exception: false,
@@ -175,6 +190,8 @@ impl Machine {
             temps: vec![Dec::ZERO; code.temps as usize],
             alter: code.alter_init.clone(),
             files,
+            segment: 0,
+            debug_cause: (zir::debug_cause::START_PROGRAM, 0),
             ext_bases,
             active: false,
             initialized: false,
@@ -196,10 +213,21 @@ impl Machine {
         self.mem[base..base + init.len()].copy_from_slice(&init);
         let inst = &mut self.instances[i];
         inst.alter = inst.code.alter_init.clone();
+        inst.segment = 0;
         inst.temps.iter_mut().for_each(|t| *t = Dec::ZERO);
     }
 
     /// Runs the first program of `module` as the main program.
+    /// Sends DISPLAY output to `out` instead of standard output.
+    pub fn set_stdout(&mut self, out: Box<dyn Write>) {
+        self.stdout = out;
+    }
+
+    /// Sets the object-time debugging switch (default: `ZEUS_DEBUG`).
+    pub fn set_debug(&mut self, on: bool) {
+        self.debug = on;
+    }
+
     pub fn run_main(&mut self, module: Module) -> RResult<i32> {
         let module = Rc::new(module);
         let main = self.instantiate(&module, 0);
@@ -208,6 +236,8 @@ impl Machine {
         let _ = self.stdout.flush();
         match r {
             Ok(Exit::StopRun(code)) => Ok(code),
+            Ok(Exit::Returned) => Ok(self.return_code_value()),
+            Err(e) if e.0 == STOP_RUN => Ok(self.return_code_value()),
             Err(e) => Err(e),
         }
     }
@@ -225,12 +255,63 @@ impl Machine {
     }
 
     /// Executes from the entry of instance `main` until STOP RUN.
+    /// Resolves and sets up the program named by a CALL: binds its
+    /// USING parameters and puts it in its initial state when needed.
+    /// Returns None for a missing program handled by ON EXCEPTION.
+    fn prepare_call(
+        &mut self,
+        cur: usize,
+        program: &zir::Src,
+        args: &[zir::CallArgMode],
+        handled: bool,
+    ) -> RResult<Option<usize>> {
+        let v = self.eval_src(cur, program)?;
+        let name_bytes = self.alnum_bytes(cur, &v, 0)?;
+        let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
+            .trim()
+            .to_ascii_uppercase();
+        self.call_exception = false;
+        let Some(callee) = self.resolve_program(cur, &name) else {
+            if !handled {
+                return err(format!("program {name} not found"));
+            }
+            self.call_exception = true;
+            return Ok(None);
+        };
+        if self.instances[callee].active {
+            return err(format!("recursive CALL of active program {name}"));
+        }
+        let addrs = self.call_args(cur, args)?;
+        let ci = &mut self.instances[callee];
+        if ci.code.initial || !ci.initialized {
+            let first = !ci.initialized;
+            ci.initialized = true;
+            if !first {
+                self.reset(callee);
+            }
+        }
+        let ci = &mut self.instances[callee];
+        for (k, slot) in ci.code.using.clone().iter().enumerate() {
+            ci.linkage[*slot as usize] = addrs.get(k).copied().flatten();
+        }
+        ci.active = true;
+        ci.perform.clear();
+        Ok(Some(callee))
+    }
+
+    /// Executes from the entry of instance `main` until STOP RUN.
     fn run(&mut self, main: usize) -> RResult<Exit> {
+        self.instances[main].active = true;
+        self.instances[main].initialized = true;
+        self.run_from(main, false)
+    }
+
+    /// Runs instance `start` from its entry. A `called` program returns
+    /// (Exit::Returned) at EXIT PROGRAM / GOBACK.
+    fn run_from(&mut self, start: usize, called: bool) -> RResult<Exit> {
         let mut stack: Vec<Frame> = Vec::new();
-        let mut cur = main;
+        let mut cur = start;
         let mut pc: u32 = 0;
-        self.instances[cur].active = true;
-        self.instances[cur].initialized = true;
         loop {
             let code = self.instances[cur].code.clone();
             let Some(ins) = code.code.get(pc as usize) else {
@@ -296,6 +377,15 @@ impl Machine {
                     let inst = &mut self.instances[cur];
                     if inst.perform.last().is_some_and(|&(end, _)| end == *p) {
                         let (_, ret) = inst.perform.pop().unwrap();
+                        let code = &inst.code;
+                        if !code.segments.is_empty() && ret != USE_RETURN {
+                            // returning from a PERFORM does not
+                            // reinitialize the caller's segment
+                            let i = code.segments.partition_point(|&(s, _)| s <= ret);
+                            if i > 0 {
+                                inst.segment = code.segments[i - 1].1;
+                            }
+                        }
                         if ret == USE_RETURN {
                             // end of a GLOBAL declarative of a containing program
                             let f = stack.pop().unwrap();
@@ -304,6 +394,14 @@ impl Machine {
                         } else {
                             pc = ret;
                         }
+                    }
+                }
+                Instr::Segment(seg) => self.enter_segment(cur, *seg),
+                Instr::DebugCause(c, line) => self.instances[cur].debug_cause = (*c, *line),
+                Instr::DebugProc { .. } | Instr::DebugData { .. } | Instr::DebugFile { .. } => {
+                    if let Some((target, end)) = self.debug_fire(cur, ins)? {
+                        self.instances[cur].perform.push((end, pc));
+                        pc = target;
                     }
                 }
                 Instr::UseCheck { file, handled } => {
@@ -342,9 +440,22 @@ impl Machine {
                     let _ = self.stdout.write_all(&ebcdic::decode_latin1(&bytes));
                     let _ = self.stdout.write_all(b"\n");
                     let _ = self.stdout.flush();
+                    // The run waits for the operator's reply; an interrupt
+                    // (ETX) cancels it.
+                    if self.stdin_line().is_some_and(|l| l.contains('\u{3}')) {
+                        return Ok(Exit::StopRun(self.return_code_value()));
+                    }
                 }
                 Instr::ExitProgram | Instr::GoBack => {
                     let is_main = stack.is_empty();
+                    if is_main && called {
+                        self.instances[cur].active = false;
+                        self.instances[cur].perform.clear();
+                        if self.instances[cur].code.initial {
+                            self.close_program_files(cur);
+                        }
+                        return Ok(Exit::Returned);
+                    }
                     if is_main {
                         if matches!(ins, Instr::GoBack) {
                             return Ok(Exit::StopRun(self.return_code_value()));
@@ -404,49 +515,17 @@ impl Machine {
                     args,
                     returning: _,
                 } => {
-                    let v = self.eval_src(cur, program)?;
-                    let name_bytes = self.alnum_bytes(cur, &v, 0)?;
-                    let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
-                        .trim()
-                        .to_ascii_uppercase();
-                    self.call_exception = false;
-                    match self.resolve_program(cur, &name) {
-                        Some(callee) => {
-                            if self.instances[callee].active {
-                                return err(format!("recursive CALL of active program {name}"));
-                            }
-                            let addrs = self.call_args(cur, args)?;
-                            let ci = &mut self.instances[callee];
-                            if ci.code.initial || !ci.initialized {
-                                let first = !ci.initialized;
-                                ci.initialized = true;
-                                if !first {
-                                    self.reset(callee);
-                                }
-                            }
-                            let ci = &mut self.instances[callee];
-                            for (k, slot) in ci.code.using.clone().iter().enumerate() {
-                                ci.linkage[*slot as usize] = addrs.get(k).copied().flatten();
-                            }
-                            ci.active = true;
-                            ci.perform.clear();
-                            stack.push(Frame { inst: cur, pc });
-                            if stack.len() > 1000 {
-                                return err("CALL nesting too deep");
-                            }
-                            cur = callee;
-                            pc = 0;
+                    // ON EXCEPTION / ON OVERFLOW handles a missing program.
+                    let next = code.code.get(pc as usize);
+                    let handled =
+                        matches!(next, Some(Instr::JumpUnless(zir::Cx::CallException, _)));
+                    if let Some(callee) = self.prepare_call(cur, program, args, handled)? {
+                        stack.push(Frame { inst: cur, pc });
+                        if stack.len() > 1000 {
+                            return err("CALL nesting too deep");
                         }
-                        None => {
-                            // ON EXCEPTION / ON OVERFLOW handles the failure.
-                            let next = code.code.get(pc as usize);
-                            let handled =
-                                matches!(next, Some(Instr::JumpUnless(zir::Cx::CallException, _)));
-                            if !handled {
-                                return err(format!("program {name} not found"));
-                            }
-                            self.call_exception = true;
-                        }
+                        cur = callee;
+                        pc = 0;
                     }
                 }
                 Instr::Cancel(src) => {
@@ -517,12 +596,18 @@ impl Machine {
                     }
                     if let Some((start, end)) = input {
                         self.sort_records.clear();
+                        self.instances[cur].debug_cause = (zir::debug_cause::SORT_INPUT, 0);
                         self.run_procedure(cur, *start, *end, &mut stack)?;
                     }
                     let records = std::mem::take(&mut self.sort_records);
                     let sorted = self.sort_sort(cur, &sort, records)?;
                     if let Some((start, end)) = output {
                         self.sort_return = Some((sorted, 0));
+                        self.instances[cur].debug_cause = if *merge {
+                            (zir::debug_cause::MERGE_OUTPUT, 0)
+                        } else {
+                            (zir::debug_cause::SORT_OUTPUT, 0)
+                        };
                         self.run_procedure(cur, *start, *end, &mut stack)?;
                         self.sort_return = None;
                     } else {
@@ -617,6 +702,15 @@ impl Machine {
                     } else {
                         pc + 1
                     };
+                    continue;
+                }
+                Instr::DebugProc { .. } | Instr::DebugData { .. } | Instr::DebugFile { .. } => {
+                    if let Some((target, end)) = self.debug_fire(cur, ins)? {
+                        self.instances[cur].perform.push((end, pc + 1));
+                        pc = target;
+                        continue;
+                    }
+                    pc += 1;
                     continue;
                 }
                 Instr::UseCheck { file, handled } => {
@@ -737,6 +831,23 @@ impl Machine {
                 self.instances[cur].alter[*slot as usize] = *target;
                 Ok(())
             }
+            Instr::Segment(seg) => {
+                self.enter_segment(cur, *seg);
+                Ok(())
+            }
+            Instr::DebugCause(c, line) => {
+                self.instances[cur].debug_cause = (*c, *line);
+                Ok(())
+            }
+            Instr::Call { program, args, .. } => {
+                if let Some(callee) = self.prepare_call(cur, program, args, false)? {
+                    match self.run_from(callee, true)? {
+                        Exit::Returned => {}
+                        Exit::StopRun(_) => return err(STOP_RUN),
+                    }
+                }
+                Ok(())
+            }
             Instr::Nop => Ok(()),
             other => err(format!(
                 "statement not supported inside a SORT procedure: {other:?}"
@@ -773,6 +884,137 @@ impl Machine {
             }
         }
         None
+    }
+
+    /// Fills DEBUG-ITEM for a debugging trigger and returns the debugging
+    /// section to perform: (first instruction, last paragraph).
+    fn debug_fire(&mut self, cur: usize, ins: &Instr) -> RResult<Option<(u32, u32)>> {
+        if !self.debug {
+            return Ok(None);
+        }
+        let code = self.instances[cur].code.clone();
+        let Some(item) = code.debug_item else {
+            return Ok(None);
+        };
+        let text = |s: &str| ebcdic::encode(s);
+        let (decl, name, line, subs, contents) = match ins {
+            Instr::DebugProc {
+                decl,
+                name,
+                contents,
+                line,
+            } => {
+                let (cause, cline) = self.instances[cur].debug_cause;
+                let c = match contents {
+                    Some(c) => c.clone(),
+                    None => match cause {
+                        zir::debug_cause::FALL_THROUGH => "FALL THROUGH",
+                        zir::debug_cause::START_PROGRAM => "START PROGRAM",
+                        zir::debug_cause::PERFORM => "PERFORM LOOP",
+                        zir::debug_cause::SORT_INPUT => "SORT INPUT",
+                        zir::debug_cause::SORT_OUTPUT => "SORT OUTPUT",
+                        zir::debug_cause::MERGE_OUTPUT => "MERGE OUTPUT",
+                        _ => "",
+                    }
+                    .to_string(),
+                };
+                let l = if contents.is_none() && cline != 0 {
+                    cline
+                } else {
+                    *line
+                };
+                (*decl, name.clone(), l, Vec::new(), text(&c))
+            }
+            Instr::DebugData {
+                decl,
+                name,
+                loc,
+                line,
+            } => {
+                let mut subs = Vec::new();
+                for e in &loc.subs {
+                    subs.push(self.eval_ex(cur, e)?);
+                }
+                let (a, l) = self.addr(cur, loc)?;
+                (
+                    *decl,
+                    name.clone(),
+                    *line,
+                    subs,
+                    self.mem[a..a + l].to_vec(),
+                )
+            }
+            Instr::DebugFile {
+                decl,
+                name,
+                record,
+                line,
+            } => {
+                // READ: not after AT END or INVALID KEY
+                if record.is_some() && self.last_status[0] != b'0' {
+                    return Ok(None);
+                }
+                let c = match record {
+                    Some(d) => {
+                        let loc = zir::Loc {
+                            desc: *d,
+                            subs: Vec::new(),
+                            refmod: None,
+                        };
+                        let (a, l) = self.addr(cur, &loc)?;
+                        self.mem[a..a + l].to_vec()
+                    }
+                    None => Vec::new(),
+                };
+                (*decl, name.clone(), *line, Vec::new(), c)
+            }
+            _ => return Ok(None),
+        };
+        let loc = zir::Loc {
+            desc: item,
+            subs: Vec::new(),
+            refmod: None,
+        };
+        let (a, len) = self.addr(cur, &loc)?;
+        let mut buf = vec![ebcdic::SPACE; len];
+        let mut put = |at: usize, bytes: &[u8], width: usize| {
+            for i in 0..width.min(len.saturating_sub(at)) {
+                buf[at + i] = bytes.get(i).copied().unwrap_or(ebcdic::SPACE);
+            }
+        };
+        put(0, &text(&format!("{line:>6}")), 6);
+        put(7, &text(&name), 30);
+        for (k, s) in subs.iter().take(3).enumerate() {
+            let n = s
+                .rescale(0, zeus_decimal::Rounding::Truncate)
+                .map(|d| d.coef)
+                .unwrap_or(0);
+            let t = format!(
+                "{}{:04}",
+                if n < 0 { '-' } else { '+' },
+                n.unsigned_abs() % 10000
+            );
+            put(38 + 6 * k, &text(&t), 5);
+        }
+        put(56, &contents, len.saturating_sub(56));
+        self.mem[a..a + len].copy_from_slice(&buf);
+        let (start, end) = code.debug_decls[decl as usize];
+        Ok(Some((code.paragraphs[start as usize].start, end)))
+    }
+
+    /// Control reaches a paragraph of segment `seg`: an independent
+    /// segment entered from another segment starts in its initial state
+    /// (its ALTERed GO TOs are reset).
+    fn enter_segment(&mut self, cur: usize, seg: u8) {
+        let inst = &mut self.instances[cur];
+        if inst.segment != seg && seg >= 50 {
+            for (k, &s) in inst.code.alter_segments.iter().enumerate() {
+                if s == seg {
+                    inst.alter[k] = inst.code.alter_init[k];
+                }
+            }
+        }
+        inst.segment = seg;
     }
 
     /// The USE AFTER ERROR procedure applicable to file `f` of instance

@@ -23,7 +23,9 @@ pub const VERBS: &[&str] = &[
     "CONTINUE",
     "DELETE",
     "DISPLAY",
+    "DISABLE",
     "DIVIDE",
+    "ENABLE",
     "EVALUATE",
     "EXIT",
     "GO",
@@ -36,11 +38,14 @@ pub const VERBS: &[&str] = &[
     "MULTIPLY",
     "OPEN",
     "PERFORM",
+    "PURGE",
     "READ",
+    "RECEIVE",
     "RELEASE",
     "RETURN",
     "REWRITE",
     "SEARCH",
+    "SEND",
     "SET",
     "SORT",
     "START",
@@ -361,6 +366,9 @@ impl Parser {
                 || self.is_at(1, "DIVISION")
             {
                 return Ok(());
+            } else if self.is("DEBUGGING") && self.is_at(1, "MODE") {
+                env.debugging_mode = true;
+                self.i += 2;
             } else {
                 self.i += 1;
             }
@@ -896,11 +904,23 @@ impl Parser {
             let mut names = Vec::new();
             while !self.is_period() && !self.eof() {
                 if self.accept("ALL") {
-                    self.accept("PROCEDURES");
-                    names.push("ALL PROCEDURES".to_string());
+                    if self.accept("PROCEDURES") {
+                        names.push(DebugTarget::AllProcedures);
+                        continue;
+                    }
+                    self.accept("REFERENCES");
+                    self.accept("OF");
+                    let name = self.data_ref()?;
+                    names.push(DebugTarget::Name {
+                        name,
+                        all_refs: true,
+                    });
                 } else {
-                    let r = self.data_ref()?;
-                    names.push(r.name);
+                    let name = self.data_ref()?;
+                    names.push(DebugTarget::Name {
+                        name,
+                        all_refs: false,
+                    });
                 }
             }
             UseStmt::Debugging(names)

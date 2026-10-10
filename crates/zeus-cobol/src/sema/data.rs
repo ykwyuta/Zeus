@@ -653,7 +653,9 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         }
         file_records.push(recs);
     }
-    let ws = dm.build_tree(&prog.data.working, &mut |_| Area::Working)?;
+    let mut working = prog.data.working.clone();
+    working.extend(debug_item_entries());
+    let ws = dm.build_tree(&working, &mut |_| Area::Working)?;
     let ls = dm.build_tree(&prog.data.local, &mut |_| Area::Working)?;
     let mut n = 0u32;
     let lk = dm.build_tree(&prog.data.linkage, &mut |_| {
@@ -1085,4 +1087,38 @@ fn display_name(r: &DataRef) -> String {
         s.push_str(q);
     }
     s
+}
+
+/// Length of DEBUG-CONTENTS.
+pub const DEBUG_CONTENTS_LEN: u32 = 1024;
+
+/// The DEBUG-ITEM special register:
+/// DEBUG-LINE X(6), DEBUG-NAME X(30), DEBUG-SUB-1..3 S9999 SIGN LEADING
+/// SEPARATE and DEBUG-CONTENTS, separated by one-character fillers.
+fn debug_item_entries() -> Vec<DataEntry> {
+    let e = |level: u8, name: Option<&str>, pic: Option<&str>| DataEntry {
+        level,
+        name: name.map(str::to_string),
+        picture: pic.map(str::to_string),
+        ..DataEntry::default()
+    };
+    let sub = |n: u32| DataEntry {
+        sign: Some((true, true)),
+        ..e(2, Some(&format!("DEBUG-SUB-{n}")), Some("S9999"))
+    };
+    let contents = format!("X({DEBUG_CONTENTS_LEN})");
+    vec![
+        e(1, Some("DEBUG-ITEM"), None),
+        e(2, Some("DEBUG-LINE"), Some("X(6)")),
+        e(2, None, Some("X")),
+        e(2, Some("DEBUG-NAME"), Some("X(30)")),
+        e(2, None, Some("X")),
+        sub(1),
+        e(2, None, Some("X")),
+        sub(2),
+        e(2, None, Some("X")),
+        sub(3),
+        e(2, None, Some("X")),
+        e(2, Some("DEBUG-CONTENTS"), Some(&contents)),
+    ]
 }
