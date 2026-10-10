@@ -5,7 +5,10 @@ use super::lexer::{Tok, Token};
 use crate::diag::{Diag, Result};
 
 /// Loads the tokens of a library text: `(text-name, library-name)`.
-pub type Loader<'a> = dyn FnMut(&str, Option<&str>, &Token) -> Result<Vec<Token>> + 'a;
+/// Loads and lexes a COPY member: name, library, the COPY token and the
+/// partial-word replacements to apply to its text first.
+pub type Loader<'a> =
+    dyn FnMut(&str, Option<&str>, &Token, &[(String, String)]) -> Result<Vec<Token>> + 'a;
 
 /// A replacement pair: tokens to match and their replacement.
 type Pair = (Vec<Token>, Vec<Token>);
@@ -138,6 +141,17 @@ pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Resul
     let mut i = 0;
     while i < tokens.len() {
         let t = &tokens[i];
+        if let Some(name) = sql_include(t) {
+            // EXEC SQL INCLUDE member END-EXEC: the member's text, as COPY;
+            // the period ending the entry belongs to the member.
+            i += 1;
+            if tokens.get(i).is_some_and(|t| t.tok == Tok::Period) {
+                i += 1;
+            }
+            let text = load(&name, None, t, &[])?;
+            out.extend(expand_copy(text, load, depth + 1)?);
+            continue;
+        }
         if !t.is_word("COPY") {
             out.push(t.clone());
             i += 1;
@@ -180,11 +194,54 @@ pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Resul
                 ));
             }
         }
-        let text = load(&name, library.as_deref(), &copy_tok)?;
+        // `(tag)` and `:tag:` pseudo-text replace part of a word: done on
+        // the member's text.
+        let mut partial = Vec::new();
+        pairs.retain(|(from, to)| {
+            let tag = match from.as_slice() {
+                [
+                    a,
+                    Token {
+                        tok: Tok::Word(w), ..
+                    },
+                    b,
+                ] if (a.tok == Tok::LParen && b.tok == Tok::RParen)
+                    || (a.tok == Tok::Colon && b.tok == Tok::Colon) =>
+                {
+                    if a.tok == Tok::LParen {
+                        format!("({w})")
+                    } else {
+                        format!(":{w}:")
+                    }
+                }
+                _ => return true,
+            };
+            let by = to.iter().map(Token::text).collect::<Vec<_>>().join(" ");
+            partial.push((tag, by));
+            false
+        });
+        let text = load(&name, library.as_deref(), &copy_tok, &partial)?;
         let text = expand_copy(text, load, depth + 1)?;
         out.extend(replace(text, &pairs));
     }
     Ok(out)
+}
+
+/// The member named by `EXEC SQL INCLUDE member END-EXEC`.
+fn sql_include(t: &Token) -> Option<String> {
+    let Tok::Exec(kind, text) = &t.tok else {
+        return None;
+    };
+    if kind != "SQL" {
+        return None;
+    }
+    let text: String = text.iter().map(|(c, _)| *c).collect();
+    let mut words = text.split_whitespace();
+    if !words.next()?.eq_ignore_ascii_case("INCLUDE") {
+        return None;
+    }
+    let name = words.next()?.trim_matches(|c| c == '\'' || c == '"');
+    words.next().is_none().then(|| name.to_ascii_uppercase())
 }
 
 /// Applies REPLACE statements: each REPLACE ... . replaces the pairs in the
@@ -243,7 +300,7 @@ mod tests {
     #[test]
     fn copy_with_replacing() {
         let src = toks("A. COPY LIB1 REPLACING ==X== BY ==Y Z== \"Q\" BY 5. B.");
-        let mut load = |name: &str, lib: Option<&str>, _: &Token| {
+        let mut load = |name: &str, lib: Option<&str>, _: &Token, _: &[(String, String)]| {
             assert_eq!(name, "LIB1");
             assert_eq!(lib, None);
             Ok(toks("MOVE X TO \"Q\" X."))
@@ -255,7 +312,8 @@ mod tests {
     #[test]
     fn nested_copy_and_library() {
         let src = toks("COPY A OF \"../lib\".");
-        let mut load = |name: &str, lib: Option<&str>, _: &Token| match name {
+        let mut load = |name: &str, lib: Option<&str>, _: &Token, _: &[(String, String)]| match name
+        {
             "A" => {
                 assert_eq!(lib, Some("../lib"));
                 Ok(toks("1 COPY B. 2"))

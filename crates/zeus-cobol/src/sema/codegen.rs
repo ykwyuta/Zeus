@@ -16,6 +16,8 @@ use crate::zir::{self, Category, Cx, DataType, Ex, FileDef, Instr, Loc, Op, Src}
 type Label = u32;
 
 pub struct Gen<'a> {
+    /// EXEC statements (labels unresolved until the end).
+    execs: Vec<zir::ExecDef>,
     pub prog: &'a ast::Program,
     pub dm: DataModel,
     pub code: Vec<Instr>,
@@ -134,6 +136,7 @@ impl<'a> Gen<'a> {
             dbg: Debugging::default(),
             in_decl: false,
             reports: Vec::new(),
+            execs: Vec::new(),
             pos: prog.pos,
         };
         g.environment()?;
@@ -439,6 +442,71 @@ impl<'a> Gen<'a> {
         }
     }
 
+    /// ZIR form of an EXEC block: option arguments resolved to data
+    /// areas, values, procedure labels or names.
+    fn exec_def(&mut self, e: &ExecBlock) -> Result<zir::ExecDef> {
+        let kind = match e.kind {
+            ExecKind::Cics => zir::ExecKind::Cics,
+            ExecKind::Sql => zir::ExecKind::Sql,
+            ExecKind::Dli => zir::ExecKind::Dli,
+        };
+        let mut options = Vec::new();
+        for o in &e.options {
+            let arg = match &o.arg {
+                None => None,
+                Some(ExecArg::Raw(t)) => Some(zir::ExecVal::Name(t.clone())),
+                Some(ExecArg::Expr(x)) => Some(self.exec_val(x, e.kind)?),
+            };
+            options.push(zir::ExecOpt {
+                name: o.name.clone(),
+                arg,
+            });
+        }
+        let mut host = Vec::new();
+        if let Some(sql) = &e.sql {
+            for h in &sql.host {
+                let v = self.loc(&h.var)?;
+                let i = h.indicator.as_ref().map(|r| self.loc(r)).transpose()?;
+                host.push((v, i));
+            }
+        }
+        Ok(zir::ExecDef {
+            kind,
+            line: e.pos.line,
+            command: e.command.clone(),
+            options,
+            sql: e.sql.as_ref().map(|s| s.text.clone()),
+            host,
+        })
+    }
+
+    fn exec_val(&mut self, x: &Expr, kind: ExecKind) -> Result<zir::ExecVal> {
+        Ok(match x {
+            Expr::Operand(Operand::Ref(r)) => {
+                if self.dm.resolve(r).is_ok() {
+                    zir::ExecVal::Area(self.loc(r)?)
+                } else {
+                    let p = ProcName {
+                        name: r.name.clone(),
+                        section: r.qualifiers.first().cloned(),
+                        pos: r.pos,
+                    };
+                    match self.proc_start(&p) {
+                        Ok(l) => zir::ExecVal::Label(l),
+                        // DL/I segment and PCB names are not data items
+                        Err(_) if kind == ExecKind::Dli => zir::ExecVal::Name(r.name.clone()),
+                        Err(_) => {
+                            self.dm.resolve(r)?;
+                            unreachable!()
+                        }
+                    }
+                }
+            }
+            Expr::Operand(Operand::AddressOf(r)) => zir::ExecVal::Address(self.loc(r)?),
+            _ => zir::ExecVal::Value(self.src_expr(x)?),
+        })
+    }
+
     fn proc_start(&self, p: &ProcName) -> Result<Label> {
         let (a, _) = self.proc_range(p)?;
         Ok(self.entry_label(p, a))
@@ -538,6 +606,14 @@ impl<'a> Gen<'a> {
             }
         }
         let alter_init: Vec<u32> = self.alter_init.iter().map(|&l| res(l)).collect();
+        let mut execs = std::mem::take(&mut self.execs);
+        for e in &mut execs {
+            for o in &mut e.options {
+                if let Some(zir::ExecVal::Label(l)) = &mut o.arg {
+                    *l = res(*l);
+                }
+            }
+        }
         let paragraphs = self
             .paras
             .iter()
@@ -569,6 +645,13 @@ impl<'a> Gen<'a> {
             }
             None => (0x00, 0xFF),
         };
+        let data_execs = self
+            .prog
+            .data
+            .execs
+            .iter()
+            .map(|e| self.exec_def(e))
+            .collect::<Result<Vec<_>>>()?;
         let using = self
             .prog
             .procedure
@@ -609,6 +692,8 @@ impl<'a> Gen<'a> {
             externals: self.dm.externals.clone(),
             debug_decls: self.dbg.decls.clone(),
             reports: std::mem::take(&mut self.reports),
+            execs,
+            data_execs,
             debug_item: self
                 .dm
                 .by_name
@@ -2078,6 +2163,15 @@ impl<'a> Gen<'a> {
             } => self.search(table, *all, varying.as_ref(), at_end.as_deref(), whens)?,
             Stmt::Sort { .. } | Stmt::Merge { .. } | Stmt::Release { .. } | Stmt::Return { .. } => {
                 self.sort_stmt(s)?
+            }
+            // Alternate entry points are recorded only; executed in line,
+            // ENTRY does nothing.
+            Stmt::Entry { .. } => {}
+            Stmt::Exec(e) => {
+                self.pos = e.pos;
+                let def = self.exec_def(e)?;
+                self.execs.push(def);
+                self.emit(Instr::Exec(self.execs.len() as u32 - 1));
             }
             Stmt::Unsupported(name, pos) => {
                 self.pos = *pos;

@@ -217,3 +217,99 @@ PROCEDURE DIVISION.
     );
     assert_eq!(out, "00\n00\n00\n");
 }
+
+/// A stand-in for the CICS runtime: READ with RIDFLD 'BAD' raises NOTFND,
+/// HANDLE CONDITION NOTFND(label) is honoured, ASSIGN SYSID fills its area.
+#[derive(Default)]
+struct TestCics {
+    notfnd: RefCell<Option<u32>>,
+    log: RefCell<Vec<String>>,
+}
+
+impl zeus_cobol::vm::exec::ExecHost for TestCics {
+    fn exec(
+        &self,
+        m: &mut Machine,
+        call: &zeus_cobol::vm::exec::ExecCall,
+    ) -> Result<zeus_cobol::vm::exec::ExecOutcome, zeus_cobol::vm::RunError> {
+        use zeus_cobol::vm::exec::{ExecArg, ExecOutcome};
+        let names: Vec<&str> = call.options.iter().map(|(n, _)| n.as_str()).collect();
+        self.log
+            .borrow_mut()
+            .push(format!("{} {}", call.command, names.join(" ")));
+        match call.command.as_str() {
+            "HANDLE" => {
+                if let Some(ExecArg::Label(l)) = call.arg("NOTFND") {
+                    *self.notfnd.borrow_mut() = Some(*l);
+                }
+            }
+            "ASSIGN" => {
+                if let Some(ExecArg::Area(a)) = call.arg("SYSID") {
+                    let v = zeus_cobol::ebcdic::encode("ZEUS");
+                    m.storage_mut()[a.addr..a.addr + 4].copy_from_slice(&v);
+                }
+            }
+            "READ" => {
+                let key = match call.arg("RIDFLD") {
+                    Some(ExecArg::Area(a)) => m.storage()[a.addr..a.addr + a.len].to_vec(),
+                    _ => vec![],
+                };
+                if key == zeus_cobol::ebcdic::encode("BAD") {
+                    if let Some(ExecArg::Area(a)) = call.arg("RESP") {
+                        m.storage_mut()[a.addr..a.addr + 4].copy_from_slice(&13i32.to_be_bytes());
+                    } else if let Some(l) = *self.notfnd.borrow() {
+                        return Ok(ExecOutcome::Goto(l));
+                    }
+                }
+            }
+            "RETURN" => return Ok(ExecOutcome::Return),
+            _ => {}
+        }
+        Ok(ExecOutcome::Continue)
+    }
+}
+
+#[test]
+fn exec_cics_operands_handle_and_return() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("T.cbl");
+    let body = "IDENTIFICATION DIVISION.
+PROGRAM-ID. CICSTEST.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 WS-SYSID PIC X(4).
+01 WS-KEY PIC X(3) VALUE 'BAD'.
+01 WS-REC PIC X(10).
+01 WS-RESP PIC S9(8) COMP.
+PROCEDURE DIVISION.
+    EXEC CICS ASSIGN SYSID(WS-SYSID) END-EXEC.
+    DISPLAY WS-SYSID.
+    EXEC CICS READ FILE('ACCT') INTO(WS-REC) RIDFLD(WS-KEY)
+         LENGTH(LENGTH OF WS-REC) RESP(WS-RESP) END-EXEC.
+    IF WS-RESP = DFHRESP(NOTFND)
+        DISPLAY 'RESP NOTFND'
+    END-IF.
+    EXEC CICS HANDLE CONDITION NOTFND(NOT-FOUND) END-EXEC.
+    EXEC CICS READ FILE('ACCT') INTO(WS-REC) RIDFLD(WS-KEY)
+    END-EXEC.
+    DISPLAY 'NOT REACHED'.
+NOT-FOUND.
+    DISPLAY 'HANDLED'.
+    EXEC CICS RETURN END-EXEC.
+    DISPLAY 'AFTER RETURN'.";
+    let text: String = body.lines().map(|l| format!("       {l}\n")).collect();
+    std::fs::write(&path, text).unwrap();
+    let module = zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap();
+    let out = Capture::default();
+    let host = Rc::new(TestCics::default());
+    let mut m = Machine::new(vec![]);
+    m.set_stdout(Box::new(out.clone()));
+    m.set_exec_host(host.clone());
+    m.run_main(module).unwrap();
+    let out = String::from_utf8(out.0.borrow().clone()).unwrap();
+    assert_eq!(out, "ZEUS\nRESP NOTFND\nHANDLED\n");
+    assert_eq!(
+        host.log.borrow()[1],
+        "READ FILE INTO RIDFLD LENGTH RESP".to_string()
+    );
+}

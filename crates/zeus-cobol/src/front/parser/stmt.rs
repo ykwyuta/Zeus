@@ -3,7 +3,7 @@
 use super::{Parser, VERBS};
 use crate::diag::Result;
 use crate::front::ast::*;
-use crate::front::lexer::Tok;
+use crate::front::lexer::{Tok, Token};
 
 /// Exception phrases recognised after I/O and arithmetic statements.
 #[derive(Clone, Copy)]
@@ -19,6 +19,7 @@ enum Phrase {
 impl Parser {
     fn is_verb(&self) -> bool {
         matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(w)) if VERBS.contains(&w.as_str()))
+            || matches!(self.peek().map(|t| &t.tok), Some(Tok::Exec(..)))
             || (self.is("NEXT") && self.is_at(1, "SENTENCE"))
     }
 
@@ -194,6 +195,14 @@ impl Parser {
             self.i += 2;
             return Ok(Stmt::NextSentence);
         }
+        if let Some(Token {
+            tok: Tok::Exec(kind, text),
+            pos,
+        }) = self.peek().cloned()
+        {
+            self.i += 1;
+            return Ok(Stmt::Exec(self.exec_block(&kind, &text, pos)?));
+        }
         let verb = self
             .next()
             .and_then(|t| t.word().map(str::to_string))
@@ -226,6 +235,21 @@ impl Parser {
                 }
             }
             "GENERATE" => Stmt::Generate(self.data_ref()?),
+            "ENTRY" => {
+                let name = match self.next().map(|t| t.tok) {
+                    Some(Tok::Str(s)) => s,
+                    _ => return self.err("entry name literal expected"),
+                };
+                let mut using = Vec::new();
+                if self.accept("USING") {
+                    while self.is_operand_start() && !self.is_verb() {
+                        self.accept("BY");
+                        self.accept("REFERENCE");
+                        using.push(self.data_ref()?);
+                    }
+                }
+                Stmt::Entry { name, using, pos }
+            }
             "SUPPRESS" => {
                 self.accept("PRINTING");
                 Stmt::SuppressPrinting

@@ -44,6 +44,7 @@ fn alnum_function(f: Func) -> bool {
             | Func::LowerCase
             | Func::UpperCase
             | Func::Reverse
+            | Func::Trim
             | Func::WhenCompiled
     )
 }
@@ -96,6 +97,9 @@ pub fn function(name: &str) -> Option<Func> {
         "DATE-TO-YYYYMMDD" => Func::DateToYyyymmdd,
         "DAY-TO-YYYYDDD" => Func::DayToYyyyddd,
         "YEAR-TO-YYYY" => Func::YearToYyyy,
+        "TRIM" => Func::Trim,
+        "TEST-NUMVAL" => Func::TestNumVal,
+        "TEST-NUMVAL-C" => Func::TestNumValC,
         _ => return None,
     })
 }
@@ -211,6 +215,8 @@ impl Gen<'_> {
             Operand::Fig(Figurative::Zero) => Ex::Lit(Dec::ZERO),
             Operand::Ref(r) => Ex::Load(self.loc(r)?),
             Operand::LengthOf(r) => Ex::LengthOf(self.loc(r)?),
+            Operand::AddressOf(r) => Ex::AddressOf(self.loc(r)?),
+            Operand::Null => Ex::Lit(Dec::ZERO),
             Operand::Func(f) => {
                 let func = function(&f.name)
                     .ok_or_else(|| Diag::error(f.pos, format!("unknown function {}", f.name)))?;
@@ -235,6 +241,16 @@ impl Gen<'_> {
     fn func_args(&mut self, args: &[Expr]) -> Result<Vec<Arg>> {
         let mut out = Vec::new();
         for a in args {
+            // TRIM (x LEADING / TRAILING)
+            if let Expr::Operand(Operand::Ref(r)) = a
+                && (r.name == "LEADING" || r.name == "TRAILING")
+                && r.qualifiers.is_empty()
+                && self.dm.resolve(r).is_err()
+            {
+                let flag = if r.name == "LEADING" { "L" } else { "T" };
+                out.push(Arg::Src(Src::Alnum(crate::ebcdic::encode(flag))));
+                continue;
+            }
             if let Expr::Operand(Operand::Ref(r)) = a
                 && r.subscripts.iter().any(|s| matches!(s, Subscript::All))
             {
@@ -307,7 +323,8 @@ impl Gen<'_> {
                 }
             }
             Operand::LengthOf(r) => Src::Num(Ex::LengthOf(self.loc(r)?)),
-            Operand::AddressOf(_) | Operand::Null => Src::Fig(Fig::Low),
+            Operand::AddressOf(r) => Src::Num(Ex::AddressOf(self.loc(r)?)),
+            Operand::Null => Src::Num(Ex::Lit(Dec::ZERO)),
         })
     }
 

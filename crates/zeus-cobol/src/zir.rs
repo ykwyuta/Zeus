@@ -66,6 +66,55 @@ pub struct ProgramCode {
     pub debug_item: Option<u32>,
     /// Report Writer reports.
     pub reports: Vec<ReportDef>,
+    /// EXEC CICS / SQL / DLI statements (operand of `Instr::Exec`).
+    #[serde(default)]
+    pub execs: Vec<ExecDef>,
+    /// EXEC blocks of the data division (SQL DECLARE CURSOR, ...).
+    #[serde(default)]
+    pub data_execs: Vec<ExecDef>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExecKind {
+    Cics,
+    Sql,
+    Dli,
+}
+
+/// An embedded EXEC statement, run by the host interface (CICS, Db2, IMS).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecDef {
+    pub kind: ExecKind,
+    /// Source line (for diagnostics and EIB fields).
+    pub line: u32,
+    /// CICS / DLI: command word; SQL: first keyword.
+    pub command: String,
+    pub options: Vec<ExecOpt>,
+    /// SQL text with `?` for each host variable.
+    pub sql: Option<String>,
+    /// SQL host variables and indicator variables, in order.
+    pub host: Vec<(Loc, Option<Loc>)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecOpt {
+    pub name: String,
+    pub arg: Option<ExecVal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExecVal {
+    /// A data area: its address and length are passed.
+    Area(Loc),
+    /// A value: literal or expression.
+    Value(Src),
+    /// `ADDRESS OF item`: a pointer value or receiver (SET option).
+    Address(Loc),
+    /// A procedure name (HANDLE CONDITION / AID / ABEND LABEL).
+    Label(u32),
+    /// A name that is not a data item (DL/I segment names, ...) or text
+    /// that is not a COBOL expression.
+    Name(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -360,6 +409,11 @@ pub enum Arg {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Func {
+    /// TRIM (Enterprise COBOL); a second argument "L" / "T" trims
+    /// only leading / trailing spaces.
+    Trim,
+    TestNumVal,
+    TestNumValC,
     Abs,
     Acos,
     Annuity,
@@ -779,6 +833,8 @@ pub enum Instr {
     /// Execute the next statement only once per program activation (used
     /// for one-time initialisation of nested INITIAL programs).
     Unsupported(String),
+    /// EXEC statement (index into `ProgramCode::execs`).
+    Exec(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

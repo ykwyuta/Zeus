@@ -10,6 +10,8 @@ pub struct Program {
     pub pos: Pos,
     pub initial: bool,
     pub common: bool,
+    /// RECURSIVE attribute (recursive CALLs are not supported yet).
+    pub recursive: bool,
     pub env: Environment,
     pub data: DataDivision,
     pub procedure: Procedure,
@@ -117,6 +119,59 @@ pub struct DataDivision {
     pub working: Vec<DataEntry>,
     pub local: Vec<DataEntry>,
     pub linkage: Vec<DataEntry>,
+    /// EXEC blocks of the data division (EXEC SQL DECLARE ... and the
+    /// like), in source order.
+    pub execs: Vec<ExecBlock>,
+}
+
+/// Kind of an embedded EXEC block.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ExecKind {
+    Cics,
+    Sql,
+    Dli,
+}
+
+/// An `EXEC CICS|SQL|DLI ... END-EXEC` block.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecBlock {
+    pub kind: ExecKind,
+    pub pos: Pos,
+    /// CICS / DLI: the command (first word); SQL: the first keyword.
+    pub command: String,
+    /// CICS / DLI options in source order (the command excluded).
+    pub options: Vec<ExecOption>,
+    /// SQL: the statement text with each host variable replaced by `?`,
+    /// and the host variables in order.
+    pub sql: Option<SqlText>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct ExecOption {
+    pub name: String,
+    pub arg: Option<ExecArg>,
+    pub pos: Pos,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ExecArg {
+    /// A data reference, literal, LENGTH OF / ADDRESS OF or arithmetic
+    /// expression.
+    Expr(Expr),
+    /// Text that is not a COBOL expression (DL/I WHERE conditions, names).
+    Raw(String),
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SqlText {
+    pub text: String,
+    pub host: Vec<SqlHostVar>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct SqlHostVar {
+    pub var: DataRef,
+    pub indicator: Option<DataRef>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -811,4 +866,11 @@ pub enum Stmt {
     SuppressPrinting,
     /// Statement the code generator cannot handle yet.
     Unsupported(String, Pos),
+    Exec(ExecBlock),
+    /// ENTRY literal [USING ...]: an alternate entry point.
+    Entry {
+        name: String,
+        using: Vec<DataRef>,
+        pos: Pos,
+    },
 }

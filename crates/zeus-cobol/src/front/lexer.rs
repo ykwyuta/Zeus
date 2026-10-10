@@ -15,6 +15,9 @@ pub enum Tok {
     Hex(Vec<u8>),
     /// PICTURE character-string.
     Pic(String),
+    /// An embedded `EXEC <kind> ... END-EXEC` block: the kind (`CICS`,
+    /// `SQL`, `DLI`) and the source characters between it and END-EXEC.
+    Exec(String, Vec<(char, Pos)>),
     /// `== ... ==` pseudo-text.
     Pseudo(Vec<Token>),
     Period,
@@ -61,6 +64,7 @@ impl Token {
                 b.iter().map(|x| format!("{x:02X}")).collect::<String>()
             ),
             Tok::Pseudo(_) => "==...==".to_string(),
+            Tok::Exec(k, _) => format!("EXEC {k}"),
             Tok::Period => ".".into(),
             Tok::LParen => "(".into(),
             Tok::RParen => ")".into(),
@@ -281,6 +285,62 @@ impl Lexer<'_> {
         Ok(())
     }
 
+    /// Word at `i` (upper-cased) and the index after it.
+    fn word_at(&self, mut i: usize) -> (String, usize) {
+        let mut w = String::new();
+        while let Some((c, _)) = self.s.get(i) {
+            if !is_word_char(*c) {
+                break;
+            }
+            w.push(c.to_ascii_uppercase());
+            i += 1;
+        }
+        (w, i)
+    }
+
+    /// `EXEC CICS|SQL|DLI ... END-EXEC` at the current position: one
+    /// [`Tok::Exec`] holding the raw text (literals kept intact).
+    fn exec_block(&mut self) -> Result<Option<()>> {
+        let pos = self.pos();
+        let (w, mut j) = self.word_at(self.i);
+        if w != "EXEC" && w != "EXECUTE" {
+            return Ok(None);
+        }
+        while self.s.get(j).is_some_and(|(c, _)| is_space(*c)) {
+            j += 1;
+        }
+        let (kind, k) = self.word_at(j);
+        if !matches!(kind.as_str(), "CICS" | "SQL" | "DLI" | "SQLIMS") {
+            return Ok(None);
+        }
+        let start = k;
+        let mut i = k;
+        let mut quote: Option<char> = None;
+        loop {
+            let Some((c, _)) = self.s.get(i) else {
+                return Err(Diag::error(pos, "END-EXEC expected"));
+            };
+            match quote {
+                Some(q) if *c == q => quote = None,
+                Some(_) => {}
+                None if *c == '\'' || *c == '"' => quote = Some(*c),
+                None if c.is_ascii_alphabetic() && (i == 0 || !is_word_char(self.s[i - 1].0)) => {
+                    let (w, e) = self.word_at(i);
+                    if w == "END-EXEC" {
+                        let text = self.s[start..i].to_vec();
+                        self.i = e;
+                        self.push(Tok::Exec(kind, text), pos);
+                        return Ok(Some(()));
+                    }
+                    i = e;
+                    continue;
+                }
+                None => {}
+            }
+            i += 1;
+        }
+    }
+
     /// Lexes one ordinary token at the current position.
     fn one(&mut self) -> Result<()> {
         let pos = self.pos();
@@ -302,6 +362,9 @@ impl Lexer<'_> {
             return Ok(());
         }
         if c.is_ascii_alphanumeric() {
+            if let Some(()) = self.exec_block()? {
+                return Ok(());
+            }
             let start = self.i;
             while self.peek(0).is_some_and(is_word_char) {
                 self.i += 1;

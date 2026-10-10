@@ -2,6 +2,7 @@
 
 pub mod data;
 mod eval;
+pub mod exec;
 mod files;
 mod func;
 mod le;
@@ -107,6 +108,8 @@ pub struct Machine {
     return_code: i32,
     /// Programs implemented by the host (see [`Machine::add_native`]).
     natives: HashMap<String, NativeFn>,
+    /// Runs EXEC CICS / SQL / DLI statements.
+    exec_host: Option<Rc<dyn exec::ExecHost>>,
 }
 
 /// A program implemented by the host: it gets the storage and the
@@ -168,6 +171,7 @@ impl Machine {
             step: StepInfo::default(),
             opened: Vec::new(),
             natives: HashMap::new(),
+            exec_host: None,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -470,6 +474,17 @@ impl Machine {
                 ));
             };
             pc += 1;
+            let ins = match ins {
+                Instr::Exec(n) => match self.exec(cur, &code, *n)? {
+                    exec::ExecOutcome::Continue => continue,
+                    exec::ExecOutcome::Goto(t) => {
+                        pc = t;
+                        continue;
+                    }
+                    exec::ExecOutcome::Return => &Instr::GoBack,
+                },
+                _ => ins,
+            };
             match ins {
                 Instr::Nop => {}
                 Instr::Move(src, dst) => {
@@ -775,6 +790,7 @@ impl Machine {
                     self.sort_records.push(rec);
                 }
                 Instr::Return(f, into) => self.sort_return_record(cur, *f, into.as_ref())?,
+                Instr::Exec(_) => unreachable!(),
                 Instr::Unsupported(name) => {
                     return err(format!(
                         "{}: statement {name} is not supported yet",

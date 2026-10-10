@@ -1,22 +1,22 @@
 //! `zcobc` - the Zeus COBOL compiler driver.
 //!
 //! ```text
-//! zcobc compile [-I <dir>]... [--subprogram] -o <artifact> <source>
+//! zcobc compile [-I <dir>]... [--subprogram] [--cics] -o <artifact> <source>
 //! zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>   (files: see zeus_ds::dd)
-//! zcobc check [-I <dir>]... <source>...     (syntax check only)
+//! zcobc check [-I <dir>]... [--cics] <source>...   (compile without output)
 //! ```
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use zeus_cobol::front::{self, FileTable, FrontOptions};
+use zeus_cobol::front::FrontOptions;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] -o <artifact> <source>"
+        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] -o <artifact> <source>"
     );
     eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>");
-    eprintln!("       zcobc check [-I <dir>]... <source>...");
+    eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
     ExitCode::from(2)
 }
 
@@ -25,6 +25,8 @@ struct Args {
     output: Option<PathBuf>,
     subprogram: bool,
     debugging_lines: bool,
+    /// `--cics`: translate as a CICS program.
+    cics: bool,
     /// DD allocations (`--dd NAME=PATH`).
     dds: Vec<(String, PathBuf)>,
     /// `--parm TEXT`: the EXEC PARM of the main program.
@@ -38,6 +40,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         output: None,
         subprogram: false,
         debugging_lines: false,
+        cics: false,
         dds: Vec::new(),
         parm: String::new(),
         inputs: Vec::new(),
@@ -49,6 +52,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "-o" => a.output = Some(PathBuf::from(it.next()?)),
             "--subprogram" => a.subprogram = true,
             "--debugging-lines" => a.debugging_lines = true,
+            "--cics" => a.cics = true,
             "--parm" => a.parm = it.next()?.clone(),
             "--dd" => {
                 let (n, p) = it.next()?.split_once('=')?;
@@ -65,16 +69,19 @@ fn check(args: &Args) -> ExitCode {
     let opts = FrontOptions {
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
+        cics: args.cics,
     };
     let mut worst = 0;
     for input in &args.inputs {
-        let mut files = FileTable::default();
-        match front::parse_file(input, &opts, &mut files) {
-            Ok(programs) => {
-                println!("{}: OK ({} program(s))", input.display(), programs.len());
+        match zeus_cobol::compile_file(input, &opts) {
+            Ok(module) => {
+                println!(
+                    "{}: OK ({} program(s))",
+                    input.display(),
+                    module.programs.len()
+                );
             }
-            Err(mut d) => {
-                d.file = files.names.get(d.pos.file as usize).cloned();
+            Err(d) => {
                 eprintln!("{d}");
                 worst = worst.max(d.severity.return_code());
             }
@@ -90,6 +97,7 @@ fn compile(args: &Args) -> ExitCode {
     let opts = FrontOptions {
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
+        cics: args.cics,
     };
     match zeus_cobol::compile_file(input, &opts) {
         Ok(module) => {

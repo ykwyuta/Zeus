@@ -142,7 +142,7 @@ impl Machine {
         Ok((a, len))
     }
 
-    fn loc_type(&self, cur: usize, loc: &Loc) -> DataType {
+    pub(super) fn loc_type(&self, cur: usize, loc: &Loc) -> DataType {
         let ty = &self.instances[cur].code.descs[loc.desc as usize].ty;
         if loc.refmod.is_some() {
             DataType::Alphanumeric { just: false }

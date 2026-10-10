@@ -1,6 +1,7 @@
 //! Recursive-descent parser producing the AST.
 
 mod data;
+mod exec;
 mod expr;
 mod stmt;
 
@@ -26,6 +27,7 @@ pub const VERBS: &[&str] = &[
     "DISABLE",
     "DIVIDE",
     "ENABLE",
+    "ENTRY",
     "EVALUATE",
     "EXIT",
     "GENERATE",
@@ -92,6 +94,21 @@ pub fn parse(toks: Vec<Token>) -> Result<Vec<Program>> {
         return Err(Diag::error(Pos::default(), "no program found"));
     }
     Ok(programs)
+}
+
+/// Data description entries from free-form text (system-supplied
+/// records such as the EXEC interface block).
+pub fn data_entries_from(text: &str) -> Result<Vec<DataEntry>> {
+    let stream: Vec<(char, Pos)> = text.chars().map(|c| (c, Pos::default())).collect();
+    let mut p = Parser {
+        toks: super::lexer::lex(&stream, false)?,
+        i: 0,
+        class_names: HashSet::new(),
+        mnemonics: HashSet::new(),
+        tables: HashSet::new(),
+        in_procedure: false,
+    };
+    p.data_entries()
 }
 
 impl Parser {
@@ -281,6 +298,8 @@ impl Parser {
                 prog.initial = true;
             } else if self.accept("COMMON") {
                 prog.common = true;
+            } else if self.accept("RECURSIVE") {
+                prog.recursive = true;
             } else {
                 break;
             }
