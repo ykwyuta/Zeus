@@ -367,7 +367,7 @@ impl Gen<'_> {
         })
     }
 
-    fn condition_name(&mut self, r: &DataRef) -> Result<Cx> {
+    pub fn condition_name(&mut self, r: &DataRef) -> Result<Cx> {
         if r.qualifiers.is_empty()
             && r.subscripts.is_empty()
             && let Some(&(sw, on)) = self.switch_conds.get(&r.name)
@@ -418,7 +418,27 @@ impl Gen<'_> {
         Ok(out.unwrap_or(Cx::True))
     }
 
+    /// A bare reference to a condition-name or switch-status condition.
+    pub fn condition_ref(&self, e: &Expr) -> Option<DataRef> {
+        let Expr::Operand(Operand::Ref(r)) = e else {
+            return None;
+        };
+        if r.qualifiers.is_empty()
+            && r.subscripts.is_empty()
+            && self.switch_conds.contains_key(&r.name)
+        {
+            return Some(r.clone());
+        }
+        let id = self.dm.resolve(r).ok()?;
+        self.dm.items[id].cond_of.map(|_| r.clone())
+    }
+
     pub fn relation(&mut self, a: &Expr, op: RelOp, b: &Expr) -> Result<Cx> {
+        // An abbreviated relation whose object is a condition-name is the
+        // condition itself ("A = 1 AND COND-NAME").
+        if let Some(r) = self.condition_ref(b) {
+            return self.condition_name(&r);
+        }
         let fig_zero = |e: &Expr| matches!(e, Expr::Operand(Operand::Fig(Figurative::Zero)));
         let na = self.is_numeric_expr(a) || (fig_zero(a) && self.is_numeric_expr(b));
         let nb = self.is_numeric_expr(b) || (fig_zero(b) && self.is_numeric_expr(a));

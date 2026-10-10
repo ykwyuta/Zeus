@@ -372,13 +372,37 @@ impl Parser {
             }
             "GO" => {
                 self.accept("TO");
+                // A list of targets only with DEPENDING ON; otherwise one.
+                let mut k = 0;
+                let mut depending = false;
+                while let Some(t) = self.peek_at(k) {
+                    match &t.tok {
+                        Tok::Word(w) if w == "DEPENDING" => {
+                            depending = true;
+                            break;
+                        }
+                        Tok::Word(w) if VERBS.contains(&w.as_str()) => break,
+                        Tok::Word(_) | Tok::Num(_) => k += 1,
+                        _ => break,
+                    }
+                }
                 let mut targets = Vec::new();
-                while matches!(
+                if depending {
+                    while !self.is("DEPENDING") {
+                        targets.push(self.proc_name()?);
+                    }
+                } else if matches!(
                     self.peek().map(|t| &t.tok),
                     Some(Tok::Word(_)) | Some(Tok::Num(_))
                 ) && !self.is_verb()
-                    && !self.is("DEPENDING")
-                    && !self.is_any(&["ELSE", "WHEN", "END-IF", "END-PERFORM", "END-EVALUATE"])
+                    && !self.is_any(&[
+                        "ELSE",
+                        "WHEN",
+                        "END-IF",
+                        "END-PERFORM",
+                        "END-EVALUATE",
+                        "NOT",
+                    ])
                 {
                     targets.push(self.proc_name()?);
                 }
@@ -1305,21 +1329,31 @@ impl Parser {
     }
 
     fn set(&mut self) -> Result<Stmt> {
-        // SET mnemonic TO ON/OFF [mnemonic TO ON/OFF ...]
+        // SET mnemonic... TO ON/OFF [mnemonic... TO ON/OFF ...]
         if let Some(Tok::Word(w)) = self.peek().map(|t| &t.tok)
             && self.mnemonics.contains(w)
-            && self.is_at(1, "TO")
-            && (self.is_at(2, "ON") || self.is_at(2, "OFF"))
         {
             let mut out = Vec::new();
-            while let Some(Tok::Word(w)) = self.peek().map(|t| &t.tok) {
-                if !(self.is_at(1, "TO") && (self.is_at(2, "ON") || self.is_at(2, "OFF"))) {
+            loop {
+                let mut names = Vec::new();
+                while let Some(Tok::Word(w)) = self.peek().map(|t| &t.tok) {
+                    if !self.mnemonics.contains(w) {
+                        break;
+                    }
+                    names.push(w.clone());
+                    self.i += 1;
+                }
+                if names.is_empty() {
                     break;
                 }
-                let name = w.clone();
-                let on = self.is_at(2, "ON");
-                self.i += 3;
-                out.push((name, on));
+                self.expect("TO")?;
+                let on = if self.accept("ON") {
+                    true
+                } else {
+                    self.expect("OFF")?;
+                    false
+                };
+                out.extend(names.into_iter().map(|n| (n, on)));
             }
             return Ok(Stmt::Set(SetStmt::Switch(out)));
         }

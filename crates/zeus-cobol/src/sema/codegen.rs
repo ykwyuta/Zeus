@@ -224,6 +224,14 @@ impl<'a> Gen<'a> {
         for sec in sections {
             let first = self.paras.len() as u32;
             for p in &sec.paragraphs {
+                // A paragraph consisting of a single GO TO can be ALTERed.
+                let alterable = p.sentences.len() == 1
+                    && matches!(p.sentences[0].as_slice(), [Stmt::GoTo { targets, depending: None, .. }] if targets.len() <= 1);
+                if alterable {
+                    let slot = self.alter_init.len() as u32;
+                    self.alter_init.push(u32::MAX);
+                    self.alter_slots.insert(self.paras.len() as u32, slot);
+                }
                 let l = self.label();
                 let name = p.name.clone().unwrap_or_default();
                 self.paras.push((name, sec.name.clone(), l));
@@ -551,20 +559,15 @@ impl<'a> Gen<'a> {
             let l = self.paras[para_idx as usize].2;
             self.bind(l);
             self.pos = p.pos;
-            // A paragraph consisting of a single GO TO can be ALTERed.
-            let alterable = p.sentences.len() == 1
-                && matches!(p.sentences[0].as_slice(), [Stmt::GoTo { targets, depending: None, .. }] if targets.len() <= 1);
-            if alterable {
+            if let Some(&slot) = self.alter_slots.get(&para_idx) {
                 let Stmt::GoTo { targets, .. } = &p.sentences[0][0] else {
                     unreachable!()
                 };
-                let slot = self.alter_init.len() as u32;
                 let target = match targets.first() {
                     Some(t) => self.proc_start(t)?,
                     None => self.para_end_labels[para_idx as usize],
                 };
-                self.alter_init.push(target);
-                self.alter_slots.insert(para_idx, slot);
+                self.alter_init[slot as usize] = target;
                 self.emit(Instr::AlterableGo(slot));
             } else {
                 for sentence in &p.sentences {
@@ -622,6 +625,17 @@ impl<'a> Gen<'a> {
             acc = Ex::Bin(Op::Add, Box::new(acc), Box::new(self.ex(e)?));
         }
         Ok(acc)
+    }
+
+    /// A value used by several receivers is computed once, before any
+    /// receiver changes.
+    fn once(&mut self, value: Ex, receivers: usize) -> Ex {
+        if receivers <= 1 || matches!(value, Ex::Lit(_) | Ex::Temp(_)) {
+            return value;
+        }
+        let t = self.temp();
+        self.emit(Instr::SetTemp(t, value));
+        Ex::Temp(t)
     }
 
     fn store(&mut self, value: Ex, r: &Receiver, check: bool) -> Result<()> {
@@ -766,11 +780,13 @@ impl<'a> Gen<'a> {
                     }
                 } else if !giving.is_empty() {
                     let sum = self.sum(from)?;
+                    let sum = self.once(sum, giving.len());
                     for r in giving {
                         self.store(sum.clone(), r, check)?;
                     }
                 } else {
                     let sum = self.sum(from)?;
+                    let sum = self.once(sum, to.len());
                     for r in to {
                         let v = Ex::Bin(
                             Op::Add,
@@ -815,11 +831,13 @@ impl<'a> Gen<'a> {
                     let minuend = self.ex(&from[0])?;
                     let subs = self.sum(&from[1..])?;
                     let v = Ex::Bin(Op::Sub, Box::new(minuend), Box::new(subs));
+                    let v = self.once(v, giving.len());
                     for r in giving {
                         self.store(v.clone(), r, check)?;
                     }
                 } else {
                     let subs = self.sum(from)?;
+                    let subs = self.once(subs, subtrahend_of.len());
                     for r in subtrahend_of {
                         let v = Ex::Bin(
                             Op::Sub,
@@ -843,6 +861,7 @@ impl<'a> Gen<'a> {
                 let check = size_error.on.is_some() || size_error.not_on.is_some();
                 self.emit(Instr::ClearSizeError);
                 let a = self.ex(by)?;
+                let a = self.once(a, into.len());
                 if giving.is_empty() {
                     for r in into {
                         let v = Ex::Bin(
@@ -855,6 +874,7 @@ impl<'a> Gen<'a> {
                 } else {
                     let b = self.ex(operand)?;
                     let v = Ex::Bin(Op::Mul, Box::new(a), Box::new(b));
+                    let v = self.once(v, giving.len());
                     for r in giving {
                         self.store(v.clone(), r, check)?;
                     }
@@ -874,6 +894,7 @@ impl<'a> Gen<'a> {
                 let check = size_error.on.is_some() || size_error.not_on.is_some();
                 self.emit(Instr::ClearSizeError);
                 let d = self.ex(divisor)?;
+                let d = self.once(d, into.len().max(giving.len()));
                 match dividend {
                     None => {
                         for r in into {
@@ -901,6 +922,7 @@ impl<'a> Gen<'a> {
                             });
                         } else {
                             let v = Ex::Bin(Op::Div, Box::new(dv), Box::new(d));
+                            let v = self.once(v, giving.len());
                             for r in giving {
                                 self.store(v.clone(), r, check)?;
                             }
@@ -919,6 +941,7 @@ impl<'a> Gen<'a> {
                 let check = size_error.on.is_some() || size_error.not_on.is_some();
                 self.emit(Instr::ClearSizeError);
                 let v = self.ex(expr)?;
+                let v = self.once(v, targets.len());
                 for r in targets {
                     self.store(v.clone(), r, check)?;
                 }
@@ -1741,7 +1764,10 @@ impl<'a> Gen<'a> {
                 EvalSubject::True => Some(Cx::True),
                 EvalSubject::False => Some(Cx::Not(Box::new(Cx::True))),
                 EvalSubject::Cond(c) => Some(g.cond(c)?),
-                EvalSubject::Expr(_) => None,
+                EvalSubject::Expr(e) => match g.condition_ref(e) {
+                    Some(r) => Some(g.condition_name(&r)?),
+                    None => None,
+                },
             })
         };
         Ok(match obj {
@@ -1753,6 +1779,33 @@ impl<'a> Gen<'a> {
                     EvalObject::Cond(c) => self.cond(c)?,
                     _ => unreachable!(),
                 };
+                match truth(self, subj)? {
+                    Some(Cx::True) if matches!(subj, EvalSubject::True) => o,
+                    Some(s) => Cx::Or(
+                        Box::new(Cx::And(Box::new(s.clone()), Box::new(o.clone()))),
+                        Box::new(Cx::And(
+                            Box::new(Cx::Not(Box::new(s))),
+                            Box::new(Cx::Not(Box::new(o))),
+                        )),
+                    ),
+                    None => {
+                        return Err(Diag::error(
+                            self.pos,
+                            "WHEN condition does not match EVALUATE subject",
+                        ));
+                    }
+                }
+            }
+            EvalObject::Value {
+                not,
+                from,
+                thru: None,
+            } if !matches!(subj, EvalSubject::Expr(e) if self.condition_ref(e).is_none())
+                && self.condition_ref(from).is_some() =>
+            {
+                let r = self.condition_ref(from).unwrap();
+                let o = self.condition_name(&r)?;
+                let o = if *not { Cx::Not(Box::new(o)) } else { o };
                 match truth(self, subj)? {
                     Some(Cx::True) => o,
                     Some(s) => Cx::Or(

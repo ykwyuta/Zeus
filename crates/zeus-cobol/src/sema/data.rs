@@ -678,7 +678,10 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     // Initial values.
     let mut image = vec![0u8; cursor as usize];
     for &r in ws.iter().chain(ls.iter()) {
-        dm.init_values(r, 0, &mut image)?;
+        // A redefining record shares the storage of the redefined one.
+        if dm.items[r].entry.redefines.is_none() {
+            dm.init_values(r, 0, &mut image)?;
+        }
     }
     for recs in &file_records {
         for &r in recs {
