@@ -24,11 +24,13 @@ const BRT: u8 = 0x08;
 const DRK: u8 = 0x0C;
 const MDT: u8 = 0x01;
 
-fn entries(items: &[(&str, u8)]) -> String {
-    items
-        .iter()
-        .map(|(n, v)| format!("       01 {n} PIC X VALUE X'{v:02X}'.\n"))
-        .collect()
+/// A group `name` of one-byte constants.
+fn entries(name: &str, items: &[(&str, u8)]) -> String {
+    let mut s = format!("       01 {name}.\n");
+    for (n, v) in items {
+        s.push_str(&format!("          02 {n} PIC X VALUE X'{v:02X}'.\n"));
+    }
+    s
 }
 
 fn dfhaid() -> String {
@@ -54,56 +56,59 @@ fn dfhaid() -> String {
         v.push((format!("DFHPF{}", i + 1), *b));
     }
     let v: Vec<(&str, u8)> = v.iter().map(|(n, b)| (n.as_str(), *b)).collect();
-    entries(&v)
+    entries("DFHAID", &v)
 }
 
 fn dfhbmsca() -> String {
     let a = attr_char;
-    entries(&[
-        // field attributes
-        ("DFHBMUNP", a(0)),
-        ("DFHBMUNN", a(NUM)),
-        ("DFHBMPRO", a(PROT)),
-        ("DFHBMASK", a(PROT | NUM)),
-        ("DFHBMBRY", a(BRT)),
-        ("DFHBMDAR", a(DRK)),
-        ("DFHBMFSE", a(MDT)),
-        ("DFHBMPRF", a(PROT | MDT)),
-        ("DFHBMASF", a(PROT | NUM | MDT)),
-        ("DFHBMASB", a(PROT | NUM | BRT)),
-        ("DFHUNNOD", a(DRK | MDT)),
-        ("DFHUNIMD", a(BRT | MDT)),
-        ("DFHUNNUM", a(NUM | MDT)),
-        ("DFHUNNUB", a(NUM | BRT)),
-        ("DFHUNINT", a(NUM | BRT | MDT)),
-        ("DFHUNNON", a(NUM | DRK | MDT)),
-        ("DFHPROTI", a(PROT | BRT)),
-        ("DFHPROTN", a(PROT | DRK)),
-        // printer orders
-        ("DFHBMPEM", 0x19),
-        ("DFHBMPNL", 0x15),
-        ("DFHBMPFF", 0x0C),
-        ("DFHBMPCR", 0x0D),
-        ("DFHBMPSO", 0x0E),
-        ("DFHBMPSI", 0x0F),
-        // flag byte
-        ("DFHBMEOF", 0x80),
-        ("DFHBMCUR", 0x02),
-        ("DFHBMEC", 0x82),
-        // extended attributes: default, colour, highlighting
-        ("DFHDFCOL", 0x00),
-        ("DFHBLUE", 0xF1),
-        ("DFHRED", 0xF2),
-        ("DFHPINK", 0xF3),
-        ("DFHGREEN", 0xF4),
-        ("DFHTURQ", 0xF5),
-        ("DFHYELLO", 0xF6),
-        ("DFHNEUTR", 0xF7),
-        ("DFHDFHI", 0x00),
-        ("DFHBLINK", 0xF1),
-        ("DFHREVRS", 0xF2),
-        ("DFHUNDLN", 0xF4),
-    ])
+    entries(
+        "DFHBMSCA",
+        &[
+            // field attributes
+            ("DFHBMUNP", a(0)),
+            ("DFHBMUNN", a(NUM)),
+            ("DFHBMPRO", a(PROT)),
+            ("DFHBMASK", a(PROT | NUM)),
+            ("DFHBMBRY", a(BRT)),
+            ("DFHBMDAR", a(DRK)),
+            ("DFHBMFSE", a(MDT)),
+            ("DFHBMPRF", a(PROT | MDT)),
+            ("DFHBMASF", a(PROT | NUM | MDT)),
+            ("DFHBMASB", a(PROT | NUM | BRT)),
+            ("DFHUNNOD", a(DRK | MDT)),
+            ("DFHUNIMD", a(BRT | MDT)),
+            ("DFHUNNUM", a(NUM | MDT)),
+            ("DFHUNNUB", a(NUM | BRT)),
+            ("DFHUNINT", a(NUM | BRT | MDT)),
+            ("DFHUNNON", a(NUM | DRK | MDT)),
+            ("DFHPROTI", a(PROT | BRT)),
+            ("DFHPROTN", a(PROT | DRK)),
+            // printer orders
+            ("DFHBMPEM", 0x19),
+            ("DFHBMPNL", 0x15),
+            ("DFHBMPFF", 0x0C),
+            ("DFHBMPCR", 0x0D),
+            ("DFHBMPSO", 0x0E),
+            ("DFHBMPSI", 0x0F),
+            // flag byte
+            ("DFHBMEOF", 0x80),
+            ("DFHBMCUR", 0x02),
+            ("DFHBMEC", 0x82),
+            // extended attributes: default, colour, highlighting
+            ("DFHDFCOL", 0x00),
+            ("DFHBLUE", 0xF1),
+            ("DFHRED", 0xF2),
+            ("DFHPINK", 0xF3),
+            ("DFHGREEN", 0xF4),
+            ("DFHTURQ", 0xF5),
+            ("DFHYELLO", 0xF6),
+            ("DFHNEUTR", 0xF7),
+            ("DFHDFHI", 0x00),
+            ("DFHBLINK", 0xF1),
+            ("DFHREVRS", 0xF2),
+            ("DFHUNDLN", 0xF4),
+        ],
+    )
 }
 
 const SQLCA: &str = "
