@@ -58,7 +58,8 @@ jobs:
 
   hercules-oracle:
     # Records Hercules results for packed-decimal instructions (oracle for
-    # zeus-decimal) and checks the pipeline against known results.
+    # zeus-decimal), checks the pipeline against known results and compares
+    # zeus-decimal with Hercules on fresh random cases.
     runs-on: ubuntu-24.04
     needs: check
     steps:
@@ -68,7 +69,7 @@ jobs:
       - name: Install Hercules (comparison oracle)
         run: sudo apt-get update && sudo apt-get install -y hercules
       - run: cargo test -p zeus-hercdiff
-      - run: cargo run --release -p zeus-hercdiff -- run --count 300 --seed 1 --out work/decimal-oracle.json
+      - run: cargo run --release -p zeus-hercdiff -- run --count 1000 --seed ${{ github.run_number }} --run-seconds 3 --out work/decimal-oracle.json --compare
       - uses: actions/upload-artifact@v4
         with:
           name: decimal-oracle

@@ -416,6 +416,10 @@ name = "zeus-cobol"
 version = "0.1.0"
 
 [[package]]
+name = "zeus-decimal"
+version = "0.1.0"
+
+[[package]]
 name = "zeus-hercdiff"
 version = "0.1.0"
 dependencies = [
@@ -424,6 +428,7 @@ dependencies = [
  "serde",
  "serde_json",
  "tempfile",
+ "zeus-decimal",
 ]
 
 [[package]]

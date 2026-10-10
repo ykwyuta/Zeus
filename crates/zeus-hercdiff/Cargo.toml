@@ -12,6 +12,7 @@ anyhow.workspace = true
 clap.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+zeus-decimal = { path = "../zeus-decimal" }
 
 [dev-dependencies]
 tempfile.workspace = true

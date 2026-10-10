@@ -7,6 +7,7 @@
 //! `zeus-decimal` (docs/proposal/0003 section 3, item 2).
 
 pub mod cases;
+pub mod emulate;
 pub mod hercules;
 pub mod image;
 

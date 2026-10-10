@@ -1,0 +1,11 @@
+[package]
+name = "zeus-decimal"
+description = "Decimal arithmetic for Zeus: packed/zoned/binary data and z/Architecture decimal instruction semantics"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[lints]
+workspace = true

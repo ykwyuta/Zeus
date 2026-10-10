@@ -14,8 +14,8 @@ use clap::Parser;
 
 use zeus_hercdiff::cases::{self, Op, Rng};
 use zeus_hercdiff::hercules::Hercules;
-use zeus_hercdiff::image;
 use zeus_hercdiff::{OracleRun, Record};
+use zeus_hercdiff::{emulate, image};
 
 #[derive(Parser)]
 #[command(
@@ -41,12 +41,24 @@ enum Cli {
         run_seconds: u32,
         #[arg(long)]
         out: PathBuf,
+        /// Also compare the results with zeus-decimal (exit 1 on mismatch).
+        #[arg(long)]
+        compare: bool,
+    },
+    /// Compare a recorded oracle run with zeus-decimal.
+    Compare {
+        #[arg(long)]
+        oracle: PathBuf,
+        /// Show at most this many mismatches.
+        #[arg(long, default_value_t = 20)]
+        show: usize,
     },
 }
 
 fn main() -> ExitCode {
     match real_main() {
-        Ok(()) => ExitCode::SUCCESS,
+        Ok(true) => ExitCode::SUCCESS,
+        Ok(false) => ExitCode::from(1),
         Err(e) => {
             eprintln!("zeus-hercdiff: {e:#}");
             ExitCode::from(2)
@@ -54,16 +66,58 @@ fn main() -> ExitCode {
     }
 }
 
-fn real_main() -> Result<()> {
-    let Cli::Run {
-        count,
-        seed,
-        decimal_overflow_interrupt,
-        hercules,
-        work,
-        run_seconds,
-        out,
-    } = Cli::parse();
+/// Prints mismatches between the oracle and zeus-decimal; true if none.
+fn report_compare(run: &OracleRun, show: usize) -> bool {
+    let bad = emulate::mismatches(&run.records);
+    for (r, ours) in bad.iter().take(show) {
+        println!(
+            "MISMATCH {} {} op1={} op2={}{}",
+            r.case.op.mnemonic(),
+            cases::hex::encode(&r.instruction),
+            cases::hex::encode(&r.case.op1),
+            cases::hex::encode(&r.case.op2),
+            r.case
+                .srp
+                .map_or(String::new(), |(s, i)| format!(" shift={s:02X} round={i}"))
+        );
+        println!("  oracle: {:?}", r.result);
+        println!("  zeus:   {ours:?}");
+    }
+    println!(
+        "compared {} records with zeus-decimal: {} mismatches",
+        run.records.len(),
+        bad.len()
+    );
+    bad.is_empty()
+}
+
+fn real_main() -> Result<bool> {
+    let (count, seed, decimal_overflow_interrupt, hercules, work, run_seconds, out, compare) =
+        match Cli::parse() {
+            Cli::Compare { oracle, show } => {
+                let run: OracleRun = serde_json::from_str(&fs::read_to_string(&oracle)?)?;
+                return Ok(report_compare(&run, show));
+            }
+            Cli::Run {
+                count,
+                seed,
+                decimal_overflow_interrupt,
+                hercules,
+                work,
+                run_seconds,
+                out,
+                compare,
+            } => (
+                count,
+                seed,
+                decimal_overflow_interrupt,
+                hercules,
+                work,
+                run_seconds,
+                out,
+                compare,
+            ),
+        };
     if count == 0 {
         bail!("--count must be positive");
     }
@@ -123,5 +177,11 @@ fn real_main() -> Result<()> {
     };
     fs::write(&out, serde_json::to_string_pretty(&run)? + "\n")?;
     println!("{} records written to {}", run.records.len(), out.display());
-    Ok(())
+    if compare {
+        if decimal_overflow_interrupt {
+            bail!("--compare supports only runs with the decimal-overflow mask off");
+        }
+        return Ok(report_compare(&run, 20));
+    }
+    Ok(true)
 }
