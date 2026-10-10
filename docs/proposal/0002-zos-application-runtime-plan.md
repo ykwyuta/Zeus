@@ -2,6 +2,7 @@
 
 - 状態: 提案 (Draft)
 - 置き換え対象: [0001 z/Architecture エミュレータ作業計画](0001-zos-emulator-work-plan.md) の主目標
+- 関連: [0003 Rust 製 COBOL コンパイラ](0003-cobol-compiler.md) (COBOL のコンパイルは外部処理系に依存せず自作する)
 - ライセンス: GPL-3.0 (リポジトリ既定)
 
 ## 1. 背景と目標
@@ -58,10 +59,9 @@ DB2 9 世代を基準とし、サンプルが実際に使う機能を優先し�
 ```
            ┌──────────── COBOL ソース (+ copybook, BMS, CSD, JCL, DBD/PSB, DDL) ───────────┐
            │                                                                                  │
-   zeus-xlat: EXEC CICS / EXEC SQL / EXEC DLI トランスレータ                     zeus-bms: BMS マクロ → 物理/シンボリックマップ
-           │                                                                                  │
-   COBOL コンパイラ (Phase 1〜: GnuCOBOL, IBM 方言モード)                                     │
-           │  共有ライブラリ                                                                  │
+   zeus-cobol: Rust 製 COBOL コンパイラ (0003)                                    zeus-bms: BMS マクロ → 物理/シンボリックマップ
+     EXEC CICS / EXEC SQL / EXEC DLI を統合処理                                               │
+           │  プログラムオブジェクト (ZIR)                                                    │
            ▼                                                                                  ▼
  ┌────────────────────────────── Zeus ランタイム (Rust) ──────────────────────────────────────────┐
  │ zeus-jcl   JCL 解析・実行, PROC/INCLUDE/SET, COND/IF, DISP, GDG, SYSOUT, 内部リーダ, ジョブキュー │
@@ -82,11 +82,12 @@ DB2 9 世代を基準とし、サンプルが実際に使う機能を優先し�
 1. **データは EBCDIC のまま保持**する。z/OS で作ったデータファイル (CardDemo の `app/data/EBCDIC` 等) を
    無変換で使え、VSAM のキー順・SORT の照合順序・COMP-3 / ゾーン 10 進の挙動が z/OS と一致する。
    ASCII への変換は 3270 端末・ログ表示・外部連携の境界でのみ行う。
-2. **COBOL コンパイラ**: 最初は GnuCOBOL (IBM 方言モード、EBCDIC 照合) をフロントエンドに使い、
-   Rust ランタイムは C ABI で呼び出す。Enterprise COBOL 4.2 との挙動差は互換オプション
-   (TRUNC / NUMPROC / ARITH 相当) と差分テストで管理する。Rust 製の COBOL コンパイラは §8 の任意トラックとする。
-3. **トランスレータは IBM の変換規約に合わせる**: `DFHEIBLK` / `DFHCOMMAREA` / `EIBRESP` / `SQLCA` など、
-   アプリが直接参照する制御ブロックのレイアウトは z/OS と同じにする。
+2. **COBOL コンパイラは自作 (zeus-cobol, 0003)**: 外部の COBOL 処理系に依存しない。
+   記憶域を z/OS と同じバイト配置で扱い、Enterprise COBOL 4.2 の TRUNC / NUMPROC / ARITH や
+   中間結果の桁数規則を仕様どおりに実装する。JCL の `PGM=IGYCRCTL` を zeus-cobol に対応させ、
+   アプリ同梱のコンパイル用 JCL をそのまま使えるようにする。
+3. **埋め込み文はコンパイラに統合し、IBM の変換規約に合わせる**: `DFHEIBLK` / `DFHCOMMAREA` / `EIBRESP` /
+   `SQLCA` など、アプリが直接参照する制御ブロックのレイアウトは z/OS と同じにする。
 4. **Db2 バックエンド**: PostgreSQL を標準とし、Db2 方言 (FETCH FIRST, 日付時刻関数, SQLCODE 対応表等) を
    変換層で吸収する。Db2 for LUW Community Edition を接続可能な第 2 バックエンド兼オラクルとする。
 5. **Assembler の 2 本**: CardDemo の MVSWAIT と COBDATFT は、同じ呼び出し仕様の Rust 実装で置き換える。
@@ -100,7 +101,9 @@ z/OS 本体を検証に使えないため、機能ごとに最も信頼できる
 | JCL の解釈・ステップ実行・COND・DISP・GDG・SYSOUT | **Hercules + MVS 3.8j (TK4-/TK5) の JES2** | 同じ JCL を両方で実行し、ステップ完了コード・データセット状態・SYSOUT を比較 |
 | VSAM / IDCAMS (DEFINE, REPRO, PRINT, AIX, キー順) | **MVS 3.8j の VSAM / IDCAMS** | 同一データでの REPRO・PRINT 出力、キー順の読み出し結果を比較 |
 | IEBGENER / IEBCOPY / SORT、EBCDIC 照合順序 | **MVS 3.8j のユーティリティ** | 出力データセットのバイト単位の比較 |
-| 10 進演算 (COMP-3・ゾーン 10 進)、COBOL 基本文の結果 | **MVS 3.8j の COBOL** (旧規格) | 両方で書ける範囲の検査プログラムで演算結果を比較 |
+| 10 進演算 (COMP-3・ゾーン 10 進)、編集 | **Hercules** の 10 進命令 (AP/MP/DP/ED 等) | zeus-decimal と命令単位で差分テスト (0003 §5) |
+| COBOL 基本文の結果 | **MVS 3.8j の COBOL** (旧規格) | 両方で書ける範囲の検査プログラムで演算結果を比較 |
+| COBOL-85 規格の適合性 | **NIST CCVS85 テストスイート** | モジュール別の合格率を CI で追跡 (0003 §5) |
 | CICS API の基本動作、BMS 画面 | **KICKS for TSO** (MVS 3.8j 上の CICS 互換。ライセンス要確認) と IBM CICS 文書 | 3270 画面スナップショット・EIBRESP の比較 |
 | SQL の意味 (結果集合・SQLCODE) | **Db2 for LUW Community Edition** | 同じ SQL を Zeus と Db2 CE で実行し比較 |
 | アプリ全体の動作 | 各アプリの文書と同梱データ、(任意) ZD&T・商用リホスト環境 | シナリオテストのゴールデン出力 |
@@ -122,25 +125,35 @@ z/OS 本体を検証に使えないため、機能ごとに最も信頼できる
 ## 7. フェーズ別作業計画
 
 1〜2 名 + AI 支援体制を想定した目安。各フェーズの完了条件を満たしてから次に進む。
+COBOL コンパイラ側の細目 (C0〜C6) は [0003](0003-cobol-compiler.md) §7 を参照。
 
-### Phase 0: 基盤と棚卸し (3 週)
+### Phase 0: 基盤と棚卸し (3 週) — コンパイラ C0 を含む
 - Cargo ワークスペース、CI、`CONTRIBUTING.md` (クリーンルーム方針、Hercules・IBM コード非参照)。
 - 3 アプリのソースを取得するスクリプト (各ライセンス確認の上、サブモジュールまたは取得スクリプト)。
-- **API 使用一覧表の自動生成ツール** (EXEC CICS/SQL/DLI、MQI、JCL の PGM・DD・ユーティリティ制御文)。
+- **API 使用一覧表と COBOL 構文使用一覧表の自動生成ツール**
+  (EXEC CICS/SQL/DLI、MQI、JCL の PGM・DD・ユーティリティ制御文、COBOL の文・句・PIC・USAGE)。
 - Hercules + TK4- (または TK5) を CI で起動し、JCL を投入して SYSOUT を回収する自動化。
-- **完了条件**: 一覧表が生成され、MVS 3.8j で JCL を投げて結果を取るテストが CI で動く。
+- NIST CCVS85 テストスイートを CI で実行するハーネス。
+- **完了条件**: 2 つの一覧表が生成され、MVS 3.8j と CCVS85 のテストが CI で動く。
 
-### Phase 1: データ層と JCL バッチ (8〜10 週)
-- データセットとカタログ、順次ファイル、PDS、VSAM (KSDS/AIX/ESDS/RRDS)、GDG。
-- JCL エンジン (PROC, 記号置換, COND/IF, DISP, 一時データセット, SYSOUT, 内部リーダ)。
-- IEFBR14 / IEBGENER / IDCAMS / SORT のサブセット (CardDemo が使う範囲)。
-- GnuCOBOL 連携 (EBCDIC、COBOL ファイル I/O を Zeus のデータセットに接続)。
+### Phase 1: COBOL コンパイラ中核 + データ層・JCL (14〜18 週, 2 本並行)
+- **コンパイラ (0003 C1〜C2)**: ソース管理・構文解析・データ配置計算、zeus-decimal、
+  MOVE/算術/条件/制御文、ZIR インタプリタ。
+- **データ層・JCL (並行)**: データセットとカタログ、順次ファイル、PDS、VSAM (KSDS/AIX/ESDS/RRDS)、GDG。
+  JCL エンジン (PROC, 記号置換, COND/IF, DISP, 一時データセット, SYSOUT, 内部リーダ)。
+  IEFBR14 / IEBGENER / IDCAMS / SORT のサブセット。
+- **完了条件**: 3 アプリの全 COBOL ソースが構文解析でき、CCVS85 の NC モジュールの大部分に合格、
+  10 進命令の Hercules 差分でも不一致ゼロ。JCL・IDCAMS・SORT の MVS 3.8j 差分テストが合格。
+
+### Phase 2: CardDemo バッチ (6〜8 週) — コンパイラ C3
+- COBOL ファイル I/O をデータ層に接続、CALL・入れ子プログラム・組み込み関数。
+- `PGM=IGYCRCTL` を zeus-cobol に対応させ、アプリ同梱のコンパイル JCL で全プログラムをビルド。
 - MVSWAIT・COBDATFT の Rust 置き換え。
 - **完了条件**: CardDemo の基本バッチ (データ初期ロード、取引記帳、利息計算、明細作成など) が全て完了し、
-  出力がゴールデンと一致。JCL・IDCAMS・SORT の MVS 3.8j 差分テストが合格。
+  出力がゴールデンと一致。CCVS85 の SQ/IX/RL/IC に合格。
 
-### Phase 2: CICS コア + BMS + TN3270 → CardDemo オンライン (10〜12 週)
-- EXEC CICS トランスレータ、CSD 定義の読み込み (DFHCSDUP 入力形式)。
+### Phase 3: CICS コア + BMS + TN3270 → CardDemo オンライン (10〜12 週) — コンパイラ C4
+- EXEC CICS のコンパイラ統合、CSD 定義の読み込み (DFHCSDUP 入力形式)。
 - タスク制御、擬似会話型 (RETURN TRANSID COMMAREA)、LINK/XCTL、HANDLE 系、EIB。
 - ファイル制御 (READ/WRITE/REWRITE/DELETE/STARTBR/READNEXT/READPREV)、TS/TD キュー、
   ASKTIME/FORMATTIME、SYNCPOINT/ROLLBACK。
@@ -148,64 +161,66 @@ z/OS 本体を検証に使えないため、機能ごとに最も信頼できる
 - **完了条件**: CardDemo の全オンライン取引 (サインオン、メニュー、口座・カード照会/更新、取引一覧、
   請求支払、管理者機能) が 3270 シナリオテストで合格。
 
-### Phase 3: Db2 → GenApp (8〜10 週)
-- EXEC SQL トランスレータ、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。
+### Phase 4: Db2 → GenApp (8〜10 週) — コンパイラ C5 (SQL)
+- EXEC SQL のコンパイラ統合、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。
 - PostgreSQL バックエンドと Db2 方言変換、Db2 CE オラクル比較。
 - CICS と Db2 の作業単位の統合 (SYNCPOINT で VSAM と Db2 を同時にコミット)。
 - バッチ用 Db2 ユーティリティ相当 (DDL 実行、DSNTEP2/DSNTIAUL 相当、ロード)。
 - **完了条件**: GenApp の顧客・保険契約の登録/照会/更新/削除の全シナリオが合格。
   CardDemo の取引種別管理モジュール (Db2) も合格。
 
-### Phase 4: Bank of Z (CICS 経路) (6〜8 週)
+### Phase 5: Bank of Z (CICS 経路) (6〜8 週)
 - Phase 0 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
 - Bank of Z のバッチ部品。
 - **完了条件**: Bank of Z の CICS 経路 (顧客・口座の作成/照会、入出金、振替) のシナリオが合格。
 
-### Phase 5: IMS と MQ (12〜14 週)
+### Phase 6: IMS と MQ (12〜14 週) — コンパイラ C5 (DLI)
+- EXEC DLI のコンパイラ統合と CALL 'CBLTDLI' インタフェース。
 - DL/I (DBD/PSB の解析、階層データストア、GU/GN/GNP/ISRT/REPL/DLET、SSA)、IMS バッチ (DFSRRC00 相当)。
 - IMS TM (メッセージ処理プログラム、入出力 PCB、トランザクションのルーティング)。
 - MQI サブセットとローカルキュー、CICS/IMS との作業単位統合。
 - **完了条件**: Bank of Z の IMS 経路、CardDemo のオプション (承認: IMS+Db2+MQ、口座抽出: VSAM+MQ) が合格。
 
-### Phase 6: 運用性・性能 (継続)
+### Phase 7: 運用性・性能 (継続) — コンパイラ C6
+- Cranelift ネイティブコード生成、ソースレベルデバッガ。
 - 複数端末の同時実行、ロック・エンキュー、異常終了時の回復、ジョブスケジューラ連携
   (CardDemo の `scheduler` 定義の取り込み)、監視・ログ、ドキュメント。
 
 ## 8. 任意トラック (将来)
 
-- **Rust 製 COBOL コンパイラ**: GnuCOBOL の互換性差が大きい場合、または Enterprise COBOL 固有挙動の
-  完全再現が必要になった場合に着手する。
-- **PL/I**: PL/I 資産を扱う必要が出た時点で別提案にする (フロントエンドの選定から行う)。
+- **PL/I**: PL/I 資産を扱う必要が出た時点で別提案にする。zeus-cobol の中間表現 (ZIR)・zeus-decimal・
+  ランタイムを共用し、フロントエンドだけを追加する形を想定する。
 - **z/Architecture CPU エミュレータ (0001 案)**: Assembler 資産やロードモジュールしか残っていない
   プログラムを扱う必要が出た場合、命令実行部分だけを (アプリ用の命令に絞って) 0001 の Phase 1/5 の
-  方針で実装し、Zeus ランタイムの SVC・マクロ層と接続する。
+  方針で実装し、Zeus ランタイムの SVC・マクロ層と接続する。10 進演算は zeus-decimal を共用する。
 
 ## 9. マイルストーン
 
 | マイルストーン | 到達内容 | 目安 (累積) |
 |---|---|---|
-| M0 | CI・MVS 3.8j オラクル自動化・API 使用一覧表 | 〜3 週 |
-| M1 | **CardDemo バッチ稼働** | 〜3 ヶ月 |
-| M2 | **CardDemo オンライン稼働** | 〜6 ヶ月 |
-| M3 | GenApp 稼働 (CICS + Db2 + VSAM) | 〜8 ヶ月 |
-| M4 | Bank of Z (CICS 経路) 稼働 | 〜10 ヶ月 |
-| M5 | IMS・MQ (Bank of Z IMS 経路、CardDemo オプション) | 〜13 ヶ月 |
+| M0 | CI・MVS 3.8j / CCVS85 オラクル自動化・2 つの一覧表 | 〜3 週 |
+| M1 | COBOL コンパイラ中核 (3 アプリ全ソースの解析, CCVS85 NC), データ層・JCL | 〜4.5 ヶ月 |
+| M2 | **CardDemo バッチ稼働 (自作コンパイラで)** | 〜6 ヶ月 |
+| M3 | **CardDemo オンライン稼働** | 〜9 ヶ月 |
+| M4 | GenApp 稼働 (CICS + Db2 + VSAM) | 〜11 ヶ月 |
+| M5 | Bank of Z (CICS 経路) 稼働 | 〜13 ヶ月 |
+| M6 | IMS・MQ (Bank of Z IMS 経路、CardDemo オプション) | 〜16 ヶ月 |
 
 ## 10. リスクと対策
 
 | リスク | 対策 |
 |---|---|
-| GnuCOBOL と Enterprise COBOL の挙動差 (2 進項目の切り捨て、符号処理、照合順序など) | 互換オプションを固定し、差分を一覧化。必要なら §8 のコンパイラに移行 |
+| COBOL コンパイラの工数超過 (文法の巨大さ、算術規則の再現) | 構文使用一覧表で範囲を限定。CCVS85・Hercules 10 進差分で早期に誤りを検出 (0003 §9) |
 | サンプルが 2010 年以降の新しい API (CICS TS 5.x/6.x、新しい COBOL 構文) を使う | Phase 0 の一覧表で使用箇所を洗い出し、個別に対応可否を判断する |
 | CICS・Db2・IMS・MQ に無償の完全なオラクルがない | IBM マニュアル準拠の仕様テスト、KICKS・Db2 CE の活用、ZD&T 結果の取り込み |
 | Db2 方言を PostgreSQL に変換しきれない | Db2 CE バックエンドに切り替えられる設計にする |
-| 作業単位 (VSAM + Db2 + MQ) の整合 | Phase 2 から `zeus-txn` を設けて 2 相コミット相当の枠組みを用意 |
+| 作業単位 (VSAM + Db2 + MQ) の整合 | Phase 3 から `zeus-txn` を設けて 2 相コミット相当の枠組みを用意 |
 | IBM の商標・ライセンス (BMS マクロ定義、copybook 等) | IBM 提供物は取り込まず、仕様に基づいて再作成する |
 
 ## 11. 決定が必要な事項
 
-1. COBOL コンパイラを当面 GnuCOBOL で進めてよいか (推奨: はい)。
-2. データを EBCDIC のまま保持する方針でよいか (推奨: はい)。
-3. Db2 バックエンドの第一候補 (推奨: PostgreSQL、Db2 CE は比較・切替用)。
-4. IMS (Phase 5) を本計画に含めるか、CICS + Db2 の完成後に別提案とするか。
-5. PL/I を本計画の対象外としてよいか。
+1. データを EBCDIC のまま保持する方針でよいか (推奨: はい)。
+2. Db2 バックエンドの第一候補 (推奨: PostgreSQL、Db2 CE は比較・切替用)。
+3. IMS (Phase 6) を本計画に含めるか、CICS + Db2 の完成後に別提案とするか。
+4. PL/I を本計画の対象外としてよいか。
+5. GnuCOBOL を「比較用のオラクル」としてだけ使うことを許容するか (推奨: 許容。製品には組み込まない)。
