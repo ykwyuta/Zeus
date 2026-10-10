@@ -36,7 +36,7 @@ DB2 9 世代を基準とし、サンプルが実際に使う機能を優先し�
 | Assembler | ○ (MVSWAIT, COBDATFT の 2 本) | – | – | – |
 | PL/I | – | – | – | – |
 
-- 最初の作業 (Phase 0) で全ソースを走査し、`EXEC CICS` / `EXEC SQL` / `EXEC DLI` / `CALL 'CBLTDLI'` /
+- Phase 3 の冒頭で全ソースを走査し、`EXEC CICS` / `EXEC SQL` / `EXEC DLI` / `CALL 'CBLTDLI'` /
   MQI 呼び出し / JCL の `PGM=` / ユーティリティ制御文 を自動集計した **API 使用一覧表** を作り、
   それを実装範囲 (スコープ) の正とする。上表の「?」もここで確定させる。
 - **PL/I は 3 アプリとも使っていない**ため本計画には含めず、**次のフェーズ** (別提案) で対応する。
@@ -127,39 +127,42 @@ z/OS 本体を検証に使えないため、機能ごとに最も信頼できる
    - バッチ: 各アプリのジョブを順に流し、出力データセット・レポート・完了コードをゴールデンと比較。
    - オンライン: x3270 系のスクリプト端末 (`s3270`) で TN3270 に接続し、画面操作シナリオを再生する。
      各画面のスナップショットと、実行後のファイル・テーブル内容を検証する。
-4. **進捗指標**: API 使用一覧表 (Phase 0) に対する実装率、アプリごとのシナリオ合格数。
+4. **進捗指標**: CCVS85 のモジュール別合格率、API 使用一覧表 (Phase 3) に対する実装率、アプリごとのシナリオ合格数。
 
 ## 7. フェーズ別作業計画
 
 1〜2 名 + AI 支援体制を想定した目安。各フェーズの完了条件を満たしてから次に進む。
-COBOL コンパイラ側の細目 (C0〜C6) は [0003](0003-cobol-compiler.md) §7 を参照。
+COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) §7 を参照。
+**最初の目標は CCVS85 の必須モジュールへの全件合格** (0003 §5.2) とし、アプリケーション対応はその後に行う。
 
-### Phase 0: 基盤と棚卸し (3 週) — コンパイラ C0 を含む
+### Phase 0: 基盤と CCVS85 ハーネス (3 週) — コンパイラ C0
 - Cargo ワークスペース、CI、`CONTRIBUTING.md` (クリーンルーム方針、Hercules・IBM コード非参照)。
-- 3 アプリのソースを取得するスクリプト (各ライセンス確認の上、サブモジュールまたは取得スクリプト)。
-- **API 使用一覧表と COBOL 構文使用一覧表の自動生成ツール**
-  (EXEC CICS/SQL/DLI、MQI、JCL の PGM・DD・ユーティリティ制御文、COBOL の文・句・PIC・USAGE)。
-- Hercules + TK4- (または TK5) を CI で起動し、JCL を投入して SYSOUT を回収する自動化。
-- NIST CCVS85 テストスイートを CI で実行するハーネス。
-- **完了条件**: 2 つの一覧表が生成され、MVS 3.8j と CCVS85 のテストが CI で動く。
+- **CCVS85 の取り出し・実行・結果集計ハーネス**と、GnuCOBOL による基準線の取得・CI 表示。
+- Hercules の 10 進命令差分ハーネス (スタンドアロン実行。MVS 3.8j は不要)。
+- **完了条件**: CCVS85 全モジュールの GnuCOBOL 基準線と zeus-cobol の結果 (全件不合格) が CI に並んで表示される。
 
-### Phase 1: COBOL コンパイラ中核 + データ層・JCL (14〜18 週, 2 本並行)
-- **コンパイラ (0003 C1〜C2)**: ソース管理・構文解析・データ配置計算、zeus-decimal、
-  MOVE/算術/条件/制御文、ZIR インタプリタ。
-- **データ層・JCL (並行)**: データセットとカタログ、順次ファイル、PDS、VSAM (KSDS/AIX/ESDS/RRDS)、GDG。
-  JCL エンジン (PROC, 記号置換, COND/IF, DISP, 一時データセット, SYSOUT, 内部リーダ)。
-  IEFBR14 / IEBGENER / IDCAMS / SORT のサブセット。
-- **完了条件**: 3 アプリの全 COBOL ソースが構文解析でき、CCVS85 の NC モジュールの大部分に合格、
-  10 進命令の Hercules 差分でも不一致ゼロ。JCL・IDCAMS・SORT の MVS 3.8j 差分テストが合格。
+### Phase 1: COBOL コンパイラ中核 (14〜18 週) — コンパイラ C1〜C2
+- ソース管理 (固定形式, COPY/REPLACE)・構文解析・データ配置計算、zeus-decimal、
+  MOVE/算術/条件/制御文/PERFORM、ZIR インタプリタ、DISPLAY/ACCEPT。
+- **完了条件**: CCVS85 の全プログラムが構文解析でき、**NC・SM に合格**。10 進命令の Hercules 差分で不一致ゼロ。
 
-### Phase 2: CardDemo バッチ (6〜8 週) — コンパイラ C3
-- COBOL ファイル I/O をデータ層に接続、CALL・入れ子プログラム・組み込み関数。
-- `PGM=IGYCRCTL` を zeus-cobol に対応させ、アプリ同梱のコンパイル JCL で全プログラムをビルド。
-- MVSWAIT・COBDATFT の Rust 置き換え。
+### Phase 2: CCVS85 合格 (8〜10 週) — コンパイラ C3
+- ファイル I/O (順次・相対・索引)。データセット層 (zeus-ds) の最小版として EBCDIC レコードで実装し、
+  後の VSAM・JCL 対応にそのまま発展させる。ファイルの割り当ては当面、設定ファイルによる DD 名対応で行う。
+- SORT/MERGE、CALL・入れ子プログラム、組み込み関数。
+- (並行で着手可) Hercules + MVS 3.8j の JCL 投入自動化、JCL エンジンの設計。
+- **完了条件**: **CCVS85 の必須モジュール (NC/SM/IC/SQ/RL/IX/ST/IF) で FAIL ゼロ** (= 第 1 目標達成)。
+
+### Phase 3: JCL・データ層 → CardDemo バッチ (6〜8 週) — コンパイラ C4
+- 3 アプリのソース取得と **API 使用一覧表・COBOL 構文使用一覧表**の自動生成。
+- データセットとカタログ、PDS、VSAM (KSDS/AIX/ESDS/RRDS)、GDG。
+- JCL エンジン (PROC, 記号置換, COND/IF, DISP, 一時データセット, SYSOUT, 内部リーダ)。
+  IEFBR14 / IEBGENER / IDCAMS / SORT のサブセット。JCL・IDCAMS・SORT の MVS 3.8j 差分テスト。
+- Enterprise COBOL 拡張と `PGM=IGYCRCTL` 互換。MVSWAIT・COBDATFT の Rust 置き換え。
 - **完了条件**: CardDemo の基本バッチ (データ初期ロード、取引記帳、利息計算、明細作成など) が全て完了し、
-  出力がゴールデンと一致。CCVS85 の SQ/IX/RL/IC に合格。
+  出力がゴールデンと一致。JCL・IDCAMS・SORT の MVS 3.8j 差分テストが合格。
 
-### Phase 3: CICS コア + BMS + TN3270 → CardDemo オンライン (10〜12 週) — コンパイラ C4
+### Phase 4: CICS コア + BMS + TN3270 → CardDemo オンライン (10〜12 週) — コンパイラ C5
 - EXEC CICS のコンパイラ統合、CSD 定義の読み込み (DFHCSDUP 入力形式)。
 - タスク制御、擬似会話型 (RETURN TRANSID COMMAREA)、LINK/XCTL、HANDLE 系、EIB。
 - ファイル制御 (READ/WRITE/REWRITE/DELETE/STARTBR/READNEXT/READPREV)、TS/TD キュー、
@@ -168,7 +171,7 @@ COBOL コンパイラ側の細目 (C0〜C6) は [0003](0003-cobol-compiler.md) �
 - **完了条件**: CardDemo の全オンライン取引 (サインオン、メニュー、口座・カード照会/更新、取引一覧、
   請求支払、管理者機能) が 3270 シナリオテストで合格。
 
-### Phase 4: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C5 (SQL)
+### Phase 5: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C6
 - EXEC SQL のコンパイラ統合、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。
 - Db2 CE バックエンド (Db2 for z/OS との方言差の変換、EBCDIC 変換、EBCDIC 照合のデータベース)。
 - CICS と Db2 の作業単位の統合 (SYNCPOINT で VSAM と Db2 を同時にコミット)。
@@ -176,18 +179,18 @@ COBOL コンパイラ側の細目 (C0〜C6) は [0003](0003-cobol-compiler.md) �
 - **完了条件**: GenApp の顧客・保険契約の登録/照会/更新/削除の全シナリオが合格。
   CardDemo の取引種別管理モジュール (Db2) も合格。
 
-### Phase 5: Bank of Z (CICS 経路) (6〜8 週)
-- Phase 0 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
+### Phase 6: Bank of Z (CICS 経路) (6〜8 週)
+- Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
 - Bank of Z のバッチ部品。
 - **完了条件**: Bank of Z の CICS 経路 (顧客・口座の作成/照会、入出金、振替) のシナリオが合格。
 
-### Phase 6: MQ と PostgreSQL バックエンド (8〜10 週)
+### Phase 7: MQ と PostgreSQL バックエンド (8〜10 週)
 - MQI サブセット (MQCONN/MQOPEN/MQPUT/MQGET) とローカルキュー、CICS との作業単位統合。
 - PostgreSQL バックエンド (Db2 方言変換、SQLCODE 対応表)。Db2 CE で全シナリオを流した結果をオラクルとして比較。
 - **完了条件**: CardDemo の口座抽出モジュール (VSAM+MQ) が合格。GenApp・Bank of Z・CardDemo の Db2 シナリオが
   PostgreSQL バックエンドでも Db2 CE と同じ結果になる。
 
-### Phase 7: 運用性・性能 (継続) — コンパイラ C6
+### Phase 8: 運用性・性能 (継続) — コンパイラ C7
 - Cranelift ネイティブコード生成、ソースレベルデバッガ。
 - 複数端末の同時実行、ロック・エンキュー、異常終了時の回復、ジョブスケジューラ連携
   (CardDemo の `scheduler` 定義の取り込み)、監視・ログ、ドキュメント。
@@ -208,24 +211,25 @@ COBOL コンパイラ側の細目 (C0〜C6) は [0003](0003-cobol-compiler.md) �
 
 | マイルストーン | 到達内容 | 目安 (累積) |
 |---|---|---|
-| M0 | CI・MVS 3.8j / CCVS85 オラクル自動化・2 つの一覧表 | 〜3 週 |
-| M1 | COBOL コンパイラ中核 (3 アプリ全ソースの解析, CCVS85 NC), データ層・JCL | 〜4.5 ヶ月 |
-| M2 | **CardDemo バッチ稼働 (自作コンパイラで)** | 〜6 ヶ月 |
-| M3 | **CardDemo オンライン稼働** | 〜9 ヶ月 |
-| M4 | GenApp 稼働 (CICS + Db2 CE + VSAM) | 〜11 ヶ月 |
-| M5 | Bank of Z (CICS 経路) 稼働 | 〜13 ヶ月 |
-| M6 | MQ (CardDemo 口座抽出) と PostgreSQL バックエンド | 〜15 ヶ月 |
+| M0 | CI・CCVS85 ハーネス・GnuCOBOL 基準線 | 〜3 週 |
+| M1 | COBOL コンパイラ中核 (CCVS85 NC・SM 合格) | 〜4.5 ヶ月 |
+| M2 | **CCVS85 必須モジュール全件合格** | 〜6.5 ヶ月 |
+| M3 | **CardDemo バッチ稼働** (JCL・VSAM・自作コンパイラ) | 〜8 ヶ月 |
+| M4 | **CardDemo オンライン稼働** | 〜11 ヶ月 |
+| M5 | GenApp 稼働 (CICS + Db2 CE + VSAM) | 〜13 ヶ月 |
+| M6 | Bank of Z (CICS 経路) 稼働 | 〜15 ヶ月 |
+| M7 | MQ (CardDemo 口座抽出) と PostgreSQL バックエンド | 〜17 ヶ月 |
 
 ## 10. リスクと対策
 
 | リスク | 対策 |
 |---|---|
 | COBOL コンパイラの工数超過 (文法の巨大さ、算術規則の再現) | 構文使用一覧表で範囲を限定。CCVS85・Hercules 10 進差分で早期に誤りを検出 (0003 §9) |
-| サンプルが 2010 年以降の新しい API (CICS TS 5.x/6.x、新しい COBOL 構文) を使う | Phase 0 の一覧表で使用箇所を洗い出し、個別に対応可否を判断する |
+| サンプルが 2010 年以降の新しい API (CICS TS 5.x/6.x、新しい COBOL 構文) を使う | Phase 3 の一覧表で使用箇所を洗い出し、個別に対応可否を判断する |
 | CICS・Db2 for z/OS・MQ に無償の完全なオラクルがない | IBM マニュアル準拠の仕様テスト、KICKS・Db2 CE の活用、ZD&T 結果の取り込み |
 | Db2 CE の制約 (再配布不可・リソース上限・LUW と z/OS の方言差) | 利用者導入の前提を明記。方言差は変換層と仕様テストで管理し、PostgreSQL を第 2 バックエンドとして用意 |
 | Db2 方言を PostgreSQL に変換しきれない | Db2 CE の結果をオラクルに差分を一覧化し、変換できない構文は文書化する |
-| 作業単位 (VSAM + Db2 + MQ) の整合 | Phase 3 から `zeus-txn` を設けて 2 相コミット相当の枠組みを用意 |
+| 作業単位 (VSAM + Db2 + MQ) の整合 | Phase 4 から `zeus-txn` を設けて 2 相コミット相当の枠組みを用意 |
 | IBM の商標・ライセンス (BMS マクロ定義、copybook 等) | IBM 提供物は取り込まず、仕様に基づいて再作成する |
 
 ## 11. 決定事項
@@ -235,3 +239,4 @@ COBOL コンパイラ側の細目 (C0〜C6) は [0003](0003-cobol-compiler.md) �
 3. IMS は次のフェーズ (別提案) とする。
 4. PL/I は次のフェーズ (別提案) とする。
 5. GnuCOBOL は製品には組み込まず、比較用のオラクルとして積極的に活用する。
+6. 最初の目標を CCVS85 の必須モジュール全件合格とし、アプリケーション対応はその後に行う。

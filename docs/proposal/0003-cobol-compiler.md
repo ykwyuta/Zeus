@@ -8,8 +8,11 @@
 
 Enterprise COBOL 4.2 (z/OS 1.12 世代) の方言で書かれたソースを、外部の COBOL 処理系に
 依存せずにコンパイル・実行できる **Rust 製コンパイラ zeus-cobol** を作る。
-最初の到達目標は、CardDemo・GenApp・Bank of Z の全 COBOL プログラムを
-ソース無修正でコンパイルし、z/OS と同じ結果で実行できること。
+
+- **第 1 目標: NIST COBOL-85 テストスイート (CCVS85) の対象モジュールに全件合格すること** (§5.2)。
+  言語処理系としての土台を規格テストで固めてから、アプリケーション対応に進む。
+- 第 2 目標: CardDemo・GenApp・Bank of Z の全 COBOL プログラムをソース無修正でコンパイルし、
+  z/OS と同じ結果で実行できること。
 
 ## 2. 自作する理由
 
@@ -58,8 +61,8 @@ COBOL ソース + copybook
 
 ## 4. 対応する言語範囲
 
-Phase 0 の API 使用一覧表 (0002 §2) と同時に、3 アプリの **COBOL 構文使用一覧表** を作り、
-使われている構文から実装する。想定される主な範囲:
+まず **CCVS85 の必須モジュール (§5.2) が要求する COBOL-85 の範囲** を実装し、その後、
+3 アプリの **COBOL 構文使用一覧表** (C4 で作成) に基づいて Enterprise COBOL 拡張を追加する。想定される主な範囲:
 
 - **見出し部・環境部**: PROGRAM-ID, 入れ子プログラム, SPECIAL-NAMES, FILE-CONTROL (SELECT/ASSIGN, ORGANIZATION, ACCESS, RECORD KEY, ALTERNATE KEY, FILE STATUS)。
 - **データ部**: FD, WORKING-STORAGE, LOCAL-STORAGE, LINKAGE, レベル 01-49/66/77/88,
@@ -68,8 +71,8 @@ Phase 0 の API 使用一覧表 (0002 §2) と同時に、3 アプリの **COBOL
 - **手続き部**: MOVE (CORRESPONDING 含む), 算術文 (ADD/SUBTRACT/MULTIPLY/DIVIDE/COMPUTE),
   IF/EVALUATE, PERFORM 全形式, GO TO (DEPENDING ON), CALL/CANCEL/GOBACK/EXIT PROGRAM/STOP RUN,
   INITIALIZE, INSPECT, STRING/UNSTRING, SEARCH/SEARCH ALL, SET, ACCEPT (DATE/TIME 等), DISPLAY,
-  ファイル I/O 文 (OPEN/CLOSE/READ/WRITE/REWRITE/DELETE/START), SORT/MERGE (使用されていれば),
-  組み込み関数 (CURRENT-DATE, NUMVAL, UPPER-CASE, INTEGER-OF-DATE 等, 使用分から)。
+  ファイル I/O 文 (OPEN/CLOSE/READ/WRITE/REWRITE/DELETE/START), SORT/MERGE (RELEASE/RETURN 含む),
+  組み込み関数 (COBOL-85 追補の全関数 + Enterprise COBOL で追加されたものの使用分)。
 - **埋め込み文**: EXEC CICS, EXEC SQL (INCLUDE SQLCA / DCLGEN を含む)。EXEC DLI は次のフェーズ (IMS 対応時)。
 - **範囲外 (当初)**: オブジェクト指向 COBOL, XML/JSON 文, Report Writer, COBOL 2002 以降の新構文。
 
@@ -103,6 +106,36 @@ GnuCOBOL は最も手軽に何度でも回せるオラクルなので、次の 3
 
 GnuCOBOL のバージョンは CI で固定し、ライセンス (GPL/LGPL) 上もテスト実行にのみ使うため問題ない。
 
+### 5.2 CCVS85 の合格基準
+
+CCVS85 はモジュールごとに多数のテストプログラムから成り、各プログラムが自分で PASS / FAIL /
+DELETED / INSPECT を報告する。以下を「合格」と定義する。
+
+| モジュール | 内容 | 扱い |
+|---|---|---|
+| NC | 核 (データ定義, MOVE, 算術, 条件, PERFORM 等) | **必須** |
+| SM | 原始文操作 (COPY, REPLACE) | **必須** |
+| IC | プログラム間連絡 (CALL, 入れ子プログラム) | **必須** |
+| SQ | 順次ファイル | **必須** |
+| RL | 相対ファイル | **必須** |
+| IX | 索引ファイル | **必須** |
+| ST | 整列併合 (SORT / MERGE) | **必須** |
+| IF | 組み込み関数 (1989 追補) | **必須** |
+| SG | セグメンテーション | 任意 (構文受理まで) |
+| OB | 廃要素 (ALTER 等) | 任意 |
+| DB | デバッグ (USE FOR DEBUGGING) | 任意 |
+| RW | 報告書作成 | 対象外 (Enterprise COBOL 非対応) |
+| CM | 通信 | 対象外 (Enterprise COBOL 非対応) |
+
+- **合格 = 必須モジュールで FAIL ゼロ・INSPECT はすべて目視確認済み**。DELETED (意図的な除外) は
+  Enterprise COBOL も非対応の機能に限り、理由を `docs/oracle/ccvs85-exclusions.md` に 1 件ずつ記録する。
+- **GnuCOBOL を基準線**にする: 同じスイートを GnuCOBOL で流した結果をモジュール・プログラム単位で
+  保存し、zeus-cobol の結果と並べて CI で表示する。
+- テストプログラムの実行は EBCDIC (既定のコードページ) で行う。照合順序に依存するテストは
+  IBM の挙動を正として判定する。
+- スイートは 1 本の原本ファイル (newcob.val) から各プログラムを取り出して使う。取り出しツールは Rust で書き、
+  原本に付属する取り出し用 COBOL プログラム (EXEC85) 自体も、後で zeus-cobol のテストとしてコンパイル・実行する。
+
 ## 6. クレート構成
 
 ```
@@ -118,23 +151,26 @@ crates/
 
 ## 7. 作業ステップ
 
+CCVS85 合格 (C0〜C3) を先に完了させ、その後でアプリケーション向けの拡張 (C4 以降) に進む。
+
 | ステップ | 内容 | 完了条件 |
 |---|---|---|
-| C0 (3 週) | 構文使用一覧表の自動生成、CCVS85・GnuCOBOL・MVS 3.8j COBOL の比較用ハーネス | 3 アプリの構文使用一覧表、CCVS85 が CI で実行される (全件不合格でよい) |
-| C1 (6〜8 週) | ソース管理・字句/構文解析・データ部の配置計算 | 3 アプリの全ソースが構文エラーなしで解析でき、各データ項目のオフセット・長さが一覧出力できる |
-| C2 (8〜10 週) | zeus-decimal、MOVE/算術/条件/制御文、ZIR とインタプリタ、DISPLAY | CCVS85 の NC モジュールの大部分に合格、Hercules との 10 進命令差分テストで不一致ゼロ |
-| C3 (4〜6 週) | ファイル I/O (0002 のデータセット層と接続)、CALL/入れ子プログラム、組み込み関数 | CCVS85 の SQ/IX/RL/IC に合格。CardDemo のバッチプログラムが全てコンパイル・実行できる |
-| C4 (4〜6 週) | EXEC CICS の統合、EIB/COMMAREA、BMS シンボリックマップ | CardDemo のオンラインプログラムが全てコンパイルできる (実行は 0002 の CICS 層と並行) |
-| C5 (4〜6 週) | EXEC SQL の統合 (EXEC DLI は次のフェーズ) | GenApp と Bank of Z (CICS 経路) の全プログラムがコンパイルできる |
-| C6 (継続) | Cranelift バックエンド、ソースレベルデバッガ、性能改善 | インタプリタ比で十分な高速化 |
+| C0 (3 週) | CCVS85 の取り出し・実行・結果集計ハーネス、GnuCOBOL での基準線取得、Hercules 10 進命令の差分ハーネス | CCVS85 全モジュールの GnuCOBOL 基準線が CI に表示され、zeus-cobol 側の枠 (全件不合格) も並ぶ |
+| C1 (6〜8 週) | ソース管理 (固定形式, COPY/REPLACE)・字句/構文解析・データ部の配置計算 | CCVS85 の全プログラムが構文エラーなしで解析でき、データ項目の配置を一覧出力できる |
+| C2 (8〜10 週) | zeus-decimal、MOVE/算術/条件/制御文/PERFORM、ZIR とインタプリタ、DISPLAY/ACCEPT | **NC・SM に合格**。Hercules との 10 進命令差分で不一致ゼロ |
+| C3 (8〜10 週) | ファイル I/O (順次・相対・索引。0002 のデータセット層の最小版に接続)、SORT/MERGE、CALL/入れ子プログラム、組み込み関数 | **CCVS85 の必須モジュールすべてに合格 (= 第 1 目標達成)** |
+| C4 (4〜6 週) | Enterprise COBOL 拡張 (COMP-5, POINTER, LOCAL-STORAGE, 追加の組み込み関数, コンパイラオプション)、`IGYCRCTL` 互換、アプリ構文使用一覧表に基づく不足分 | CardDemo のバッチプログラムが全てコンパイル・実行できる |
+| C5 (4〜6 週) | EXEC CICS の統合、EIB/COMMAREA、BMS シンボリックマップ | CardDemo のオンラインプログラムが全てコンパイルできる |
+| C6 (4〜6 週) | EXEC SQL の統合 (EXEC DLI は次のフェーズ) | GenApp と Bank of Z (CICS 経路) の全プログラムがコンパイルできる |
+| C7 (継続) | Cranelift バックエンド、ソースレベルデバッガ、性能改善 | インタプリタ比で十分な高速化 |
 
 ## 8. 0002 計画への影響
 
-- CardDemo バッチ稼働 (M1) が約 3 ヶ月 → 約 6 ヶ月に後ろ倒しになる。
-  その間、データ層・JCL エンジン・ユーティリティは並行して開発できる。
-- 以降のマイルストーンも約 3 ヶ月ずつ後ろにずれる (0002 §9 で更新済み)。
-- 代わりに、EBCDIC・10 進演算・CICS 連携の互換性を自分たちで保証できるようになり、
-  後半フェーズでの「互換性差の調査と回避策」の工数が減る見込み。
+- 最初のマイルストーンが「CCVS85 合格」(約 6.5 ヶ月) になり、CardDemo バッチ稼働は約 8 ヶ月に後ろ倒しになる。
+- C3 で必要な順次・相対・索引ファイルの実装は、0002 のデータセット層 (zeus-ds) の最小版として作り、
+  そのまま VSAM・JCL 対応に発展させる。JCL エンジンとユーティリティは C2〜C3 の間に並行して着手できる。
+- 規格テストで言語処理系の土台を先に固めるため、アプリ対応の段階で
+  「コンパイラの誤りかランタイムの誤りか」の切り分けが容易になる。
 
 ## 9. リスク
 
