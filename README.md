@@ -33,8 +33,10 @@ and `zbms` generates BMS symbolic maps; 111 of the 115 COBOL programs of
 CardDemo, GenApp and Bank of Z compile. The syntax usage inventory of the
 three applications is in [docs/inventory/apps.md](docs/inventory/apps.md).
 
-CICS: `zcics` runs transactions against a 3270 screen model driven by a
-script (`tools/carddemo-online.sh`). The CardDemo online transactions
+CICS: `zcics` runs transactions against a 3270 screen model, driven by a
+script or by 3270 emulators through its TN3270 server
+(`tools/carddemo-online.sh serve`, then connect an emulator such as x3270 to
+port 3270 and enter `CC00`). The CardDemo online transactions
 (sign-on, menus, account view and update, card list, view and update,
 transaction list, view and add, bill payment, report submission through the
 internal reader, user administration) work on the data the batch jobs set

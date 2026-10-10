@@ -64,7 +64,9 @@ After `tools/carddemo.sh all`, `tools/carddemo-online.sh test` compiles the
 online programs, writes the mapsets as JSON and runs the terminal scripts in
 `tools/carddemo-online/` with `zcics` (they expect freshly set up data). A
 single script runs with `tools/carddemo-online.sh run SCRIPT`; `show` in a
-script prints the screen.
+script prints the screen. `tools/carddemo-online.sh serve` starts the TN3270
+server on port 3270 for a 3270 emulator; `tools/carddemo-online.sh tn3270`
+signs on through `s3270` (`apt-get install s3270`) as CI does.
 
 ## Application inventory
 

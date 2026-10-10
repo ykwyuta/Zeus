@@ -2,7 +2,11 @@
 //!
 //! ```text
 //! zcics [--home DIR] [--csd FILE]... [--loadlib DIR]... [--mapsets DIR]... SCRIPT
+//! zcics [options] --serve PORT
 //! ```
+//!
+//! With `--serve`, zcics is a TN3270 server: 3270 emulators connect to the
+//! port (each connection is a terminal).
 //!
 //! The catalog is DIR/catalog (default `$ZEUS_HOME` or `./zeus`). Records
 //! written to the transient data queue JOBS (the internal reader) are
@@ -42,6 +46,112 @@ fn show(t: &Terminal) {
         println!("|{l:<80}|");
     }
     println!("+{}+", "-".repeat(80));
+}
+
+mod server {
+    //! The TN3270 server: a thread per connection does the Telnet work,
+    //! the region runs in the main thread.
+
+    use std::cell::RefCell;
+    use std::collections::HashMap;
+    use std::net::{TcpListener, TcpStream};
+    use std::path::Path;
+    use std::rc::Rc;
+    use std::sync::mpsc;
+
+    use zeus_cics::region::{self, Event, Region, Terminal};
+    use zeus_cics::tn3270;
+
+    enum Msg {
+        Connect(u32, TcpStream, String),
+        Input(u32, Vec<u8>),
+        Gone(u32),
+    }
+
+    fn connection(id: u32, mut stream: TcpStream, tx: mpsc::Sender<Msg>) {
+        let ttype = match tn3270::negotiate(&mut stream) {
+            Ok(t) => t,
+            Err(e) => {
+                eprintln!("zcics: connection {id}: {e}");
+                return;
+            }
+        };
+        let Ok(writer) = stream.try_clone() else {
+            return;
+        };
+        if tx.send(Msg::Connect(id, writer, ttype)).is_err() {
+            return;
+        }
+        let mut r = tn3270::Reader::new(stream);
+        loop {
+            match r.next_event() {
+                Ok(tn3270::Event::Record(rec)) => {
+                    if tx.send(Msg::Input(id, rec)).is_err() {
+                        return;
+                    }
+                }
+                Ok(_) => {}
+                Err(_) => {
+                    let _ = tx.send(Msg::Gone(id));
+                    return;
+                }
+            }
+        }
+    }
+
+    pub fn run(region: Rc<RefCell<Region>>, home: &Path, port: u16) -> std::io::Result<()> {
+        let listener = TcpListener::bind(("0.0.0.0", port))?;
+        eprintln!("zcics: TN3270 server listening on port {port}");
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            for (n, s) in listener.incoming().enumerate() {
+                if let Ok(s) = s {
+                    let tx = tx.clone();
+                    std::thread::spawn(move || connection(n as u32 + 1, s, tx));
+                }
+            }
+        });
+        let mut terms: HashMap<u32, (Rc<RefCell<Terminal>>, TcpStream)> = HashMap::new();
+        for msg in rx {
+            match msg {
+                Msg::Connect(id, mut w, ttype) => {
+                    let t = Rc::new(RefCell::new(Terminal::new(&format!("T{id:03}"))));
+                    t.borrow_mut().good_morning();
+                    eprintln!("zcics: terminal T{id:03} connected ({ttype})");
+                    let _ = tn3270::send_record(&mut w, &tn3270::write_screen(&t.borrow().screen));
+                    terms.insert(id, (t, w));
+                }
+                Msg::Input(id, rec) => {
+                    let Some((t, w)) = terms.get_mut(&id) else {
+                        continue;
+                    };
+                    let aid = tn3270::apply_input(&mut t.borrow_mut().screen, &rec);
+                    let Some(aid) = aid else { continue };
+                    let e = region::attention(&region, t, aid);
+                    if let Event::Abended { transid, code } = &e {
+                        eprintln!("zcics: T{id:03} {transid} abended {code}");
+                    }
+                    for m in region.borrow_mut().log.drain(..) {
+                        eprintln!("zcics: {m}");
+                    }
+                    super::submit_jobs(&region, home);
+                    if e == Event::Idle && t.borrow().screen.fields().is_empty() {
+                        let blank = t.borrow().screen.chars.iter().all(|&c| c == 0);
+                        if blank {
+                            t.borrow_mut().good_morning();
+                        }
+                    }
+                    t.borrow_mut().screen.alarm = false;
+                    let _ = tn3270::send_record(w, &tn3270::write_screen(&t.borrow().screen));
+                }
+                Msg::Gone(id) => {
+                    terms.remove(&id);
+                    eprintln!("zcics: terminal T{id:03} disconnected");
+                }
+            }
+        }
+        Ok(())
+    }
 }
 
 /// Submits the jobs written to the internal reader queue JOBS.
@@ -90,6 +200,7 @@ fn submit_jobs(region: &Rc<RefCell<Region>>, home: &std::path::Path) {
     if let Err(e) = r {
         println!("* internal reader: {e}");
     }
+    let _ = std::io::Write::flush(&mut std::io::stdout());
     // the job may have catalogued data sets
     if let Ok(c) = Catalog::open(&home.join("catalog")) {
         region.borrow_mut().catalog = c;
@@ -104,6 +215,7 @@ fn main() -> ExitCode {
     let mut loadlibs = Vec::new();
     let mut mapsets = Vec::new();
     let mut script = None;
+    let mut serve: Option<u16> = None;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -120,18 +232,29 @@ fn main() -> ExitCode {
             }
             "--loadlib" => loadlibs.push(PathBuf::from(it.next().unwrap_or_default())),
             "--mapsets" => mapsets.push(PathBuf::from(it.next().unwrap_or_default())),
+            "--serve" => serve = it.next().and_then(|p| p.parse().ok()),
             _ => script = Some(a),
         }
     }
-    let Some(script) = script else {
-        return usage();
-    };
     let catalog = match Catalog::open(&home.join("catalog")) {
         Ok(c) => c,
         Err(e) => {
             eprintln!("zcics: catalog: {e:?}");
             return ExitCode::from(16);
         }
+    };
+    if let Some(port) = serve {
+        let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
+        return match server::run(region, &home, port) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("zcics: {e}");
+                ExitCode::from(16)
+            }
+        };
+    }
+    let Some(script) = script else {
+        return usage();
     };
     let text = match std::fs::read_to_string(&script) {
         Ok(t) => t,

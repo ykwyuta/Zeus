@@ -77,6 +77,9 @@ jobs:
           key: carddemo-${{ hashFiles('tools/fetch-carddemo.sh') }}
       - run: tools/carddemo.sh all
       - run: tools/carddemo-online.sh test
+      - name: Install s3270 (3270 emulator for the TN3270 test)
+        run: sudo apt-get update && sudo apt-get install -y s3270
+      - run: tools/carddemo-online.sh tn3270
       - uses: actions/upload-artifact@v4
         if: always()
         with:

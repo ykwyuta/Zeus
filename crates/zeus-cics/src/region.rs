@@ -175,6 +175,32 @@ pub struct Terminal {
 }
 
 impl Terminal {
+    /// The screen of a newly connected terminal: an input field on the
+    /// first line and a prompt on the last.
+    pub fn good_morning(&mut self) {
+        use crate::screen::Attr;
+        let s = &mut self.screen;
+        s.erase();
+        s.set_attr(0, Attr::default());
+        let last = s.addr(s.rows, 1);
+        s.set_attr(
+            last - 1,
+            Attr {
+                protected: true,
+                numeric: true,
+                color: 0xF5,
+                ..Attr::default()
+            },
+        );
+        s.write(
+            last,
+            &ebcdic::encode(
+                "Zeus CICS - type a transaction identifier (CLEAR clears) and press ENTER",
+            ),
+        );
+        s.cursor = 1;
+    }
+
     pub fn new(id: &str) -> Terminal {
         Terminal {
             id: id.to_string(),
@@ -195,7 +221,21 @@ pub fn attention(region: &Shared<Region>, term: &Shared<Terminal>, aid: u8) -> E
                 term.borrow_mut().screen.erase();
                 return Event::Idle;
             }
-            let input = term.borrow().screen.unformatted_input();
+            // the transaction identifier starts the input: the unformatted
+            // screen, or the first modified field of a formatted one
+            let input = {
+                let t = term.borrow();
+                if t.screen.fields().is_empty() {
+                    t.screen.unformatted_input()
+                } else {
+                    t.screen
+                        .modified_fields()
+                        .into_iter()
+                        .next()
+                        .map(|(_, d)| d)
+                        .unwrap_or_default()
+                }
+            };
             let text: String = ebcdic::decode_latin1(&input)
                 .iter()
                 .map(|&b| b as char)
