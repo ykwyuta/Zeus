@@ -863,7 +863,7 @@ impl Parser {
             self.expect("REPORTING")?;
             UseStmt::BeforeReporting(self.name()?)
         } else {
-            self.accept("GLOBAL");
+            let global = self.accept("GLOBAL");
             self.accept("AFTER");
             self.accept("STANDARD");
             if !(self.accept("EXCEPTION") || self.accept("ERROR")) {
@@ -886,7 +886,7 @@ impl Parser {
                 }
                 UseTarget::Files(files)
             };
-            UseStmt::Error(target)
+            UseStmt::Error(target, global)
         };
         self.expect_period()?;
         Ok(stmt)

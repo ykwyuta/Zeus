@@ -12,7 +12,7 @@ use crate::ebcdic;
 use crate::front::ast::{self, DataEntry, DataRef, Usage, ValueClause};
 use crate::front::source::Pos;
 use crate::vm::data as vdata;
-use crate::zir::{Base, DataType, Desc, Dim, Loc, NumType, NumUsage, Odo, SignPos};
+use crate::zir::{Base, DataType, Desc, Dim, ExternalArea, Loc, NumType, NumUsage, Odo, SignPos};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Area {
@@ -21,6 +21,8 @@ pub enum Area {
     File(usize),
     /// Hidden or special items (indexes, special registers).
     Special,
+    /// EXTERNAL record (index into `DataModel::externals`).
+    External(u32),
 }
 
 #[derive(Debug, Clone)]
@@ -46,11 +48,15 @@ pub struct Item {
     pub desc: u32,
     /// Index-name: the table it indexes.
     pub index_of: Option<usize>,
+    /// GLOBAL item of a containing program (its module program index).
+    pub owner: Option<u32>,
+    /// Visible to contained programs (GLOBAL).
+    pub global: bool,
     /// RENAMES: (first, last) items.
     pub renames: Option<(usize, usize)>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct DataModel {
     pub items: Vec<Item>,
     pub descs: Vec<Desc>,
@@ -61,6 +67,9 @@ pub struct DataModel {
     pub files: HashMap<String, (usize, Vec<usize>)>,
     pub decimal_comma: bool,
     pub currency: char,
+    pub externals: Vec<ExternalArea>,
+    /// Files visible to contained programs: name -> (FD is GLOBAL).
+    pub global_files: Vec<String>,
 }
 
 pub struct Settings {
@@ -100,6 +109,8 @@ impl DataModel {
             cond_of: None,
             desc: 0,
             index_of: None,
+            owner: None,
+            global: e.global,
             renames: None,
         }
     }
@@ -375,9 +386,126 @@ impl DataModel {
     }
 
     fn base(&self, id: usize) -> Base {
-        match self.items[id].area {
-            Area::Linkage(n) => Base::Linkage(n),
+        match (self.items[id].area, self.items[id].owner) {
+            (Area::External(k), _) => Base::External(k),
+            (Area::Linkage(n), Some(p)) => Base::OuterLinkage(p, n),
+            (_, Some(p)) => Base::Outer(p),
+            (Area::Linkage(n), None) => Base::Linkage(n),
             _ => Base::Static,
+        }
+    }
+
+    fn external_index(&mut self, name: &str, len: u32) -> u32 {
+        if let Some(i) = self.externals.iter().position(|e| e.name == name) {
+            let e = &mut self.externals[i];
+            e.len = e.len.max(len);
+            return i as u32;
+        }
+        self.externals.push(ExternalArea {
+            name: name.to_string(),
+            len,
+        });
+        (self.externals.len() - 1) as u32
+    }
+
+    fn set_area(&mut self, id: usize, area: Area) {
+        self.items[id].area = area;
+        for c in self.items[id].children.clone() {
+            self.set_area(c, area);
+        }
+        for c in self.items[id].conditions.clone() {
+            self.items[c].area = area;
+        }
+    }
+
+    /// Imports the GLOBAL items of a containing program (`index` in the
+    /// module) so that a contained program can reference them.
+    pub fn import_globals(&mut self, outer: &DataModel, index: u32) {
+        let mut map: HashMap<usize, usize> = HashMap::new();
+        // Roots: global records (own or already imported from further out).
+        let roots: Vec<usize> = (0..outer.items.len())
+            .filter(|&i| {
+                let it = &outer.items[i];
+                it.parent.is_none() && it.cond_of.is_none() && it.global
+            })
+            .collect();
+        fn collect(dm: &DataModel, id: usize, out: &mut Vec<usize>) {
+            out.push(id);
+            for &c in &dm.items[id].children {
+                collect(dm, c, out);
+            }
+            for &c in &dm.items[id].conditions {
+                out.push(c);
+            }
+        }
+        let mut ids = Vec::new();
+        for r in roots {
+            collect(outer, r, &mut ids);
+        }
+        // index-names of imported tables
+        for i in 0..outer.items.len() {
+            if let Some(t) = outer.items[i].index_of
+                && ids.contains(&t)
+            {
+                ids.push(i);
+            }
+        }
+        for &i in &ids {
+            let mut it = outer.items[i].clone();
+            if it.owner.is_none() {
+                it.owner = Some(index);
+            }
+            it.global = true;
+            let new = self.items.len();
+            map.insert(i, new);
+            if let Some(n) = &it.name {
+                self.by_name.entry(n.clone()).or_default().push(new);
+            }
+            if let Area::External(k) = it.area {
+                let e = &outer.externals[k as usize];
+                let k2 = self.external_index(&e.name.clone(), e.len);
+                it.area = Area::External(k2);
+            }
+            self.items.push(it);
+        }
+        for &i in &ids {
+            let n = map[&i];
+            let it = &mut self.items[n];
+            it.parent = it.parent.and_then(|p| map.get(&p).copied());
+            it.children = it
+                .children
+                .iter()
+                .filter_map(|c| map.get(c).copied())
+                .collect();
+            it.conditions = it
+                .conditions
+                .iter()
+                .filter_map(|c| map.get(c).copied())
+                .collect();
+            it.cond_of = it.cond_of.and_then(|c| map.get(&c).copied());
+            it.index_of = it.index_of.and_then(|c| map.get(&c).copied());
+            it.renames = it
+                .renames
+                .and_then(|(a, b)| Some((*map.get(&a)?, *map.get(&b)?)));
+        }
+        // global files
+        for f in &outer.global_files {
+            if self.files.contains_key(f) {
+                continue;
+            }
+            if let Some((area, recs)) = outer.files.get(f)
+                && let Some(&a) = map.get(area)
+            {
+                let recs = recs.iter().filter_map(|r| map.get(r).copied()).collect();
+                self.files.insert(f.clone(), (a, recs));
+                self.global_files.push(f.clone());
+            }
+        }
+        for &i in &ids {
+            let n = map[&i];
+            if self.items[n].cond_of.is_none() {
+                self.make_desc(n);
+            }
         }
     }
 
@@ -401,7 +529,10 @@ impl DataModel {
     /// static storage.
     fn init_values(&mut self, id: usize, base: u32, image: &mut Vec<u8>) -> Result<()> {
         let it = self.items[id].clone();
-        if it.cond_of.is_some() || matches!(it.area, Area::Linkage(_)) {
+        if it.cond_of.is_some()
+            || it.owner.is_some()
+            || matches!(it.area, Area::Linkage(_) | Area::External(_))
+        {
             return Ok(());
         }
         let count = it.occurs.as_ref().map_or(1, |o| o.max.max(1));
@@ -512,6 +643,12 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     let mut file_records = Vec::new();
     for (fi, fd) in prog.data.files.iter().enumerate() {
         let recs = dm.build_tree(&fd.records, &mut |_| Area::File(fi))?;
+        if fd.global {
+            for &r in &recs {
+                dm.items[r].global = true;
+            }
+            dm.global_files.push(fd.name.clone());
+        }
         file_records.push(recs);
     }
     let ws = dm.build_tree(&prog.data.working, &mut |_| Area::Working)?;
@@ -543,6 +680,11 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
                 let off = dm.items[t].offset;
                 let size = dm.layout(r, off)?;
                 *cursor = (*cursor).max(off + size);
+            } else if dm.items[r].entry.external {
+                let size = dm.layout(r, 0)?;
+                let name = dm.items[r].name.clone().unwrap_or_default();
+                let k = dm.external_index(&name, size);
+                dm.set_area(r, Area::External(k));
             } else {
                 *cursor = align(*cursor, 8);
                 let size = dm.layout(r, *cursor)?;
@@ -554,8 +696,9 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     place(&mut dm, &ws, &mut cursor)?;
     place(&mut dm, &ls, &mut cursor)?;
     for (fi, recs) in file_records.iter().enumerate() {
+        let external = prog.data.files[fi].external;
         cursor = align(cursor, 8);
-        let start = cursor;
+        let start = if external { 0 } else { cursor };
         let mut max = 0;
         for &r in recs {
             let size = dm.layout(r, start)?;
@@ -565,7 +708,16 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         if let Some(m) = fd.record_max {
             max = max.max(m);
         }
-        cursor = start + max.max(1);
+        let area_kind = if external {
+            let k = dm.external_index(&format!("FILE {}", fd.name), max.max(1));
+            for &r in recs {
+                dm.set_area(r, Area::External(k));
+            }
+            Area::External(k)
+        } else {
+            cursor = start + max.max(1);
+            Area::File(fi)
+        };
         dm.files.insert(fd.name.clone(), (usize::MAX, recs.clone()));
         // record area pseudo-item
         let area = Item {
@@ -574,7 +726,7 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             pos: fd.pos,
             parent: None,
             children: Vec::new(),
-            area: Area::File(fi),
+            area: area_kind,
             offset: start,
             len: max.max(1),
             occurs: None,
@@ -585,6 +737,8 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             cond_of: None,
             desc: 0,
             index_of: None,
+            owner: None,
+            global: fd.global,
             renames: None,
         };
         let id = dm.items.len();
@@ -823,6 +977,22 @@ impl DataModel {
                     .collect()
             })
             .unwrap_or_default();
+        // Names of the program itself hide GLOBAL names of containing ones.
+        let own: Vec<usize> = cands
+            .iter()
+            .copied()
+            .filter(|&c| self.items[c].owner.is_none())
+            .collect();
+        let cands = if own.is_empty() {
+            // the innermost containing program wins
+            let max_owner = cands.iter().filter_map(|&c| self.items[c].owner).max();
+            cands
+                .into_iter()
+                .filter(|&c| self.items[c].owner == max_owner)
+                .collect()
+        } else {
+            own
+        };
         match cands.len() {
             0 => Err(Diag::error(
                 r.pos,

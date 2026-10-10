@@ -230,7 +230,8 @@ pub struct Paragraph {
 #[derive(Debug, Clone)]
 pub enum UseStmt {
     /// USE AFTER STANDARD EXCEPTION/ERROR PROCEDURE ON files | INPUT ...
-    Error(UseTarget),
+    /// (target, GLOBAL)
+    Error(UseTarget, bool),
     /// USE FOR DEBUGGING ON ...
     Debugging(Vec<String>),
     BeforeReporting(String),

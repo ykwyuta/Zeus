@@ -22,6 +22,12 @@ use super::{Machine, RResult, err};
 use crate::ebcdic;
 use crate::zir::{AccessMode, Advance, FileDef, Loc, OpenMode, Org, Rel, SortKey, Src};
 
+impl FileState {
+    pub(super) fn open_mode(&self) -> Option<OpenMode> {
+        self.open
+    }
+}
+
 #[derive(Default)]
 pub struct FileState {
     open: Option<OpenMode>,
@@ -71,7 +77,8 @@ impl Machine {
     }
 
     fn state(&mut self, cur: usize, f: u32) -> &mut FileState {
-        &mut self.instances[cur].files[f as usize]
+        let slot = self.instances[cur].files[f as usize];
+        &mut self.file_states[slot]
     }
 
     fn file_path(def: &FileDef) -> PathBuf {
@@ -90,6 +97,8 @@ impl Machine {
     /// Sets the FILE STATUS item and the I/O condition.
     fn set_status(&mut self, cur: usize, def: &FileDef, code: &str) -> RResult<()> {
         self.io_cond = !code.starts_with('0');
+        let b = code.as_bytes();
+        self.last_status = [b[0], b[1]];
         if let Some(loc) = &def.status {
             let v = Val::Alnum(ebcdic::encode(code));
             self.move_val(cur, &v, loc)?;
@@ -101,7 +110,13 @@ impl Machine {
     /// handler the program continues, otherwise the run ends.
     fn io_error(&mut self, cur: usize, def: &FileDef, code: &str, what: &str) -> RResult<()> {
         self.set_status(cur, def, code)?;
-        if def.status.is_none() && def.error_proc.is_none() {
+        let f = self.instances[cur]
+            .code
+            .files
+            .iter()
+            .position(|d| d.name == def.name);
+        let has_use = f.is_some_and(|f| self.find_use(cur, f as u32).is_some());
+        if def.status.is_none() && !has_use {
             return err(format!(
                 "{}: {what} failed on file {} (status {code})",
                 self.instances[cur].code.name, def.name
@@ -111,6 +126,7 @@ impl Machine {
     }
 
     pub(super) fn open_file(&mut self, cur: usize, f: u32, mode: OpenMode) -> RResult<()> {
+        self.last_open_mode = Some(mode);
         let def = self.file_def(cur, f);
         if self.state(cur, f).open.is_some() {
             return self.io_error(cur, &def, "41", "OPEN");

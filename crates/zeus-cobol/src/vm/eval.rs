@@ -71,6 +71,25 @@ impl Machine {
                     ));
                 }
             },
+            Base::External(k) => self.instances[cur].ext_bases[k as usize],
+            Base::Outer(p) => {
+                let module = self.instances[cur].module.clone();
+                let o = self.instantiate(&module, p);
+                self.instances[o].static_base
+            }
+            Base::OuterLinkage(p, n) => {
+                let module = self.instances[cur].module.clone();
+                let o = self.instantiate(&module, p);
+                match self.instances[o].linkage[n as usize] {
+                    Some(a) => a,
+                    None => {
+                        return err(format!(
+                            "{}: linkage item {} is not addressable",
+                            code.name, desc.name
+                        ));
+                    }
+                }
+            }
         };
         let mut a = base + desc.offset as usize;
         let mut len = desc.len as usize;

@@ -47,7 +47,13 @@ fn native_ordinal_byte(ord: u32) -> u8 {
 }
 
 impl<'a> Gen<'a> {
-    pub fn new(prog: &'a ast::Program) -> Result<Gen<'a>> {
+    /// `outer` is the enclosing program's data model and module index;
+    /// `ancestors` lists the containing programs, nearest first.
+    pub fn new(
+        prog: &'a ast::Program,
+        outer: Option<(u32, &DataModel)>,
+        ancestors: &[(u32, &'a ast::Program)],
+    ) -> Result<Gen<'a>> {
         let settings = Settings {
             decimal_comma: prog.env.decimal_point_comma,
             currency: prog
@@ -57,7 +63,10 @@ impl<'a> Gen<'a> {
                 .and_then(|s| s.chars().next())
                 .unwrap_or('$'),
         };
-        let dm = super::data::build(prog, &settings)?;
+        let mut dm = super::data::build(prog, &settings)?;
+        if let Some((idx, odm)) = outer {
+            dm.import_globals(odm, idx);
+        }
         let mut g = Gen {
             prog,
             dm,
@@ -82,6 +91,21 @@ impl<'a> Gen<'a> {
             pos: prog.pos,
         };
         g.environment()?;
+        // GLOBAL files of containing programs
+        for f in g.dm.global_files.clone() {
+            if g.file_index.contains_key(&f) {
+                continue;
+            }
+            for &(idx, anc) in ancestors {
+                let Some(fd) = anc.data.files.iter().find(|d| d.name == f && d.global) else {
+                    continue;
+                };
+                if let Some(pos) = anc.env.files.iter().position(|fc| fc.name == f) {
+                    g.declare_file_from(&anc.env.files[pos], fd, Some((idx, pos as u32)))?;
+                }
+                break;
+            }
+        }
         Ok(g)
     }
 
@@ -130,13 +154,22 @@ impl<'a> Gen<'a> {
     }
 
     fn declare_file(&mut self, fc: &FileControl) -> Result<()> {
-        let fd = self
-            .prog
+        let prog = self.prog;
+        let fd = prog
             .data
             .files
             .iter()
             .find(|f| f.name == fc.name)
             .ok_or_else(|| Diag::error(fc.pos, format!("no FD for file {}", fc.name)))?;
+        self.declare_file_from(fc, fd, None)
+    }
+
+    fn declare_file_from(
+        &mut self,
+        fc: &FileControl,
+        fd: &FileDescription,
+        owner: Option<(u32, u32)>,
+    ) -> Result<()> {
         let (area, records) = self
             .dm
             .files
@@ -150,9 +183,15 @@ impl<'a> Gen<'a> {
             .map(|&r| self.dm.items[r].len)
             .min()
             .unwrap_or(max_len);
+        // Items of a containing program that are not GLOBAL cannot be
+        // named here; such clauses are dropped from the imported file.
         let opt_loc = |g: &mut Gen, r: &Option<DataRef>| -> Result<Option<Loc>> {
             match r {
-                Some(r) => Ok(Some(g.loc(r)?)),
+                Some(r) => match g.loc(r) {
+                    Ok(l) => Ok(Some(l)),
+                    Err(_) if owner.is_some() => Ok(None),
+                    Err(e) => Err(e),
+                },
                 None => Ok(None),
             }
         };
@@ -162,7 +201,9 @@ impl<'a> Gen<'a> {
         let record_depending = opt_loc(self, &fd.record_depending)?;
         let mut alternate_keys = Vec::new();
         for (k, dup) in &fc.alternate_keys {
-            alternate_keys.push((self.loc(k)?, *dup));
+            if let Some(l) = opt_loc(self, &Some(k.clone()))? {
+                alternate_keys.push((l, *dup));
+            }
         }
         let def = FileDef {
             name: fc.name.clone(),
@@ -191,6 +232,8 @@ impl<'a> Gen<'a> {
             linage: None,
             sort: fd.sort,
             error_proc: None,
+            external: fd.external,
+            owner,
         };
         self.file_index
             .insert(fc.name.clone(), self.files.len() as u32);
@@ -316,23 +359,37 @@ impl<'a> Gen<'a> {
         // Falling off the end of the procedure division.
         self.emit(Instr::GoBack);
         let mut para_idx = decl_start as u32;
+        let mut uses = Vec::new();
         for sec in &proc.declaratives {
-            if let Some(UseStmt::Error(target)) = &sec.use_stmt {
-                let first = para_idx;
-                let files: Vec<u32> = match target {
-                    UseTarget::Files(names) => names
-                        .iter()
-                        .filter_map(|n| self.file_index.get(n).copied())
-                        .collect(),
-                    _ => (0..self.files.len() as u32).collect(),
+            let first = para_idx;
+            para_idx = self.gen_section(sec, para_idx)?;
+            if let Some(UseStmt::Error(target, global)) = &sec.use_stmt {
+                let (files, mode) = match target {
+                    UseTarget::Files(names) => (
+                        names
+                            .iter()
+                            .filter_map(|n| self.file_index.get(n).copied())
+                            .collect(),
+                        None,
+                    ),
+                    UseTarget::Input => (vec![], Some(zir::OpenMode::Input)),
+                    UseTarget::Output => (vec![], Some(zir::OpenMode::Output)),
+                    UseTarget::InputOutput => (vec![], Some(zir::OpenMode::InputOutput)),
+                    UseTarget::Extend => (vec![], Some(zir::OpenMode::Extend)),
                 };
-                for f in files {
+                for &f in &files {
                     if self.files[f as usize].error_proc.is_none() {
                         self.files[f as usize].error_proc = Some(first);
                     }
                 }
+                uses.push(zir::UseDecl {
+                    files,
+                    mode,
+                    start: first,
+                    end: para_idx - 1,
+                    global: *global,
+                });
             }
-            para_idx = self.gen_section(sec, para_idx)?;
         }
         self.emit(Instr::GoBack);
 
@@ -418,7 +475,9 @@ impl<'a> Gen<'a> {
             high_value,
             low_value,
             switches: self.switches,
+            externals: self.dm.externals.clone(),
             debugging: false,
+            uses,
         })
     }
 
@@ -606,6 +665,12 @@ impl<'a> Gen<'a> {
 
     /// Generates `on` / `not on` handlers for a condition flag tested by
     /// `cond` (true = the exception occurred).
+    fn use_check(&mut self, file: u32, at_end: &[&Handlers], invalid_key: &[&Handlers]) {
+        let has = |hs: &[&Handlers]| hs.iter().any(|h| h.on.is_some());
+        let handled = has(at_end) as u8 | (has(invalid_key) as u8) << 1;
+        self.emit(Instr::UseCheck { file, handled });
+    }
+
     fn handlers(&mut self, h: &Handlers, cond: Cx) -> Result<()> {
         if h.on.is_none() && h.not_on.is_none() {
             return Ok(());
@@ -704,7 +769,7 @@ impl<'a> Gen<'a> {
         let id = self.dm.resolve(r)?;
         let rec = self.dm.record_of(id);
         match self.dm.items[rec].area {
-            Area::File(_) => {
+            Area::File(_) | Area::External(_) => {
                 let name = self
                     .dm
                     .files
@@ -1096,6 +1161,10 @@ impl<'a> Gen<'a> {
                     for f in files {
                         let fi = self.file(f)?;
                         self.emit(Instr::Open(fi, m));
+                        self.emit(Instr::UseCheck {
+                            file: fi,
+                            handled: 0,
+                        });
                     }
                 }
             }
@@ -1104,6 +1173,10 @@ impl<'a> Gen<'a> {
                     let fi = self.file(f)?;
                     let lock = opt.as_deref() == Some("LOCK");
                     self.emit(Instr::Close(fi, lock));
+                    self.emit(Instr::UseCheck {
+                        file: fi,
+                        handled: 0,
+                    });
                 }
             }
             Stmt::Write {
@@ -1111,7 +1184,7 @@ impl<'a> Gen<'a> {
                 from,
                 advancing,
                 end_of_page,
-                ..
+                invalid_key,
             } => {
                 let fi = self.file_of_record(record)?;
                 let rec_desc = self.loc(record)?.desc;
@@ -1150,6 +1223,8 @@ impl<'a> Gen<'a> {
                     from,
                     advance,
                 });
+                self.use_check(fi, &[], &[invalid_key]);
+                // END-OF-PAGE and INVALID KEY share one parsed phrase set.
                 self.handlers(end_of_page, Cx::IoCond)?;
             }
             Stmt::Rewrite {
@@ -1168,6 +1243,7 @@ impl<'a> Gen<'a> {
                     record: rec_desc,
                     from,
                 });
+                self.use_check(fi, &[], &[invalid_key]);
                 self.handlers(invalid_key, Cx::IoCond)?;
             }
             Stmt::Read {
@@ -1176,7 +1252,7 @@ impl<'a> Gen<'a> {
                 into,
                 key,
                 at_end,
-                ..
+                invalid_key,
             } => {
                 let fi = self.file(file)?;
                 let into = match into {
@@ -1201,11 +1277,14 @@ impl<'a> Gen<'a> {
                     into,
                     key,
                 });
+                self.use_check(fi, &[at_end], &[invalid_key]);
+                // AT END and INVALID KEY share one parsed phrase set.
                 self.handlers(at_end, Cx::IoCond)?;
             }
             Stmt::Delete { file, invalid_key } => {
                 let fi = self.file(file)?;
                 self.emit(Instr::Delete(fi));
+                self.use_check(fi, &[], &[invalid_key]);
                 self.handlers(invalid_key, Cx::IoCond)?;
             }
             Stmt::Start {
@@ -1223,6 +1302,7 @@ impl<'a> Gen<'a> {
                     rel: r,
                     key: k,
                 });
+                self.use_check(fi, &[], &[invalid_key]);
                 self.handlers(invalid_key, Cx::IoCond)?;
             }
             Stmt::Call {
@@ -2162,21 +2242,28 @@ fn handlers_of(s: &Stmt) -> Vec<&Vec<Stmt>> {
 pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
     let mut out = Vec::new();
     for p in programs {
-        compile_nested(p, None, &mut out)?;
+        compile_nested(p, None, &[], &mut out)?;
     }
     Ok(zir::Module { programs: out })
 }
 
-fn compile_nested(
-    p: &ast::Program,
-    parent: Option<u32>,
+fn compile_nested<'a>(
+    p: &'a ast::Program,
+    outer: Option<(u32, &DataModel)>,
+    ancestors: &[(u32, &'a ast::Program)],
     out: &mut Vec<zir::ProgramCode>,
 ) -> Result<()> {
     let idx = out.len() as u32;
-    let code = Gen::new(p)?.generate(parent)?;
+    let g = Gen::new(p, outer, ancestors)?;
+    let dm = (!p.nested.is_empty()).then(|| g.dm.clone());
+    let code = g.generate(outer.map(|(i, _)| i))?;
     out.push(code);
-    for n in &p.nested {
-        compile_nested(n, Some(idx), out)?;
+    if let Some(dm) = dm {
+        let mut anc = vec![(idx, p)];
+        anc.extend_from_slice(ancestors);
+        for n in &p.nested {
+            compile_nested(n, Some((idx, &dm)), &anc, out)?;
+        }
     }
     Ok(())
 }

@@ -44,7 +44,10 @@ struct Instance {
     perform: Vec<(u32, u32)>,
     temps: Vec<Dec>,
     alter: Vec<u32>,
-    files: Vec<FileState>,
+    /// Slots in `Machine::file_states` of the program's files.
+    files: Vec<usize>,
+    /// Addresses of the EXTERNAL data areas the program uses.
+    ext_bases: Vec<usize>,
     active: bool,
     /// The program has been entered before (state is kept between calls).
     initialized: bool,
@@ -58,11 +61,20 @@ struct Frame {
 pub struct Machine {
     mem: Vec<u8>,
     instances: Vec<Instance>,
+    file_states: Vec<FileState>,
+    /// EXTERNAL data areas by name.
+    externals: HashMap<String, usize>,
+    /// EXTERNAL files by name (slot in `file_states`).
+    ext_files: HashMap<String, usize>,
     by_name: HashMap<String, usize>,
     search_dirs: Vec<PathBuf>,
     switches: HashMap<String, bool>,
     size_error: bool,
     io_cond: bool,
+    /// Status code of the last I/O statement (for USE procedures).
+    last_status: [u8; 2],
+    /// Mode of the last OPEN attempted.
+    last_open_mode: Option<zir::OpenMode>,
     call_exception: bool,
     overflow: bool,
     stdout: Box<dyn Write>,
@@ -90,11 +102,16 @@ impl Machine {
         Machine {
             mem: Vec::new(),
             instances: Vec::new(),
+            file_states: Vec::new(),
+            externals: HashMap::new(),
+            ext_files: HashMap::new(),
             by_name: HashMap::new(),
             search_dirs,
             switches,
             size_error: false,
             io_cond: false,
+            last_status: *b"00",
+            last_open_mode: None,
             call_exception: false,
             overflow: false,
             stdout: Box::new(std::io::BufWriter::new(std::io::stdout())),
@@ -119,13 +136,46 @@ impl Machine {
             return i;
         }
         let static_base = self.alloc(&code.static_init);
-        let files = code.files.iter().map(|_| FileState::default()).collect();
+        let mut ext_bases = Vec::new();
+        for e in &code.externals {
+            let a = match self.externals.get(&e.name) {
+                Some(&a) => a,
+                None => {
+                    let a = self.alloc(&vec![0x40; e.len as usize]);
+                    self.externals.insert(e.name.clone(), a);
+                    a
+                }
+            };
+            ext_bases.push(a);
+        }
+        let mut files = Vec::new();
+        for def in &code.files {
+            let slot = if let Some((p, k)) = def.owner {
+                let o = self.instantiate(module, p);
+                self.instances[o].files[k as usize]
+            } else if def.external {
+                match self.ext_files.get(&def.name) {
+                    Some(&s) => s,
+                    None => {
+                        self.file_states.push(FileState::default());
+                        let s = self.file_states.len() - 1;
+                        self.ext_files.insert(def.name.clone(), s);
+                        s
+                    }
+                }
+            } else {
+                self.file_states.push(FileState::default());
+                self.file_states.len() - 1
+            };
+            files.push(slot);
+        }
         let inst = Instance {
             linkage: vec![None; code.linkage_count as usize],
             perform: Vec::new(),
             temps: vec![Dec::ZERO; code.temps as usize],
             alter: code.alter_init.clone(),
             files,
+            ext_bases,
             active: false,
             initialized: false,
             module: module.clone(),
@@ -246,7 +296,31 @@ impl Machine {
                     let inst = &mut self.instances[cur];
                     if inst.perform.last().is_some_and(|&(end, _)| end == *p) {
                         let (_, ret) = inst.perform.pop().unwrap();
-                        pc = ret;
+                        if ret == USE_RETURN {
+                            // end of a GLOBAL declarative of a containing program
+                            let f = stack.pop().unwrap();
+                            cur = f.inst;
+                            pc = f.pc;
+                        } else {
+                            pc = ret;
+                        }
+                    }
+                }
+                Instr::UseCheck { file, handled } => {
+                    let st = std::mem::replace(&mut self.last_status, *b"00");
+                    let skip = st[0] == b'0'
+                        || (st[0] == b'1' && handled & 1 != 0)
+                        || (st[0] == b'2' && handled & 2 != 0);
+                    if !skip && let Some((inst, start, end)) = self.find_use(cur, *file) {
+                        let target = self.instances[inst].code.paragraphs[start as usize].start;
+                        if inst == cur {
+                            self.instances[cur].perform.push((end, pc));
+                        } else {
+                            stack.push(Frame { inst: cur, pc });
+                            cur = inst;
+                            self.instances[cur].perform.push((end, USE_RETURN));
+                        }
+                        pc = target;
                     }
                 }
                 Instr::GoDepending(ex, targets) => {
@@ -527,6 +601,22 @@ impl Machine {
                     pc = if !self.eval_cx(cur, c)? { *t } else { pc + 1 };
                     continue;
                 }
+                Instr::UseCheck { file, handled } => {
+                    let st = std::mem::replace(&mut self.last_status, *b"00");
+                    let skip = st[0] == b'0'
+                        || (st[0] == b'1' && handled & 1 != 0)
+                        || (st[0] == b'2' && handled & 2 != 0);
+                    if !skip
+                        && let Some((inst, start, end)) = self.find_use(cur, *file)
+                        && inst == cur
+                    {
+                        self.instances[cur].perform.push((end, pc + 1));
+                        pc = code.paragraphs[start as usize].start;
+                        continue;
+                    }
+                    pc += 1;
+                    continue;
+                }
                 Instr::GoBack | Instr::ExitProgram | Instr::StopRun => {
                     return err("STOP RUN / EXIT PROGRAM inside a SORT procedure is not supported");
                 }
@@ -662,11 +752,52 @@ impl Machine {
         None
     }
 
+    /// The USE AFTER ERROR procedure applicable to file `f` of instance
+    /// `cur`: (instance, first paragraph, last paragraph).
+    fn find_use(&mut self, cur: usize, f: u32) -> Option<(usize, u32, u32)> {
+        let slot = self.instances[cur].files[f as usize];
+        let mode = self.file_states[slot].open_mode().or(self.last_open_mode);
+        let mut inst = cur;
+        loop {
+            let code = self.instances[inst].code.clone();
+            // the file as known in this program
+            let fi = if inst == cur {
+                Some(f)
+            } else {
+                self.instances[inst]
+                    .files
+                    .iter()
+                    .position(|&s| s == slot)
+                    .map(|i| i as u32)
+            };
+            let local = inst == cur;
+            let usable = code.uses.iter().filter(|u| local || u.global);
+            let named = usable
+                .clone()
+                .find(|u| fi.is_some_and(|fi| u.files.contains(&fi)));
+            let by_mode = || usable.clone().find(|u| u.mode.is_some() && u.mode == mode);
+            if let Some(u) = named.or_else(by_mode) {
+                return Some((inst, u.start, u.end));
+            }
+            let parent = code.parent?;
+            let module = self.instances[inst].module.clone();
+            inst = self.instantiate(&module, parent);
+        }
+    }
+
     fn close_program_files(&mut self, i: usize) {
         for f in 0..self.instances[i].files.len() {
+            let def = &self.instances[i].code.files[f];
+            if def.owner.is_some() || def.external {
+                continue;
+            }
             let _ = self.close_file(i, f as u32, false);
         }
     }
 }
+
+/// PERFORM return address marking the end of a declarative run on behalf
+/// of a contained program.
+const USE_RETURN: u32 = u32::MAX;
 
 pub const SIZE_ERROR: &str = "\u{0}size error";

@@ -32,6 +32,8 @@ pub struct ProgramCode {
     pub files: Vec<FileDef>,
     /// Number of LINKAGE SECTION base addresses.
     pub linkage_count: u32,
+    /// EXTERNAL areas used by the program.
+    pub externals: Vec<ExternalArea>,
     /// Linkage base numbers bound by PROCEDURE DIVISION USING.
     pub using: Vec<u32>,
     /// Number of temporary numeric registers.
@@ -50,6 +52,21 @@ pub struct ProgramCode {
     pub switches: Vec<String>,
     /// Debugging declaratives are active.
     pub debugging: bool,
+    /// USE AFTER ERROR declaratives.
+    pub uses: Vec<UseDecl>,
+}
+
+/// A USE AFTER STANDARD ERROR declarative section.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UseDecl {
+    /// Files named in the USE statement (indexes in `files`).
+    pub files: Vec<u32>,
+    /// USE ... ON INPUT / OUTPUT / I-O / EXTEND.
+    pub mode: Option<OpenMode>,
+    /// First and last paragraph of the section.
+    pub start: u32,
+    pub end: u32,
+    pub global: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +83,20 @@ pub enum Base {
     Static,
     /// A LINKAGE SECTION record (base address supplied by the caller).
     Linkage(u32),
+    /// An EXTERNAL record (index into `ProgramCode::externals`).
+    External(u32),
+    /// GLOBAL data of a containing program (module program index): its
+    /// static storage ...
+    Outer(u32),
+    /// ... or one of its LINKAGE SECTION records.
+    OuterLinkage(u32, u32),
+}
+
+/// An EXTERNAL data record or file record area, shared by name.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExternalArea {
+    pub name: String,
+    pub len: u32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -371,6 +402,11 @@ pub struct FileDef {
     pub sort: bool,
     /// Declarative procedure (paragraph index) for errors.
     pub error_proc: Option<u32>,
+    /// EXTERNAL file: its state is shared by name across programs.
+    pub external: bool,
+    /// GLOBAL file of a containing program: (module program index, file
+    /// index there) holding the file's state.
+    pub owner: Option<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -468,6 +504,13 @@ pub enum Instr {
     },
     /// End of paragraph `para`: return if it ends the active PERFORM.
     ParaEnd(u32),
+    /// After an I/O statement on `file`: runs the applicable USE AFTER
+    /// ERROR procedure if the statement failed. `handled` bit 0: the
+    /// statement has AT END, bit 1: INVALID KEY.
+    UseCheck {
+        file: u32,
+        handled: u8,
+    },
     GoDepending(Ex, Vec<u32>),
     /// GO TO whose target can be changed by ALTER.
     AlterableGo(u32),
