@@ -73,7 +73,7 @@ pub fn parse_sqlca(d: &[u8], le: bool) -> SqlCa {
         let m = vc(&mut i);
         let sm = vc(&mut i);
         let msg = if m.is_empty() { sm } else { m };
-        ca.tokens = msg.split(|&b| b == 0xFF).map(|t| s(t)).collect();
+        ca.tokens = msg.split(|&b| b == 0xFF).map(s).collect();
     }
     ca
 }
