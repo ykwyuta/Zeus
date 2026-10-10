@@ -18,9 +18,8 @@ Rust interpreter, keeping data in EBCDIC with z/OS storage layouts. It passes
 all eight required CCVS85 modules (NC, SM, IC, SQ, RL, IX, ST, IF), with the
 same test counts as the GnuCOBOL baseline (and more programs in IF, where
 GnuCOBOL cannot compile some). The optional modules SG (segmentation), OB
-(obsolete elements) and DB (debugging) pass as well. Report Writer (RW) and
-communication (CM), which Enterprise COBOL does not support, are out of
-scope.
+(obsolete elements), DB (debugging) and RW (Report Writer) pass as well; the
+only module out of scope is CM (communication).
 
 ## Layout
 

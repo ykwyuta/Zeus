@@ -121,11 +121,13 @@ DELETED / INSPECT を報告する。以下を「合格」と定義する。
 | IX | 索引ファイル | **必須** |
 | ST | 整列併合 (SORT / MERGE) | **必須** |
 | IF | 組み込み関数 (1989 追補) | **必須** |
-| SG | セグメンテーション | 任意 (構文受理まで) |
-| OB | 廃要素 (ALTER 等) | 任意 |
-| DB | デバッグ (USE FOR DEBUGGING) | 任意 |
-| RW | 報告書作成 | 対象外 (Enterprise COBOL 非対応) |
-| CM | 通信 | 対象外 (Enterprise COBOL 非対応) |
+| SG | セグメンテーション | **合格対象** |
+| OB | 廃要素 (ALTER 等) | **合格対象** |
+| DB | デバッグ (USE FOR DEBUGGING) | **合格対象** |
+| RW | 報告書作成 | **合格対象** (Enterprise COBOL は前処理系で対応) |
+| CM | 通信 | 対象外 (唯一の例外。MCS が前提で Enterprise COBOL も非対応) |
+
+- 方針: GnuCOBOL が合格できないものも含め、CM 以外のすべてのモジュールに合格させる。
 
 - **合格 = 必須モジュールで FAIL ゼロ・INSPECT はすべて目視確認済み**。DELETED (意図的な除外) は
   Enterprise COBOL も非対応の機能に限り、理由を `docs/oracle/ccvs85-exclusions.md` に 1 件ずつ記録する。
@@ -175,7 +177,12 @@ CCVS85 合格 (C0〜C3) を先に完了させ、その後でアプリケーシ�
   C4 と並行して行う。
 - 任意モジュール SG・OB・DB にも合格 (テスト合格数は GnuCOBOL と同数)。DB のうち通信節 (CD) を
   使う 2 本 (DB205A, DB304M) のため、CD 記述と ENABLE/DISABLE/SEND/RECEIVE/PURGE 文は
-  構文だけ受け付ける (実行するとエラー)。RW・CM は Enterprise COBOL が未対応のため対象外。
+  構文だけ受け付ける (実行するとエラー)。
+- RW にも合格 (40/40)。報告書記述 (RD)・報告書集団 (RH/PH/CH/DE/CF/PF/RF)・LINE/NEXT GROUP/COLUMN/
+  SOURCE/VALUE/SUM (UPON, RESET, 繰り上げ)/GROUP INDICATE・CONTROL による改段・頁管理・
+  USE BEFORE REPORTING/SUPPRESS PRINTING を実装。CCVS85 にない CONTROL と SUM は単体テストで確認。
+- 対象外は CM のみ。CCVS85 自身が無条件に DELETED にしているテスト (ソース中の「DELETE THE NEXT LINE
+  TO DELETE THE TEST」等) は GnuCOBOL と同じく実行されない。
 
 ## 8. 0002 計画への影響
 

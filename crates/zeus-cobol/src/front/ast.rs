@@ -112,6 +112,8 @@ pub struct FileControl {
 #[derive(Debug, Clone, Default)]
 pub struct DataDivision {
     pub files: Vec<FileDescription>,
+    /// REPORT SECTION.
+    pub reports: Vec<ReportDescription>,
     pub working: Vec<DataEntry>,
     pub local: Vec<DataEntry>,
     pub linkage: Vec<DataEntry>,
@@ -130,6 +132,8 @@ pub struct FileDescription {
     pub record_max: Option<u32>,
     pub record_depending: Option<DataRef>,
     pub label_standard: bool,
+    /// REPORT IS / REPORTS ARE
+    pub reports: Vec<String>,
     pub value_of: Vec<(String, Operand)>,
     pub data_records: Vec<String>,
     pub linage: Option<Linage>,
@@ -196,6 +200,71 @@ pub struct DataEntry {
     pub value: Option<ValueClause>,
     /// Level 66: RENAMES a [THRU b]
     pub renames: Option<(DataRef, Option<DataRef>)>,
+    /// Report group description clauses (REPORT SECTION).
+    pub report: Option<Box<ReportClauses>>,
+}
+
+/// RD entry and its report group descriptions.
+#[derive(Debug, Clone, Default)]
+pub struct ReportDescription {
+    pub name: String,
+    pub pos: Pos,
+    pub global: bool,
+    pub code: Option<Operand>,
+    /// CONTROL clause, major to minor; FINAL first when given.
+    pub controls: Vec<Option<DataRef>>,
+    pub page: Option<PageClause>,
+    /// Report group description entries (01 entries start a group).
+    pub entries: Vec<DataEntry>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct PageClause {
+    pub limit: Option<u32>,
+    pub heading: Option<u32>,
+    pub first_detail: Option<u32>,
+    pub last_detail: Option<u32>,
+    pub footing: Option<u32>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct ReportClauses {
+    pub line: Option<LineClause>,
+    pub next_group: Option<LineClause>,
+    pub ty: Option<GroupType>,
+    pub column: Option<u32>,
+    pub source: Option<Operand>,
+    pub sum: Vec<SumClause>,
+    pub group_indicate: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LineClause {
+    Absolute(u32),
+    Plus(u32),
+    NextPage,
+    /// LINE n ON NEXT PAGE
+    AbsoluteNextPage(u32),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum GroupType {
+    ReportHeading,
+    PageHeading,
+    /// CONTROL HEADING data-name, or FINAL (None)
+    ControlHeading(Option<String>),
+    Detail,
+    ControlFooting(Option<String>),
+    PageFooting,
+    ReportFooting,
+}
+
+#[derive(Debug, Clone)]
+pub struct SumClause {
+    pub items: Vec<DataRef>,
+    pub upon: Vec<String>,
+    /// RESET ON data-name, or FINAL (Some(None)).
+    pub reset: Option<Option<String>>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -733,6 +802,11 @@ pub enum Stmt {
         end_of_page: Handlers,
         invalid_key: Handlers,
     },
+    /// Report Writer
+    Initiate(Vec<String>),
+    Generate(DataRef),
+    Terminate(Vec<String>),
+    SuppressPrinting,
     /// Statement the code generator cannot handle yet.
     Unsupported(String, Pos),
 }

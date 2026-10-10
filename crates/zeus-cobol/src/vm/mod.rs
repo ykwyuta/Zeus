@@ -4,6 +4,7 @@ pub mod data;
 mod eval;
 mod files;
 mod func;
+mod report;
 mod text;
 
 use std::collections::HashMap;
@@ -48,6 +49,8 @@ struct Instance {
     files: Vec<usize>,
     /// Segment of the paragraph being executed (segmentation).
     segment: u8,
+    /// Report Writer state of each report.
+    reports: Vec<report::ReportState>,
     /// Debugging: how control is reaching the next procedure, and the
     /// source line responsible.
     debug_cause: (u8, u32),
@@ -76,6 +79,11 @@ pub struct Machine {
     switches: HashMap<String, bool>,
     size_error: bool,
     io_cond: bool,
+    /// Data set assignments (DD name -> path) taking precedence over the
+    /// DD_ environment variables.
+    dd: HashMap<String, PathBuf>,
+    /// SUPPRESS PRINTING was executed (USE BEFORE REPORTING).
+    suppress_printing: bool,
     /// Object-time debugging switch (ZEUS_DEBUG=Y): USE FOR DEBUGGING
     /// sections run only when it is on.
     debug: bool,
@@ -123,6 +131,8 @@ impl Machine {
             switches,
             size_error: false,
             io_cond: false,
+            suppress_printing: false,
+            dd: HashMap::new(),
             debug: std::env::var("ZEUS_DEBUG")
                 .is_ok_and(|v| matches!(v.to_ascii_uppercase().as_str(), "Y" | "YES" | "ON" | "1")),
             last_status: *b"00",
@@ -191,6 +201,7 @@ impl Machine {
             alter: code.alter_init.clone(),
             files,
             segment: 0,
+            reports: vec![report::ReportState::default(); code.reports.len()],
             debug_cause: (zir::debug_cause::START_PROGRAM, 0),
             ext_bases,
             active: false,
@@ -221,6 +232,11 @@ impl Machine {
     /// Sends DISPLAY output to `out` instead of standard output.
     pub fn set_stdout(&mut self, out: Box<dyn Write>) {
         self.stdout = out;
+    }
+
+    /// Assigns a file (by ASSIGN name or file name) to a path.
+    pub fn set_dd(&mut self, name: &str, path: PathBuf) {
+        self.dd.insert(name.to_string(), path);
     }
 
     /// Sets the object-time debugging switch (default: `ZEUS_DEBUG`).
@@ -397,6 +413,10 @@ impl Machine {
                     }
                 }
                 Instr::Segment(seg) => self.enter_segment(cur, *seg),
+                Instr::Initiate(r) => self.report_initiate(cur, *r)?,
+                Instr::Generate { report, group } => self.report_generate(cur, *report, *group)?,
+                Instr::Terminate(r) => self.report_terminate(cur, *r)?,
+                Instr::SuppressPrinting => self.suppress_printing = true,
                 Instr::DebugCause(c, line) => self.instances[cur].debug_cause = (*c, *line),
                 Instr::DebugProc { .. } | Instr::DebugData { .. } | Instr::DebugFile { .. } => {
                     if let Some((target, end)) = self.debug_fire(cur, ins)? {
@@ -837,6 +857,13 @@ impl Machine {
             }
             Instr::DebugCause(c, line) => {
                 self.instances[cur].debug_cause = (*c, *line);
+                Ok(())
+            }
+            Instr::Initiate(r) => self.report_initiate(cur, *r),
+            Instr::Generate { report, group } => self.report_generate(cur, *report, *group),
+            Instr::Terminate(r) => self.report_terminate(cur, *r),
+            Instr::SuppressPrinting => {
+                self.suppress_printing = true;
                 Ok(())
             }
             Instr::Call { program, args, .. } => {

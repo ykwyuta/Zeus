@@ -61,7 +61,13 @@ impl Parser {
                         dd.working.push(e);
                     }
                 }
-            } else if self.is_any(&["REPORT", "SCREEN"]) && self.is_at(1, "SECTION") {
+            } else if self.is("REPORT") && self.is_at(1, "SECTION") {
+                self.i += 2;
+                self.expect_period()?;
+                while self.is("RD") {
+                    dd.reports.push(self.report_description()?);
+                }
+            } else if self.is("SCREEN") && self.is_at(1, "SECTION") {
                 // Not supported: skip to the next section or division.
                 self.i += 2;
                 while !self.eof() && !self.is_at(1, "SECTION") && !self.is_at(1, "DIVISION") {
@@ -217,6 +223,15 @@ impl Parser {
             } else if self.accept("CODE-SET") {
                 self.accept("IS");
                 fd.code_set = Some(self.name()?);
+            } else if self.accept("REPORT") || self.accept("REPORTS") {
+                self.accept("IS");
+                self.accept("ARE");
+                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !self.is_fd_clause()
+                {
+                    let n = self.name()?;
+                    fd.reports.push(n);
+                }
             } else if self.accept("RECORDING") {
                 self.accept("MODE");
                 self.accept("IS");
@@ -242,7 +257,219 @@ impl Parser {
             "RECORDING",
             "EXTERNAL",
             "GLOBAL",
+            "REPORT",
+            "REPORTS",
         ])
+    }
+
+    /// RD entry followed by its report group descriptions.
+    fn report_description(&mut self) -> Result<ReportDescription> {
+        let pos = self.pos();
+        self.expect("RD")?;
+        let mut rd = ReportDescription {
+            name: self.name()?,
+            pos,
+            ..ReportDescription::default()
+        };
+        while !self.is_period() && !self.eof() {
+            if self.accept("IS") {
+            } else if self.accept("GLOBAL") {
+                rd.global = true;
+            } else if self.accept("CODE") {
+                self.accept("IS");
+                rd.code = Some(self.operand()?);
+            } else if self.accept("CONTROL") || self.accept("CONTROLS") {
+                self.accept("IS");
+                self.accept("ARE");
+                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !self.is_any(&["PAGE", "CODE", "GLOBAL", "IS"])
+                {
+                    if self.accept("FINAL") {
+                        rd.controls.push(None);
+                    } else {
+                        rd.controls.push(Some(self.data_ref()?));
+                    }
+                }
+            } else if self.accept("PAGE") {
+                let page = rd.page.get_or_insert_with(PageClause::default);
+                self.accept("LIMIT");
+                self.accept("LIMITS");
+                self.accept("IS");
+                self.accept("ARE");
+                if self.is_integer() {
+                    page.limit = Some(self.integer()?);
+                    self.accept("LINES");
+                    self.accept("LINE");
+                }
+            } else if self.accept("HEADING") {
+                self.accept("IS");
+                let n = self.integer()?;
+                rd.page.get_or_insert_with(PageClause::default).heading = Some(n);
+            } else if self.accept("FIRST") {
+                self.expect("DETAIL")?;
+                self.accept("IS");
+                let n = self.integer()?;
+                rd.page.get_or_insert_with(PageClause::default).first_detail = Some(n);
+            } else if self.accept("LAST") {
+                self.expect("DETAIL")?;
+                self.accept("IS");
+                let n = self.integer()?;
+                rd.page.get_or_insert_with(PageClause::default).last_detail = Some(n);
+            } else if self.accept("FOOTING") {
+                self.accept("IS");
+                let n = self.integer()?;
+                rd.page.get_or_insert_with(PageClause::default).footing = Some(n);
+            } else {
+                return self.err("RD clause expected");
+            }
+        }
+        self.expect_period()?;
+        rd.entries = self.data_entries()?;
+        Ok(rd)
+    }
+
+    /// LINE / NEXT GROUP operand: integer, PLUS integer, NEXT PAGE,
+    /// integer ON NEXT PAGE.
+    fn line_clause(&mut self) -> Result<LineClause> {
+        self.accept("NUMBER");
+        self.accept("IS");
+        if self.accept("PLUS") {
+            return Ok(LineClause::Plus(self.integer()?));
+        }
+        if self.accept("NEXT") {
+            self.expect("PAGE")?;
+            return Ok(LineClause::NextPage);
+        }
+        let n = self.integer()?;
+        if self.is("ON") && self.is_at(1, "NEXT") || self.is("NEXT") && self.is_at(1, "PAGE") {
+            self.accept("ON");
+            self.expect("NEXT")?;
+            self.expect("PAGE")?;
+            return Ok(LineClause::AbsoluteNextPage(n));
+        }
+        Ok(LineClause::Absolute(n))
+    }
+
+    /// Report group description clauses; returns false when the cursor is
+    /// not at one.
+    fn report_clause(&mut self, e: &mut DataEntry) -> Result<bool> {
+        if self.accept("LINE") {
+            let l = self.line_clause()?;
+            rc(e).line = Some(l);
+        } else if self.is("NEXT") && self.is_at(1, "GROUP") {
+            self.i += 2;
+            let l = self.line_clause()?;
+            rc(e).next_group = Some(l);
+        } else if self.accept("TYPE") {
+            self.accept("IS");
+            let control = |p: &mut Parser| -> Result<Option<String>> {
+                if p.accept("FINAL") {
+                    Ok(None)
+                } else if matches!(p.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !p.is_report_clause()
+                {
+                    Ok(Some(p.name()?))
+                } else {
+                    Ok(None)
+                }
+            };
+            let ty = if self.accept("RH") {
+                GroupType::ReportHeading
+            } else if self.accept("PH") {
+                GroupType::PageHeading
+            } else if self.accept("CH") {
+                GroupType::ControlHeading(control(self)?)
+            } else if self.accept("DE") || self.accept("DETAIL") {
+                GroupType::Detail
+            } else if self.accept("CF") {
+                GroupType::ControlFooting(control(self)?)
+            } else if self.accept("PF") {
+                GroupType::PageFooting
+            } else if self.accept("RF") {
+                GroupType::ReportFooting
+            } else if self.accept("REPORT") {
+                if self.accept("HEADING") {
+                    GroupType::ReportHeading
+                } else {
+                    self.expect("FOOTING")?;
+                    GroupType::ReportFooting
+                }
+            } else if self.accept("PAGE") {
+                if self.accept("HEADING") {
+                    GroupType::PageHeading
+                } else {
+                    self.expect("FOOTING")?;
+                    GroupType::PageFooting
+                }
+            } else if self.accept("CONTROL") {
+                if self.accept("HEADING") {
+                    GroupType::ControlHeading(control(self)?)
+                } else {
+                    self.expect("FOOTING")?;
+                    GroupType::ControlFooting(control(self)?)
+                }
+            } else {
+                return self.err("report group type expected");
+            };
+            rc(e).ty = Some(ty);
+        } else if self.accept("COLUMN") {
+            self.accept("NUMBER");
+            self.accept("IS");
+            let n = self.integer()?;
+            rc(e).column = Some(n);
+        } else if self.accept("SOURCE") {
+            self.accept("IS");
+            let s = self.operand()?;
+            rc(e).source = Some(s);
+        } else if self.accept("SUM") {
+            let mut items = Vec::new();
+            while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                && !self.is_any(&["UPON", "RESET"])
+                && !self.is_report_clause()
+                && !self.is_entry_clause()
+            {
+                items.push(self.data_ref()?);
+            }
+            let mut upon = Vec::new();
+            if self.accept("UPON") {
+                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !self.is_any(&["RESET"])
+                    && !self.is_report_clause()
+                    && !self.is_entry_clause()
+                {
+                    upon.push(self.name()?);
+                }
+            }
+            let reset = if self.accept("RESET") {
+                self.accept("ON");
+                Some(if self.accept("FINAL") {
+                    None
+                } else {
+                    Some(self.name()?)
+                })
+            } else {
+                None
+            };
+            rc(e).sum.push(SumClause { items, upon, reset });
+        } else if self.is("GROUP") && self.is_at(1, "INDICATE") {
+            self.i += 2;
+            rc(e).group_indicate = true;
+        } else {
+            return Ok(false);
+        }
+        Ok(true)
+    }
+}
+
+fn rc(e: &mut DataEntry) -> &mut ReportClauses {
+    e.report.get_or_insert_with(Box::default)
+}
+
+impl Parser {
+    fn is_report_clause(&self) -> bool {
+        self.is_any(&["LINE", "TYPE", "COLUMN", "SOURCE", "SUM"])
+            || (self.is("NEXT") && self.is_at(1, "GROUP"))
+            || (self.is("GROUP") && self.is_at(1, "INDICATE"))
     }
 
     fn usage_word(&mut self) -> Option<Usage> {
@@ -272,12 +499,14 @@ impl Parser {
         if self.accept("FILLER") {
         } else if let Some(Tok::Word(w)) = self.peek().map(|t| &t.tok)
             && !self.is_entry_clause()
+            && !self.is_report_clause()
         {
             e.name = Some(w.clone());
             self.i += 1;
         }
         while !self.is_period() && !self.eof() {
-            if self.accept("REDEFINES") {
+            if self.report_clause(&mut e)? {
+            } else if self.accept("REDEFINES") {
                 e.redefines = Some(self.name()?);
             } else if self.accept("IS") {
                 // IS EXTERNAL / IS GLOBAL

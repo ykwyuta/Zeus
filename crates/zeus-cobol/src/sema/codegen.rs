@@ -51,6 +51,8 @@ pub struct Gen<'a> {
     dbg: Debugging,
     /// Generating declaratives (no debugging triggers there).
     in_decl: bool,
+    /// Report Writer reports.
+    reports: Vec<zir::ReportDef>,
     pub pos: Pos,
 }
 
@@ -131,6 +133,7 @@ impl<'a> Gen<'a> {
             segmented: false,
             dbg: Debugging::default(),
             in_decl: false,
+            reports: Vec::new(),
             pos: prog.pos,
         };
         g.environment()?;
@@ -435,6 +438,7 @@ impl<'a> Gen<'a> {
         self.collect_paragraphs(&proc.declaratives);
         self.mark_print_files(&proc.sections);
         self.setup_debugging()?;
+        self.build_reports()?;
 
         let mut para_idx = 0u32;
         for sec in &proc.sections {
@@ -577,6 +581,7 @@ impl<'a> Gen<'a> {
             switches: self.switches,
             externals: self.dm.externals.clone(),
             debug_decls: self.dbg.decls.clone(),
+            reports: std::mem::take(&mut self.reports),
             debug_item: self
                 .dm
                 .by_name
@@ -770,6 +775,195 @@ impl<'a> Gen<'a> {
             }
         }
         Ok(())
+    }
+
+    /// Report Writer: builds the report descriptions.
+    fn build_reports(&mut self) -> Result<()> {
+        let prog = self.prog;
+        for (r, rd) in prog.data.reports.iter().enumerate() {
+            let fd = prog
+                .data
+                .files
+                .iter()
+                .find(|f| f.reports.contains(&rd.name))
+                .ok_or_else(|| Diag::error(rd.pos, format!("no FD names report {}", rd.name)))?;
+            let file = *self
+                .file_index
+                .get(&fd.name)
+                .ok_or_else(|| Diag::error(rd.pos, format!("file {} has no SELECT", fd.name)))?;
+            self.files[file as usize].print = true;
+            let page = match &rd.page {
+                Some(p) => {
+                    let limit = p.limit.unwrap_or(66);
+                    let heading = p.heading.unwrap_or(1);
+                    let last_detail = p.last_detail.or(p.footing).unwrap_or(limit);
+                    Some(zir::PageDef {
+                        limit,
+                        heading,
+                        first_detail: p.first_detail.unwrap_or(heading),
+                        last_detail,
+                        footing: p.footing.unwrap_or(last_detail),
+                    })
+                }
+                None => None,
+            };
+            let mut controls = Vec::new();
+            for c in &rd.controls {
+                controls.push(match c {
+                    Some(d) => Some(self.loc(d)?),
+                    None => None,
+                });
+            }
+            let control_level = |name: &Option<String>| -> Option<u32> {
+                rd.controls
+                    .iter()
+                    .position(|c| match (c, name) {
+                        (None, None) => true,
+                        (Some(d), Some(n)) => &d.name == n,
+                        _ => false,
+                    })
+                    .map(|p| p as u32)
+            };
+            let desc_of = |g: &Gen, i: usize| -> Option<u32> {
+                g.dm.by_name
+                    .get(&super::data::report_item_name(r, i))
+                    .and_then(|v| v.first())
+                    .map(|&id| g.dm.items[id].desc)
+            };
+            let mut groups: Vec<zir::GroupDef> = Vec::new();
+            // (group, entry index, SUM clauses) of every sum counter
+            let mut sum_entries: Vec<(u32, usize)> = Vec::new();
+            for (i, e) in rd.entries.iter().enumerate() {
+                let rc = e.report.as_deref().cloned().unwrap_or_default();
+                if e.level == 1 {
+                    let (kind, control) = match &rc.ty {
+                        Some(GroupType::ReportHeading) => (zir::GroupKind::ReportHeading, None),
+                        Some(GroupType::PageHeading) => (zir::GroupKind::PageHeading, None),
+                        Some(GroupType::ControlHeading(n)) => {
+                            (zir::GroupKind::ControlHeading, control_level(n))
+                        }
+                        Some(GroupType::ControlFooting(n)) => {
+                            (zir::GroupKind::ControlFooting, control_level(n))
+                        }
+                        Some(GroupType::PageFooting) => (zir::GroupKind::PageFooting, None),
+                        Some(GroupType::ReportFooting) => (zir::GroupKind::ReportFooting, None),
+                        Some(GroupType::Detail) | None => (zir::GroupKind::Detail, None),
+                    };
+                    groups.push(zir::GroupDef {
+                        name: e.name.clone().unwrap_or_default(),
+                        kind,
+                        control,
+                        lines: Vec::new(),
+                        next_group: rc.next_group.map(line_pos),
+                        use_proc: None,
+                    });
+                }
+                let Some(group) = groups.last_mut() else {
+                    return Err(Diag::error(e.pos, "report group must start at level 01"));
+                };
+                if let Some(l) = rc.line {
+                    group.lines.push(zir::LineDef {
+                        pos: line_pos(l),
+                        fields: Vec::new(),
+                    });
+                }
+                let elementary = e.picture.is_some();
+                if !elementary {
+                    continue;
+                }
+                let g = (groups.len() - 1) as u32;
+                let desc = desc_of(self, i)
+                    .ok_or_else(|| Diag::error(e.pos, "report item not laid out"))?;
+                let value = if !rc.sum.is_empty() {
+                    sum_entries.push((g, i));
+                    zir::FieldValue::Sum((sum_entries.len() - 1) as u32)
+                } else if let Some(s) = &rc.source {
+                    zir::FieldValue::Source(self.src(s)?)
+                } else {
+                    zir::FieldValue::Constant
+                };
+                let group = groups.last_mut().unwrap();
+                if group.lines.is_empty() {
+                    group.lines.push(zir::LineDef {
+                        pos: zir::LinePos::Plus(1),
+                        fields: Vec::new(),
+                    });
+                }
+                group.lines.last_mut().unwrap().fields.push(zir::FieldDef {
+                    column: rc.column,
+                    desc,
+                    value,
+                    group_indicate: rc.group_indicate,
+                });
+            }
+            // sum counters
+            let mut sums = Vec::new();
+            for &(g, i) in &sum_entries {
+                let rc = rd.entries[i].report.as_deref().unwrap();
+                let mut operands = Vec::new();
+                let mut upon = Vec::new();
+                let mut reset = None;
+                for s in &rc.sum {
+                    for item in &s.items {
+                        let counter = sum_entries.iter().position(|&(_, j)| {
+                            rd.entries[j].name.as_deref() == Some(item.name.as_str())
+                        });
+                        operands.push(match counter {
+                            Some(k) => zir::SumOperand::Sum(k as u32),
+                            None => zir::SumOperand::Data(Ex::Load(self.loc(item)?)),
+                        });
+                    }
+                    for u in &s.upon {
+                        if let Some(p) = groups.iter().position(|gd| &gd.name == u) {
+                            upon.push(p as u32);
+                        }
+                    }
+                    if let Some(rs) = &s.reset {
+                        reset = control_level(rs);
+                    }
+                }
+                sums.push(zir::SumDef {
+                    group: g,
+                    operands,
+                    upon,
+                    reset,
+                });
+            }
+            // USE BEFORE REPORTING
+            for sec in &prog.procedure.declaratives {
+                if let Some(UseStmt::BeforeReporting(gname)) = &sec.use_stmt
+                    && let Some(gd) = groups.iter_mut().find(|gd| &gd.name == gname)
+                    && let Some(&range) = sec.name.as_ref().and_then(|n| self.sections.get(n))
+                {
+                    gd.use_proc = Some(range);
+                }
+            }
+            let (lc, pc) = self.dm.report_counters[&rd.name];
+            let code = match &rd.code {
+                Some(Operand::Lit(l)) => Some(super::lit::literal_bytes(l)),
+                _ => None,
+            };
+            self.reports.push(zir::ReportDef {
+                name: rd.name.clone(),
+                file,
+                page,
+                controls,
+                groups,
+                sums,
+                line_counter: self.dm.items[lc].desc,
+                page_counter: self.dm.items[pc].desc,
+                code,
+            });
+        }
+        Ok(())
+    }
+
+    fn report_index(&self, name: &str, pos: Pos) -> Result<u32> {
+        self.reports
+            .iter()
+            .position(|r| r.name == name)
+            .map(|p| p as u32)
+            .ok_or_else(|| Diag::error(pos, format!("{name} is not a report")))
     }
 
     /// Debugging trigger on entering a section by its name.
@@ -1148,6 +1342,33 @@ impl<'a> Gen<'a> {
 
     fn stmt_code(&mut self, s: &Stmt) -> Result<()> {
         match s {
+            Stmt::Initiate(names) | Stmt::Terminate(names) => {
+                for n in names {
+                    let r = self.report_index(n, self.pos)?;
+                    self.emit(if matches!(s, Stmt::Initiate(_)) {
+                        Instr::Initiate(r)
+                    } else {
+                        Instr::Terminate(r)
+                    });
+                }
+            }
+            Stmt::Generate(d) => {
+                let target = self.reports.iter().enumerate().find_map(|(r, rd)| {
+                    if rd.name == d.name {
+                        Some((r as u32, None))
+                    } else {
+                        rd.groups
+                            .iter()
+                            .position(|g| g.name == d.name)
+                            .map(|g| (r as u32, Some(g as u32)))
+                    }
+                });
+                let (report, group) = target.ok_or_else(|| {
+                    Diag::error(d.pos, format!("{} is not a report or detail group", d.name))
+                })?;
+                self.emit(Instr::Generate { report, group });
+            }
+            Stmt::SuppressPrinting => self.emit(Instr::SuppressPrinting),
             Stmt::Move {
                 from,
                 to,
@@ -2749,4 +2970,13 @@ fn instr_locs(ins: &Instr) -> Vec<(Loc, bool)> {
         _ => {}
     }
     out
+}
+
+fn line_pos(l: LineClause) -> zir::LinePos {
+    match l {
+        LineClause::Absolute(n) => zir::LinePos::Absolute(n),
+        LineClause::Plus(n) => zir::LinePos::Plus(n),
+        LineClause::NextPage => zir::LinePos::NextPage,
+        LineClause::AbsoluteNextPage(n) => zir::LinePos::AbsoluteNextPage(n),
+    }
 }

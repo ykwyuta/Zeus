@@ -64,6 +64,112 @@ pub struct ProgramCode {
     pub debug_decls: Vec<(u32, u32)>,
     /// Descriptor of DEBUG-ITEM.
     pub debug_item: Option<u32>,
+    /// Report Writer reports.
+    pub reports: Vec<ReportDef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ReportDef {
+    pub name: String,
+    /// The print file the report is written to.
+    pub file: u32,
+    pub page: Option<PageDef>,
+    /// Control data items, major to minor; None = FINAL.
+    pub controls: Vec<Option<Loc>>,
+    pub groups: Vec<GroupDef>,
+    pub sums: Vec<SumDef>,
+    /// LINE-COUNTER and PAGE-COUNTER descriptors.
+    pub line_counter: u32,
+    pub page_counter: u32,
+    /// CODE clause characters prefixed to every line.
+    pub code: Option<Vec<u8>>,
+}
+
+/// PAGE clause, with the defaults of the omitted parts filled in.
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+pub struct PageDef {
+    pub limit: u32,
+    pub heading: u32,
+    pub first_detail: u32,
+    pub last_detail: u32,
+    pub footing: u32,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum GroupKind {
+    ReportHeading,
+    PageHeading,
+    ControlHeading,
+    Detail,
+    ControlFooting,
+    PageFooting,
+    ReportFooting,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GroupDef {
+    pub name: String,
+    pub kind: GroupKind,
+    /// Control level (index into `controls`) of CH / CF groups.
+    pub control: Option<u32>,
+    pub lines: Vec<LineDef>,
+    pub next_group: Option<LinePos>,
+    /// USE BEFORE REPORTING section: (first, last paragraph).
+    pub use_proc: Option<(u32, u32)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum LinePos {
+    Absolute(u32),
+    Plus(u32),
+    NextPage,
+    AbsoluteNextPage(u32),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LineDef {
+    pub pos: LinePos,
+    pub fields: Vec<FieldDef>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldDef {
+    /// Print column (1-based); None for a field that is not printed.
+    pub column: Option<u32>,
+    /// The field's storage (its PICTURE does the editing).
+    pub desc: u32,
+    pub value: FieldValue,
+    pub group_indicate: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum FieldValue {
+    /// The field holds a constant (VALUE clause).
+    Constant,
+    Source(Src),
+    /// Sum counter.
+    Sum(u32),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SumDef {
+    /// Report group holding the sum counter.
+    pub group: u32,
+    pub operands: Vec<SumOperand>,
+    /// Detail groups whose GENERATE adds the operands (empty: any).
+    pub upon: Vec<u32>,
+    /// Control level at whose footing the counter is reset; None: the
+    /// level of its own group.
+    pub reset: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SumOperand {
+    /// A data item added when a detail is generated (subtotalling).
+    Data(Ex),
+    /// Another sum counter, added when its control footing is presented
+    /// (rolling forward).
+    Sum(u32),
 }
 
 /// How control reached a procedure (DEBUG-CONTENTS of a procedure
@@ -537,6 +643,15 @@ pub enum Instr {
     /// segments): entering an independent segment from another segment
     /// puts it in its initial state.
     Segment(u8),
+    /// Report Writer statements (report index; group index for GENERATE
+    /// of a detail, None for summary reporting).
+    Initiate(u32),
+    Generate {
+        report: u32,
+        group: Option<u32>,
+    },
+    Terminate(u32),
+    SuppressPrinting,
     /// Debugging: records how control is about to reach a procedure
     /// (a `debug_cause` value) and the source line causing it.
     DebugCause(u8, u32),

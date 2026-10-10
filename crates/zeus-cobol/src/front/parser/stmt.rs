@@ -211,6 +211,25 @@ impl Parser {
                 }
                 Stmt::Unsupported(verb, pos)
             }
+            "INITIATE" | "TERMINATE" => {
+                let mut names = Vec::new();
+                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !self.is_verb()
+                    && !self.is_period()
+                {
+                    names.push(self.name()?);
+                }
+                if verb == "INITIATE" {
+                    Stmt::Initiate(names)
+                } else {
+                    Stmt::Terminate(names)
+                }
+            }
+            "GENERATE" => Stmt::Generate(self.data_ref()?),
+            "SUPPRESS" => {
+                self.accept("PRINTING");
+                Stmt::SuppressPrinting
+            }
             "ACCEPT" if self.is_at(1, "MESSAGE") => {
                 let target = self.data_ref()?;
                 self.expect("MESSAGE")?;

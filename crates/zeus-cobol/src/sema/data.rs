@@ -72,6 +72,8 @@ pub struct DataModel {
     pub global_files: Vec<String>,
     /// LINAGE-COUNTER item of each file with a LINAGE clause.
     pub linage_counters: HashMap<String, usize>,
+    /// LINE-COUNTER and PAGE-COUNTER items of each report.
+    pub report_counters: HashMap<String, (usize, usize)>,
 }
 
 pub struct Settings {
@@ -655,6 +657,16 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     }
     let mut working = prog.data.working.clone();
     working.extend(debug_item_entries());
+    // Report groups are laid out as working-storage records; every entry
+    // gets a unique name (see `report_item_name`).
+    for (r, rd) in prog.data.reports.iter().enumerate() {
+        for (i, e) in rd.entries.iter().enumerate() {
+            let mut e = e.clone();
+            e.name = Some(report_item_name(r, i));
+            e.report = None;
+            working.push(e);
+        }
+    }
     let ws = dm.build_tree(&working, &mut |_| Area::Working)?;
     let ls = dm.build_tree(&prog.data.local, &mut |_| Area::Working)?;
     let mut n = 0u32;
@@ -810,6 +822,29 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             cursor += 4;
         }
     }
+    // LINE-COUNTER and PAGE-COUNTER of each report.
+    for rd in &prog.data.reports {
+        let mut ids = [0usize; 2];
+        for (k, name) in ["LINE-COUNTER", "PAGE-COUNTER"].into_iter().enumerate() {
+            cursor = align(cursor, 4);
+            let e = DataEntry {
+                level: 1,
+                name: Some(name.to_string()),
+                picture: Some("9(9)".to_string()),
+                usage: Some(Usage::Binary),
+                pos: rd.pos,
+                ..DataEntry::default()
+            };
+            let mut it = DataModel::new_item(&e, Area::Special);
+            it.pic = Some(picture::analyze("9(9)", false, '$').unwrap());
+            it.offset = cursor;
+            it.len = 4;
+            cursor += 4;
+            ids[k] = dm.items.len();
+            dm.add(it);
+        }
+        dm.report_counters.insert(rd.name.clone(), (ids[0], ids[1]));
+    }
     // LINAGE-COUNTER of each file with LINAGE.
     for fd in &prog.data.files {
         if fd.linage.is_none() {
@@ -951,6 +986,19 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     }
     image.resize(align(cursor.max(image.len() as u32), 8) as usize, 0);
     dm.static_init = image;
+    // Named report items (sum counters) can be referenced by their names.
+    for (r, rd) in prog.data.reports.iter().enumerate() {
+        for (i, e) in rd.entries.iter().enumerate() {
+            if let Some(n) = &e.name
+                && let Some(&id) = dm
+                    .by_name
+                    .get(&report_item_name(r, i))
+                    .and_then(|v| v.first())
+            {
+                dm.by_name.entry(n.clone()).or_default().push(id);
+            }
+        }
+    }
     Ok(dm)
 }
 
@@ -1028,6 +1076,12 @@ impl DataModel {
             && let Some(&id) = self.linage_counters.get(q)
         {
             return Ok(id);
+        }
+        if (r.name == "LINE-COUNTER" || r.name == "PAGE-COUNTER")
+            && let Some(q) = r.qualifiers.first()
+            && let Some(&(lc, pc)) = self.report_counters.get(q)
+        {
+            return Ok(if r.name == "LINE-COUNTER" { lc } else { pc });
         }
         let cands: Vec<usize> = self
             .by_name
@@ -1121,4 +1175,9 @@ fn debug_item_entries() -> Vec<DataEntry> {
         e(2, None, Some("X")),
         e(2, Some("DEBUG-CONTENTS"), Some(&contents)),
     ]
+}
+
+/// Data name under which entry `i` of report `r` is laid out.
+pub fn report_item_name(r: usize, i: usize) -> String {
+    format!("RW#{r}#{i}")
 }

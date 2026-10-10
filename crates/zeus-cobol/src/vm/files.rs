@@ -52,14 +52,14 @@ pub struct FileState {
     last_read: Option<usize>,
     last_key: Option<Vec<u8>>,
     /// Text output of print / line sequential files.
-    text: Vec<u8>,
+    pub(super) text: Vec<u8>,
     /// Line position on the current page (print files).
     line: u32,
     /// A record was written since open (print files).
-    written: bool,
+    pub(super) written: bool,
     /// File was absent at OPEN (OPTIONAL).
     absent: bool,
-    modified: bool,
+    pub(super) modified: bool,
     /// Closed WITH LOCK: the file cannot be opened again in this run.
     locked: bool,
     /// LINAGE files: page body lines, footing, top and bottom margins.
@@ -90,12 +90,17 @@ impl Machine {
         self.instances[cur].code.files[f as usize].clone()
     }
 
-    fn state(&mut self, cur: usize, f: u32) -> &mut FileState {
+    pub(super) fn state(&mut self, cur: usize, f: u32) -> &mut FileState {
         let slot = self.instances[cur].files[f as usize];
         &mut self.file_states[slot]
     }
 
-    fn file_path(def: &FileDef) -> PathBuf {
+    fn file_path(&self, def: &FileDef) -> PathBuf {
+        for name in [&def.assign, &def.name] {
+            if let Some(p) = self.dd.get(name) {
+                return p.clone();
+            }
+        }
         for key in [
             format!("DD_{}", def.assign),
             format!("DD_{}", def.name),
@@ -148,7 +153,7 @@ impl Machine {
         if self.state(cur, f).locked {
             return self.io_error(cur, &def, "38", "OPEN");
         }
-        let path = Self::file_path(&def);
+        let path = self.file_path(&def);
         let exists = path.is_file();
         let mut st = FileState {
             path: Some(path.clone()),
@@ -1157,7 +1162,7 @@ impl Machine {
 
     pub(super) fn sort_read_file(&mut self, cur: usize, f: u32) -> RResult<()> {
         let def = self.file_def(cur, f);
-        let path = Self::file_path(&def);
+        let path = self.file_path(&def);
         let data = fs::read(&path).unwrap_or_default();
         let mut st = FileState::default();
         load_records(&def, &data, &mut st)?;
