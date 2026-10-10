@@ -1,0 +1,21 @@
+[package]
+name = "zeus-hercdiff"
+description = "Runs packed-decimal instruction tests on Hercules to record oracle results for zeus-decimal"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+zeus-decimal = { path = "../zeus-decimal" }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true

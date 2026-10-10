@@ -1,0 +1,24 @@
+[package]
+name = "zeus-cobol"
+description = "Zeus COBOL compiler (Enterprise COBOL 4.2 dialect) and ZIR interpreter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-decimal = { path = "../zeus-decimal", features = ["serde"] }
+zeus-ds = { path = "../zeus-ds" }
+serde.workspace = true
+serde_json.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "zcobc"
+path = "src/main.rs"
+
+[lints]
+workspace = true

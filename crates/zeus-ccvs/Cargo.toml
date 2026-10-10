@@ -1,0 +1,21 @@
+[package]
+name = "zeus-ccvs"
+description = "NIST CCVS85 (COBOL-85) test suite extractor, runner and reporter for Zeus"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+sha2.workspace = true
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[lints]
+workspace = true
