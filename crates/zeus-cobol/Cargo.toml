@@ -7,6 +7,11 @@ rust-version.workspace = true
 license.workspace = true
 repository.workspace = true
 
+[dependencies]
+zeus-decimal = { path = "../zeus-decimal" }
+serde.workspace = true
+serde_json.workspace = true
+
 [[bin]]
 name = "zcobc"
 path = "src/main.rs"
