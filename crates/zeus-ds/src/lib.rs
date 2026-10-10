@@ -3,6 +3,8 @@
 //! Data sets hold EBCDIC records as z/OS does; this crate knows nothing
 //! about COBOL. It provides:
 //!
+//! * [`catalog`]: data set names and attributes (non-VSAM, VSAM clusters,
+//!   alternate indexes, paths, generation data groups);
 //! * [`dd`]: allocation of DD names to host files;
 //! * [`format`]: the on-disk record formats (fixed length, variable
 //!   length with a record descriptor word, host text lines);
@@ -16,6 +18,7 @@
 //! closed; the in-memory structures are the ones a later persistent
 //! implementation keeps.
 
+pub mod catalog;
 pub mod dd;
 pub mod format;
 pub mod keyed;

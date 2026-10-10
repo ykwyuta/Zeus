@@ -151,6 +151,18 @@ impl Machine {
             .unwrap_or_else(|| PathBuf::from(&def.assign))
     }
 
+    /// Record format of a sequential file: the allocated data set's when
+    /// known, otherwise derived from the FD.
+    fn file_format(&self, def: &FileDef) -> RecordFormat {
+        if is_text(def) {
+            return RecordFormat::Text;
+        }
+        self.dd
+            .allocation(&[&def.assign, &def.name])
+            .and_then(|a| a.format)
+            .unwrap_or_else(|| seq_format(def))
+    }
+
     /// Key specifications of an indexed file: offsets of the RECORD KEY
     /// and ALTERNATE RECORD KEYs in the record area.
     fn key_specs(&mut self, cur: usize, def: &FileDef) -> RResult<Vec<KeySpec>> {
@@ -192,10 +204,11 @@ impl Machine {
             }
             Org::Relative => RelativeDataset::load(path).map_err(ds_err)?.map(Data::Rel),
             Org::Sequential | Org::LineSequential => {
-                SequentialDataset::load(path, seq_format(def), ebcdic::SPACE)
+                let text = self.file_format(def) == RecordFormat::Text;
+                SequentialDataset::load(path, self.file_format(def), ebcdic::SPACE)
                     .map_err(ds_err)?
                     .map(|mut d| {
-                        if is_text(def) {
+                        if text {
                             for r in &mut d.records {
                                 *r = r.iter().map(|&b| ebcdic::from_latin1(b)).collect();
                             }
@@ -213,7 +226,7 @@ impl Machine {
                 Data::Keyed(KeyedDataset::new(self.key_specs(cur, def)?, ebcdic::SPACE))
             }
             Org::Relative => Data::Rel(RelativeDataset::default()),
-            _ => Data::Seq(SequentialDataset::new(seq_format(def), ebcdic::SPACE)),
+            _ => Data::Seq(SequentialDataset::new(self.file_format(def), ebcdic::SPACE)),
         })
     }
 
@@ -281,6 +294,9 @@ impl Machine {
         }
         if matches!(st.data, Data::Seq(_)) {
             st.pos = 0;
+            let fmt = self.file_format(&def);
+            self.opened
+                .push((def.assign.to_ascii_uppercase(), fmt, def.max_len));
         }
         if def.print && mode == OpenMode::Extend {
             st.text = zeus_ds::format::read_file(&path)
@@ -432,7 +448,7 @@ impl Machine {
                 zeus_ds::format::write_file(path, &t)
             } else {
                 match &st.data {
-                    Data::Seq(d) if is_text(&def) => {
+                    Data::Seq(d) if self.file_format(&def) == RecordFormat::Text => {
                         let mut text = d.clone();
                         for r in &mut text.records {
                             let mut line = ebcdic::decode_latin1(r);

@@ -10,9 +10,25 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
+use crate::format::RecordFormat;
+
+/// A DD allocation: the host file and, when known from the catalog or the
+/// DD statement, the record format of the data set.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Allocation {
+    pub path: PathBuf,
+    pub format: Option<RecordFormat>,
+}
+
+impl Allocation {
+    pub fn new(path: PathBuf) -> Allocation {
+        Allocation { path, format: None }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct DdTable {
-    explicit: HashMap<String, PathBuf>,
+    explicit: HashMap<String, Allocation>,
     config: HashMap<String, PathBuf>,
 }
 
@@ -47,7 +63,17 @@ impl DdTable {
 
     /// Allocates `name` to `path`.
     pub fn set(&mut self, name: &str, path: PathBuf) {
-        self.explicit.insert(name.to_ascii_uppercase(), path);
+        self.allocate(name, Allocation::new(path));
+    }
+
+    pub fn allocate(&mut self, name: &str, a: Allocation) {
+        self.explicit.insert(name.to_ascii_uppercase(), a);
+    }
+
+    /// Removes all allocations made with [`DdTable::set`] /
+    /// [`DdTable::allocate`].
+    pub fn clear(&mut self) {
+        self.explicit.clear();
     }
 
     /// Names allocated explicitly or by the allocation file, sorted.
@@ -65,16 +91,24 @@ impl DdTable {
 
     /// The path allocated to the first of `names` that is allocated.
     pub fn resolve(&self, names: &[&str]) -> Option<PathBuf> {
+        self.allocation(names).map(|a| a.path)
+    }
+
+    /// The allocation of the first of `names` that is allocated.
+    pub fn allocation(&self, names: &[&str]) -> Option<Allocation> {
         for n in names {
             let u = n.to_ascii_uppercase();
-            if let Some(p) = self.explicit.get(&u).or_else(|| self.config.get(&u)) {
-                return Some(p.clone());
+            if let Some(a) = self.explicit.get(&u) {
+                return Some(a.clone());
+            }
+            if let Some(p) = self.config.get(&u) {
+                return Some(Allocation::new(p.clone()));
             }
         }
         for n in names {
             for key in [format!("DD_{n}"), format!("DD_{}", n.to_ascii_uppercase())] {
                 if let Ok(p) = std::env::var(&key) {
-                    return Some(PathBuf::from(p));
+                    return Some(Allocation::new(PathBuf::from(p)));
                 }
             }
         }

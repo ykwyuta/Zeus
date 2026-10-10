@@ -82,6 +82,9 @@ pub struct Machine {
     io_cond: bool,
     /// DD allocations of the run.
     dd: zeus_ds::dd::DdTable,
+    /// Record formats of the sequential files opened (by assignment name):
+    /// format and maximum record length.
+    opened: Vec<(String, zeus_ds::format::RecordFormat, u32)>,
     /// Job, step and procedure step names, and the DD names of the step
     /// with whether each has a device (shown in the TIOT).
     step: StepInfo,
@@ -97,7 +100,7 @@ pub struct Machine {
     call_exception: bool,
     overflow: bool,
     stdout: Box<dyn Write>,
-    stdin_lines: Option<std::io::Lines<std::io::StdinLock<'static>>>,
+    stdin_lines: Option<Box<dyn Iterator<Item = std::io::Result<String>>>>,
     /// Records released to the active SORT.
     sort_records: Vec<Vec<u8>>,
     sort_return: Option<(Vec<Vec<u8>>, usize)>,
@@ -156,6 +159,7 @@ impl Machine {
             io_cond: false,
             suppress_printing: false,
             step: StepInfo::default(),
+            opened: Vec::new(),
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -259,6 +263,23 @@ impl Machine {
     /// Sends DISPLAY output to `out` instead of standard output.
     pub fn set_stdout(&mut self, out: Box<dyn Write>) {
         self.stdout = out;
+    }
+
+    /// Record format used for each sequential file opened during the run
+    /// (assignment name, format, maximum record length): the attributes
+    /// of new data sets whose DD gave none.
+    pub fn opened_formats(&self) -> &[(String, zeus_ds::format::RecordFormat, u32)] {
+        &self.opened
+    }
+
+    /// Allocates a DD name with the data set's attributes.
+    pub fn allocate(&mut self, name: &str, a: zeus_ds::dd::Allocation) {
+        self.dd.allocate(name, a);
+    }
+
+    /// Input of ACCEPT (the SYSIN data of the step).
+    pub fn set_stdin(&mut self, lines: Vec<String>) {
+        self.stdin_lines = Some(Box::new(lines.into_iter().map(Ok)));
     }
 
     /// Sets the job step identification shown to programs (TIOT).
@@ -995,14 +1016,16 @@ impl Machine {
         if let Some(&i) = self.by_name.get(name) {
             return Some(i);
         }
-        // Separately compiled program: NAME.zo in the search directories.
+        // Separately compiled program: NAME.zo, or member NAME of a load
+        // library, in the search directories.
         for dir in self.search_dirs.clone() {
-            let path = dir.join(format!("{name}.zo"));
-            if path.is_file()
-                && let Ok(m) = crate::load_module(&path)
-            {
-                let m = Rc::new(m);
-                return Some(self.instantiate(&m, 0));
+            for path in [dir.join(format!("{name}.zo")), dir.join(name)] {
+                if path.is_file()
+                    && let Ok(m) = crate::load_module(&path)
+                {
+                    let m = Rc::new(m);
+                    return Some(self.instantiate(&m, 0));
+                }
             }
         }
         None

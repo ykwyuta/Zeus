@@ -507,7 +507,7 @@ impl Machine {
     pub(super) fn stdin_line(&mut self) -> Option<String> {
         let _ = self.stdout.flush();
         if self.stdin_lines.is_none() {
-            self.stdin_lines = Some(std::io::stdin().lock().lines());
+            self.stdin_lines = Some(Box::new(std::io::stdin().lock().lines()));
         }
         self.stdin_lines
             .as_mut()

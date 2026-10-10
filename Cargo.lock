@@ -433,6 +433,8 @@ dependencies = [
 name = "zeus-ds"
 version = "0.1.0"
 dependencies = [
+ "serde",
+ "serde_json",
  "tempfile",
 ]
 
@@ -446,6 +448,16 @@ dependencies = [
  "serde_json",
  "tempfile",
  "zeus-decimal",
+]
+
+[[package]]
+name = "zeus-jcl"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "zeus-cobol",
+ "zeus-decimal",
+ "zeus-ds",
 ]
 
 [[package]]
