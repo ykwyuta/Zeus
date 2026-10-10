@@ -60,6 +60,26 @@ jobs:
           name: ccvs85-results
           path: work/*.json
 
+  carddemo:
+    # Sets up AWS CardDemo (fetched at a pinned commit) on Zeus and runs its
+    # batch jobs through zjob; fails unless every job ends with RC 0.
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: .cache/carddemo
+          key: carddemo-${{ hashFiles('tools/fetch-carddemo.sh') }}
+      - run: tools/carddemo.sh all
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: carddemo-spool
+          path: work/carddemo/spool
+
   hercules-oracle:
     # Records Hercules results for packed-decimal instructions (oracle for
     # zeus-decimal), checks the pipeline against known results and compares

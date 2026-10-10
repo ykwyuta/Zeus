@@ -183,6 +183,17 @@ CCVS85 合格 (C0〜C3) を先に完了させ、その後でアプリケーシ�
   USE BEFORE REPORTING/SUPPRESS PRINTING を実装。CCVS85 にない CONTROL と SUM は単体テストで確認。
 - 対象外は CM のみ。CCVS85 自身が無条件に DELETED にしているテスト (ソース中の「DELETE THE NEXT LINE
   TO DELETE THE TEST」等) は GnuCOBOL と同じく実行されない。
+- C4 着手: CardDemo のバッチ処理が `tools/carddemo.sh all` で全ジョブ RC 0 で完走する
+  (初期化 14 ジョブ、日次バッチ 9 ジョブ、帳票・ユーティリティ 9 ジョブ)。このために追加したもの:
+  - zcobc: SET ADDRESS OF / ADDRESS OF、PSA・TCB・TIOT の制御ブロック、EXEC PARM、
+    LE 呼び出し可能サービス (CEE3ABD, CEEDAYS)、作業場所に記述された RECORD KEY。
+  - `zeus-ds` のカタログ (順次・区分・VSAM クラスタ/AIX/PATH・GDG) と `zeus-jcl`
+    (JCL の解析・PROC 展開・COND・DISP・GDG 相対世代、IEFBR14/IEBGENER/IDCAMS/SORT、`zjob`)。
+  - アセンブラで書かれたアプリ側サブルーチン (COBDATFT, MVSWAIT) は S/390 命令を実行できるまで
+    `zeus-jcl` 内でネイティブ実装する。
+  - ジョブステップでは DD 文のないファイルは開けない (LE の既定 CBLQDA(OFF) と同じく状態 35)。
+    CBIMPORT は CardDemo の JCL に CARDOUT DD がないため z/OS と同じく異常終了する。
+  - 対象外: CICS CSD 更新 (CBADMCDJ)、TXT2PDF 製品 (TXT2PDF1)、FTP 用データが必要なジョブ。
 
 ## 8. 0002 計画への影響
 

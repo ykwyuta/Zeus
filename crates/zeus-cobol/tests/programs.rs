@@ -175,3 +175,45 @@ PROCEDURE DIVISION.
         ]
     );
 }
+
+#[test]
+fn record_key_described_in_working_storage() {
+    // The key is taken at the same position within the record area, so
+    // records written FROM the working-storage layout stay in key order.
+    let dir = tempfile::tempdir().unwrap();
+    let out = run_with(
+        "IDENTIFICATION DIVISION.
+PROGRAM-ID. WSKEY.
+ENVIRONMENT DIVISION.
+INPUT-OUTPUT SECTION.
+FILE-CONTROL.
+    SELECT KF ASSIGN TO KFILE ORGANIZATION IS INDEXED
+        ACCESS MODE IS SEQUENTIAL RECORD KEY IS W-KEY
+        FILE STATUS IS FS.
+DATA DIVISION.
+FILE SECTION.
+FD KF.
+01 KF-REC PIC X(10).
+WORKING-STORAGE SECTION.
+01 W-REC.
+   05 W-TYPE PIC X.
+   05 W-KEY PIC 9(4) COMP.
+   05 W-DATA PIC X(5).
+01 FS PIC XX.
+01 I PIC 9(4) COMP.
+PROCEDURE DIVISION.
+    OPEN OUTPUT KF.
+    PERFORM VARYING I FROM 1 BY 1 UNTIL I > 3
+        MOVE 'Z' TO W-TYPE
+        MOVE I TO W-KEY
+        MOVE 'DATA' TO W-DATA
+        WRITE KF-REC FROM W-REC
+        DISPLAY FS
+    END-PERFORM.
+    CLOSE KF.
+    STOP RUN.",
+        false,
+        &[("KFILE", dir.path().join("k"))],
+    );
+    assert_eq!(out, "00\n00\n00\n");
+}

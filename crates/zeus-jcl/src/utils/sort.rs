@@ -143,6 +143,35 @@ enum Item {
     Copy(usize, usize),
     Blanks(usize),
     Const(Vec<u8>),
+    /// A numeric field edited with an `EDIT=` pattern.
+    Edit(Field, String),
+}
+
+/// Edits a number with a DFSORT pattern: `I` is a leading digit shown as
+/// a blank while insignificant, `T` a digit always shown; any other
+/// character is shown once a digit has been shown to its left (or is
+/// under a `T`), otherwise replaced by a blank. No sign is produced.
+fn edit(v: i128, pattern: &str) -> Vec<u8> {
+    let slots = pattern.chars().filter(|c| matches!(c, 'I' | 'T')).count();
+    let digits = format!("{:0>slots$}", v.unsigned_abs());
+    let digits = &digits.as_bytes()[digits.len() - slots..];
+    let mut out = String::new();
+    let mut d = 0;
+    let mut significant = false;
+    for c in pattern.chars() {
+        match c {
+            'I' | 'T' => {
+                let x = digits[d] as char;
+                d += 1;
+                if c == 'T' || x != '0' {
+                    significant = true;
+                }
+                out.push(if significant { x } else { ' ' });
+            }
+            _ => out.push(if significant { c } else { ' ' }),
+        }
+    }
+    ebcdic::encode(&out)
 }
 
 #[derive(Debug, Default)]
@@ -345,11 +374,22 @@ impl Parser {
                     .get(i + 1)
                     .and_then(|l| l.parse().ok())
                     .ok_or("bad length")?;
-                out.push(Item::Copy(p, l));
                 i += 2;
-                // an optional format after p,l is ignored
-                if raw.get(i).and_then(|f| Fmt::parse(f)).is_some() {
+                let fmt = raw.get(i).and_then(|f| Fmt::parse(f));
+                if fmt.is_some() {
                     i += 1;
+                }
+                match raw.get(i).and_then(|e| e.strip_prefix("EDIT=")) {
+                    Some(pat) => {
+                        let field = Field {
+                            pos: p,
+                            len: l,
+                            fmt: fmt.unwrap_or(Fmt::Zd),
+                        };
+                        out.push(Item::Edit(field, strip_parens(pat).to_string()));
+                        i += 1;
+                    }
+                    None => out.push(Item::Copy(p, l)),
                 }
             }
         }
@@ -498,6 +538,7 @@ fn reformat(items: &[Item], r: &[u8]) -> Vec<u8> {
             }
             Item::Blanks(n) => out.extend(std::iter::repeat_n(ebcdic::SPACE, *n)),
             Item::Const(b) => out.extend(b),
+            Item::Edit(f, pat) => out.extend(edit(f.number(r), pat)),
         }
     }
     out
@@ -587,6 +628,19 @@ mod tests {
 
     fn rec(s: &str) -> Vec<u8> {
         ebcdic::encode(s)
+    }
+
+    #[test]
+    fn edit_patterns() {
+        assert_eq!(edit(1234, "TTTTT.TT"), rec("00012.34"));
+        assert_eq!(edit(-1234, "IIIIT.TT"), rec("   12.34"));
+        assert_eq!(edit(1234567, "II,III,IIT.TT"), rec("    12,345.67"));
+        assert_eq!(edit(5, "III,IIT"), rec("      5"));
+        let p = Parser {
+            symbols: symnames(&["BAL,3,4,ZD".to_string()]),
+        };
+        let items = p.items("(1,2,X,BAL,EDIT=(IIT.T))").unwrap();
+        assert_eq!(reformat(&items, &rec("AB0123")), rec("AB  12.3"));
     }
 
     #[test]

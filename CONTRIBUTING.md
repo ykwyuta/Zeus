@@ -49,6 +49,15 @@ target/release/zeus-ccvs run --suite work/suite-zeus --toolchain zeus --out work
 target/release/zeus-ccvs report --results work/zeus.json --baseline work/gnucobol.json
 ```
 
+## CardDemo batch
+
+`tools/carddemo.sh all` downloads AWS CardDemo at a pinned commit into
+`.cache/carddemo`, catalogs its sample data in `work/carddemo` (override with
+`ZEUS_HOME`), compiles the batch programs into a load library and submits the
+initialization, daily batch and report jobs with `zjob`. It fails unless every
+job ends with RC 0; job output is in `work/carddemo/spool/<JOB>/`. Single jobs
+can be resubmitted with `tools/carddemo.sh run POSTTRAN ...`.
+
 ## Hercules decimal-instruction oracle
 
 `zeus-hercdiff` generates packed-decimal instruction cases (AP, SP, ZAP, CP,

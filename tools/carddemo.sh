@@ -4,7 +4,8 @@
 # usage: tools/carddemo.sh setup    # catalog the sample data, libraries,
 #                                   # compile the batch programs
 #        tools/carddemo.sh run JOB... # submit jobs from app/jcl
-#        tools/carddemo.sh all      # setup, initialization and batch jobs
+#        tools/carddemo.sh all      # setup, initialization, batch and
+#                                   # report jobs; fails unless all end RC 0
 #
 # The Zeus system (catalog and job output) is in $ZEUS_HOME
 # (default work/carddemo); CardDemo itself is fetched into .cache/carddemo.
@@ -30,6 +31,12 @@ setup() {
     done
     $zjob catalog import "$hlq.DALYTRAN.PS.INIT" "$src/data/EBCDIC/$hlq.DALYTRAN.PS.INIT" \
         --recfm FB --lrecl 350
+    # report date range read by CBTRN03C (TRANREPT), created by the
+    # installation; the range of the SORT step in TRANREPT
+    tmp=$(mktemp)
+    echo "2022-01-01 2022-07-06" >"$tmp"
+    $zjob catalog import "$hlq.DATEPARM" "$tmp" --recfm FB --lrecl 80 --text
+    rm -f "$tmp"
     # libraries
     $zjob catalog define-pds "$hlq.PROC" --recfm FB --lrecl 80
     for f in "$src"/proc/*; do
@@ -60,7 +67,12 @@ run() {
             exit 2
         fi
         echo "=== $job"
-        $zjob submit "$f" || echo "=== $job ended with exit status $?"
+        rc=0
+        $zjob submit "$f" || rc=$?
+        if [ "$rc" -ne 0 ]; then
+            echo "=== $job ended with exit status $rc"
+            failed="$failed $job"
+        fi
     done
 }
 
@@ -70,6 +82,13 @@ run() {
 init_jobs="DUSRSECJ CLOSEFIL ACCTFILE CARDFILE CUSTFILE XREFFILE TRANFILE DISCGRP
     TCATBALF TRANCATG TRANTYPE OPENFIL DEFGDGB DALYREJS"
 batch_jobs="CLOSEFIL TRANBKP POSTTRAN INTCALC TRANBKP COMBTRAN CREASTMT TRANIDX OPENFIL"
+# Reports and utilities. Not run: CBADMCDJ (CICS CSD update), TXT2PDF1
+# (TXT2PDF product), INTRDRJ1/2 (need FTP test data), FTPJCL, DEFCUST and
+# REPTFILE (they end with RC 8 / 12 on a set-up system by design), CBIMPORT
+# (its JCL has no CARDOUT DD: the OPEN fails with status 35 as on z/OS).
+report_jobs="READACCT READCARD READCUST READXREF PRTCATBL TRANREPT CBEXPORT
+    ESDSRRDS WAITSTEP"
+failed=
 
 case ${1:-} in
     setup) setup ;;
@@ -77,7 +96,12 @@ case ${1:-} in
     all)
         setup
         # shellcheck disable=SC2086
-        run $init_jobs $batch_jobs
+        run $init_jobs $batch_jobs $report_jobs
+        if [ -n "$failed" ]; then
+            echo "failed jobs:$failed" >&2
+            exit 1
+        fi
+        echo "all CardDemo batch jobs ended with RC 0"
         ;;
     *) echo "usage: $0 setup | run JOB... | all" >&2; exit 2 ;;
 esac

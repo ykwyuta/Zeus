@@ -433,11 +433,7 @@ impl Runner<'_> {
 
     /// Resolves the data set name of a DD (GDG relative generations,
     /// temporary names); Some(name, new generation (base, number)).
-    fn resolve_dsn(
-        &mut self,
-        dsn: &str,
-        status: Status,
-    ) -> Result<Resolved, String> {
+    fn resolve_dsn(&mut self, dsn: &str, status: Status) -> Result<Resolved, String> {
         if let Some(t) = dsn.strip_prefix("&&") {
             let key = t.to_ascii_uppercase();
             let name = self
@@ -705,6 +701,7 @@ fn run_cobol(
         .and_then(|p| zeus_cobol::load_module(&p).ok())
         .ok_or_else(|| Outcome::Abend("S806".into()))?;
     let mut m = zeus_cobol::vm::Machine::new(libs.to_vec());
+    crate::native::register(&mut m);
     let mut tiot = Vec::new();
     for dd in &ctx.dds {
         m.allocate(

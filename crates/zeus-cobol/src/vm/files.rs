@@ -270,6 +270,14 @@ impl Machine {
         if self.state(cur, f).locked {
             return self.io_error(cur, &def, "38", "OPEN");
         }
+        // In a job step only the step's DD statements are allocated: a
+        // file without one cannot be opened (LE CBLQDA(OFF), the default),
+        // except an OPTIONAL file opened INPUT, which is absent.
+        let unallocated =
+            self.step.dds.is_some() && self.dd.allocation(&[&def.assign, &def.name]).is_none();
+        if unallocated && !(def.optional && mode == OpenMode::Input) {
+            return self.io_error(cur, &def, "35", "OPEN");
+        }
         let path = self.file_path(&def);
         let mut st = FileState {
             path: Some(path.clone()),
@@ -280,7 +288,12 @@ impl Machine {
             st.modified = true;
             st.data = self.empty_data(cur, &def)?;
         } else {
-            match self.load_data(cur, &def, &path)? {
+            let data = if unallocated {
+                None
+            } else {
+                self.load_data(cur, &def, &path)?
+            };
+            match data {
                 Some(data) => st.data = data,
                 None if def.optional => {
                     st.absent = true;

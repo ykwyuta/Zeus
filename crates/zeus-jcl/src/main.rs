@@ -3,7 +3,7 @@
 //! ```text
 //! zjob [options] submit <job.jcl>...
 //! zjob [options] catalog list
-//! zjob [options] catalog import <dsn> <file> --recfm FB --lrecl 300
+//! zjob [options] catalog import <dsn> <file> --recfm FB --lrecl 300 [--text]
 //! zjob [options] catalog define-pds <dsn> [--recfm FB --lrecl 80]
 //! zjob [options] catalog put <dsn(member)> <file>
 //! zjob [options] catalog print <dsn>
@@ -13,7 +13,8 @@
 //!          --proclib DIR, --loadlib DIR (repeatable)
 //! ```
 //!
-//! `import` stores a host file holding EBCDIC records; `put` stores a
+//! `import` stores a host file holding EBCDIC records (with `--text`, host
+//! text lines converted to EBCDIC records); `put` stores a
 //! member: host text converted to EBCDIC 80-byte records for RECFM F/FB
 //! libraries, the file unchanged for RECFM U (load modules).
 
@@ -26,7 +27,9 @@ use zeus_jcl::job::{Env, job_completion, run_job};
 
 fn usage() -> ExitCode {
     eprintln!("usage: zjob [--home DIR] [--proclib DIR]... [--loadlib DIR]... submit <job.jcl>...");
-    eprintln!("       zjob [--home DIR] catalog list | import <dsn> <file> --recfm R --lrecl N");
+    eprintln!(
+        "       zjob [--home DIR] catalog list | import <dsn> <file> --recfm R --lrecl N [--text]"
+    );
     eprintln!("       zjob [--home DIR] catalog define-pds <dsn> [--recfm R --lrecl N]");
     eprintln!("       zjob [--home DIR] catalog put <dsn(member)> <file> | print <dsn>");
     ExitCode::from(2)
@@ -38,6 +41,7 @@ struct Opts {
     loadlibs: Vec<PathBuf>,
     recfm: Option<Recfm>,
     lrecl: Option<u32>,
+    text: bool,
     args: Vec<String>,
 }
 
@@ -50,6 +54,7 @@ fn parse_opts(args: Vec<String>) -> Option<Opts> {
         loadlibs: Vec::new(),
         recfm: None,
         lrecl: None,
+        text: false,
         args: Vec::new(),
     };
     let mut it = args.into_iter();
@@ -60,6 +65,7 @@ fn parse_opts(args: Vec<String>) -> Option<Opts> {
             "--loadlib" => o.loadlibs.push(PathBuf::from(it.next()?)),
             "--recfm" => o.recfm = Some(Recfm::parse(&it.next()?)?),
             "--lrecl" => o.lrecl = Some(it.next()?.parse().ok()?),
+            "--text" => o.text = true,
             _ => o.args.push(a),
         }
     }
@@ -69,6 +75,17 @@ fn parse_opts(args: Vec<String>) -> Option<Opts> {
 fn fail(msg: impl std::fmt::Display) -> ExitCode {
     eprintln!("zjob: {msg}");
     ExitCode::from(16)
+}
+
+/// Host text lines as fixed-length EBCDIC records.
+fn text_records(data: &[u8], lrecl: u32) -> Vec<u8> {
+    let mut out = Vec::new();
+    for line in String::from_utf8_lossy(data).lines() {
+        let mut r = ebcdic::encode(line.trim_end_matches('\r'));
+        r.resize(lrecl as usize, ebcdic::SPACE);
+        out.extend(r);
+    }
+    out
 }
 
 fn catalog_cmd(o: &Opts, cat: &mut Catalog) -> ExitCode {
@@ -86,6 +103,11 @@ fn catalog_cmd(o: &Opts, cat: &mut Catalog) -> ExitCode {
             let data = match std::fs::read(file) {
                 Ok(d) => d,
                 Err(e) => return fail(format!("{file}: {e}")),
+            };
+            let data = if o.text {
+                text_records(&data, lrecl)
+            } else {
+                data
             };
             if cat.get(dsn).is_some() {
                 let _ = cat.delete(dsn);
@@ -130,15 +152,7 @@ fn catalog_cmd(o: &Opts, cat: &mut Catalog) -> ExitCode {
             };
             let data = match recfm {
                 Recfm::U => data,
-                _ => {
-                    let mut out = Vec::new();
-                    for line in String::from_utf8_lossy(&data).lines() {
-                        let mut r = ebcdic::encode(line.trim_end_matches('\r'));
-                        r.resize(lrecl as usize, ebcdic::SPACE);
-                        out.extend(r);
-                    }
-                    out
-                }
+                _ => text_records(&data, lrecl),
             };
             let path = cat.path(dsn).join(member.to_ascii_uppercase());
             if let Err(e) = std::fs::write(&path, data) {

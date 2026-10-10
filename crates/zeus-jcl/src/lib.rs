@@ -9,5 +9,6 @@
 
 pub mod expand;
 pub mod job;
+pub mod native;
 pub mod parse;
 pub mod utils;

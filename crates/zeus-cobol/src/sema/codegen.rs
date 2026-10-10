@@ -210,6 +210,32 @@ impl<'a> Gen<'a> {
         self.declare_file_from(fc, fd, None)
     }
 
+    /// A RECORD KEY described outside the file's records (in WORKING-
+    /// STORAGE, as some programs do): the key is taken at the same
+    /// position within the file's record area.
+    fn key_in_record(&self, l: Loc, area: usize, rec_desc: u32) -> Loc {
+        let Some(i) = self.dm.items.iter().position(|it| it.desc == l.desc) else {
+            return l;
+        };
+        let mut root = i;
+        while let Some(p) = self.dm.items[root].parent {
+            root = p;
+        }
+        if root == area || self.dm.items[root].area == self.dm.items[area].area {
+            return l;
+        }
+        let item = &self.dm.items[i];
+        let off = item.offset - self.dm.items[root].offset;
+        Loc {
+            desc: rec_desc,
+            subs: Vec::new(),
+            refmod: Some((
+                Box::new(Ex::Lit(Dec::from_i64(off as i64 + 1))),
+                Some(Box::new(Ex::Lit(Dec::from_i64(item.len as i64)))),
+            )),
+        }
+    }
+
     fn declare_file_from(
         &mut self,
         fc: &FileControl,
@@ -243,7 +269,8 @@ impl<'a> Gen<'a> {
         };
         let status = opt_loc(self, &fc.file_status)?;
         let relative_key = opt_loc(self, &fc.relative_key)?;
-        let record_key = opt_loc(self, &fc.record_key)?;
+        let record_key =
+            opt_loc(self, &fc.record_key)?.map(|l| self.key_in_record(l, area, rec_desc));
         let record_depending = opt_loc(self, &fd.record_depending)?;
         let mut alternate_keys = Vec::new();
         for (k, dup) in &fc.alternate_keys {

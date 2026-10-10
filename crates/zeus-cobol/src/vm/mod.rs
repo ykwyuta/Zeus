@@ -105,7 +105,14 @@ pub struct Machine {
     sort_records: Vec<Vec<u8>>,
     sort_return: Option<(Vec<Vec<u8>>, usize)>,
     return_code: i32,
+    /// Programs implemented by the host (see [`Machine::add_native`]).
+    natives: HashMap<String, NativeFn>,
 }
+
+/// A program implemented by the host: it gets the storage and the
+/// addresses of the CALL arguments (None: OMITTED) and returns the
+/// return code or an error that ends the run unit.
+pub type NativeFn = fn(&mut [u8], &[Option<usize>]) -> Result<i32, String>;
 
 /// The job step a program runs in (z/OS TIOT contents).
 #[derive(Debug, Clone, Default)]
@@ -160,6 +167,7 @@ impl Machine {
             suppress_printing: false,
             step: StepInfo::default(),
             opened: Vec::new(),
+            natives: HashMap::new(),
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -282,6 +290,12 @@ impl Machine {
         self.stdin_lines = Some(Box::new(lines.into_iter().map(Ok)));
     }
 
+    /// Makes `name` callable as a host implemented program; programs
+    /// found in the search directories take precedence.
+    pub fn add_native(&mut self, name: &str, f: NativeFn) {
+        self.natives.insert(name.to_ascii_uppercase(), f);
+    }
+
     /// Sets the job step identification shown to programs (TIOT).
     pub fn set_step(&mut self, step: StepInfo) {
         self.step = step;
@@ -402,6 +416,11 @@ impl Machine {
             return Ok(None);
         }
         let Some(callee) = self.resolve_program(cur, &name) else {
+            if let Some(f) = self.natives.get(&name).copied() {
+                let addrs = self.call_args(cur, args)?;
+                self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
+                return Ok(None);
+            }
             if !handled {
                 return err(format!("program {name} not found"));
             }
