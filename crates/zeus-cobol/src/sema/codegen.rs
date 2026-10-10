@@ -375,6 +375,14 @@ impl<'a> Gen<'a> {
             })
             .collect();
         let collating = self.collating()?;
+        let (low_value, high_value) = match &collating {
+            Some(w) => {
+                let lo = (0..256).min_by_key(|&b| w[b]).unwrap_or(0) as u8;
+                let hi = (0..256).max_by_key(|&b| w[b]).unwrap_or(255) as u8;
+                (lo, hi)
+            }
+            None => (0x00, 0xFF),
+        };
         let using = self
             .prog
             .procedure
@@ -407,6 +415,8 @@ impl<'a> Gen<'a> {
             alter_slots: alter_init.len() as u32,
             alter_init,
             collating,
+            high_value,
+            low_value,
             switches: self.switches,
             debugging: false,
         })
@@ -1340,11 +1350,11 @@ impl<'a> Gen<'a> {
             }
             Stmt::Search {
                 table,
-                all: _,
+                all,
                 varying,
                 at_end,
                 whens,
-            } => self.search(table, varying.as_ref(), at_end.as_deref(), whens)?,
+            } => self.search(table, *all, varying.as_ref(), at_end.as_deref(), whens)?,
             Stmt::Sort { .. } | Stmt::Merge { .. } | Stmt::Release { .. } | Stmt::Return { .. } => {
                 self.sort_stmt(s)?
             }
@@ -1627,6 +1637,7 @@ impl<'a> Gen<'a> {
     fn search(
         &mut self,
         table: &DataRef,
+        all: bool,
         varying: Option<&DataRef>,
         at_end: Option<&[Stmt]>,
         whens: &[(Cond, Vec<Stmt>)],
@@ -1671,6 +1682,13 @@ impl<'a> Gen<'a> {
         let top = self.label();
         let end = self.label();
         let end_l = self.label();
+        if all {
+            // SEARCH ALL examines the whole table.
+            self.emit(Instr::SetIndex(
+                index_loc.clone(),
+                Ex::Lit(Dec::from_i64(1)),
+            ));
+        }
         self.bind(top);
         self.emit(Instr::JumpIf(
             Cx::Cmp(

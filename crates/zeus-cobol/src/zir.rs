@@ -42,6 +42,10 @@ pub struct ProgramCode {
     pub alter_init: Vec<u32>,
     /// Collating sequence for alphanumeric comparisons (byte -> weight).
     pub collating: Option<Vec<u16>>,
+    /// HIGH-VALUE and LOW-VALUE characters (the highest and lowest of the
+    /// program collating sequence).
+    pub high_value: u8,
+    pub low_value: u8,
     /// Switch names and their initial on/off status.
     pub switches: Vec<String>,
     /// Debugging declaratives are active.

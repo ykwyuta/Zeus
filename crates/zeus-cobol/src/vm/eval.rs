@@ -155,6 +155,14 @@ impl Machine {
             }
             Src::Alnum(b) => Val::Alnum(b.clone()),
             Src::NumLit(v, digits) => Val::NumLit(*v, digits.clone()),
+            // With a PROGRAM COLLATING SEQUENCE, HIGH-VALUE and LOW-VALUE
+            // are its highest and lowest characters.
+            Src::Fig(Fig::High) if self.instances[cur].code.high_value != 0xFF => {
+                Val::All(vec![self.instances[cur].code.high_value])
+            }
+            Src::Fig(Fig::Low) if self.instances[cur].code.low_value != 0x00 => {
+                Val::All(vec![self.instances[cur].code.low_value])
+            }
             Src::Fig(f) => Val::Fig(*f),
             Src::All(p) => Val::All(p.clone()),
             Src::Num(e) => Val::Num(self.eval_ex(cur, e)?),
@@ -758,7 +766,10 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             Val::Num(x) => int_digits(*x),
             _ => Vec::new(),
         };
-        let just = matches!(ty, DataType::Alphanumeric { just: true } | DataType::Alphabetic { just: true });
+        let just = matches!(
+            ty,
+            DataType::Alphanumeric { just: true } | DataType::Alphabetic { just: true }
+        );
         d::move_alnum(&bytes, out, just);
         return;
     }

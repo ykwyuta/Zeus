@@ -12,7 +12,7 @@ use crate::ebcdic;
 use crate::front::ast::{self, DataEntry, DataRef, Usage, ValueClause};
 use crate::front::source::Pos;
 use crate::vm::data as vdata;
-use crate::zir::{Base, DataType, Desc, Dim, NumType, NumUsage, SignPos};
+use crate::zir::{Base, DataType, Desc, Dim, Loc, NumType, NumUsage, Odo, SignPos};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Area {
@@ -215,9 +215,8 @@ impl DataModel {
                     )
                 })?;
                 let sign = it.entry.sign.or_else(|| self.inherited_sign(id));
-                let sep = matches!(sign, Some((_, true)))
-                    && p.category == Category::Numeric
-                    && p.signed;
+                let sep =
+                    matches!(sign, Some((_, true))) && p.category == Category::Numeric && p.signed;
                 p.size + u32::from(sep)
             }
         })
@@ -330,7 +329,9 @@ impl DataModel {
                 point: ebcdic::from_latin1(if self.decimal_comma { b',' } else { b'.' }),
             },
             Category::Numeric if it.entry.blank_when_zero => DataType::NumericEdited {
-                edit: (0..p.digits).map(|_| super::picture::EditSym::Digit).collect(),
+                edit: (0..p.digits)
+                    .map(|_| super::picture::EditSym::Digit)
+                    .collect(),
                 digits: p.digits,
                 scale: p.scale,
                 blank_zero: true,
@@ -479,10 +480,7 @@ impl DataModel {
             }
             (lit::Const::Fig(f), _) => field.fill(f.byte()),
             (lit::Const::All(p), _) => vdata::fill_pattern(field, p),
-            (
-                lit::Const::Bytes(b),
-                DataType::Alphanumeric { .. } | DataType::Alphabetic { .. },
-            ) => {
+            (lit::Const::Bytes(b), DataType::Alphanumeric { .. } | DataType::Alphabetic { .. }) => {
                 // VALUE is not affected by JUSTIFIED.
                 vdata::move_alnum(b, field, false);
             }
@@ -687,6 +685,33 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             dm.make_desc(i);
         }
     }
+    // Groups containing an OCCURS DEPENDING ON table have a variable length.
+    for i in 0..dm.items.len() {
+        if dm.items[i].cond_of.is_some() || dm.items[i].children.is_empty() {
+            continue;
+        }
+        if let Some(t) = dm.find_odo(i) {
+            let dep = dm.items[t]
+                .occurs
+                .as_ref()
+                .unwrap()
+                .depending
+                .clone()
+                .unwrap();
+            let dep_id = dm.resolve(&dep)?;
+            let odo = Odo {
+                fixed: dm.items[t].offset - dm.items[i].offset,
+                stride: dm.items[t].len,
+                depending: Box::new(Loc {
+                    desc: dm.items[dep_id].desc,
+                    subs: Vec::new(),
+                    refmod: None,
+                }),
+            };
+            let d = dm.items[i].desc as usize;
+            dm.descs[d].odo = Some(odo);
+        }
+    }
     // Initial values.
     let mut image = vec![0u8; cursor as usize];
     for &r in ws.iter().chain(ls.iter()) {
@@ -720,6 +745,26 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
 }
 
 impl DataModel {
+    /// The OCCURS DEPENDING ON table ending a group, if any.
+    fn find_odo(&self, id: usize) -> Option<usize> {
+        let last = *self.items[id]
+            .children
+            .iter()
+            .rev()
+            .find(|&&c| self.items[c].entry.redefines.is_none())?;
+        if self.items[last]
+            .occurs
+            .as_ref()
+            .is_some_and(|o| o.depending.is_some())
+        {
+            return Some(last);
+        }
+        if self.items[last].occurs.is_none() {
+            return self.find_odo(last);
+        }
+        None
+    }
+
     fn resolve_in_record(&self, r: &DataRef, record: usize) -> Result<usize> {
         let cands = self.by_name.get(&r.name).cloned().unwrap_or_default();
         cands

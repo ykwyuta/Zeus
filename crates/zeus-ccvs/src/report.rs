@@ -239,7 +239,13 @@ pub fn evaluate(style: Style, report: &[u8], stdout: &[u8]) -> Counts {
                     continue;
                 }
                 while let Some((n, after)) = number(ws(rest)) {
-                    let Some(after) = after.strip_prefix(b"  ") else {
+                    // Two blanks follow each number (trailing blanks may
+                    // have been trimmed at the end of the line).
+                    let after = if after.is_empty() {
+                        after
+                    } else if let Some(a) = after.strip_prefix(b"  ") {
+                        a
+                    } else {
                         break;
                     };
                     seq += 1;
