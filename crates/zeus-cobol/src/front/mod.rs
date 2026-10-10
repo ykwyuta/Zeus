@@ -22,6 +22,8 @@ pub struct FileTable {
 pub struct FrontOptions {
     /// Directories searched for COPY members.
     pub copy_dirs: Vec<PathBuf>,
+    /// Compile debugging lines (D in column 7) without WITH DEBUGGING MODE.
+    pub debugging_lines: bool,
 }
 
 /// Source-wide settings that must be known before lexing: WITH DEBUGGING
@@ -96,6 +98,7 @@ pub fn parse_file(
     })?;
     let text = String::from_utf8_lossy(&text).into_owned();
     let (debugging, comma) = prescan(&text);
+    let debugging = debugging || opts.debugging_lines;
     let tokens = preprocess(path, &text, opts, files, debugging, comma)?;
     // Settings that only appear in copied text require a second pass.
     let has = |w: &str| tokens.iter().any(|t| t.is_word(w));

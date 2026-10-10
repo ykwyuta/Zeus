@@ -61,7 +61,11 @@ impl Toolchain {
             }
             Toolchain::Zeus { zcobc } => {
                 let mut cmd = Command::new(zcobc);
-                cmd.args(["compile", "-I", "../copy", "-o"])
+                cmd.arg("compile");
+                if needs.contains(&Need::DebuggingLines) {
+                    cmd.arg("--debugging-lines");
+                }
+                cmd.args(["-I", "../copy", "-o"])
                     .arg(format!("{program}.zo"))
                     .arg(source);
                 cmd

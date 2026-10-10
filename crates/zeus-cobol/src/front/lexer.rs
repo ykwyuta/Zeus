@@ -128,7 +128,7 @@ impl Lexer<'_> {
         };
         let next = self.peek(1);
         let next2 = self.peek(2);
-        (is_space(prev) || prev == '(')
+        (is_space(prev) || prev == '(' || prev == '=')
             && (next.is_some_and(|c| c.is_ascii_digit())
                 || (next == Some(self.point()) && next2.is_some_and(|c| c.is_ascii_digit())))
     }
@@ -200,6 +200,10 @@ impl Lexer<'_> {
             if matches!(c, '.' | ',' | ';') && self.at_separator_end(1) {
                 break;
             }
+            // end of pseudo-text
+            if c == '=' && self.peek(1) == Some('=') {
+                break;
+            }
             s.push(c.to_ascii_uppercase());
             self.i += 1;
         }
@@ -256,7 +260,16 @@ impl Lexer<'_> {
                                 self.i += 2;
                                 break;
                             }
-                            _ => self.one()?,
+                            _ => {
+                                let is_word_is = matches!(self.peek(0), Some('I' | 'i'))
+                                    && matches!(self.peek(1), Some('S' | 's'))
+                                    && self.at_separator_end(2);
+                                if self.expects_picture() && !is_word_is {
+                                    self.picture();
+                                } else {
+                                    self.one()?;
+                                }
+                            }
                         }
                     }
                     let inner = self.out.split_off(start);

@@ -12,7 +12,9 @@ use std::process::ExitCode;
 use zeus_cobol::front::{self, FileTable, FrontOptions};
 
 fn usage() -> ExitCode {
-    eprintln!("usage: zcobc compile [-I <dir>]... [--subprogram] -o <artifact> <source>");
+    eprintln!(
+        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] -o <artifact> <source>"
+    );
     eprintln!("       zcobc run <artifact>");
     eprintln!("       zcobc check [-I <dir>]... <source>...");
     ExitCode::from(2)
@@ -22,6 +24,7 @@ struct Args {
     copy_dirs: Vec<PathBuf>,
     output: Option<PathBuf>,
     subprogram: bool,
+    debugging_lines: bool,
     inputs: Vec<PathBuf>,
 }
 
@@ -30,6 +33,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         copy_dirs: Vec::new(),
         output: None,
         subprogram: false,
+        debugging_lines: false,
         inputs: Vec::new(),
     };
     let mut it = args.iter();
@@ -38,6 +42,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "-I" => a.copy_dirs.push(PathBuf::from(it.next()?)),
             "-o" => a.output = Some(PathBuf::from(it.next()?)),
             "--subprogram" => a.subprogram = true,
+            "--debugging-lines" => a.debugging_lines = true,
             s if s.starts_with("-I") => a.copy_dirs.push(PathBuf::from(&s[2..])),
             s => a.inputs.push(PathBuf::from(s)),
         }
@@ -48,6 +53,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
 fn check(args: &Args) -> ExitCode {
     let opts = FrontOptions {
         copy_dirs: args.copy_dirs.clone(),
+        debugging_lines: args.debugging_lines,
     };
     let mut worst = 0;
     for input in &args.inputs {
@@ -72,6 +78,7 @@ fn compile(args: &Args) -> ExitCode {
     };
     let opts = FrontOptions {
         copy_dirs: args.copy_dirs.clone(),
+        debugging_lines: args.debugging_lines,
     };
     match zeus_cobol::compile_file(input, &opts) {
         Ok(module) => {
