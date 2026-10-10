@@ -452,6 +452,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "zeus-drda"
+version = "0.1.0"
+dependencies = [
+ "zeus-cobol",
+]
+
+[[package]]
 name = "zeus-ds"
 version = "0.1.0"
 dependencies = [
