@@ -187,7 +187,7 @@ pub fn evaluate(style: Style, report: &[u8], stdout: &[u8]) -> Counts {
                     let rest = ws(rest);
                     if let Some(rest) = rest.strip_prefix(b"MAR-TEST-")
                         && let Some((n, after)) = number(rest)
-                        && after.starts_with(b" ")
+                        && (after.is_empty() || after.starts_with(b" "))
                     {
                         seq += 1;
                         if seq == n {

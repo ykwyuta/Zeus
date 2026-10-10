@@ -1647,7 +1647,13 @@ impl<'a> Gen<'a> {
             .occurs
             .clone()
             .ok_or_else(|| Diag::error(table.pos, format!("{} has no OCCURS", table.name)))?;
-        let index_name = occurs.indexed_by.first().cloned();
+        // VARYING one of the table's own index-names selects that index.
+        let index_name = match varying {
+            Some(v) if v.qualifiers.is_empty() && occurs.indexed_by.contains(&v.name) => {
+                Some(v.name.clone())
+            }
+            _ => occurs.indexed_by.first().cloned(),
+        };
         let index_loc = match (&index_name, varying) {
             (Some(n), _) => {
                 let r = DataRef {

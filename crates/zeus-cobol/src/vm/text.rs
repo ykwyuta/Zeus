@@ -57,9 +57,29 @@ impl Machine {
         let ty = self.instances[cur].code.descs[target.desc as usize]
             .ty
             .clone();
-        // Numeric display items are inspected as their characters.
+        // A signed numeric display item is inspected as if unsigned: the
+        // operational sign (zone of the sign digit) is set aside.
         let mut data = self.mem[a..a + l].to_vec();
-        let _ = ty;
+        let sign_at = match &ty {
+            DataType::Numeric(t)
+                if target.refmod.is_none()
+                    && t.signed
+                    && t.usage == crate::zir::NumUsage::Display
+                    && l > 0 =>
+            {
+                match t.sign {
+                    crate::zir::SignPos::None | crate::zir::SignPos::Trailing => Some(l - 1),
+                    crate::zir::SignPos::Leading => Some(0),
+                    _ => None,
+                }
+            }
+            _ => None,
+        };
+        let saved_zone = sign_at.map(|i| {
+            let z = data[i] & 0xF0;
+            data[i] = 0xF0 | (data[i] & 0x0F);
+            z
+        });
 
         // Resolve the operands of each step.
         struct S {
@@ -198,6 +218,11 @@ impl Machine {
                     }
                 }
             }
+        }
+        if let (Some(i), Some(z)) = (sign_at, saved_zone)
+            && (0xF0..=0xF9).contains(&data[i])
+        {
+            data[i] = z | (data[i] & 0x0F);
         }
         self.mem[a..a + l].copy_from_slice(&data);
         for s in &ss {

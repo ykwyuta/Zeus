@@ -210,7 +210,8 @@ impl Machine {
             Val::Num(x) => int_digits(*x),
             Val::Fig(f) => vec![fig_byte(*f); len.max(1)],
             Val::All(p) => {
-                let mut out = vec![0; len.max(p.len())];
+                // An ALL literal takes the size of the other operand.
+                let mut out = vec![0; if len == 0 { p.len() } else { len }];
                 d::fill_pattern(&mut out, p);
                 out
             }
@@ -245,7 +246,19 @@ impl Machine {
     // ---- MOVE ----------------------------------------------------------
 
     pub(super) fn move_val(&mut self, cur: usize, v: &Val, dst: &Loc) -> RResult<()> {
-        let (a, l) = self.addr(cur, dst)?;
+        let (a, mut l) = self.addr(cur, dst)?;
+        // A receiving group that contains its own OCCURS DEPENDING ON
+        // object is used with its maximum length.
+        let desc = self.instances[cur].code.descs[dst.desc as usize].clone();
+        if let Some(odo) = &desc.odo
+            && dst.refmod.is_none()
+        {
+            let (da, _) = self.addr(cur, &odo.depending)?;
+            let max = desc.len as usize;
+            if da >= a && da < a + max && a + max <= self.mem.len() {
+                l = max;
+            }
+        }
         let ty = self.loc_type(cur, dst);
         let mut out = self.mem[a..a + l].to_vec();
         move_into(v, &ty, &mut out);
@@ -438,8 +451,7 @@ impl Machine {
     /// (0 for figurative constants, which adapt to the other operand).
     fn alnum_len(&self, v: &Val) -> usize {
         match v {
-            Val::Fig(_) => 0,
-            Val::All(p) => p.len(),
+            Val::Fig(_) | Val::All(_) => 0,
             Val::Item(DataType::Numeric(t), _) => t.digits as usize,
             Val::Item(_, b) | Val::Alnum(b) => b.len(),
             Val::NumLit(_, digits) => digits.len(),
@@ -466,7 +478,11 @@ impl Machine {
                     .chars()
                     .map(|c| ebcdic::from_latin1(u32::from(c).min(255) as u8))
                     .collect();
-                Val::Alnum(bytes)
+                // The data is transferred as alphanumeric data, whatever
+                // the receiving item's class.
+                let (a, l) = self.addr(cur, dst)?;
+                d::move_alnum(&bytes, &mut self.mem[a..a + l], false);
+                return Ok(());
             }
             other => {
                 let n = date_value(other);
