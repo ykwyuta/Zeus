@@ -70,7 +70,7 @@ Phase 0 の API 使用一覧表 (0002 §2) と同時に、3 アプリの **COBOL
   INITIALIZE, INSPECT, STRING/UNSTRING, SEARCH/SEARCH ALL, SET, ACCEPT (DATE/TIME 等), DISPLAY,
   ファイル I/O 文 (OPEN/CLOSE/READ/WRITE/REWRITE/DELETE/START), SORT/MERGE (使用されていれば),
   組み込み関数 (CURRENT-DATE, NUMVAL, UPPER-CASE, INTEGER-OF-DATE 等, 使用分から)。
-- **埋め込み文**: EXEC CICS, EXEC SQL (INCLUDE SQLCA / DCLGEN を含む), EXEC DLI。
+- **埋め込み文**: EXEC CICS, EXEC SQL (INCLUDE SQLCA / DCLGEN を含む)。EXEC DLI は次のフェーズ (IMS 対応時)。
 - **範囲外 (当初)**: オブジェクト指向 COBOL, XML/JSON 文, Report Writer, COBOL 2002 以降の新構文。
 
 ## 5. 検証方法 (オラクル)
@@ -82,9 +82,26 @@ Enterprise COBOL そのものは使えないため、次を組み合わせる。
 | COBOL-85 規格の適合性 | **NIST COBOL-85 テストスイート (CCVS85)**。モジュール (NC: 核, SQ/IX/RL: ファイル, IC: 呼び出し, ST: 整列 等) ごとの合格率を CI で追跡 |
 | 10 進演算・EBCDIC・編集 | **Hercules** 上で AP/MP/DP/ED 等の命令を実行した結果 (命令単位の差分テスト) |
 | 旧規格でも書ける範囲の実行結果 | **Hercules + MVS 3.8j の COBOL** で同じ検査プログラムを実行し比較 |
-| 方言差の確認 (補助) | GnuCOBOL を **比較用にだけ** 使う (製品・ビルドには一切組み込まない) |
+| COBOL プログラムの実行結果全般 | **GnuCOBOL を比較用オラクルとして積極活用** (製品・ビルドには組み込まない。§5.1) |
 | Enterprise COBOL 固有規則 | IBM の Language Reference / Programming Guide に基づく仕様テストを手書き |
 | アプリ単位 | 0002 のシナリオテスト (バッチ出力・3270 画面) |
+
+### 5.1 GnuCOBOL による差分テスト
+
+GnuCOBOL は最も手軽に何度でも回せるオラクルなので、次の 3 通りで積極的に使う。
+
+1. **アプリ・テストプログラムの差分実行**: 同じ COBOL ソースを zeus-cobol と GnuCOBOL (IBM 方言モード,
+   `-std=ibm` 系) でコンパイル・実行し、DISPLAY 出力と出力ファイルを比較する。
+   CICS / SQL を含まないバッチプログラムと CCVS85 が対象。
+2. **ランダム生成プログラムによる差分ファジング**: PIC・USAGE・符号・桁数を組み合わせた
+   データ定義と MOVE / 算術 / COMPUTE / 編集 / INSPECT / STRING を自動生成し、両者で実行して比較する。
+   不一致は自動で最小化してから判定する。
+3. **既知の差異の台帳**: GnuCOBOL は ASCII を内部表現とし、Enterprise COBOL と挙動の異なる箇所がある。
+   比較は文字コードを正規化した上で行い、不一致は「zeus-cobol の誤り」「GnuCOBOL と Enterprise COBOL の
+   差」に仕分けて `docs/oracle/gnucobol-differences.md` に記録する。後者は IBM マニュアル・Hercules・
+   MVS 3.8j で裁定し、Enterprise COBOL 側の挙動を正とする。
+
+GnuCOBOL のバージョンは CI で固定し、ライセンス (GPL/LGPL) 上もテスト実行にのみ使うため問題ない。
 
 ## 6. クレート構成
 
@@ -103,12 +120,12 @@ crates/
 
 | ステップ | 内容 | 完了条件 |
 |---|---|---|
-| C0 (3 週) | 構文使用一覧表の自動生成、CCVS85 と MVS 3.8j COBOL の比較用ハーネス | 3 アプリの構文使用一覧表、CCVS85 が CI で実行される (全件不合格でよい) |
+| C0 (3 週) | 構文使用一覧表の自動生成、CCVS85・GnuCOBOL・MVS 3.8j COBOL の比較用ハーネス | 3 アプリの構文使用一覧表、CCVS85 が CI で実行される (全件不合格でよい) |
 | C1 (6〜8 週) | ソース管理・字句/構文解析・データ部の配置計算 | 3 アプリの全ソースが構文エラーなしで解析でき、各データ項目のオフセット・長さが一覧出力できる |
 | C2 (8〜10 週) | zeus-decimal、MOVE/算術/条件/制御文、ZIR とインタプリタ、DISPLAY | CCVS85 の NC モジュールの大部分に合格、Hercules との 10 進命令差分テストで不一致ゼロ |
 | C3 (4〜6 週) | ファイル I/O (0002 のデータセット層と接続)、CALL/入れ子プログラム、組み込み関数 | CCVS85 の SQ/IX/RL/IC に合格。CardDemo のバッチプログラムが全てコンパイル・実行できる |
 | C4 (4〜6 週) | EXEC CICS の統合、EIB/COMMAREA、BMS シンボリックマップ | CardDemo のオンラインプログラムが全てコンパイルできる (実行は 0002 の CICS 層と並行) |
-| C5 (4〜6 週) | EXEC SQL・EXEC DLI の統合 | GenApp・Bank of Z の全プログラムがコンパイルできる |
+| C5 (4〜6 週) | EXEC SQL の統合 (EXEC DLI は次のフェーズ) | GenApp と Bank of Z (CICS 経路) の全プログラムがコンパイルできる |
 | C6 (継続) | Cranelift バックエンド、ソースレベルデバッガ、性能改善 | インタプリタ比で十分な高速化 |
 
 ## 8. 0002 計画への影響
