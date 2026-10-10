@@ -44,6 +44,11 @@ pub fn attr_bits(b: u8) -> u8 {
         .unwrap_or((b & 0x3F) as usize) as u8
 }
 
+/// Whether `b` is a 3270 attribute byte in graphic form.
+pub fn is_attr_byte(b: u8) -> bool {
+    (0..64).any(|bits| attr_byte(bits) == b)
+}
+
 /// The graphic attribute byte of attribute bits.
 pub fn attr_byte(bits: u8) -> u8 {
     const TABLE: [u8; 64] = [

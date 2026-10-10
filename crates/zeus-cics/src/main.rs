@@ -4,8 +4,10 @@
 //! zcics [--home DIR] [--csd FILE]... [--loadlib DIR]... [--mapsets DIR]... SCRIPT
 //! ```
 //!
-//! The catalog is DIR/catalog (default `$ZEUS_HOME` or `./zeus`). Script
-//! lines:
+//! The catalog is DIR/catalog (default `$ZEUS_HOME` or `./zeus`). Records
+//! written to the transient data queue JOBS (the internal reader) are
+//! submitted as a job when a `/*EOF` record ends them; job output goes to
+//! DIR/spool. Script lines:
 //!
 //! ```text
 //! tran CC00          clear the screen, type CC00 and press ENTER
@@ -13,6 +15,7 @@
 //! eof 12 43          erase to the end of the field at line 12, column 43
 //! key PF3            press an attention key (ENTER, CLEAR, PA1-3, PF1-24)
 //! show               print the screen
+//! fields             list the fields (position, attributes, data)
 //! expect 4 Sign-on   fail unless line 4 contains the text (* any line)
 //! # comment
 //! ```
@@ -39,6 +42,58 @@ fn show(t: &Terminal) {
         println!("|{l:<80}|");
     }
     println!("+{}+", "-".repeat(80));
+}
+
+/// Submits the jobs written to the internal reader queue JOBS.
+fn submit_jobs(region: &Rc<RefCell<Region>>, home: &std::path::Path) {
+    let records = {
+        let mut r = region.borrow_mut();
+        let Some(q) = r.td.get_mut("JOBS") else {
+            return;
+        };
+        let Some(end) = q
+            .iter()
+            .position(|rec| zeus_cobol::ebcdic::decode_latin1(rec).starts_with(b"/*EOF"))
+        else {
+            return;
+        };
+        q.drain(..=end).collect::<Vec<_>>()
+    };
+    let text: String = records[..records.len() - 1]
+        .iter()
+        .map(|rec| {
+            let line: String = zeus_cobol::ebcdic::decode_latin1(rec)
+                .iter()
+                .map(|&b| b as char)
+                .collect();
+            format!("{}\n", line.trim_end())
+        })
+        .collect();
+    let catalog = match Catalog::open(&home.join("catalog")) {
+        Ok(c) => c,
+        Err(e) => {
+            println!("* internal reader: catalog: {e:?}");
+            return;
+        }
+    };
+    let mut env = zeus_jcl::job::Env {
+        catalog,
+        spool: home.join("spool"),
+        proclibs: Vec::new(),
+        loadlibs: Vec::new(),
+    };
+    let mut log = Vec::new();
+    let r = zeus_jcl::job::run_job(&mut env, &text, &mut log);
+    for l in String::from_utf8_lossy(&log).lines() {
+        println!("* JES {l}");
+    }
+    if let Err(e) = r {
+        println!("* internal reader: {e}");
+    }
+    // the job may have catalogued data sets
+    if let Ok(c) = Catalog::open(&home.join("catalog")) {
+        region.borrow_mut().catalog = c;
+    }
 }
 
 fn main() -> ExitCode {
@@ -112,6 +167,7 @@ fn main() -> ExitCode {
             for msg in region.borrow_mut().log.drain(..) {
                 println!("* {msg}");
             }
+            submit_jobs(&region, &home);
         };
         match cmd {
             "" | "#" => {}
@@ -150,6 +206,27 @@ fn main() -> ExitCode {
                 press(a);
             }
             "show" => show(&term.borrow()),
+            "fields" => {
+                let t = term.borrow();
+                let s = &t.screen;
+                for f in s.fields() {
+                    let a = s.attrs[f.attr_pos].unwrap();
+                    let data: String = zeus_cobol::ebcdic::decode_latin1(&s.field_data(&f))
+                        .iter()
+                        .map(|&b| if b < 0x20 { '.' } else { b as char })
+                        .collect();
+                    println!(
+                        "({:2},{:2}) {}{}{} len {:3} |{}|",
+                        f.attr_pos / s.cols + 1,
+                        f.attr_pos % s.cols + 1,
+                        if a.protected { "P" } else { "U" },
+                        if a.numeric { "N" } else { " " },
+                        if a.mdt { "M" } else { " " },
+                        f.len,
+                        data.trim_end_matches('.')
+                    );
+                }
+            }
             "expect" => {
                 let Some((l, s)) = rest.split_once(' ') else {
                     return fail("expect LINE TEXT expected".into());

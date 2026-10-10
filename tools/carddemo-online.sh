@@ -33,6 +33,7 @@ case ${1:-} in
     build) build ;;
     run)
         shift
+        [ -d "$out/loadlib" ] || build
         for s in "$@"; do
             $bin/zcics --home "$home" --csd "$app/csd/CARDDEMO.CSD" \
                 --loadlib "$out/loadlib" --mapsets "$out/maps" "$s"

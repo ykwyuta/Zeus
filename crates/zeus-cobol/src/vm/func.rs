@@ -214,8 +214,9 @@ impl Machine {
                 } else {
                     b.len()
                 };
-                // all spaces: one space
-                if s >= e { vec![sp] } else { b[s..e].to_vec() }
+                // all spaces: a zero-length value (CardDemo tests
+                // FUNCTION LENGTH(FUNCTION TRIM(x)) = 0 for blank fields)
+                if s >= e { Vec::new() } else { b[s..e].to_vec() }
             }
             Func::UpperCase | Func::LowerCase | Func::Reverse => {
                 let mut b = match vals.first() {

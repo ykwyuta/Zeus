@@ -177,8 +177,10 @@ pub fn send_map(
                 if len == -1 && cursor == Some(None) && cursor_at.is_none() {
                     cursor_at = Some(start);
                 }
+                // the attribute byte, when it is one (not null, nor an
+                // input flag such as X'80' left by RECEIVE MAP)
                 let a = d[off + 2];
-                if a != 0 {
+                if crate::screen::is_attr_byte(a) {
                     attr = attr.with_byte(a);
                 }
                 for (j, s) in ext.iter().enumerate() {

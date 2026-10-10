@@ -161,12 +161,17 @@ fn catalog_cmd(o: &Opts, cat: &mut Catalog) -> ExitCode {
         }
         ["catalog", "print", dsn] => match cat.read_records(dsn) {
             Ok(recs) => {
+                use std::io::Write;
+                let mut out = std::io::stdout().lock();
                 for r in recs {
                     let t: String = ebcdic::decode_latin1(&r)
                         .iter()
                         .map(|&b| b as char)
                         .collect();
-                    println!("{}", t.trim_end());
+                    // a closed pipe (| head) ends the listing
+                    if writeln!(out, "{}", t.trim_end()).is_err() {
+                        return ExitCode::SUCCESS;
+                    }
                 }
             }
             Err(e) => return fail(format!("{dsn}: {e}")),

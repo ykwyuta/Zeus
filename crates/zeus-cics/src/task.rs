@@ -94,6 +94,8 @@ struct State {
     xctl: Option<(String, Option<(usize, usize)>)>,
     received: bool,
     browses: HashMap<String, Browse>,
+    /// Primary key of the record each file last read for UPDATE.
+    updates: HashMap<String, Vec<u8>>,
     abcode: String,
 }
 
@@ -120,6 +122,9 @@ pub fn run(
         r.task_count
     };
     let mut m = Machine::new(loadlibs);
+    // DISPLAY output of the programs goes to the region log (CEEOUT)
+    let out = Capture::default();
+    m.set_stdout(Box::new(out.clone()));
     let eib_addr = m.getmain(eib::LEN, 0);
     let task = Rc::new(Task {
         region: region.clone(),
@@ -134,6 +139,7 @@ pub fn run(
             xctl: None,
             received: false,
             browses: HashMap::new(),
+            updates: HashMap::new(),
             abcode: String::new(),
         }),
     });
@@ -146,6 +152,12 @@ pub fn run(
     });
     let r = task.run_level(&mut m, &program, ca, true);
     term.borrow_mut().screen.locked = false;
+    for line in String::from_utf8_lossy(&out.0.borrow()).lines() {
+        region
+            .borrow_mut()
+            .log
+            .push(format!("CEEOUT {transid} {}", line.trim_end()));
+    }
     match r {
         Ok(()) => Ok(()),
         Err(e) => {
@@ -165,6 +177,21 @@ pub fn run(
                 .push(format!("task {taskn} {transid} abended {code}"));
             Err(code)
         }
+    }
+}
+
+/// Collects what programs DISPLAY.
+#[derive(Clone, Default)]
+struct Capture(Rc<std::cell::RefCell<Vec<u8>>>);
+
+impl std::io::Write for Capture {
+    fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+        self.0.borrow_mut().extend_from_slice(b);
+        Ok(b.len())
+    }
+
+    fn flush(&mut self) -> std::io::Result<()> {
+        Ok(())
     }
 }
 
@@ -731,6 +758,12 @@ impl Task {
                 if let Some(a) = Self::area(call, "RIDFLD") {
                     Self::store_bytes(m, &a, &f.position.key);
                 }
+                if call.has("UPDATE") {
+                    self.st
+                        .borrow_mut()
+                        .updates
+                        .insert(fname.clone(), f.primary.clone());
+                }
                 let cond = Self::deliver(m, call, &f.record);
                 let dup = which > 0
                     && self.region.borrow().files[&key].dataset.keys()[which].duplicates
@@ -764,6 +797,10 @@ impl Task {
                 }
             }
             "REWRITE" => {
+                if self.st.borrow_mut().updates.remove(&fname).is_none() {
+                    // REWRITE needs a READ UPDATE first
+                    return self.finish(m, call, "INVREQ", 0);
+                }
                 let rec = Self::from_data(m, call);
                 let r = {
                     let mut r = self.region.borrow_mut();
@@ -779,13 +816,19 @@ impl Task {
                 }
             }
             "DELETE" => {
-                let k = Self::ridfld(m, call, key_len);
-                let primary = {
+                // without RIDFLD: the record read for UPDATE
+                let primary = if call.has("RIDFLD") {
+                    let k = Self::ridfld(m, call, key_len);
                     let r = self.region.borrow();
                     r.files[&key]
                         .dataset
                         .position(which, &k, zeus_ds::Rel::Eq)
                         .map(|f| f.primary)
+                } else {
+                    match self.st.borrow_mut().updates.remove(&fname) {
+                        Some(p) => Some(p),
+                        None => return self.finish(m, call, "INVREQ", 0),
+                    }
                 };
                 let Some(p) = primary else {
                     return self.finish(m, call, "NOTFND", 0);
@@ -797,7 +840,10 @@ impl Task {
                 self.save_file(&key)?;
                 self.finish(m, call, "NORMAL", 0)
             }
-            "UNLOCK" => self.finish(m, call, "NORMAL", 0),
+            "UNLOCK" => {
+                self.st.borrow_mut().updates.remove(&fname);
+                self.finish(m, call, "NORMAL", 0)
+            }
             "STARTBR" | "RESETBR" => {
                 let k = Self::ridfld(m, call, key_len);
                 let rel = if call.has("EQUAL") {

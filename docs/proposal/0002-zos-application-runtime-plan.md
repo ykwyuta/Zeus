@@ -177,10 +177,13 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
 - 進捗 (2026-10): `zeus-cics` (CSD 読み込み、タスク・EIB、LINK/XCTL/RETURN TRANSID、HANDLE/IGNORE
   CONDITION・HANDLE AID/ABEND と既定の異常終了、カタログ上の KSDS/PATH に対するファイル制御と
   ブラウズ、TS/TD キュー、ASSIGN/ASKTIME/FORMATTIME/BIF DEEDIT、3270 画面モデル上の SEND/RECEIVE
-  MAP・SEND TEXT) と、端末操作をスクリプトで流す `zcics` を作成。CardDemo のサインオン、管理者
-  メニューとユーザ一覧・追加、メインメニューの全項目、口座照会、カード・取引一覧、請求支払が
-  動き、`tools/carddemo-online` のシナリオを CI で実行している。未着手: TN3270 サーバ、口座・
-  カード更新等の残りのシナリオ、作業単位のバックアウト (ROLLBACK は変更を戻さない)。
+  MAP・SEND TEXT) と、端末操作をスクリプトで流す `zcics` を作成。CardDemo のオンライン取引
+  (サインオン、管理者メニューとユーザ一覧・追加・更新・削除、メインメニューの全項目、口座照会・
+  更新、カード一覧・照会・更新、取引一覧・照会・追加、請求支払、月次レポートの投入) が動き、
+  `tools/carddemo-online` の 11 シナリオを CI で実行している。レポート投入は TD キュー JOBS
+  (内部リーダー) に書かれた JCL を `zeus-jcl` で実行し、帳票の GDG 世代まで作られる。
+  未着手: TN3270 サーバ、作業単位のバックアウト (ROLLBACK は変更を戻さない)、
+  オプション機能 (IMS/Db2/MQ を使う保留承認、取引種別保守)。
 
 ### Phase 5: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C6
 - EXEC SQL のコンパイラ統合、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。

@@ -34,9 +34,11 @@ CardDemo, GenApp and Bank of Z compile. The syntax usage inventory of the
 three applications is in [docs/inventory/apps.md](docs/inventory/apps.md).
 
 CICS: `zcics` runs transactions against a 3270 screen model driven by a
-script (`tools/carddemo-online.sh`). The CardDemo sign-on, menus, account
-view, card and transaction lists, bill payment and user administration
-work on the data the batch jobs set up.
+script (`tools/carddemo-online.sh`). The CardDemo online transactions
+(sign-on, menus, account view and update, card list, view and update,
+transaction list, view and add, bill payment, report submission through the
+internal reader, user administration) work on the data the batch jobs set
+up.
 
 ## Layout
 

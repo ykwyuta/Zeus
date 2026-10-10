@@ -1,0 +1,31 @@
+# Credit card view and update (READ UPDATE / REWRITE of the card).
+tran CC00
+type 19 44 USER0001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 04
+key ENTER
+type 7 46 00000000050
+type 8 46 0500024453765740
+key ENTER
+expect * Name on card      :  Aniya Von
+key PF3
+type 20 42 05
+key ENTER
+type 7 46 00000000050
+type 8 46 0500024453765740
+key ENTER
+expect * Details of selected card shown above
+eof 11 26
+type 11 26 ANIYA ZEUS
+key ENTER
+expect * Changes validated.Press F5 to save
+key PF5
+expect * Changes committed to database
+key PF3
+type 20 42 04
+key ENTER
+type 7 46 00000000050
+type 8 46 0500024453765740
+key ENTER
+expect * Name on card      :  ANIYA ZEUS
