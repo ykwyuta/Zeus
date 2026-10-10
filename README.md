@@ -13,7 +13,8 @@ Plans and design decisions are in [docs/proposal](docs/proposal):
 
 ## Status
 
-Phase 0: the CCVS85 harness is in place. The compiler driver `zcobc` exists
+Phase 0: the CCVS85 harness and the Hercules decimal-instruction oracle are
+in place. The compiler driver `zcobc` exists
 only as a stub, so every program currently fails to compile; GnuCOBOL results
 are shown alongside as the comparison baseline.
 
@@ -23,6 +24,7 @@ are shown alongside as the comparison baseline.
 |---|---|
 | `crates/zeus-cobol` | `zcobc`, the COBOL compiler driver (stub) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
+| `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |
 | `ccvs85/` | Harness data (X-card values, reference manifest) |
 | `tools/` | Download scripts for test suites |
 | `docs/oracle/` | Exclusions and known oracle differences |

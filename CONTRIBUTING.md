@@ -46,3 +46,15 @@ target/release/zeus-ccvs run --suite work/suite --toolchain gnucobol --out work/
 target/release/zeus-ccvs run --suite work/suite --toolchain zeus --out work/zeus.json
 target/release/zeus-ccvs report --results work/zeus.json --baseline work/gnucobol.json
 ```
+
+## Hercules decimal-instruction oracle
+
+`zeus-hercdiff` generates packed-decimal instruction cases (AP, SP, ZAP, CP,
+MP, DP, SRP, MVO, PACK, UNPK), runs them on Hercules in ESA/390 mode and
+records operands, condition codes and program interruption codes. These are
+the expected results for the decimal arithmetic of the compiler runtime.
+
+```sh
+sudo apt-get install hercules
+cargo run --release -p zeus-hercdiff -- run --count 300 --seed 1 --out work/decimal-oracle.json
+```

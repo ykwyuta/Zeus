@@ -55,3 +55,21 @@ jobs:
         with:
           name: ccvs85-results
           path: work/*.json
+
+  hercules-oracle:
+    # Records Hercules results for packed-decimal instructions (oracle for
+    # zeus-decimal) and checks the pipeline against known results.
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install Hercules (comparison oracle)
+        run: sudo apt-get update && sudo apt-get install -y hercules
+      - run: cargo test -p zeus-hercdiff
+      - run: cargo run --release -p zeus-hercdiff -- run --count 300 --seed 1 --out work/decimal-oracle.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: decimal-oracle
+          path: work/decimal-oracle.json
