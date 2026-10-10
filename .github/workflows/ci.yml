@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test --all
+
+  ccvs85:
+    # Runs the NIST CCVS85 suite with GnuCOBOL (comparison baseline) and with
+    # zcobc, and publishes both side by side in the job summary. The job
+    # fails only when the harness itself fails, not on test failures.
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Install GnuCOBOL (comparison oracle)
+        run: sudo apt-get update && sudo apt-get install -y gnucobol3
+      - uses: actions/cache@v4
+        with:
+          path: .cache/ccvs85
+          key: ccvs85-${{ hashFiles('tools/fetch-ccvs85.sh') }}
+      - run: tools/fetch-ccvs85.sh
+      - run: cargo build --release
+      - name: Extract suite (verified against EXEC85 reference)
+        run: >
+          target/release/zeus-ccvs extract --newcob .cache/ccvs85/newcob.val
+          --out work/suite --verify ccvs85/extract-manifest.txt
+      - name: Run with GnuCOBOL
+        run: target/release/zeus-ccvs run --suite work/suite --toolchain gnucobol --out work/gnucobol.json > /dev/null
+      - name: Run with zcobc
+        run: target/release/zeus-ccvs run --suite work/suite --toolchain zeus --out work/zeus.json > /dev/null
+      - name: Summary
+        run: >
+          target/release/zeus-ccvs report --results work/zeus.json
+          --baseline work/gnucobol.json --programs >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ccvs85-results
+          path: work/*.json

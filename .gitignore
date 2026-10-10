@@ -1,0 +1,5 @@
+/target
+# Downloaded test suites and oracle images (never committed)
+/.cache
+# CCVS85 working directories
+/work

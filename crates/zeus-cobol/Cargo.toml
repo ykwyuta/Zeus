@@ -1,0 +1,15 @@
+[package]
+name = "zeus-cobol"
+description = "Zeus COBOL compiler (Enterprise COBOL 4.2 dialect) - not yet implemented"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[[bin]]
+name = "zcobc"
+path = "src/main.rs"
+
+[lints]
+workspace = true
