@@ -94,6 +94,8 @@ pub struct Region {
     pub task_count: u32,
     /// Messages of the region (abends, ...).
     pub log: Vec<String>,
+    /// The Db2 connection of the region (ZEUS_DB2), for EXEC SQL.
+    pub db2: Option<Rc<zeus_db2::Db2Host>>,
 }
 
 pub type Shared<T> = Rc<RefCell<T>>;
@@ -118,6 +120,7 @@ impl Region {
             files: HashMap::new(),
             task_count: 0,
             log: Vec::new(),
+            db2: zeus_db2::Db2Host::from_env().map(Rc::new),
         }
     }
 

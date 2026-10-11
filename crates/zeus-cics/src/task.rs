@@ -152,6 +152,11 @@ pub fn run(
     });
     let r = task.run_level(&mut m, &program, ca, true);
     term.borrow_mut().screen.locked = false;
+    // end of task: the Db2 unit of work is committed, or backed out on abend
+    let db2 = region.borrow().db2.clone();
+    if let Some(h) = db2 {
+        let _ = h.end_uow(r.is_ok());
+    }
     for line in String::from_utf8_lossy(&out.0.borrow()).lines() {
         region
             .borrow_mut()
@@ -1192,6 +1197,16 @@ impl Task {
 
 impl ExecHost for Task {
     fn exec(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        if call.kind == zeus_cobol::zir::ExecKind::Sql {
+            let db2 = self.region.borrow().db2.clone();
+            return match db2 {
+                Some(h) => h.exec(m, call),
+                None => Err(RunError(format!(
+                    "{}: EXEC SQL needs a Db2 server (ZEUS_DB2) (line {})",
+                    call.program, call.line
+                ))),
+            };
+        }
         if call.kind != zeus_cobol::zir::ExecKind::Cics {
             return Err(RunError(format!(
                 "EXEC {:?} {} needs a {} interface, not available in CICS yet",
@@ -1235,7 +1250,16 @@ impl ExecHost for Task {
                 };
                 self.finish(m, call, cond, 0)
             }
-            "SYNCPOINT" | "ENQ" | "DEQ" | "DELAY" | "SUSPEND" => self.finish(m, call, "NORMAL", 0),
+            "SYNCPOINT" => {
+                // the Db2 unit of work ends with the CICS one (files are
+                // not backed out)
+                let db2 = self.region.borrow().db2.clone();
+                if let Some(h) = db2 {
+                    let _ = h.end_uow(!call.has("ROLLBACK"));
+                }
+                self.finish(m, call, "NORMAL", 0)
+            }
+            "ENQ" | "DEQ" | "DELAY" | "SUSPEND" => self.finish(m, call, "NORMAL", 0),
             other => Err(RunError(format!(
                 "{}: EXEC CICS {other} is not supported yet (line {})",
                 call.program, call.line

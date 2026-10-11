@@ -428,6 +428,7 @@ dependencies = [
  "tempfile",
  "zeus-bms",
  "zeus-cobol",
+ "zeus-db2",
  "zeus-decimal",
  "zeus-ds",
  "zeus-jcl",
@@ -442,6 +443,16 @@ dependencies = [
  "tempfile",
  "zeus-decimal",
  "zeus-ds",
+]
+
+[[package]]
+name = "zeus-db2"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "zeus-cobol",
+ "zeus-decimal",
+ "zeus-drda",
 ]
 
 [[package]]
@@ -485,6 +496,7 @@ version = "0.1.0"
 dependencies = [
  "tempfile",
  "zeus-cobol",
+ "zeus-db2",
  "zeus-decimal",
  "zeus-ds",
 ]

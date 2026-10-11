@@ -316,7 +316,9 @@ pub fn build_job(stmts: &[Stmt], lib: &dyn ProcLibrary) -> Result<Job, JclError>
             "SET" => {
                 for p in &s.params {
                     if let Some(k) = &p.key {
-                        symbols.insert(k.clone(), param_text(&p.value));
+                        // the value may name symbols set before
+                        let v = substitute(&param_text(&p.value), &symbols);
+                        symbols.insert(k.clone(), v);
                     }
                 }
             }
@@ -331,7 +333,14 @@ pub fn build_job(stmts: &[Stmt], lib: &dyn ProcLibrary) -> Result<Job, JclError>
                 i += 1;
                 ex.instream.insert(name, body);
             }
-            "DD" if s.name.as_deref() == Some("JOBLIB") => job.joblib.push(s.clone()),
+            "DD" if s.name.as_deref() == Some("JOBLIB") => {
+                // with its concatenated (unnamed) DD statements
+                job.joblib.push(resubstitute(s, &symbols)?);
+                while i < stmts.len() && stmts[i].op == "DD" && stmts[i].name.is_none() {
+                    job.joblib.push(resubstitute(&stmts[i], &symbols)?);
+                    i += 1;
+                }
+            }
             "EXEC" => {
                 let mut dds = Vec::new();
                 while i < stmts.len() && stmts[i].op == "DD" {

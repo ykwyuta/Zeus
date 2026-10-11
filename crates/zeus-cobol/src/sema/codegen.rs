@@ -18,6 +18,8 @@ type Label = u32;
 pub struct Gen<'a> {
     /// EXEC statements (labels unresolved until the end).
     execs: Vec<zir::ExecDef>,
+    /// SQL cursor declarations (DECLARE c CURSOR FOR ...) by cursor name.
+    sql_cursors: HashMap<String, SqlText>,
     pub prog: &'a ast::Program,
     pub dm: DataModel,
     pub code: Vec<Instr>,
@@ -137,6 +139,7 @@ impl<'a> Gen<'a> {
             in_decl: false,
             reports: Vec::new(),
             execs: Vec::new(),
+            sql_cursors: sql_cursors(prog),
             pos: prog.pos,
         };
         g.environment()?;
@@ -498,10 +501,49 @@ impl<'a> Gen<'a> {
             }
         }
         let mut host = Vec::new();
-        if let Some(sql) = &e.sql {
+        let mut host_varchar = Vec::new();
+        let mut sql = e.sql.clone();
+        if e.kind == ExecKind::Sql {
+            // OPEN: the query and host variables of the cursor declaration
+            // (the declaration itself is not executable)
+            if e.command == "OPEN"
+                && let Some(text) = &sql
+                && let Some(name) = text.text.split_whitespace().nth(1)
+            {
+                let name = name.to_ascii_uppercase();
+                let Some(decl) = self.sql_cursors.get(&name).cloned() else {
+                    return Err(Diag::error(e.pos, format!("cursor {name} is not declared")));
+                };
+                let query = cursor_query(&decl.text).unwrap_or_default();
+                options.push(zir::ExecOpt {
+                    name: "QUERY".into(),
+                    arg: Some(zir::ExecVal::Name(query)),
+                });
+                sql = Some(SqlText {
+                    text: text.text.clone(),
+                    host: decl.host.clone(),
+                });
+            }
+            // the SQLCA the statement reports to
+            let ca = DataRef {
+                name: "SQLCA".into(),
+                qualifiers: Vec::new(),
+                subscripts: Vec::new(),
+                refmod: None,
+                pos: e.pos,
+            };
+            if self.dm.resolve(&ca).is_ok() {
+                options.push(zir::ExecOpt {
+                    name: "SQLCA".into(),
+                    arg: Some(zir::ExecVal::Area(self.loc(&ca)?)),
+                });
+            }
+        }
+        if let Some(sql) = &sql {
             for h in &sql.host {
                 let v = self.loc(&h.var)?;
                 let i = h.indicator.as_ref().map(|r| self.loc(r)).transpose()?;
+                host_varchar.push(self.is_varchar(&h.var));
                 host.push((v, i));
             }
         }
@@ -510,9 +552,26 @@ impl<'a> Gen<'a> {
             line: e.pos.line,
             command: e.command.clone(),
             options,
-            sql: e.sql.as_ref().map(|s| s.text.clone()),
+            sql: sql.as_ref().map(|s| s.text.clone()),
             host,
+            host_varchar,
         })
+    }
+
+    /// A VARCHAR host variable: a group of a halfword length and the
+    /// text, both level 49 (as DCLGEN writes them).
+    fn is_varchar(&self, r: &DataRef) -> bool {
+        let Ok(id) = self.dm.resolve(r) else {
+            return false;
+        };
+        let it = &self.dm.items[id];
+        match it.children.as_slice() {
+            [len, text] => {
+                let (l, t) = (&self.dm.items[*len], &self.dm.items[*text]);
+                l.level == 49 && t.level == 49 && l.len == 2 && l.pic.is_some()
+            }
+            _ => false,
+        }
     }
 
     fn exec_val(&mut self, x: &Expr, kind: ExecKind) -> Result<zir::ExecVal> {
@@ -3152,4 +3211,62 @@ fn line_pos(l: LineClause) -> zir::LinePos {
         LineClause::NextPage => zir::LinePos::NextPage,
         LineClause::AbsoluteNextPage(n) => zir::LinePos::AbsoluteNextPage(n),
     }
+}
+
+/// The SQL cursor declarations of a program: in the data division and in
+/// the sentences of the procedure division.
+fn sql_cursors(prog: &ast::Program) -> HashMap<String, SqlText> {
+    let mut out = HashMap::new();
+    let mut add = |e: &ExecBlock| {
+        if e.kind != ExecKind::Sql || e.command != "DECLARE" {
+            return;
+        }
+        let Some(sql) = &e.sql else { return };
+        // DECLARE c [ASENSITIVE|INSENSITIVE|SENSITIVE ...] [NO] [SCROLL] CURSOR
+        let words: Vec<&str> = sql.text.split_whitespace().collect();
+        let attrs = [
+            "ASENSITIVE",
+            "INSENSITIVE",
+            "SENSITIVE",
+            "STATIC",
+            "DYNAMIC",
+            "NO",
+            "SCROLL",
+        ];
+        let mut i = 2;
+        while words
+            .get(i)
+            .is_some_and(|w| attrs.iter().any(|a| w.eq_ignore_ascii_case(a)))
+        {
+            i += 1;
+        }
+        if words
+            .get(i)
+            .is_some_and(|w| w.eq_ignore_ascii_case("CURSOR"))
+        {
+            out.insert(words[1].to_ascii_uppercase(), sql.clone());
+        }
+    };
+    for e in &prog.data.execs {
+        add(e);
+    }
+    for sec in &prog.procedure.sections {
+        for p in &sec.paragraphs {
+            for sentence in &p.sentences {
+                for st in sentence {
+                    if let Stmt::Exec(e) = st {
+                        add(e);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The query of `DECLARE c CURSOR [WITH HOLD] FOR query`.
+fn cursor_query(decl: &str) -> Option<String> {
+    let words: Vec<&str> = decl.split_whitespace().collect();
+    let at = words.iter().position(|w| w.eq_ignore_ascii_case("FOR"))?;
+    Some(words[at + 1..].join(" "))
 }

@@ -687,7 +687,7 @@ impl Runner<'_> {
 }
 
 /// Runs a COBOL program compiled by zcobc.
-fn run_cobol(
+pub(crate) fn run_cobol(
     ctx: &mut StepCtx,
     program: &str,
     libs: &[PathBuf],
@@ -702,6 +702,11 @@ fn run_cobol(
         .ok_or_else(|| Outcome::Abend("S806".into()))?;
     let mut m = zeus_cobol::vm::Machine::new(libs.to_vec());
     crate::native::register(&mut m);
+    // embedded SQL runs on the Db2 server named by ZEUS_DB2
+    let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
+    if let Some(h) = &db2 {
+        m.set_exec_host(h.clone());
+    }
     let mut tiot = Vec::new();
     for dd in &ctx.dds {
         m.allocate(
@@ -727,6 +732,11 @@ fn run_cobol(
         m.set_stdin(ctx.read_text("SYSIN").unwrap_or_default());
     }
     let r = m.run_main(module);
+    // the unit of work ends with the step: committed, or backed out when
+    // the program failed
+    if let Some(h) = &db2 {
+        let _ = h.end_uow(r.is_ok());
+    }
     // attributes of new data sets from the files the program opened
     for (dd, fmt, max) in m.opened_formats().to_vec() {
         let Some(d) = ctx.dd(&dd).filter(|d| d.open_attributes) else {
@@ -780,6 +790,22 @@ pub fn run_job(env: &mut Env, text: &str, log: &mut dyn Write) -> Result<Vec<Ste
         temps: HashMap::new(),
         passed: Vec::new(),
     };
+    // TYPRUN=SCAN: the JCL is checked (it was parsed and expanded above)
+    // but no step runs
+    let scan = job
+        .job
+        .as_ref()
+        .and_then(|j| j.get_str("TYPRUN"))
+        .is_some_and(|t| t.eq_ignore_ascii_case("SCAN"));
+    if scan {
+        r.note(&format!(
+            "ZEUS JOB {} SCANNED (TYPRUN=SCAN), NOT RUN",
+            job.name
+        ));
+        let _ = writeln!(log, "{}", r.log.trim_end());
+        std::fs::write(dir.join("JESMSGLG"), &r.log).map_err(|e| e.to_string())?;
+        return Ok(Vec::new());
+    }
     r.note(&format!("ZEUS JOB {} STARTED", job.name));
     let results = run_steps(&mut r, &job)?;
     for t in std::mem::take(&mut r.passed) {
@@ -871,6 +897,9 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
         };
         let outcome = match crate::utils::run(&program, &mut ctx) {
             Some(res) => res,
+            None if matches!(program.as_str(), "IKJEFT01" | "IKJEFT1A" | "IKJEFT1B") => {
+                crate::utils::tso::run(&program, &mut ctx, &libs, &job_name, step)
+            }
             None => run_cobol(&mut ctx, &program, &libs, &job_name, step),
         };
         let dds = ctx.dds;

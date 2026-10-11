@@ -94,6 +94,9 @@ pub struct ExecDef {
     pub sql: Option<String>,
     /// SQL host variables and indicator variables, in order.
     pub host: Vec<(Loc, Option<Loc>)>,
+    /// Which host variables are VARCHAR structures (length and text).
+    #[serde(default)]
+    pub host_varchar: Vec<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

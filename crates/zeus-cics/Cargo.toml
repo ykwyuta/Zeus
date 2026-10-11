@@ -12,6 +12,7 @@ serde.workspace = true
 serde_json.workspace = true
 zeus-bms = { path = "../zeus-bms" }
 zeus-cobol = { path = "../zeus-cobol" }
+zeus-db2 = { path = "../zeus-db2" }
 zeus-decimal = { path = "../zeus-decimal" }
 zeus-ds = { path = "../zeus-ds" }
 zeus-jcl = { path = "../zeus-jcl" }

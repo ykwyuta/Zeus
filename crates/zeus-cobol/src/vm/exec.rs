@@ -53,6 +53,9 @@ pub struct ExecCall {
     pub options: Vec<(String, Option<ExecArg>)>,
     pub sql: Option<String>,
     pub host: Vec<(Area, Option<Area>)>,
+    /// Which host variables are VARCHAR structures (halfword length and
+    /// text).
+    pub host_varchar: Vec<bool>,
 }
 
 impl ExecCall {
@@ -196,6 +199,7 @@ impl Machine {
             options,
             sql: def.sql.clone(),
             host,
+            host_varchar: def.host_varchar.clone(),
         };
         let Some(h) = self.exec_host.clone() else {
             return Err(RunError(format!(

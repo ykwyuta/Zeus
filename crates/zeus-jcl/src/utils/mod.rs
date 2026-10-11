@@ -3,6 +3,7 @@
 pub mod idcams;
 mod iebgener;
 pub mod sort;
+pub mod tso;
 
 use std::io::Write;
 
