@@ -1,4 +1,5 @@
-# Endowment (SSP2), house (SSP3) and commercial (SSP4) policy inquiries.
+# Endowment (SSP2), house (SSP3) and commercial (SSP4) policies: inquiries
+# of the sample policies, then add, update and delete.
 tran LGSE
 tran SSP2
 type 4 51 0000000004
@@ -24,4 +25,107 @@ key ENTER
 expect 8 TURF MOOR
 expect 11 Burnley Football Club
 expect 13 0001  00044000
+key PF3
+# Endowment policy: add, then inquiry, update and delete of the policy
+# the add left on the screen.
+tran SSP2
+type 5 51 0000000007
+type 6 51 2026-02-01
+type 7 51 2046-02-01
+type 8 51 GROWTH
+type 9 51 20
+type 10 51 050000
+type 11 51 TROY TEMPEST
+type 12 51 Y
+type 13 51 N
+type 14 51 Y
+type 22 25 2
+key ENTER
+expect * New Life Policy Inserted
+type 22 25 1
+key ENTER
+expect 8 GROWTH
+expect 11 TROY TEMPEST
+type 22 25 4
+key ENTER
+eof 9 51
+type 9 51 25
+key ENTER
+expect * Life Policy Updated
+type 22 25 1
+key ENTER
+expect 9 25
+type 22 25 3
+key ENTER
+expect * Life Policy Deleted
+type 22 25 1
+key ENTER
+expect * No data was returned.
+key PF3
+# House policy
+tran SSP3
+type 5 51 0000000007
+type 6 51 2026-03-01
+type 7 51 2027-03-01
+type 8 51 FLAT
+type 9 51 002
+type 10 51 00250000
+type 11 51 Seaview
+type 12 51 7
+type 13 51 ST106RR
+type 22 25 2
+key ENTER
+expect * New House Policy Inserted
+type 22 25 1
+key ENTER
+expect 8 FLAT
+expect 13 ST106RR
+type 22 25 4
+key ENTER
+eof 9 51
+type 9 51 003
+key ENTER
+expect * House Policy Updated
+type 22 25 1
+key ENTER
+expect 9 003
+type 22 25 3
+key ENTER
+expect * House Policy Deleted
+type 22 25 1
+key ENTER
+expect * No data was returned.
+key PF3
+# Commercial policy (no update in its menu)
+tran SSP4
+type 5 51 0000000007
+type 6 51 2026-04-01
+type 7 51 2027-04-01
+type 8 51 1 HIGH STREET
+type 9 51 ST106RR
+type 10 51 52.9
+type 10 65 -1.1
+type 11 51 Tempest Trading
+type 12 51 SHOP
+type 13 51 0001
+type 13 57 00001000
+type 14 51 0002
+type 14 57 00002000
+type 15 51 0000
+type 15 57 00000000
+type 16 51 0001
+type 16 57 00000500
+type 22 25 2
+key ENTER
+expect * New Commercial Policy Inserted
+type 22 25 1
+key ENTER
+expect 8 1 HIGH STREET
+expect 11 Tempest Trading
+type 22 25 3
+key ENTER
+expect * Commercial Policy Deleted
+type 22 25 1
+key ENTER
+expect * No data was returned.
 key PF3

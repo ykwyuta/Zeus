@@ -57,8 +57,8 @@ GenApp: `tools/genapp.sh setup` applies the installation's customization to
 its jobs and runs them (VSAM files, Db2 database and sample rows), compiles
 the programs and maps and takes the resource definitions from its CSD job.
 Its conversational menu transactions (customer inquiry, add and update;
-motor policy inquiry, add, update and delete; endowment, house and
-commercial policy inquiry) work on Db2 and VSAM, with customer numbers from
+motor, endowment and house policy inquiry, add, update and delete;
+commercial policy inquiry, add and delete) work on Db2 and VSAM, with customer numbers from
 named counters (`tools/genapp.sh test`).
 
 ## Layout

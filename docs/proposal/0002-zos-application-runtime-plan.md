@@ -207,14 +207,14 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   (VSAM)・DB2CRE (Db2 の表と見本データ) を実行し、プログラム・マップをコンパイルし、CDEF121 の
   DFHCSDUP 入力を CSD として使う。会話型タスク (SEND の後の RECEIVE が端末の次の入力を待つ。
   スクリプトと TN3270 の両方)、名前付きカウンター (DEFINE/DELETE/GET/QUERY/UPDATE/REWIND
-  COUNTER)、FROM と LENGTH でデータ項目の先まで送る SEND を実装し、顧客照会・追加・更新、自動車
-  保険の照会・追加・更新・削除、養老・住宅・商業保険の照会が Db2 と VSAM の両方で動く
-  (`tools/genapp/` の 3 シナリオを CI で実行)。
+  COUNTER)、FROM と LENGTH でデータ項目の先まで送る SEND を実装し、顧客の照会・追加・更新と、
+  自動車・養老・住宅保険の照会・追加・更新・削除、商業保険の照会・追加・削除が Db2 と VSAM の
+  両方で動く (`tools/genapp/` の 3 シナリオを CI で実行)。
   未確認: JUSTIFY=RIGHT の入力フィールドが後続ブランク付きで戻ったときに BMS が右寄せするか
   (現状は端末から来たとおり。自動車保険の更新で CC が 0 になる)。
   未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、VSAM との同時コミット、
-  DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の残りの保険種別の追加・
-  更新・削除のシナリオ、Web サービス経路。
+  DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路と
+  イベント処理 (LGASTAT1)。
 
 ### Phase 6: Bank of Z (CICS 経路) (6〜8 週)
 - Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
