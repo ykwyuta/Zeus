@@ -87,3 +87,20 @@ the expected results for the decimal arithmetic of the compiler runtime.
 sudo apt-get install hercules
 cargo run --release -p zeus-hercdiff -- run --count 300 --seed 1 --out work/decimal-oracle.json
 ```
+
+## Db2
+
+Db2 is reached through DRDA, the protocol Db2 servers speak; `zeus-drda`
+implements it from the Open Group DRDA / DDM specifications, so Zeus links no
+IBM client library. The server is Db2 Community Edition in a container
+(Docker), which users install themselves; it is not redistributed:
+
+```sh
+export ZEUS_DB2=$(tools/db2ce.sh start)   # db2://db2inst1:zeuspass@localhost:50000/ZEUSDB
+cargo test -p zeus-drda -p zeus-db2       # the Db2 tests are skipped without ZEUS_DB2
+tools/carddemo.sh setup
+tools/carddemo-db2.sh test                # CardDemo's Db2 module, batch and online
+```
+
+`ZEUS_DB2_SCHEMA` sets the default schema; `ZEUS_DRDA_TRACE=1` prints the
+DRDA flows.

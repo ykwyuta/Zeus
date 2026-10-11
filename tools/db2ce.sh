@@ -27,7 +27,7 @@ case ${1:-} in
         i=0
         until docker logs $name 2>&1 | grep -q "Setup has completed"; do
             i=$((i + 1))
-            if [ $i -gt 120 ]; then
+            if [ $i -gt 180 ]; then
                 docker logs $name 2>&1 | tail -20
                 echo "Db2 did not start" >&2
                 exit 1

@@ -28,7 +28,7 @@ initialization, daily batch and report jobs through `zjob`, all ending with
 RC 0.
 
 Online programs: `zcobc` compiles EXEC CICS, EXEC SQL and EXEC DLI (run
-through a host interface that the CICS, Db2 and IMS runtimes will provide)
+through a host interface that the CICS, Db2 and IMS runtimes provide)
 and `zbms` generates BMS symbolic maps; 111 of the 115 COBOL programs of
 CardDemo, GenApp and Bank of Z compile. The syntax usage inventory of the
 three applications is in [docs/inventory/apps.md](docs/inventory/apps.md).
@@ -42,6 +42,17 @@ transaction list, view and add, bill payment, report submission through the
 internal reader, user administration) work on the data the batch jobs set
 up.
 
+Db2: `zeus-drda` is a DRDA client (written from the Open Group DRDA
+specification) and `zeus-db2` runs the EXEC SQL of COBOL programs on Db2
+Community Edition through it (host variables, indicator variables, cursors,
+SQLCA), adapting Db2 for z/OS DDL that Db2 for Linux lacks. `zjob` runs
+IKJEFT01 `DSN RUN PROGRAM` (with DSNTIAD / DSNTEP2 / DSNTEP4 as SQL script
+runners) and `zcics` gives transactions a Db2 connection committed at
+SYNCPOINT and task end. CardDemo's optional Db2 module (transaction types)
+works: table creation, the MNTTRDB2 batch maintenance job and the list,
+update, delete and add screens (`tools/carddemo-db2.sh test`, with
+`ZEUS_DB2` naming the server started by `tools/db2ce.sh start`).
+
 ## Layout
 
 | Path | Content |
@@ -50,12 +61,14 @@ up.
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
 | `crates/zeus-jcl` | `zjob`: JCL parsing and PROC expansion, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT |
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
+| `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
+| `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL symbolic maps |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |
 | `ccvs85/` | Harness data (X-card values, Zeus overlay, reference manifest) |
-| `tools/` | Download scripts for test suites and the applications, `carddemo.sh`, `apps-inventory.sh` |
+| `tools/` | Download scripts for test suites and the applications, `carddemo.sh`, `carddemo-online.sh`, `carddemo-db2.sh`, `db2ce.sh`, `apps-inventory.sh` |
 | `docs/oracle/` | Exclusions and known oracle differences |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the clean-room rules and how to

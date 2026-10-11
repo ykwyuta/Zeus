@@ -4,7 +4,8 @@
 #
 # usage: tools/carddemo-db2.sh setup        # after tools/carddemo.sh setup
 #        tools/carddemo-db2.sh batch        # MNTTRDB2: COBTUPDT updates the table
-#        tools/carddemo-db2.sh test         # setup, batch, online scripts
+#        tools/carddemo-db2.sh run SCRIPT... # zcics with the Db2 transactions
+#        tools/carddemo-db2.sh test         # setup, batch, tools/carddemo-db2/*.txt
 #
 # ZEUS_DB2 names the Db2 server (tools/db2ce.sh start prints it).
 set -eu
@@ -78,8 +79,34 @@ setup() {
     submit "$mod/jcl/CREADB21.jcl"
 }
 
+zcics() {
+    $bin/zcics --home "$home" --csd "$app/csd/CARDDEMO.CSD" --csd "$mod/csd/CRDDEMOD.csd" \
+        --loadlib "$out/loadlib" --mapsets "$out/maps" "$@"
+}
+
 case ${1:-} in
     setup) setup ;;
     batch) submit "$mod/jcl/MNTTRDB2.jcl" ;;
-    *) echo "usage: $0 setup | batch" >&2; exit 2 ;;
+    run)
+        shift
+        for s in "$@"; do zcics "$s"; done
+        ;;
+    test)
+        setup >"$home/carddemo-db2-setup.log"
+        submit "$mod/jcl/MNTTRDB2.jcl" >"$home/carddemo-db2-batch.log"
+        if grep -hE "RC=[0-9]{4}" "$home"/carddemo-db2-*.log | grep -vq "RC=0000"; then
+            cat "$home"/carddemo-db2-*.log
+            echo "a job step ended with a nonzero RC" >&2
+            exit 1
+        fi
+        # the list script sees the rows MNTTRDB2 left, the update script
+        # the list script's changes
+        for s in list update; do
+            echo "=== tools/carddemo-db2/$s.txt"
+            zcics "tools/carddemo-db2/$s.txt" >"$out/db2-$s.log" ||
+                { cat "$out/db2-$s.log"; exit 1; }
+        done
+        echo "all CardDemo Db2 tests passed"
+        ;;
+    *) echo "usage: $0 setup | batch | run SCRIPT... | test" >&2; exit 2 ;;
 esac

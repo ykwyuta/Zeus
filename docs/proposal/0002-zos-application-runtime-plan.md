@@ -194,6 +194,17 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
 - バッチ用 Db2 ユーティリティ相当 (DDL 実行、DSNTEP2/DSNTIAUL 相当、ロード)。
 - **完了条件**: GenApp の顧客・保険契約の登録/照会/更新/削除の全シナリオが合格。
   CardDemo の取引種別管理モジュール (Db2) も合格。
+- 進捗 (2026-10): DRDA クライアント `zeus-drda` (Open Group の DRDA 仕様から実装。EXCSAT/ACCSEC/
+  SECCHK/ACCRDB による接続、NULLID.SYSSH200 パッケージでの動的 SQL 実行・問い合わせ・コミット) と
+  EXEC SQL 実行時 `zeus-db2` (ホスト変数を EBCDIC から変換してリテラルとして束縛、VARCHAR の
+  level-49 対、標識変数、SELECT INTO・SET・カーソル、プログラムの SQLCA への SQLCODE/SQLSTATE 書き
+  込み、Db2 for z/OS の DDL のうち LUW にない句・文の除去) を作成。`zjob` は IKJEFT01 の
+  DSN RUN PROGRAM を実行し、DSNTIAD/DSNTEP2/DSNTEP4 を SQL スクリプトの実行として扱う。`zcics` は
+  タスクに Db2 接続を与え、SYNCPOINT とタスク終了でコミットする。CardDemo の取引種別管理モジュール
+  (表の作成 CREADB21、一括保守 MNTTRDB2、一覧・更新・削除・追加画面) が `tools/carddemo-db2.sh test`
+  で合格し、CI で Db2 CE コンテナを起動して実行している。
+  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、VSAM との同時コミット、
+  DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp。
 
 ### Phase 6: Bank of Z (CICS 経路) (6〜8 週)
 - Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
