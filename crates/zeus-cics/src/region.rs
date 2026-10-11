@@ -94,11 +94,21 @@ pub struct Region {
     pub task_count: u32,
     /// Messages of the region (abends, ...).
     pub log: Vec<String>,
+    /// Named counters by (pool, name).
+    pub counters: BTreeMap<(String, String), Counter>,
     /// The Db2 connection of the region (ZEUS_DB2), for EXEC SQL.
     pub db2: Option<Rc<zeus_db2::Db2Host>>,
 }
 
 pub type Shared<T> = Rc<RefCell<T>>;
+
+/// A named counter: the next value to assign and its range.
+#[derive(Debug, Clone)]
+pub struct Counter {
+    pub value: i128,
+    pub min: i128,
+    pub max: i128,
+}
 
 impl Region {
     pub fn new(
@@ -119,6 +129,7 @@ impl Region {
             td: BTreeMap::new(),
             files: HashMap::new(),
             task_count: 0,
+            counters: BTreeMap::new(),
             log: Vec::new(),
             db2: zeus_db2::Db2Host::from_env().map(Rc::new),
         }
@@ -175,7 +186,13 @@ pub struct Terminal {
     pub userid: String,
     /// Transaction and COMMAREA named by the last RETURN TRANSID.
     pub next: Option<(String, Option<Vec<u8>>)>,
+    /// Waits for the next input of the terminal operator during a task (a
+    /// conversational RECEIVE): it updates the screen and returns the
+    /// attention key, None when no more input comes.
+    pub converse: Option<Converse>,
 }
+
+pub type Converse = Box<dyn FnMut(&Shared<Terminal>) -> Option<u8>>;
 
 impl Terminal {
     /// The screen of a newly connected terminal: an input field on the
@@ -210,6 +227,7 @@ impl Terminal {
             screen: Screen::new(24, 80),
             userid: "ZEUSUSER".into(),
             next: None,
+            converse: None,
         }
     }
 }

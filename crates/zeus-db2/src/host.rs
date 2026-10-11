@@ -104,7 +104,7 @@ impl Db2Host {
         } else {
             self.with_conn(|c| c.execute(&t))
         };
-        r.map(Some)
+        r.map(|ca| Some(crate::dialect::adjust_sqlca(&t, ca)))
     }
 }
 

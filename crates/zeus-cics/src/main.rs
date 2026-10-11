@@ -23,6 +23,9 @@
 //! expect 4 Sign-on   fail unless line 4 contains the text (* any line)
 //! # comment
 //! ```
+//!
+//! A task that waits for terminal input (a RECEIVE after a SEND) gets the
+//! screen as the script lines up to the next key leave it.
 
 use std::cell::RefCell;
 use std::path::PathBuf;
@@ -48,12 +51,127 @@ fn show(t: &Terminal) {
     println!("+{}+", "-".repeat(80));
 }
 
+/// A terminal script: the lines up to the next attention key are applied
+/// to the terminal by `next_key`.
+struct Script {
+    name: String,
+    lines: Vec<String>,
+    pos: usize,
+}
+
+impl Script {
+    /// Runs script lines up to an attention key and returns it (None at the
+    /// end of the script); Err is the exit code of a failed line.
+    fn next_key(&mut self, term: &Rc<RefCell<Terminal>>) -> Result<Option<u8>, i32> {
+        while self.pos < self.lines.len() {
+            let n = self.pos;
+            self.pos += 1;
+            let line = self.lines[n].trim_end().to_string();
+            let fail = |msg: String| {
+                eprintln!("zcics: {}:{}: {msg}", self.name, n + 1);
+                12
+            };
+            let mut words = line.splitn(2, ' ');
+            let cmd = words.next().unwrap_or_default();
+            let rest = words.next().unwrap_or_default();
+            let pos = |rest: &str| -> Option<(usize, usize, String)> {
+                let mut p = rest.splitn(3, ' ');
+                let l = p.next()?.parse().ok()?;
+                let c = p.next()?.parse().ok()?;
+                Some((l, c, p.next().unwrap_or_default().to_string()))
+            };
+            match cmd {
+                "" => {}
+                _ if cmd.starts_with('#') => {}
+                "tran" => {
+                    {
+                        let mut t = term.borrow_mut();
+                        t.next = None;
+                        t.screen.erase();
+                        t.screen.type_at(1, 1, rest).ok();
+                    }
+                    println!("> tran {rest}");
+                    return Ok(Some(aid::ENTER));
+                }
+                "type" => {
+                    let Some((l, c, s)) = pos(rest) else {
+                        return Err(fail("type LINE COLUMN TEXT expected".into()));
+                    };
+                    if let Err(e) = term.borrow_mut().screen.type_at(l, c, &s) {
+                        return Err(fail(e));
+                    }
+                }
+                "eof" => {
+                    let Some((l, c, _)) = pos(rest) else {
+                        return Err(fail("eof LINE COLUMN expected".into()));
+                    };
+                    if let Err(e) = term.borrow_mut().screen.erase_eof(l, c) {
+                        return Err(fail(e));
+                    }
+                }
+                "key" => {
+                    let Some(a) = aid::by_name(rest) else {
+                        return Err(fail(format!("unknown key {rest}")));
+                    };
+                    println!("> key {rest}");
+                    return Ok(Some(a));
+                }
+                "show" => show(&term.borrow()),
+                "fields" => fields(&term.borrow()),
+                "expect" => {
+                    let Some((l, s)) = rest.split_once(' ') else {
+                        return Err(fail("expect LINE TEXT expected".into()));
+                    };
+                    let screen = term.borrow().screen.render();
+                    let ok = match l {
+                        "*" => screen.contains(s),
+                        _ => match l.parse::<usize>() {
+                            Ok(l) => screen
+                                .lines()
+                                .nth(l.saturating_sub(1))
+                                .is_some_and(|got| got.contains(s)),
+                            Err(_) => return Err(fail("expect LINE TEXT expected".into())),
+                        },
+                    };
+                    if !ok {
+                        show(&term.borrow());
+                        return Err(fail(format!("line {l} does not contain '{s}'")));
+                    }
+                }
+                other => return Err(fail(format!("unknown command {other}"))),
+            }
+        }
+        Ok(None)
+    }
+}
+
+fn fields(t: &Terminal) {
+    let s = &t.screen;
+    for f in s.fields() {
+        let a = s.attrs[f.attr_pos].unwrap();
+        let data: String = zeus_cobol::ebcdic::decode_latin1(&s.field_data(&f))
+            .iter()
+            .map(|&b| if b < 0x20 { '.' } else { b as char })
+            .collect();
+        println!(
+            "({:2},{:2}) {}{}{} len {:3} |{}|",
+            f.attr_pos / s.cols + 1,
+            f.attr_pos % s.cols + 1,
+            if a.protected { "P" } else { "U" },
+            if a.numeric { "N" } else { " " },
+            if a.mdt { "M" } else { " " },
+            f.len,
+            data.trim_end_matches('.')
+        );
+    }
+}
+
 mod server {
     //! The TN3270 server: a thread per connection does the Telnet work,
     //! the region runs in the main thread.
 
     use std::cell::RefCell;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, VecDeque};
     use std::net::{TcpListener, TcpStream};
     use std::path::Path;
     use std::rc::Rc;
@@ -111,12 +229,49 @@ mod server {
                 }
             }
         });
+        // messages for other terminals that arrive while a task waits for
+        // its terminal's input (conversational tasks hold the region)
+        let held: Rc<RefCell<VecDeque<Msg>>> = Rc::default();
+        let rx = Rc::new(rx);
         let mut terms: HashMap<u32, (Rc<RefCell<Terminal>>, TcpStream)> = HashMap::new();
-        for msg in rx {
+        loop {
+            let next = held.borrow_mut().pop_front();
+            let msg = match next {
+                Some(m) => m,
+                None => match rx.recv() {
+                    Ok(m) => m,
+                    Err(_) => break,
+                },
+            };
             match msg {
                 Msg::Connect(id, mut w, ttype) => {
                     let t = Rc::new(RefCell::new(Terminal::new(&format!("T{id:03}"))));
                     t.borrow_mut().good_morning();
+                    if let Ok(mut out) = w.try_clone() {
+                        let (rx, held) = (rx.clone(), held.clone());
+                        t.borrow_mut().converse = Some(Box::new(move |t| {
+                            let _ = tn3270::send_record(
+                                &mut out,
+                                &tn3270::write_screen(&t.borrow().screen),
+                            );
+                            loop {
+                                match rx.recv().ok()? {
+                                    Msg::Input(i, rec) if i == id => {
+                                        let mut term = t.borrow_mut();
+                                        if let Some(a) = tn3270::apply_input(&mut term.screen, &rec)
+                                        {
+                                            return Some(a);
+                                        }
+                                    }
+                                    Msg::Gone(i) if i == id => {
+                                        held.borrow_mut().push_back(Msg::Gone(i));
+                                        return None;
+                                    }
+                                    other => held.borrow_mut().push_back(other),
+                                }
+                            }
+                        }));
+                    }
                     eprintln!("zcics: terminal T{id:03} connected ({ttype})");
                     let _ = tn3270::send_record(&mut w, &tn3270::write_screen(&t.borrow().screen));
                     terms.insert(id, (t, w));
@@ -265,112 +420,34 @@ fn main() -> ExitCode {
     };
     let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
     let term = Rc::new(RefCell::new(Terminal::new("T001")));
-    for (n, line) in text.lines().enumerate() {
-        let line = line.trim_end();
-        let fail = |msg: String| {
-            eprintln!("zcics: {script}:{}: {msg}", n + 1);
-            ExitCode::from(12)
-        };
-        let mut words = line.splitn(2, ' ');
-        let cmd = words.next().unwrap_or_default();
-        let rest = words.next().unwrap_or_default();
-        let pos = |rest: &str| -> Option<(usize, usize, String)> {
-            let mut p = rest.splitn(3, ' ');
-            let l = p.next()?.parse().ok()?;
-            let c = p.next()?.parse().ok()?;
-            Some((l, c, p.next().unwrap_or_default().to_string()))
-        };
-        let press = |a: u8| {
-            let e = region::attention(&region, &term, a);
-            match &e {
-                Event::Abended { transid, code } => println!("* {transid} abended {code}"),
-                Event::Ended { transid } => println!("* {transid} ended"),
-                Event::Idle => {}
-            }
-            for msg in region.borrow_mut().log.drain(..) {
-                println!("* {msg}");
-            }
-            submit_jobs(&region, &home);
-        };
-        match cmd {
-            "" | "#" => {}
-            _ if cmd.starts_with('#') => {}
-            "tran" => {
-                {
-                    let mut t = term.borrow_mut();
-                    t.next = None;
-                    t.screen.erase();
-                    t.screen.type_at(1, 1, rest).ok();
+    let script = Rc::new(RefCell::new(Script {
+        name: script,
+        lines: text.lines().map(str::to_string).collect(),
+        pos: 0,
+    }));
+    // a task waiting for input (conversational RECEIVE) reads the script on
+    let s = script.clone();
+    term.borrow_mut().converse = Some(Box::new(move |t| match s.borrow_mut().next_key(t) {
+        Ok(k) => k,
+        Err(code) => std::process::exit(code),
+    }));
+    loop {
+        let key = script.borrow_mut().next_key(&term);
+        match key {
+            Ok(Some(a)) => {
+                let e = region::attention(&region, &term, a);
+                match &e {
+                    Event::Abended { transid, code } => println!("* {transid} abended {code}"),
+                    Event::Ended { transid } => println!("* {transid} ended"),
+                    Event::Idle => {}
                 }
-                println!("> tran {rest}");
-                press(aid::ENTER);
-            }
-            "type" => {
-                let Some((l, c, s)) = pos(rest) else {
-                    return fail("type LINE COLUMN TEXT expected".into());
-                };
-                if let Err(e) = term.borrow_mut().screen.type_at(l, c, &s) {
-                    return fail(e);
+                for msg in region.borrow_mut().log.drain(..) {
+                    println!("* {msg}");
                 }
+                submit_jobs(&region, &home);
             }
-            "eof" => {
-                let Some((l, c, _)) = pos(rest) else {
-                    return fail("eof LINE COLUMN expected".into());
-                };
-                if let Err(e) = term.borrow_mut().screen.erase_eof(l, c) {
-                    return fail(e);
-                }
-            }
-            "key" => {
-                let Some(a) = aid::by_name(rest) else {
-                    return fail(format!("unknown key {rest}"));
-                };
-                println!("> key {rest}");
-                press(a);
-            }
-            "show" => show(&term.borrow()),
-            "fields" => {
-                let t = term.borrow();
-                let s = &t.screen;
-                for f in s.fields() {
-                    let a = s.attrs[f.attr_pos].unwrap();
-                    let data: String = zeus_cobol::ebcdic::decode_latin1(&s.field_data(&f))
-                        .iter()
-                        .map(|&b| if b < 0x20 { '.' } else { b as char })
-                        .collect();
-                    println!(
-                        "({:2},{:2}) {}{}{} len {:3} |{}|",
-                        f.attr_pos / s.cols + 1,
-                        f.attr_pos % s.cols + 1,
-                        if a.protected { "P" } else { "U" },
-                        if a.numeric { "N" } else { " " },
-                        if a.mdt { "M" } else { " " },
-                        f.len,
-                        data.trim_end_matches('.')
-                    );
-                }
-            }
-            "expect" => {
-                let Some((l, s)) = rest.split_once(' ') else {
-                    return fail("expect LINE TEXT expected".into());
-                };
-                let screen = term.borrow().screen.render();
-                let ok = match l {
-                    "*" => screen.contains(s),
-                    _ => match l.parse::<usize>() {
-                        Ok(l) => screen
-                            .lines()
-                            .nth(l.saturating_sub(1))
-                            .is_some_and(|got| got.contains(s)),
-                        Err(_) => return fail("expect LINE TEXT expected".into()),
-                    },
-                };
-                if !ok {
-                    show(&term.borrow());
-                    return fail(format!("line {l} does not contain '{s}'"));
-                }
-            }
-            other => return fail(format!("unknown command {other}")),
+            Ok(None) => break,
+            Err(code) => return ExitCode::from(code as u8),
         }
     }
     ExitCode::SUCCESS

@@ -53,6 +53,14 @@ works: table creation, the MNTTRDB2 batch maintenance job and the list,
 update, delete and add screens (`tools/carddemo-db2.sh test`, with
 `ZEUS_DB2` naming the server started by `tools/db2ce.sh start`).
 
+GenApp: `tools/genapp.sh setup` applies the installation's customization to
+its jobs and runs them (VSAM files, Db2 database and sample rows), compiles
+the programs and maps and takes the resource definitions from its CSD job.
+Its conversational menu transactions (customer inquiry, add and update;
+motor policy inquiry, add, update and delete; endowment, house and
+commercial policy inquiry) work on Db2 and VSAM, with customer numbers from
+named counters (`tools/genapp.sh test`).
+
 ## Layout
 
 | Path | Content |
@@ -68,7 +76,7 @@ update, delete and add screens (`tools/carddemo-db2.sh test`, with
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |
 | `ccvs85/` | Harness data (X-card values, Zeus overlay, reference manifest) |
-| `tools/` | Download scripts for test suites and the applications, `carddemo.sh`, `carddemo-online.sh`, `carddemo-db2.sh`, `db2ce.sh`, `apps-inventory.sh` |
+| `tools/` | Download scripts for test suites and the applications, `carddemo.sh`, `carddemo-online.sh`, `carddemo-db2.sh`, `genapp.sh`, `db2ce.sh`, `apps-inventory.sh` |
 | `docs/oracle/` | Exclusions and known oracle differences |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the clean-room rules and how to

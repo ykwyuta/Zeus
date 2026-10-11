@@ -1,6 +1,8 @@
 //! Db2 for z/OS SQL on Db2 for Linux, UNIX and Windows: statements and
 //! clauses that only describe z/OS storage are dropped or rewritten.
 
+use zeus_drda::sql::SqlCa;
+
 /// Splits an SQL script (DSNTIAD / SPUFI input) into statements at `;`
 /// outside literals; `--` and `/* */` comments are removed.
 pub fn split_script(text: &str) -> Vec<String> {
@@ -163,9 +165,40 @@ pub fn translate(sql: &str) -> Option<String> {
     Some(out)
 }
 
+/// Db2 for Linux warnings z/OS does not give for the same statement:
+/// +605 when CREATE INDEX matches an index the server already made (the
+/// one of the primary key); z/OS creates the index.
+pub fn adjust_sqlca(sql: &str, ca: SqlCa) -> SqlCa {
+    let w: Vec<String> = sql
+        .split_whitespace()
+        .take(3)
+        .map(str::to_ascii_uppercase)
+        .collect();
+    let create_index =
+        w.first().is_some_and(|f| f == "CREATE") && w.iter().skip(1).any(|x| x == "INDEX");
+    if create_index && ca.sqlcode == 605 {
+        return SqlCa::ok();
+    }
+    ca
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn luw_warnings() {
+        let w = SqlCa {
+            sqlcode: 605,
+            sqlstate: "01550".into(),
+            ..SqlCa::default()
+        };
+        assert_eq!(
+            adjust_sqlca("CREATE UNIQUE INDEX A.I ON A.T (C)", w.clone()).sqlcode,
+            0
+        );
+        assert_eq!(adjust_sqlca("INSERT INTO A.T VALUES (1)", w).sqlcode, 605);
+    }
 
     #[test]
     fn zos_ddl() {

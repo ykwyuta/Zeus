@@ -18,7 +18,7 @@ use zeus_decimal::Dec;
 use zeus_ds::keyed::{KeyedDataset, Position};
 
 use crate::bms::{self, SendMode};
-use crate::region::{OpenFile, Region, Shared, Terminal, aid};
+use crate::region::{self, OpenFile, Region, Shared, Terminal, aid};
 use crate::time;
 
 /// EIB field offsets (the layout of DFHEIBLK).
@@ -92,7 +92,9 @@ struct State {
     programs: Vec<String>,
     handlers: HashMap<usize, Handlers>,
     xctl: Option<(String, Option<(usize, usize)>)>,
-    received: bool,
+    /// The terminal input that started the task has not been read nor
+    /// overwritten by a SEND; otherwise RECEIVE waits for new input.
+    input_pending: bool,
     browses: HashMap<String, Browse>,
     /// Primary key of the record each file last read for UPDATE.
     updates: HashMap<String, Vec<u8>>,
@@ -137,7 +139,7 @@ pub fn run(
             programs: Vec::new(),
             handlers: HashMap::new(),
             xctl: None,
-            received: false,
+            input_pending: true,
             browses: HashMap::new(),
             updates: HashMap::new(),
             abcode: String::new(),
@@ -347,11 +349,21 @@ impl Task {
 
     /// Data of a FROM option, LENGTH bytes long when LENGTH is given.
     fn from_data(m: &Machine, call: &ExecCall) -> Vec<u8> {
+        let len = Self::opt_num(m, call, "LENGTH").or(Self::opt_num(m, call, "FLENGTH"));
+        // FROM names an address: LENGTH bytes from there, past the end of
+        // the data item if need be
+        if let (Some(ExecArg::Area(a)), Some(l)) = (call.arg("FROM"), len) {
+            let mem = m.storage();
+            let end = (a.addr + l.max(0) as usize).min(mem.len());
+            let mut d = mem[a.addr.min(end)..end].to_vec();
+            d.resize(l.max(0) as usize, 0);
+            return d;
+        }
         let mut d = call
             .arg("FROM")
             .map(|a| Self::bytes(m, a))
             .unwrap_or_default();
-        if let Some(l) = Self::opt_num(m, call, "LENGTH").or(Self::opt_num(m, call, "FLENGTH")) {
+        if let Some(l) = len {
             d.resize(l.max(0) as usize, 0);
         }
         d
@@ -553,6 +565,7 @@ impl Task {
     // ---- terminal control and BMS ---------------------------------------
 
     fn send(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        self.st.borrow_mut().input_pending = false;
         let mut t = self.term.borrow_mut();
         let screen = &mut t.screen;
         if call.has("MAP") {
@@ -626,12 +639,21 @@ impl Task {
     }
 
     fn receive(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
-        if self.st.borrow().received {
-            return Err(RunError(
-                "conversational RECEIVE (a second RECEIVE in a task) is not supported".into(),
-            ));
+        if !self.st.borrow().input_pending {
+            // conversational: wait for the operator's next input
+            let hook = self.term.borrow_mut().converse.take();
+            let Some(mut hook) = hook else {
+                return Err(RunError("RECEIVE: no terminal input can come".into()));
+            };
+            let got = hook(&self.term);
+            self.term.borrow_mut().converse = Some(hook);
+            let Some(a) = got else {
+                return Err(RunError("RECEIVE: the terminal input ended".into()));
+            };
+            self.st.borrow_mut().aid = a;
+            self.init_eib(m);
         }
-        self.st.borrow_mut().received = true;
+        self.st.borrow_mut().input_pending = false;
         let aid_byte = self.st.borrow().aid;
         // HANDLE AID
         if !call.has("RESP") && !call.has("NOHANDLE") {
@@ -676,6 +698,107 @@ impl Task {
         // RECEIVE INTO: the unformatted input
         let input = self.term.borrow().screen.unformatted_input();
         let cond = Self::deliver(m, call, &input);
+        self.finish(m, call, cond, 0)
+    }
+
+    // ---- named counters ---------------------------------------------------
+
+    /// DEFINE / DELETE / GET / QUERY / UPDATE / REWIND COUNTER (fullword)
+    /// and DCOUNTER (doubleword) in the region's counter pools.
+    fn counters(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        let double = call.has("DCOUNTER");
+        let name = Self::opt_text(m, call, if double { "DCOUNTER" } else { "COUNTER" })
+            .unwrap_or_default()
+            .trim_end()
+            .to_string();
+        let pool = Self::opt_text(m, call, "POOL")
+            .unwrap_or_default()
+            .trim_end()
+            .to_string();
+        let key = (pool, name);
+        let top = if double {
+            u64::MAX as i128 - 1
+        } else {
+            i32::MAX as i128
+        };
+        let num = |o: &str| {
+            call.arg(o)
+                .map(|_| Self::opt_num(m, call, o).unwrap_or(0) as i128)
+        };
+        let mut r = self.region.borrow_mut();
+        let cond = match call.command.as_str() {
+            "DEFINE" => match r.counters.entry(key) {
+                std::collections::btree_map::Entry::Occupied(_) => "DUPREC",
+                std::collections::btree_map::Entry::Vacant(e) => {
+                    let min = num("MINIMUM").unwrap_or(0);
+                    let max = num("MAXIMUM").unwrap_or(top);
+                    let value = num("VALUE").unwrap_or(min);
+                    e.insert(region::Counter { value, min, max });
+                    "NORMAL"
+                }
+            },
+            "DELETE" => match r.counters.remove(&key) {
+                Some(_) => "NORMAL",
+                None => "NOTFND",
+            },
+            "REWIND" => match r.counters.get_mut(&key) {
+                Some(c) => {
+                    c.value = c.min;
+                    "NORMAL"
+                }
+                None => "NOTFND",
+            },
+            "UPDATE" => match r.counters.get_mut(&key) {
+                Some(c) => {
+                    let ok = num("COMPAREMIN").is_none_or(|v| c.value >= v)
+                        && num("COMPAREMAX").is_none_or(|v| c.value <= v);
+                    if ok {
+                        c.value = num("VALUE").unwrap_or(c.value);
+                        "NORMAL"
+                    } else {
+                        "SUPPRESSED"
+                    }
+                }
+                None => "NOTFND",
+            },
+            "QUERY" => match r.counters.get(&key) {
+                Some(c) => {
+                    let c = c.clone();
+                    drop(r);
+                    for (o, v) in [("VALUE", c.value), ("MINIMUM", c.min), ("MAXIMUM", c.max)] {
+                        if let Some(a) = Self::area(call, o) {
+                            Self::store_num(m, &a, v as i64);
+                        }
+                    }
+                    return self.finish(m, call, "NORMAL", 0);
+                }
+                None => "NOTFND",
+            },
+            // GET: the current value, then the counter moves on by
+            // INCREMENT (the next value past MAXIMUM is SUPPRESSED unless
+            // WRAP starts again at MINIMUM)
+            _ => match r.counters.get_mut(&key) {
+                Some(c) => {
+                    let inc = num("INCREMENT").unwrap_or(1);
+                    if c.value + inc - 1 > c.max && call.has("WRAP") {
+                        c.value = c.min;
+                    }
+                    if c.value + inc - 1 > c.max {
+                        "SUPPRESSED"
+                    } else {
+                        let v = c.value;
+                        c.value += inc;
+                        drop(r);
+                        if let Some(a) = Self::area(call, "VALUE") {
+                            Self::store_num(m, &a, v as i64);
+                        }
+                        return self.finish(m, call, "NORMAL", 0);
+                    }
+                }
+                None => "NOTFND",
+            },
+        };
+        drop(r);
         self.finish(m, call, cond, 0)
     }
 
@@ -1230,6 +1353,11 @@ impl ExecHost for Task {
                     return Err(abend(&code));
                 }
                 self.raise_abend(call, &code)
+            }
+            "DEFINE" | "DELETE" | "GET" | "QUERY" | "UPDATE" | "REWIND"
+                if call.has("COUNTER") || call.has("DCOUNTER") =>
+            {
+                self.counters(m, call)
             }
             "SEND" => self.send(m, call),
             "RECEIVE" => self.receive(m, call),

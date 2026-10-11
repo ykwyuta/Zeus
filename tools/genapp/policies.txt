@@ -1,0 +1,27 @@
+# Endowment (SSP2), house (SSP3) and commercial (SSP4) policy inquiries.
+tran LGSE
+tran SSP2
+type 4 51 0000000004
+type 5 51 0000000008
+type 22 25 1
+key ENTER
+expect 8 LIONTMR
+expect 11 J. MORRIS
+key PF3
+tran SSP3
+type 4 51 0000000006
+type 5 51 0000000004
+type 22 25 1
+key ENTER
+expect 8 HOUSE
+expect 13 SO211UP
+key PF3
+tran SSP4
+type 4 51 0000000009
+type 5 51 0000000005
+type 22 25 1
+key ENTER
+expect 8 TURF MOOR
+expect 11 Burnley Football Club
+expect 13 0001  00044000
+key PF3
