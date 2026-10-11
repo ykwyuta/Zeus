@@ -2,7 +2,7 @@
 //! `DEFINE TRANSACTION(CC00) GROUP(G) PROGRAM(COSGN00C) ...`, spread over
 //! lines; `*` lines are comments. Only the attributes Zeus uses are kept.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 #[derive(Debug, Clone, Default)]
 pub struct Csd {
@@ -10,6 +10,8 @@ pub struct Csd {
     pub transactions: BTreeMap<String, String>,
     /// FILE -> DSNAME.
     pub files: BTreeMap<String, String>,
+    /// FILEs with RECOVERY(BACKOUTONLY) or RECOVERY(ALL).
+    pub recoverable: BTreeSet<String>,
     pub programs: Vec<String>,
     pub mapsets: Vec<String>,
 }
@@ -70,6 +72,9 @@ impl Csd {
                     csd.transactions.insert(t, p);
                 }
             } else if let Some(f) = get("FILE") {
+                if get("RECOVERY").is_some_and(|r| r != "NONE") {
+                    csd.recoverable.insert(f.clone());
+                }
                 if let Some(d) = get("DSNAME") {
                     csd.files.insert(f, d);
                 }
@@ -104,6 +109,7 @@ impl Csd {
     pub fn merge(&mut self, other: Csd) {
         self.transactions.extend(other.transactions);
         self.files.extend(other.files);
+        self.recoverable.extend(other.recoverable);
         self.programs.extend(other.programs);
         self.mapsets.extend(other.mapsets);
     }

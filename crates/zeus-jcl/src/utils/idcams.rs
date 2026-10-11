@@ -313,6 +313,7 @@ impl Idcams<'_, '_> {
                     keys,
                     record_size: rs,
                     aixs: Vec::new(),
+                    log: c.arg(&["LOG"]).map(|l| l.to_ascii_uppercase()),
                 },
             )
         } else if let Some(a) = p.sub(&["ALTERNATEINDEX", "AIX"]) {

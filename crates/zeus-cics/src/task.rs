@@ -98,6 +98,9 @@ struct State {
     browses: HashMap<String, Browse>,
     /// Primary key of the record each file last read for UPDATE.
     updates: HashMap<String, Vec<u8>>,
+    /// Changes to recoverable files in the unit of work: data set, primary
+    /// key and the record before (None: it was added).
+    undo: Vec<(String, Vec<u8>, Option<Vec<u8>>)>,
     abcode: String,
 }
 
@@ -142,6 +145,7 @@ pub fn run(
             input_pending: true,
             browses: HashMap::new(),
             updates: HashMap::new(),
+            undo: Vec::new(),
             abcode: String::new(),
         }),
     });
@@ -154,11 +158,11 @@ pub fn run(
     });
     let r = task.run_level(&mut m, &program, ca, true);
     term.borrow_mut().screen.locked = false;
-    // end of task: the Db2 unit of work is committed, or backed out on abend
-    let db2 = region.borrow().db2.clone();
-    if let Some(h) = db2 {
-        let _ = h.end_uow(r.is_ok());
-    }
+    // end of task: the unit of work is committed, or backed out on abend
+    let r = match task.end_uow(r.is_ok()) {
+        Ok(()) => r,
+        Err(e) => r.and(Err(e)),
+    };
     for line in String::from_utf8_lossy(&out.0.borrow()).lines() {
         region
             .borrow_mut()
@@ -802,6 +806,64 @@ impl Task {
         self.finish(m, call, cond, 0)
     }
 
+    // ---- units of work ------------------------------------------------------
+
+    /// Ends the unit of work: Db2 commits or rolls back with it, and on
+    /// rollback the changes to recoverable files are backed out.
+    fn end_uow(&self, commit: bool) -> RResult<()> {
+        let db2 = self.region.borrow().db2.clone();
+        if let Some(h) = db2 {
+            let _ = h.end_uow(commit);
+        }
+        let undo = std::mem::take(&mut self.st.borrow_mut().undo);
+        if commit {
+            return Ok(());
+        }
+        let mut touched = Vec::new();
+        {
+            let mut r = self.region.borrow_mut();
+            for (key, primary, before) in undo.into_iter().rev() {
+                let Some(f) = r.files.get_mut(&key) else {
+                    continue;
+                };
+                let ds = &mut f.dataset;
+                let _ = match before {
+                    None => ds.delete(&primary).map(|_| ()),
+                    Some(rec) if ds.get(&primary).is_some() => ds.replace(rec),
+                    Some(rec) => ds.insert(rec),
+                };
+                if !touched.contains(&key) {
+                    touched.push(key);
+                }
+            }
+        }
+        for key in touched {
+            self.save_file(&key)?;
+        }
+        Ok(())
+    }
+
+    /// Whether changes to FILE `fname` are backed out: LOG of the VSAM
+    /// cluster, else RECOVERY of the file definition.
+    fn recoverable(&self, fname: &str) -> bool {
+        let r = self.region.borrow();
+        let Some(dsn) = r.csd.files.get(fname) else {
+            return false;
+        };
+        r.catalog
+            .recoverable(dsn)
+            .unwrap_or_else(|| r.csd.recoverable.contains(fname))
+    }
+
+    fn log_change(&self, fname: &str, key: &str, primary: Vec<u8>, before: Option<Vec<u8>>) {
+        if self.recoverable(fname) {
+            self.st
+                .borrow_mut()
+                .undo
+                .push((key.to_string(), primary, before));
+        }
+    }
+
     // ---- file control ---------------------------------------------------
 
     /// The open data set of a FILE / DATASET option; None: FILENOTFOUND.
@@ -912,12 +974,15 @@ impl Task {
             }
             "WRITE" => {
                 let rec = Self::from_data(m, call);
-                let r = {
+                let (r, pk) = {
                     let mut r = self.region.borrow_mut();
-                    r.files.get_mut(&key).unwrap().dataset.insert(rec)
+                    let ds = &mut r.files.get_mut(&key).unwrap().dataset;
+                    let pk = ds.key_of(&rec, 0);
+                    (ds.insert(rec), pk)
                 };
                 match r {
                     Ok(()) => {
+                        self.log_change(&fname, &key, pk, None);
                         self.save_file(&key)?;
                         self.finish(m, call, "NORMAL", 0)
                     }
@@ -930,12 +995,16 @@ impl Task {
                     return self.finish(m, call, "INVREQ", 0);
                 }
                 let rec = Self::from_data(m, call);
-                let r = {
+                let (r, pk, before) = {
                     let mut r = self.region.borrow_mut();
-                    r.files.get_mut(&key).unwrap().dataset.replace(rec)
+                    let ds = &mut r.files.get_mut(&key).unwrap().dataset;
+                    let pk = ds.key_of(&rec, 0);
+                    let before = ds.get(&pk).map(<[u8]>::to_vec);
+                    (ds.replace(rec), pk, before)
                 };
                 match r {
                     Ok(()) => {
+                        self.log_change(&fname, &key, pk, before);
                         self.save_file(&key)?;
                         self.finish(m, call, "NORMAL", 0)
                     }
@@ -961,9 +1030,12 @@ impl Task {
                 let Some(p) = primary else {
                     return self.finish(m, call, "NOTFND", 0);
                 };
-                {
+                let before = {
                     let mut r = self.region.borrow_mut();
-                    let _ = r.files.get_mut(&key).unwrap().dataset.delete(&p);
+                    r.files.get_mut(&key).unwrap().dataset.delete(&p).ok()
+                };
+                if before.is_some() {
+                    self.log_change(&fname, &key, p, before);
                 }
                 self.save_file(&key)?;
                 self.finish(m, call, "NORMAL", 0)
@@ -1379,12 +1451,7 @@ impl ExecHost for Task {
                 self.finish(m, call, cond, 0)
             }
             "SYNCPOINT" => {
-                // the Db2 unit of work ends with the CICS one (files are
-                // not backed out)
-                let db2 = self.region.borrow().db2.clone();
-                if let Some(h) = db2 {
-                    let _ = h.end_uow(!call.has("ROLLBACK"));
-                }
+                self.end_uow(!call.has("ROLLBACK"))?;
                 self.finish(m, call, "NORMAL", 0)
             }
             "ENQ" | "DEQ" | "DELAY" | "SUSPEND" => self.finish(m, call, "NORMAL", 0),

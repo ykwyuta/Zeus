@@ -184,7 +184,7 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   (内部リーダー) に書かれた JCL を `zeus-jcl` で実行し、帳票の GDG 世代まで作られる。
   TN3270 サーバ (`zcics --serve`) も作成し、3270 エミュレータ s3270 からのサインオン・管理
   メニュー・ユーザ一覧の操作を CI で確認している。
-  未着手: TN3270E (RFC 2355)、作業単位のバックアウト (ROLLBACK は変更を戻さない)、
+  未着手: TN3270E (RFC 2355)、
   オプション機能 (IMS/Db2/MQ を使う保留承認、取引種別保守)。
 
 ### Phase 5: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C6
@@ -212,8 +212,10 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   両方で動く (`tools/genapp/` の 3 シナリオを CI で実行)。
   未確認: JUSTIFY=RIGHT の入力フィールドが後続ブランク付きで戻ったときに BMS が右寄せするか
   (現状は端末から来たとおり。自動車保険の更新で CC が 0 になる)。
-  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、VSAM との同時コミット、
-  DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路と
+  作業単位: 回復可能なファイル (VSAM クラスタの LOG(UNDO/ALL)、なければ FILE 定義の
+  RECOVERY) への変更は SYNCPOINT ROLLBACK と異常終了で Db2 と一緒に取り消され、SYNCPOINT と
+  タスク終了で Db2 と一緒に確定する (ログは領域内のメモリ。領域の障害からの回復はない)。
+  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路と
   イベント処理 (LGASTAT1)。
 
 ### Phase 6: Bank of Z (CICS 経路) (6〜8 週)
