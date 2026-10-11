@@ -96,11 +96,31 @@ pub struct Region {
     pub log: Vec<String>,
     /// Named counters by (pool, name).
     pub counters: BTreeMap<(String, String), Counter>,
-    /// The Db2 connection of the region (ZEUS_DB2), for EXEC SQL.
-    pub db2: Option<Rc<zeus_db2::Db2Host>>,
+    /// Whether the region is attached to Db2 (ZEUS_DB2), for EXEC SQL.
+    pub db2: bool,
+    /// Db2 connections not in use by a task (each task has its own unit
+    /// of work).
+    db2_free: Vec<Rc<zeus_db2::Db2Host>>,
 }
 
 pub type Shared<T> = Rc<RefCell<T>>;
+
+impl Region {
+    /// A Db2 connection for a task (a free one, or a new one).
+    pub fn db2_acquire(&mut self) -> Option<Rc<zeus_db2::Db2Host>> {
+        if !self.db2 {
+            return None;
+        }
+        self.db2_free
+            .pop()
+            .or_else(|| zeus_db2::Db2Host::from_env().map(Rc::new))
+    }
+
+    /// Gives back a connection whose unit of work has ended.
+    pub fn db2_release(&mut self, h: Rc<zeus_db2::Db2Host>) {
+        self.db2_free.push(h);
+    }
+}
 
 /// A named counter: the next value to assign and its range.
 #[derive(Debug, Clone)]
@@ -131,7 +151,8 @@ impl Region {
             task_count: 0,
             counters: BTreeMap::new(),
             log: Vec::new(),
-            db2: zeus_db2::Db2Host::from_env().map(Rc::new),
+            db2: std::env::var_os("ZEUS_DB2").is_some(),
+            db2_free: Vec::new(),
         }
     }
 

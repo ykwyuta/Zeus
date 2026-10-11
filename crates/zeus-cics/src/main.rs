@@ -273,7 +273,163 @@ mod server {
         tn3270::apply_input(&mut t.borrow_mut().screen, rec)
     }
 
-    type Term = (Rc<RefCell<Terminal>>, Writer, Rc<RefCell<Session>>);
+    #[derive(Clone)]
+    struct Term {
+        term: Rc<RefCell<Terminal>>,
+        writer: Writer,
+        session: Rc<RefCell<Session>>,
+        /// A task of the terminal waits for its input.
+        waiting: Rc<RefCell<bool>>,
+    }
+
+    /// The region's side of the server. Terminal input is dispatched here
+    /// by the main loop and, while a task waits for its terminal's input,
+    /// by that wait: other terminals' transactions then run (nested), and
+    /// input for waiting terminals is held for them.
+    struct Server {
+        region: Rc<RefCell<Region>>,
+        home: std::path::PathBuf,
+        rx: mpsc::Receiver<Msg>,
+        held: RefCell<VecDeque<Msg>>,
+        terms: RefCell<HashMap<u32, Term>>,
+    }
+
+    fn target(m: &Msg) -> u32 {
+        match m {
+            Msg::Connect(id, ..) | Msg::Input(id, _) | Msg::Gone(id) => *id,
+        }
+    }
+
+    impl Server {
+        fn is_waiting(&self, id: u32) -> bool {
+            self.terms
+                .borrow()
+                .get(&id)
+                .is_some_and(|t| *t.waiting.borrow())
+        }
+
+        /// The next held message `want` accepts, else the next one received.
+        fn next(&self, want: impl Fn(&Msg) -> bool) -> Option<Msg> {
+            let mut held = self.held.borrow_mut();
+            if let Some(i) = held.iter().position(want) {
+                return held.remove(i);
+            }
+            drop(held);
+            self.rx.recv().ok()
+        }
+
+        fn dispatch(self: &Rc<Self>, msg: Msg) {
+            match msg {
+                Msg::Connect(id, w, session) => self.connect(id, w, session),
+                Msg::Input(id, rec) => {
+                    if self.is_waiting(id) {
+                        self.held.borrow_mut().push_back(Msg::Input(id, rec));
+                        return;
+                    }
+                    let Some(t) = self.terms.borrow().get(&id).cloned() else {
+                        return;
+                    };
+                    let Some(aid) = input(&t.session, &t.term, &rec) else {
+                        return;
+                    };
+                    let e = region::attention(&self.region, &t.term, aid);
+                    if let Event::Abended { transid, code } = &e {
+                        eprintln!("zcics: T{id:03} {transid} abended {code}");
+                    }
+                    for m in self.region.borrow_mut().log.drain(..) {
+                        eprintln!("zcics: {m}");
+                    }
+                    super::submit_jobs(&self.region, &self.home);
+                    // a blank screen left by a transaction gets the prompt
+                    // again (CLEAR leaves it blank)
+                    if e == Event::Idle
+                        && aid != zeus_cics::region::aid::CLEAR
+                        && t.term.borrow().screen.fields().is_empty()
+                    {
+                        let blank = t.term.borrow().screen.chars.iter().all(|&c| c == 0);
+                        if blank {
+                            t.term.borrow_mut().good_morning();
+                        }
+                    }
+                    send_screen(&t.writer, &t.session, &t.term.borrow());
+                    t.term.borrow_mut().screen.alarm = false;
+                }
+                Msg::Gone(id) => {
+                    if self.is_waiting(id) {
+                        self.held.borrow_mut().push_back(Msg::Gone(id));
+                        return;
+                    }
+                    if let Some(t) = self.terms.borrow_mut().remove(&id) {
+                        // the hook refers to the terminal
+                        t.term.borrow_mut().converse = None;
+                    }
+                    eprintln!("zcics: terminal T{id:03} disconnected");
+                }
+            }
+        }
+
+        /// Waits for the input of terminal `id` (a task's RECEIVE), running
+        /// the other terminals meanwhile.
+        fn wait(self: &Rc<Self>, id: u32, t: &Term) -> Option<u8> {
+            *t.waiting.borrow_mut() = true;
+            send_screen(&t.writer, &t.session, &t.term.borrow());
+            let got = loop {
+                let msg = self.next(|m| {
+                    let i = target(m);
+                    i == id || !self.is_waiting(i)
+                });
+                let Some(msg) = msg else { break None };
+                match msg {
+                    Msg::Input(i, rec) if i == id => {
+                        if let Some(a) = input(&t.session, &t.term, &rec) {
+                            break Some(a);
+                        }
+                    }
+                    Msg::Gone(i) if i == id => {
+                        self.held.borrow_mut().push_back(Msg::Gone(i));
+                        break None;
+                    }
+                    other => self.dispatch(other),
+                }
+            };
+            *t.waiting.borrow_mut() = false;
+            got
+        }
+
+        fn connect(self: &Rc<Self>, id: u32, w: Writer, session: Session) {
+            let t = Term {
+                term: Rc::new(RefCell::new(Terminal::new(&format!("T{id:03}")))),
+                writer: w,
+                session: Rc::new(RefCell::new(session)),
+                waiting: Rc::default(),
+            };
+            t.term.borrow_mut().good_morning();
+            {
+                let server = Rc::downgrade(self);
+                let me = t.clone();
+                t.term.borrow_mut().converse =
+                    Some(Box::new(move |_| server.upgrade()?.wait(id, &me)));
+            }
+            {
+                let s = t.session.borrow();
+                eprintln!(
+                    "zcics: terminal T{id:03} connected ({}{}{})",
+                    s.ttype,
+                    if s.tn3270e { ", TN3270E" } else { "" },
+                    s.device
+                        .as_deref()
+                        .map(|d| format!(", LU {d}"))
+                        .unwrap_or_default()
+                );
+            }
+            // the capabilities of a terminal with extended attributes
+            if t.session.borrow().caps.extended {
+                send(&t.writer, &t.session, &tn3270::query());
+            }
+            send_screen(&t.writer, &t.session, &t.term.borrow());
+            self.terms.borrow_mut().insert(id, t);
+        }
+    }
 
     pub fn run(region: Rc<RefCell<Region>>, home: &Path, port: u16) -> std::io::Result<()> {
         let listener = TcpListener::bind(("0.0.0.0", port))?;
@@ -288,99 +444,15 @@ mod server {
                 }
             }
         });
-        // messages for other terminals that arrive while a task waits for
-        // its terminal's input (conversational tasks hold the region)
-        let held: Rc<RefCell<VecDeque<Msg>>> = Rc::default();
-        let rx = Rc::new(rx);
-        let mut terms: HashMap<u32, Term> = HashMap::new();
-        loop {
-            let next = held.borrow_mut().pop_front();
-            let msg = match next {
-                Some(m) => m,
-                None => match rx.recv() {
-                    Ok(m) => m,
-                    Err(_) => break,
-                },
-            };
-            match msg {
-                Msg::Connect(id, w, session) => {
-                    let t = Rc::new(RefCell::new(Terminal::new(&format!("T{id:03}"))));
-                    t.borrow_mut().good_morning();
-                    let session = Rc::new(RefCell::new(session));
-                    {
-                        let (rx, held) = (rx.clone(), held.clone());
-                        let (w, session) = (w.clone(), session.clone());
-                        t.borrow_mut().converse = Some(Box::new(move |t| {
-                            send_screen(&w, &session, &t.borrow());
-                            loop {
-                                match rx.recv().ok()? {
-                                    Msg::Input(i, rec) if i == id => {
-                                        if let Some(a) = input(&session, t, &rec) {
-                                            return Some(a);
-                                        }
-                                    }
-                                    Msg::Gone(i) if i == id => {
-                                        held.borrow_mut().push_back(Msg::Gone(i));
-                                        return None;
-                                    }
-                                    other => held.borrow_mut().push_back(other),
-                                }
-                            }
-                        }));
-                    }
-                    {
-                        let s = session.borrow();
-                        eprintln!(
-                            "zcics: terminal T{id:03} connected ({}{}{})",
-                            s.ttype,
-                            if s.tn3270e { ", TN3270E" } else { "" },
-                            s.device
-                                .as_deref()
-                                .map(|d| format!(", LU {d}"))
-                                .unwrap_or_default()
-                        );
-                    }
-                    // the capabilities of a terminal with extended attributes
-                    if session.borrow().caps.extended {
-                        send(&w, &session, &tn3270::query());
-                    }
-                    send_screen(&w, &session, &t.borrow());
-                    terms.insert(id, (t, w, session));
-                }
-                Msg::Input(id, rec) => {
-                    let Some((t, w, session)) = terms.get(&id) else {
-                        continue;
-                    };
-                    let Some(aid) = input(session, t, &rec) else {
-                        continue;
-                    };
-                    let e = region::attention(&region, t, aid);
-                    if let Event::Abended { transid, code } = &e {
-                        eprintln!("zcics: T{id:03} {transid} abended {code}");
-                    }
-                    for m in region.borrow_mut().log.drain(..) {
-                        eprintln!("zcics: {m}");
-                    }
-                    super::submit_jobs(&region, home);
-                    // a blank screen left by a transaction gets the prompt
-                    // again (CLEAR leaves it blank)
-                    if e == Event::Idle
-                        && aid != zeus_cics::region::aid::CLEAR
-                        && t.borrow().screen.fields().is_empty()
-                    {
-                        let blank = t.borrow().screen.chars.iter().all(|&c| c == 0);
-                        if blank {
-                            t.borrow_mut().good_morning();
-                        }
-                    }
-                    send_screen(w, session, &t.borrow());
-                    t.borrow_mut().screen.alarm = false;
-                }
-                Msg::Gone(id) => {
-                    terms.remove(&id);
-                    eprintln!("zcics: terminal T{id:03} disconnected");
-                }
-            }
+        let server = Rc::new(Server {
+            region,
+            home: home.to_path_buf(),
+            rx,
+            held: RefCell::default(),
+            terms: RefCell::default(),
+        });
+        while let Some(msg) = server.next(|_| true) {
+            server.dispatch(msg);
         }
         Ok(())
     }

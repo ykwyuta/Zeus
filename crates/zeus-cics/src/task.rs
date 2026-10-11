@@ -108,6 +108,8 @@ pub struct Task {
     region: Shared<Region>,
     term: Shared<Terminal>,
     st: std::cell::RefCell<State>,
+    /// The task's Db2 connection, taken at its first SQL statement.
+    db2: std::cell::RefCell<Option<Rc<zeus_db2::Db2Host>>>,
 }
 
 /// Runs transaction `transid` for an attention key at a terminal; the
@@ -148,6 +150,7 @@ pub fn run(
             undo: Vec::new(),
             abcode: String::new(),
         }),
+        db2: std::cell::RefCell::new(None),
     });
     m.set_exec_host(task.clone());
     task.init_eib(&mut m);
@@ -163,6 +166,9 @@ pub fn run(
         Ok(()) => r,
         Err(e) => r.and(Err(e)),
     };
+    if let Some(h) = task.db2.borrow_mut().take() {
+        region.borrow_mut().db2_release(h);
+    }
     for line in String::from_utf8_lossy(&out.0.borrow()).lines() {
         region
             .borrow_mut()
@@ -826,7 +832,7 @@ impl Task {
     /// Ends the unit of work: Db2 commits or rolls back with it, and on
     /// rollback the changes to recoverable files are backed out.
     fn end_uow(&self, commit: bool) -> RResult<()> {
-        let db2 = self.region.borrow().db2.clone();
+        let db2 = self.db2.borrow().clone();
         if let Some(h) = db2 {
             let _ = h.end_uow(commit);
         }
@@ -1408,7 +1414,13 @@ impl Task {
 impl ExecHost for Task {
     fn exec(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
         if call.kind == zeus_cobol::zir::ExecKind::Sql {
-            let db2 = self.region.borrow().db2.clone();
+            let db2 = {
+                let mut d = self.db2.borrow_mut();
+                if d.is_none() {
+                    *d = self.region.borrow_mut().db2_acquire();
+                }
+                d.clone()
+            };
             return match db2 {
                 Some(h) => h.exec(m, call),
                 None => Err(RunError(format!(
