@@ -60,9 +60,9 @@ case ${1:-} in
         # a 3270 emulator (s3270) signs on through the TN3270 server
         [ -d "$out/loadlib" ] || build
         port=13270
-        $bin/zcics --home "$home" --csd "$app/csd/CARDDEMO.CSD" \
+        (exec $bin/zcics --home "$home" --csd "$app/csd/CARDDEMO.CSD" \
             --loadlib "$out/loadlib" --mapsets "$out/maps" --serve $port \
-            >"$out/tn3270-server.log" 2>&1 &
+            >"$out/tn3270-server.log" 2>&1) &
         server=$!
         sleep 1
         sed "s/localhost:3270/localhost:$port/" tools/carddemo-online/tn3270.s3270 |

@@ -699,8 +699,23 @@ impl Task {
             }
             return self.finish(m, call, "NORMAL", 0);
         }
-        // RECEIVE INTO: the unformatted input
-        let input = self.term.borrow().screen.unformatted_input();
+        // RECEIVE INTO: the input data stream after the AID and cursor
+        // address: the data of an unformatted screen, SBA and data of each
+        // modified field of a formatted one
+        let input = {
+            let t = self.term.borrow();
+            if t.screen.fields().is_empty() {
+                t.screen.unformatted_input()
+            } else {
+                let mut d = Vec::new();
+                for (f, data) in t.screen.modified_fields() {
+                    d.push(0x11);
+                    d.extend(crate::tn3270::encode_addr(f.start));
+                    d.extend(data);
+                }
+                d
+            }
+        };
         let cond = Self::deliver(m, call, &input);
         self.finish(m, call, cond, 0)
     }

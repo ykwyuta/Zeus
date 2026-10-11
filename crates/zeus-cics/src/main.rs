@@ -171,61 +171,120 @@ mod server {
     //! the region runs in the main thread.
 
     use std::cell::RefCell;
-    use std::collections::{HashMap, VecDeque};
+    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::io::Write;
     use std::net::{TcpListener, TcpStream};
     use std::path::Path;
     use std::rc::Rc;
-    use std::sync::mpsc;
+    use std::sync::{Arc, Mutex, mpsc};
 
     use zeus_cics::region::{self, Event, Region, Terminal};
-    use zeus_cics::tn3270;
+    use zeus_cics::tn3270::{self, Session};
+
+    type Writer = Arc<Mutex<TcpStream>>;
 
     enum Msg {
-        Connect(u32, TcpStream, String),
+        Connect(u32, Writer, Session),
         Input(u32, Vec<u8>),
         Gone(u32),
     }
 
-    fn connection(id: u32, mut stream: TcpStream, tx: mpsc::Sender<Msg>) {
-        let ttype = match tn3270::negotiate(&mut stream) {
-            Ok(t) => t,
+    fn connection(
+        id: u32,
+        mut stream: TcpStream,
+        tx: mpsc::Sender<Msg>,
+        names: Arc<Mutex<HashSet<String>>>,
+    ) {
+        let device = format!("ZEUS{id:04}");
+        let session = tn3270::negotiate(&mut stream, &device, |n| {
+            names.lock().unwrap().contains(&n.to_ascii_uppercase())
+        });
+        let session = match session {
+            Ok(s) => s,
             Err(e) => {
                 eprintln!("zcics: connection {id}: {e}");
                 return;
             }
         };
+        let name = session.device.clone().map(|n| n.to_ascii_uppercase());
+        if let Some(n) = &name {
+            names.lock().unwrap().insert(n.clone());
+        }
         let Ok(writer) = stream.try_clone() else {
             return;
         };
-        if tx.send(Msg::Connect(id, writer, ttype)).is_err() {
+        let writer = Arc::new(Mutex::new(writer));
+        let reader_session = session.clone();
+        if tx.send(Msg::Connect(id, writer.clone(), session)).is_err() {
             return;
         }
         let mut r = tn3270::Reader::new(stream);
         loop {
             match r.next_event() {
                 Ok(tn3270::Event::Record(rec)) => {
+                    let Some(rec) = reader_session.inbound(rec) else {
+                        continue;
+                    };
                     if tx.send(Msg::Input(id, rec)).is_err() {
-                        return;
+                        break;
                     }
                 }
+                Ok(tn3270::Event::Option(cmd, opt)) => {
+                    if let Some(a) = tn3270::answer_option(cmd, opt) {
+                        let mut w = writer.lock().unwrap();
+                        let _ = w.write_all(&a).and_then(|_| w.flush());
+                    }
+                }
+                // ATTN has no meaning for CICS terminals
                 Ok(_) => {}
                 Err(_) => {
                     let _ = tx.send(Msg::Gone(id));
-                    return;
+                    break;
                 }
             }
         }
+        if let Some(n) = &name {
+            names.lock().unwrap().remove(n);
+        }
     }
+
+    fn send(w: &Writer, session: &RefCell<Session>, rec: &[u8]) {
+        let mut w = w.lock().unwrap();
+        let _ = session.borrow_mut().send(&mut *w, rec);
+    }
+
+    fn send_screen(w: &Writer, session: &RefCell<Session>, t: &Terminal) {
+        let rec = tn3270::write_screen(&t.screen, &session.borrow().caps);
+        send(w, session, &rec);
+    }
+
+    /// Applies terminal input: a Query Reply updates the session; Some(AID)
+    /// for an attention key.
+    fn input(session: &RefCell<Session>, t: &RefCell<Terminal>, rec: &[u8]) -> Option<u8> {
+        if rec.first() == Some(&tn3270::AID_STRUCTURED_FIELD) {
+            session.borrow_mut().caps.apply_query_reply(rec);
+            eprintln!(
+                "zcics: {} query reply: {:?}",
+                t.borrow().id,
+                session.borrow().caps
+            );
+            return None;
+        }
+        tn3270::apply_input(&mut t.borrow_mut().screen, rec)
+    }
+
+    type Term = (Rc<RefCell<Terminal>>, Writer, Rc<RefCell<Session>>);
 
     pub fn run(region: Rc<RefCell<Region>>, home: &Path, port: u16) -> std::io::Result<()> {
         let listener = TcpListener::bind(("0.0.0.0", port))?;
         eprintln!("zcics: TN3270 server listening on port {port}");
         let (tx, rx) = mpsc::channel();
+        let names: Arc<Mutex<HashSet<String>>> = Arc::default();
         std::thread::spawn(move || {
             for (n, s) in listener.incoming().enumerate() {
                 if let Ok(s) = s {
-                    let tx = tx.clone();
-                    std::thread::spawn(move || connection(n as u32 + 1, s, tx));
+                    let (tx, names) = (tx.clone(), names.clone());
+                    std::thread::spawn(move || connection(n as u32 + 1, s, tx, names));
                 }
             }
         });
@@ -233,7 +292,7 @@ mod server {
         // its terminal's input (conversational tasks hold the region)
         let held: Rc<RefCell<VecDeque<Msg>>> = Rc::default();
         let rx = Rc::new(rx);
-        let mut terms: HashMap<u32, (Rc<RefCell<Terminal>>, TcpStream)> = HashMap::new();
+        let mut terms: HashMap<u32, Term> = HashMap::new();
         loop {
             let next = held.borrow_mut().pop_front();
             let msg = match next {
@@ -244,22 +303,19 @@ mod server {
                 },
             };
             match msg {
-                Msg::Connect(id, mut w, ttype) => {
+                Msg::Connect(id, w, session) => {
                     let t = Rc::new(RefCell::new(Terminal::new(&format!("T{id:03}"))));
                     t.borrow_mut().good_morning();
-                    if let Ok(mut out) = w.try_clone() {
+                    let session = Rc::new(RefCell::new(session));
+                    {
                         let (rx, held) = (rx.clone(), held.clone());
+                        let (w, session) = (w.clone(), session.clone());
                         t.borrow_mut().converse = Some(Box::new(move |t| {
-                            let _ = tn3270::send_record(
-                                &mut out,
-                                &tn3270::write_screen(&t.borrow().screen),
-                            );
+                            send_screen(&w, &session, &t.borrow());
                             loop {
                                 match rx.recv().ok()? {
                                     Msg::Input(i, rec) if i == id => {
-                                        let mut term = t.borrow_mut();
-                                        if let Some(a) = tn3270::apply_input(&mut term.screen, &rec)
-                                        {
+                                        if let Some(a) = input(&session, t, &rec) {
                                             return Some(a);
                                         }
                                     }
@@ -272,16 +328,32 @@ mod server {
                             }
                         }));
                     }
-                    eprintln!("zcics: terminal T{id:03} connected ({ttype})");
-                    let _ = tn3270::send_record(&mut w, &tn3270::write_screen(&t.borrow().screen));
-                    terms.insert(id, (t, w));
+                    {
+                        let s = session.borrow();
+                        eprintln!(
+                            "zcics: terminal T{id:03} connected ({}{}{})",
+                            s.ttype,
+                            if s.tn3270e { ", TN3270E" } else { "" },
+                            s.device
+                                .as_deref()
+                                .map(|d| format!(", LU {d}"))
+                                .unwrap_or_default()
+                        );
+                    }
+                    // the capabilities of a terminal with extended attributes
+                    if session.borrow().caps.extended {
+                        send(&w, &session, &tn3270::query());
+                    }
+                    send_screen(&w, &session, &t.borrow());
+                    terms.insert(id, (t, w, session));
                 }
                 Msg::Input(id, rec) => {
-                    let Some((t, w)) = terms.get_mut(&id) else {
+                    let Some((t, w, session)) = terms.get(&id) else {
                         continue;
                     };
-                    let aid = tn3270::apply_input(&mut t.borrow_mut().screen, &rec);
-                    let Some(aid) = aid else { continue };
+                    let Some(aid) = input(session, t, &rec) else {
+                        continue;
+                    };
                     let e = region::attention(&region, t, aid);
                     if let Event::Abended { transid, code } = &e {
                         eprintln!("zcics: T{id:03} {transid} abended {code}");
@@ -290,14 +362,19 @@ mod server {
                         eprintln!("zcics: {m}");
                     }
                     super::submit_jobs(&region, home);
-                    if e == Event::Idle && t.borrow().screen.fields().is_empty() {
+                    // a blank screen left by a transaction gets the prompt
+                    // again (CLEAR leaves it blank)
+                    if e == Event::Idle
+                        && aid != zeus_cics::region::aid::CLEAR
+                        && t.borrow().screen.fields().is_empty()
+                    {
                         let blank = t.borrow().screen.chars.iter().all(|&c| c == 0);
                         if blank {
                             t.borrow_mut().good_morning();
                         }
                     }
+                    send_screen(w, session, &t.borrow());
                     t.borrow_mut().screen.alarm = false;
-                    let _ = tn3270::send_record(w, &tn3270::write_screen(&t.borrow().screen));
                 }
                 Msg::Gone(id) => {
                     terms.remove(&id);

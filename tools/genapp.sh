@@ -6,6 +6,7 @@
 #        tools/genapp.sh run SCRIPT...  # zcics scripts
 #        tools/genapp.sh serve [PORT]   # TN3270 server (default 3270)
 #        tools/genapp.sh test           # setup, then tools/genapp/*.txt
+#        tools/genapp.sh tn3270         # s3270 through the TN3270 server (after test)
 #
 # ZEUS_DB2 names the Db2 server (tools/db2ce.sh start prints it); the data
 # sets are in ZEUS_HOME (default work/genapp).
@@ -85,5 +86,34 @@ case ${1:-} in
         done
         echo "all GenApp scripts passed"
         ;;
-    *) echo "usage: $0 setup | run SCRIPT... | serve [PORT] | test" >&2; exit 2 ;;
+    tn3270)
+        # a 3270 emulator (s3270) works the conversational screens on Db2:
+        # TN3270E with an LU name, then plain TN3270
+        port=13271
+        (exec $bin/zcics --home "$home" --csd "$home/GENAPP.CSD" --loadlib "$home/loadlib" \
+            --mapsets "$home/maps" --serve $port >"$home/tn3270-server.log" 2>&1) &
+        server=$!
+        sleep 1
+        sed "s/localhost:3270/localhost:$port/" tools/genapp/tn3270.s3270 |
+            timeout 120 s3270 >"$home/tn3270.log" 2>&1 || true
+        kill $server
+        for want in "HIGH CUSTOMER=0000000011" "Andrew" "Customer details updated" \
+            "07700 900004" "Transaction ended" "Louis"; do
+            if ! grep -q "$want" "$home/tn3270.log"; then
+                cat "$home/tn3270.log" "$home/tn3270-server.log"
+                echo "TN3270 test failed: '$want' not shown" >&2
+                exit 1
+            fi
+        done
+        for want in "TN3270E, LU ZEUSLU01" "T002 connected (IBM-327[89]-[2-5]-E)\$" \
+            "T001 query reply"; do
+            if ! grep -q -- "$want" "$home/tn3270-server.log"; then
+                cat "$home/tn3270-server.log"
+                echo "TN3270 test failed: '$want' not logged" >&2
+                exit 1
+            fi
+        done
+        echo "GenApp through s3270 (TN3270E and TN3270) passed"
+        ;;
+    *) echo "usage: $0 setup | run SCRIPT... | serve [PORT] | test | tn3270" >&2; exit 2 ;;
 esac

@@ -183,9 +183,16 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   `tools/carddemo-online` の 11 シナリオを CI で実行している。レポート投入は TD キュー JOBS
   (内部リーダー) に書かれた JCL を `zeus-jcl` で実行し、帳票の GDG 世代まで作られる。
   TN3270 サーバ (`zcics --serve`) も作成し、3270 エミュレータ s3270 からのサインオン・管理
-  メニュー・ユーザ一覧の操作を CI で確認している。
-  未着手: TN3270E (RFC 2355)、
-  オプション機能 (IMS/Db2/MQ を使う保留承認、取引種別保守)。
+  メニュー・ユーザ一覧の操作を CI で確認している。TN3270 サーバは TN3270E (RFC 2355: 装置タイプ、
+  LU 名の指定と重複拒否、FUNCTIONS の合意、5 バイトのヘッダ) と従来の TN3270 の両方に対応し、
+  拡張属性を持つ端末には Read Partition Query を送って Query Reply (色・強調表示・代替画面サイズ)
+  を読み、色と強調表示はそれを持つ端末にだけ送る。出力は RA で圧縮し、X'40' 未満のデータは
+  オーダーと誤解されないよう空白にする。CLEAR・Telnet の TIMING-MARK・未知のオプションの拒否・
+  ATTN (IP/BREAK) を扱う。GenApp の会話型画面 (Db2 の照会・更新) を s3270 で TN3270E と TN3270
+  の両方から操作する試験を CI で実行している。
+  未着手: プリンタセッション (TN3270E ASSOCIATE、SCS)、BIND-IMAGE・SYSREQ 機能、
+  代替画面サイズでの送信 (Erase/Write Alternate)、構造化フィールドの他の用途、
+  会話型タスクが入力を待つ間の他端末の処理 (領域を待たせる)。
 
 ### Phase 5: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C6
 - EXEC SQL のコンパイラ統合、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。

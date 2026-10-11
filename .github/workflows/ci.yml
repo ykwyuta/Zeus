@@ -111,6 +111,9 @@ jobs:
           path: .cache/genapp
           key: genapp-${{ hashFiles('tools/fetch-genapp.sh') }}
       - run: tools/genapp.sh test
+      - name: Install s3270 (3270 emulator for the TN3270 test)
+        run: sudo apt-get update && sudo apt-get install -y s3270
+      - run: tools/genapp.sh tn3270
       - uses: actions/upload-artifact@v4
         if: always()
         with:

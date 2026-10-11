@@ -36,7 +36,10 @@ three applications is in [docs/inventory/apps.md](docs/inventory/apps.md).
 CICS: `zcics` runs transactions against a 3270 screen model, driven by a
 script or by 3270 emulators through its TN3270 server
 (`tools/carddemo-online.sh serve`, then connect an emulator such as x3270 to
-port 3270 and enter `CC00`). The CardDemo online transactions
+port 3270, clear the screen and enter `CC00`). The server speaks TN3270E
+(device type, LU names) and plain TN3270, asks terminals with extended
+attributes for their capabilities (Read Partition Query) and sends colour and
+highlighting only to those that have them. The CardDemo online transactions
 (sign-on, menus, account view and update, card list, view and update,
 transaction list, view and add, bill payment, report submission through the
 internal reader, user administration) work on the data the batch jobs set
