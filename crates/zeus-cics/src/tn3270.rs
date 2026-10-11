@@ -27,6 +27,7 @@ pub const WILL: u8 = 251;
 pub const SB: u8 = 250;
 pub const BRK: u8 = 243;
 pub const IP: u8 = 244;
+pub const AO: u8 = 245;
 pub const SE: u8 = 240;
 pub const EOR: u8 = 239;
 pub const OPT_BINARY: u8 = 0;
@@ -45,16 +46,28 @@ const E_REASON: u8 = 5;
 const E_REJECT: u8 = 6;
 const E_REQUEST: u8 = 7;
 const E_SEND: u8 = 8;
-/// FUNCTIONS: RESPONSES (the host may ask for responses; it never does).
-const E_FN_RESPONSES: u8 = 2;
-/// REASON: INV-DEVICE-TYPE, INV-NAME (RFC 2355).
+/// FUNCTIONS.
+pub const FN_BIND_IMAGE: u8 = 0;
+pub const FN_DATA_STREAM_CTL: u8 = 1;
+pub const FN_RESPONSES: u8 = 2;
+pub const FN_SCS_CTL_CODES: u8 = 3;
+pub const FN_SYSREQ: u8 = 4;
+/// REASON codes of a DEVICE-TYPE REJECT.
+const E_DEVICE_IN_USE: u8 = 1;
+const E_INV_ASSOCIATE: u8 = 2;
+const E_INV_NAME: u8 = 3;
 const E_INV_DEVICE_TYPE: u8 = 4;
-const E_INV_NAME: u8 = 5;
 /// Header data types.
 const E_3270_DATA: u8 = 0;
+const E_SCS_DATA: u8 = 1;
+const E_BIND_IMAGE: u8 = 3;
+const E_UNBIND: u8 = 4;
+const E_SSCP_LU_DATA: u8 = 7;
+const E_PRINT_EOJ: u8 = 8;
 
 // 3270 commands, orders and AIDs
 const CMD_ERASE_WRITE: u8 = 0xF5;
+const CMD_ERASE_WRITE_ALTERNATE: u8 = 0x7E;
 const CMD_WSF: u8 = 0xF3;
 const ORDER_PT: u8 = 0x05;
 const ORDER_GE: u8 = 0x08;
@@ -67,6 +80,10 @@ const ORDER_SFE: u8 = 0x29;
 const ORDER_MF: u8 = 0x2C;
 const ORDER_RA: u8 = 0x3C;
 const DUP: u8 = 0x1C;
+/// SCS new line, form feed; end of message (3270 printer buffers).
+const SCS_NL: u8 = 0x15;
+const SCS_FF: u8 = 0x0C;
+const EM: u8 = 0x19;
 const FM: u8 = 0x1E;
 pub const AID_STRUCTURED_FIELD: u8 = 0x88;
 const AID_CLEAR: u8 = 0x6D;
@@ -104,6 +121,16 @@ pub struct Capabilities {
 }
 
 impl Capabilities {
+    /// The terminal model of the region for these capabilities.
+    pub fn model(&self) -> crate::region::Model {
+        crate::region::Model {
+            alternate: self.alternate,
+            extended: self.extended,
+            color: self.color,
+            hilight: self.hilight,
+        }
+    }
+
     /// From a terminal type such as IBM-3278-2-E or IBM-3279-5-E.
     pub fn of_type(ttype: &str) -> Capabilities {
         let t = ttype.to_ascii_uppercase();
@@ -169,9 +196,15 @@ fn graphic(c: u8) -> u8 {
     }
 }
 
-/// An Erase/Write of the whole screen.
+/// An Erase/Write of the whole screen (Erase/Write Alternate for a screen
+/// in the alternate size).
 pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
-    let mut out = vec![CMD_ERASE_WRITE];
+    let cmd = if (s.rows, s.cols) == crate::region::DEFAULT_SIZE {
+        CMD_ERASE_WRITE
+    } else {
+        CMD_ERASE_WRITE_ALTERNATE
+    };
+    let mut out = vec![cmd];
     // WCC: keyboard restore (and alarm)
     let wcc = 0x02 | if s.alarm { 0x04 } else { 0 };
     out.push(attr_byte(wcc));
@@ -363,8 +396,10 @@ pub fn apply_write(s: &mut Screen, rec: &[u8]) {
 pub fn apply_input(s: &mut Screen, rec: &[u8]) -> Option<u8> {
     let aid = *rec.first()?;
     if aid == AID_CLEAR {
-        // the terminal clears its screen (a short read: the AID alone)
-        s.erase();
+        // the terminal clears its screen and goes back to the default
+        // size (a short read: the AID alone)
+        let (r, c) = crate::region::DEFAULT_SIZE;
+        s.erase_to(r, c);
         return Some(aid);
     }
     if rec.len() >= 3 {
@@ -413,8 +448,22 @@ pub fn apply_input(s: &mut Screen, rec: &[u8]) -> Option<u8> {
     Some(aid)
 }
 
+/// Whether records are traced on standard error (ZEUS_TN3270_TRACE).
+pub fn tracing() -> bool {
+    static ON: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ON.get_or_init(|| std::env::var_os("ZEUS_TN3270_TRACE").is_some())
+}
+
+pub fn trace(dir: &str, rec: &[u8]) {
+    if tracing() {
+        let hex: String = rec.iter().take(64).map(|b| format!("{b:02X}")).collect();
+        eprintln!("tn3270 {dir} {} bytes: {hex}", rec.len());
+    }
+}
+
 /// Writes a record, doubling IAC bytes, followed by IAC EOR.
 pub fn send_record(w: &mut impl Write, rec: &[u8]) -> io::Result<()> {
+    trace(">", rec);
     let mut out = Vec::with_capacity(rec.len() + 2);
     for &b in rec {
         out.push(b);
@@ -435,7 +484,13 @@ pub struct Session {
     pub tn3270e: bool,
     /// The LU name of a TN3270E connection.
     pub device: Option<String>,
+    /// The TN3270E functions agreed.
+    pub functions: Vec<u8>,
     pub caps: Capabilities,
+    /// The server's own Read Partition Query awaits its reply.
+    pub query_pending: bool,
+    /// SYSREQ was pressed: the terminal talks to the SSCP (SSCP-LU data).
+    pub sscp: bool,
     seq: u16,
 }
 
@@ -445,9 +500,98 @@ impl Session {
             ttype: ttype.to_string(),
             tn3270e,
             device,
+            functions: Vec::new(),
             caps: Capabilities::of_type(ttype),
+            query_pending: false,
+            sscp: false,
             seq: 0,
         }
+    }
+
+    /// A printer session (IBM-3287).
+    pub fn is_printer(&self) -> bool {
+        self.ttype.to_ascii_uppercase().starts_with("IBM-3287")
+    }
+
+    pub fn has(&self, f: u8) -> bool {
+        self.functions.contains(&f)
+    }
+
+    fn send_typed(&mut self, w: &mut impl Write, data_type: u8, rec: &[u8]) -> io::Result<()> {
+        let mut r = Vec::with_capacity(rec.len() + 5);
+        r.extend([data_type, 0, 0]);
+        r.extend(self.seq.to_be_bytes());
+        self.seq = self.seq.wrapping_add(1);
+        r.extend_from_slice(rec);
+        send_record(w, &r)
+    }
+
+    /// The BIND image of the session (when BIND-IMAGE was agreed): sent
+    /// before the first data.
+    pub fn bind(&mut self, w: &mut impl Write) -> io::Result<()> {
+        if !self.has(FN_BIND_IMAGE) {
+            return Ok(());
+        }
+        let lu = if !self.is_printer() {
+            2
+        } else if self.has(FN_SCS_CTL_CODES) {
+            1
+        } else {
+            3
+        };
+        let img = bind_image(lu, crate::region::DEFAULT_SIZE, self.caps.alternate);
+        self.send_typed(w, E_BIND_IMAGE, &img)
+    }
+
+    /// UNBIND (when BIND-IMAGE was agreed), before the session ends.
+    pub fn unbind(&mut self, w: &mut impl Write) -> io::Result<()> {
+        if !self.has(FN_BIND_IMAGE) {
+            return Ok(());
+        }
+        // UNBIND, type normal
+        self.send_typed(w, E_UNBIND, &[0x32, 0x01])
+    }
+
+    /// Data for the SSCP (after SYSREQ): unformatted text.
+    pub fn send_sscp(&mut self, w: &mut impl Write, text: &[u8]) -> io::Result<()> {
+        self.send_typed(w, E_SSCP_LU_DATA, text)
+    }
+
+    /// Prints pages on a printer session: SCS data (lines ended by NL,
+    /// pages by FF) when SCS-CTL-CODES was agreed, else a 3270 write
+    /// that starts the printer; then the end of the print job.
+    pub fn print(&mut self, w: &mut impl Write, pages: &[Vec<Vec<u8>>]) -> io::Result<()> {
+        if pages.is_empty() {
+            return Ok(());
+        }
+        if !self.tn3270e || !self.has(FN_SCS_CTL_CODES) {
+            for page in pages {
+                let mut rec = vec![CMD_ERASE_WRITE, attr_byte(0x08 | 0x02)];
+                for (i, l) in page.iter().enumerate() {
+                    if i > 0 {
+                        rec.push(SCS_NL);
+                    }
+                    rec.extend(l.iter().map(|&c| graphic(c)));
+                }
+                rec.push(SCS_NL);
+                rec.push(EM);
+                self.send(w, &rec)?;
+            }
+            return Ok(());
+        }
+        let mut scs = Vec::new();
+        for (k, page) in pages.iter().enumerate() {
+            if k > 0 {
+                scs.push(SCS_FF);
+            }
+            for l in page {
+                scs.extend(l.iter().map(|&c| graphic(c)));
+                scs.push(SCS_NL);
+            }
+        }
+        scs.push(SCS_FF);
+        self.send_typed(w, E_SCS_DATA, &scs)?;
+        self.send_typed(w, E_PRINT_EOJ, &[])
     }
 
     /// Sends a 3270 data record (with its TN3270E header).
@@ -463,13 +607,20 @@ impl Session {
         send_record(w, &r)
     }
 
-    /// The 3270 data of an inbound record; None for other TN3270E data
-    /// types (responses, SCS, ...).
-    pub fn inbound(&self, rec: Vec<u8>) -> Option<Vec<u8>> {
+    /// The data of an inbound record: 3270 data, or what the terminal
+    /// sends the SSCP; None for other TN3270E data types (responses, ...).
+    pub fn inbound(&self, rec: Vec<u8>) -> Option<Inbound> {
         if !self.tn3270e {
-            return Some(rec);
+            return Some(Inbound::Data(rec));
         }
-        (rec.len() >= 5 && rec[0] == E_3270_DATA).then(|| rec[5..].to_vec())
+        if rec.len() < 5 {
+            return None;
+        }
+        match rec[0] {
+            E_3270_DATA => Some(Inbound::Data(rec[5..].to_vec())),
+            E_SSCP_LU_DATA => Some(Inbound::Sscp(rec[5..].to_vec())),
+            _ => None,
+        }
     }
 }
 
@@ -506,7 +657,10 @@ impl<R: Read> Reader<R> {
             let c = self.byte()?;
             match c {
                 IAC => self.buf.push(IAC),
-                EOR => return Ok(Event::Record(std::mem::take(&mut self.buf))),
+                EOR => {
+                    trace("<", &self.buf);
+                    return Ok(Event::Record(std::mem::take(&mut self.buf)));
+                }
                 DO | DONT | WILL | WONT => {
                     let opt = self.byte()?;
                     return Ok(Event::Option(c, opt));
@@ -533,10 +687,53 @@ impl<R: Read> Reader<R> {
                     return Ok(Event::Sub(sub));
                 }
                 IP | BRK => return Ok(Event::Attention),
+                AO => return Ok(Event::SysReq),
                 _ => {}
             }
         }
     }
+}
+
+/// Inbound data of a session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Inbound {
+    /// A 3270 data stream record (AID first).
+    Data(Vec<u8>),
+    /// Data for the SSCP (the terminal is in SYSREQ mode).
+    Sscp(Vec<u8>),
+}
+
+/// A BIND request unit for an LU of type `lu` (2: display, 1: SCS
+/// printer, 3: 3270 printer) with the default and alternate screen sizes
+/// in its presentation space (SNA BIND format).
+pub fn bind_image(lu: u8, default: (usize, usize), alternate: (usize, usize)) -> Vec<u8> {
+    let mut b = vec![
+        0x31, // BIND
+        0x01, // format 0, cold
+        0x03, // FM profile 3
+        0x03, // TS profile 3
+        0xB1, // primary LU protocols
+        0xB0, // secondary LU protocols
+        0x30, 0x80, // common protocols
+        0x00, 0x00, // secondary send and receive pacing
+        0x87, 0x87, // maximum RU sizes (1024)
+        0x00, 0x00, // primary send and receive pacing
+        lu,   // PS profile: LU type
+        0x00, 0x00, 0x00, 0x00, 0x00, // PS characteristics
+    ];
+    if lu == 2 || lu == 3 {
+        b.extend([
+            default.0 as u8,
+            default.1 as u8,
+            alternate.0 as u8,
+            alternate.1 as u8,
+            0x7F, // default and alternate sizes as given
+        ]);
+    } else {
+        b.extend([0, 0, 0, 0, 0]);
+    }
+    b.extend([0x00, 0x00, 0x00]); // cryptography, primary LU name length
+    b
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -548,6 +745,8 @@ pub enum Event {
     Sub(Vec<u8>),
     /// IP or BREAK: the ATTN key.
     Attention,
+    /// AO: the SYSREQ key (TN3270E SYSREQ function).
+    SysReq,
 }
 
 /// The answer to an option request after negotiation: TIMING-MARK is
@@ -563,13 +762,31 @@ pub fn answer_option(cmd: u8, opt: u8) -> Option<[u8; 3]> {
     }
 }
 
+/// What a TN3270E client asks for its device.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DeviceRequest<'a> {
+    /// Any name (the server's).
+    Any,
+    /// CONNECT: this LU name.
+    Connect(&'a str),
+    /// ASSOCIATE: the printer of this display LU.
+    Associate(&'a str),
+}
+
+/// Why a device request is refused.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Refusal {
+    InUse,
+    InvalidName,
+    InvalidAssociate,
+}
+
 /// Server side of the negotiation. TN3270E when the client agrees (the
-/// device name is `device`, or the LU name it asks for unless `taken`
-/// says it is in use), plain TN3270 otherwise.
+/// device name comes from `name`, given the device type and the request),
+/// plain TN3270 otherwise.
 pub fn negotiate<S: Read + Write>(
     stream: &mut S,
-    device: &str,
-    taken: impl Fn(&str) -> bool,
+    name: impl Fn(&str, DeviceRequest) -> Result<String, Refusal>,
 ) -> io::Result<Session> {
     stream.write_all(&[IAC, DO, OPT_TN3270E])?;
     stream.flush()?;
@@ -583,7 +800,7 @@ pub fn negotiate<S: Read + Write>(
     };
     drop(r);
     if e {
-        return negotiate_e(stream, device, taken);
+        return negotiate_e(stream, name);
     }
     stream.write_all(&[IAC, DO, OPT_TTYPE])?;
     stream.flush()?;
@@ -612,7 +829,18 @@ pub fn negotiate<S: Read + Write>(
         IAC, DO, OPT_EOR, IAC, WILL, OPT_EOR, IAC, DO, OPT_BINARY, IAC, WILL, OPT_BINARY,
     ])?;
     stream.flush()?;
-    Ok(Session::new(&ttype, false, None))
+    // a terminal type of the form IBM-xxxx@LUNAME names the LU
+    let (ttype, lu) = match ttype.split_once('@') {
+        Some((t, l)) => (t.to_string(), Some(l.to_string())),
+        None => (ttype, None),
+    };
+    let device = name(
+        &ttype,
+        lu.as_deref()
+            .map_or(DeviceRequest::Any, DeviceRequest::Connect),
+    )
+    .ok();
+    Ok(Session::new(&ttype, false, device))
 }
 
 fn sub(stream: &mut impl Write, body: &[u8]) -> io::Result<()> {
@@ -630,12 +858,11 @@ fn sub(stream: &mut impl Write, body: &[u8]) -> io::Result<()> {
 
 fn negotiate_e<S: Read + Write>(
     stream: &mut S,
-    device: &str,
-    taken: impl Fn(&str) -> bool,
+    name: impl Fn(&str, DeviceRequest) -> Result<String, Refusal>,
 ) -> io::Result<Session> {
     sub(stream, &[E_SEND, E_DEVICE_TYPE])?;
     // DEVICE-TYPE REQUEST <type> [CONNECT <name> | ASSOCIATE <name>]
-    let (ttype, name) = loop {
+    let (ttype, device) = loop {
         let mut r = Reader::new(&mut *stream);
         let ev = r.next_event()?;
         drop(r);
@@ -649,37 +876,62 @@ fn negotiate_e<S: Read + Write>(
             .position(|&b| b == E_CONNECT || b == E_ASSOCIATE)
             .unwrap_or(rest.len());
         let ttype = String::from_utf8_lossy(&rest[..cut]).to_string();
-        let asked = match rest.get(cut) {
-            Some(&E_CONNECT) => Some(String::from_utf8_lossy(&rest[cut + 1..]).to_string()),
-            Some(_) => {
-                // ASSOCIATE (printer sessions) is not supported
-                sub(stream, &[E_DEVICE_TYPE, E_REJECT, E_REASON, E_INV_NAME])?;
-                continue;
-            }
-            None => None,
-        };
-        if !ttype.to_ascii_uppercase().starts_with("IBM-327") {
+        let arg = rest
+            .get(cut + 1..)
+            .map(|n| String::from_utf8_lossy(n).to_string())
+            .unwrap_or_default();
+        let printer = ttype.to_ascii_uppercase().starts_with("IBM-3287");
+        let up = ttype.to_ascii_uppercase();
+        if !(up.starts_with("IBM-327") || printer || up == "IBM-DYNAMIC") {
             sub(
                 stream,
                 &[E_DEVICE_TYPE, E_REJECT, E_REASON, E_INV_DEVICE_TYPE],
             )?;
             continue;
         }
-        if let Some(a) = &asked
-            && taken(a)
-        {
-            sub(stream, &[E_DEVICE_TYPE, E_REJECT, E_REASON, E_INV_NAME])?;
-            continue;
+        let req = match rest.get(cut) {
+            Some(&E_CONNECT) => DeviceRequest::Connect(&arg),
+            // only printers are associated with a display
+            Some(_) if !printer => {
+                sub(
+                    stream,
+                    &[E_DEVICE_TYPE, E_REJECT, E_REASON, E_INV_ASSOCIATE],
+                )?;
+                continue;
+            }
+            Some(_) => DeviceRequest::Associate(&arg),
+            None => DeviceRequest::Any,
+        };
+        match name(&ttype, req) {
+            Ok(n) => break (ttype, n),
+            Err(why) => {
+                let reason = match why {
+                    Refusal::InUse => E_DEVICE_IN_USE,
+                    Refusal::InvalidName => E_INV_NAME,
+                    Refusal::InvalidAssociate => E_INV_ASSOCIATE,
+                };
+                sub(stream, &[E_DEVICE_TYPE, E_REJECT, E_REASON, reason])?;
+            }
         }
-        break (ttype, asked.unwrap_or_else(|| device.to_string()));
     };
     let mut is = vec![E_DEVICE_TYPE, E_IS];
     is.extend(ttype.as_bytes());
     is.push(E_CONNECT);
-    is.extend(name.as_bytes());
+    is.extend(device.as_bytes());
     sub(stream, &is)?;
-    // FUNCTIONS REQUEST <list>: agree on those supported (RESPONSES)
-    loop {
+    // FUNCTIONS REQUEST <list>: agree on those supported for the device
+    let printer = ttype.to_ascii_uppercase().starts_with("IBM-3287");
+    let supported: &[u8] = if printer {
+        &[
+            FN_BIND_IMAGE,
+            FN_DATA_STREAM_CTL,
+            FN_RESPONSES,
+            FN_SCS_CTL_CODES,
+        ]
+    } else {
+        &[FN_BIND_IMAGE, FN_RESPONSES, FN_SYSREQ]
+    };
+    let functions = loop {
         let mut r = Reader::new(&mut *stream);
         let ev = r.next_event()?;
         drop(r);
@@ -691,25 +943,28 @@ fn negotiate_e<S: Read + Write>(
         let ours: Vec<u8> = asked
             .iter()
             .copied()
-            .filter(|&f| f == E_FN_RESPONSES)
+            .filter(|f| supported.contains(f))
             .collect();
         match s[2] {
             E_REQUEST if ours.len() == asked.len() => {
                 let mut b = vec![E_FUNCTIONS, E_IS];
                 b.extend(&ours);
                 sub(stream, &b)?;
-                break;
+                break ours;
             }
             E_REQUEST => {
                 let mut b = vec![E_FUNCTIONS, E_REQUEST];
                 b.extend(&ours);
                 sub(stream, &b)?;
             }
-            E_IS => break,
+            E_IS => break asked.to_vec(),
             _ => {}
         }
-    }
-    Ok(Session::new(&ttype, true, Some(name)))
+    };
+    let mut session = Session::new(&ttype, true, Some(device));
+    session.functions = functions;
+    session.bind(stream)?;
+    Ok(session)
 }
 
 #[cfg(test)]
@@ -803,35 +1058,121 @@ mod tests {
         let mut req = vec![E_DEVICE_TYPE, E_REQUEST];
         req.extend(b"IBM-3279-2-E");
         client.extend(sb(&req));
-        client.extend(sb(&[E_FUNCTIONS, E_REQUEST, 0, E_FN_RESPONSES, 4]));
-        client.extend(sb(&[E_FUNCTIONS, E_IS, E_FN_RESPONSES]));
+        client.extend(sb(&[
+            E_FUNCTIONS,
+            E_REQUEST,
+            FN_BIND_IMAGE,
+            FN_RESPONSES,
+            9,
+        ]));
+        client.extend(sb(&[E_FUNCTIONS, E_IS, FN_BIND_IMAGE, FN_RESPONSES]));
         let mut d = Duplex {
             input: io::Cursor::new(client),
             output: Vec::new(),
         };
-        let mut session = negotiate(&mut d, "ZEUS0001", |n| n == "TAKEN").unwrap();
+        let mut session = negotiate(&mut d, |_, req| match req {
+            DeviceRequest::Connect("TAKEN") => Err(Refusal::InUse),
+            _ => Ok("ZEUS0001".into()),
+        })
+        .unwrap();
         assert!(session.tn3270e);
         assert_eq!(session.ttype, "IBM-3279-2-E");
         assert_eq!(session.device.as_deref(), Some("ZEUS0001"));
+        assert_eq!(session.functions, [FN_BIND_IMAGE, FN_RESPONSES]);
         let out = &d.output;
         let has = |v: &[u8]| out.windows(v.len()).any(|w| w == v);
         // the name in use is refused, the second request accepted
-        assert!(has(&sb(&[E_DEVICE_TYPE, E_REJECT, E_REASON, E_INV_NAME])));
+        assert!(has(&sb(&[
+            E_DEVICE_TYPE,
+            E_REJECT,
+            E_REASON,
+            E_DEVICE_IN_USE
+        ])));
         let mut is = vec![E_DEVICE_TYPE, E_IS];
         is.extend(b"IBM-3279-2-E");
         is.push(E_CONNECT);
         is.extend(b"ZEUS0001");
         assert!(has(&sb(&is)));
-        // only RESPONSES is agreed
-        assert!(has(&sb(&[E_FUNCTIONS, E_REQUEST, E_FN_RESPONSES])));
+        // the unsupported function is left out
+        assert!(has(&sb(&[
+            E_FUNCTIONS,
+            E_REQUEST,
+            FN_BIND_IMAGE,
+            FN_RESPONSES
+        ])));
+        // the BIND image follows, with the screen sizes of an LU 2
+        let mut bind = vec![E_BIND_IMAGE, 0, 0, 0, 0];
+        bind.extend(bind_image(2, (24, 80), (24, 80)));
+        assert!(has(&bind));
+        assert_eq!(
+            &bind_image(2, (24, 80), (27, 132))[20..25],
+            &[24, 80, 27, 132, 0x7F]
+        );
         // records carry the header
         let mut w = Vec::new();
         session.send(&mut w, &[0xF5, 0xC2]).unwrap();
         session.send(&mut w, &[0xF5, 0xC2]).unwrap();
-        assert_eq!(&w[..9], &[0, 0, 0, 0, 0, 0xF5, 0xC2, IAC, EOR]);
-        assert_eq!(&w[9..14], &[0, 0, 0, 0, 1]);
-        assert_eq!(session.inbound(vec![0, 0, 0, 0, 7, 0x7D]), Some(vec![0x7D]));
+        assert_eq!(&w[..9], &[0, 0, 0, 0, 1, 0xF5, 0xC2, IAC, EOR]);
+        assert_eq!(&w[9..14], &[0, 0, 0, 0, 2]);
+        assert_eq!(
+            session.inbound(vec![0, 0, 0, 0, 7, 0x7D]),
+            Some(Inbound::Data(vec![0x7D]))
+        );
+        assert_eq!(
+            session.inbound(vec![E_SSCP_LU_DATA, 0, 0, 0, 8, 0xD3]),
+            Some(Inbound::Sscp(vec![0xD3]))
+        );
         assert_eq!(session.inbound(vec![2, 0, 0, 0, 7, 0]), None);
+        // SYSREQ mode: SSCP-LU data; LOGOFF: UNBIND
+        let mut w = Vec::new();
+        session.send_sscp(&mut w, &[0xC1]).unwrap();
+        session.unbind(&mut w).unwrap();
+        assert_eq!(w[0], E_SSCP_LU_DATA);
+        assert!(w.windows(3).any(|x| x == [E_UNBIND, 0, 0]));
+    }
+
+    #[test]
+    fn printer_session() {
+        // a printer associated with display LU ZEUS0001, SCS data
+        let mut client = vec![IAC, WILL, OPT_TN3270E];
+        let mut req = vec![E_DEVICE_TYPE, E_REQUEST];
+        req.extend(b"IBM-3287-1");
+        req.push(E_ASSOCIATE);
+        req.extend(b"ZEUS0001");
+        client.extend(sb(&req));
+        client.extend(sb(&[
+            E_FUNCTIONS,
+            E_REQUEST,
+            FN_SCS_CTL_CODES,
+            FN_DATA_STREAM_CTL,
+        ]));
+        let mut d = Duplex {
+            input: io::Cursor::new(client),
+            output: Vec::new(),
+        };
+        let mut session = negotiate(&mut d, |t, req| {
+            assert_eq!(t, "IBM-3287-1");
+            match req {
+                DeviceRequest::Associate("ZEUS0001") => Ok("ZEUSPRT1".into()),
+                _ => Err(Refusal::InvalidAssociate),
+            }
+        })
+        .unwrap();
+        assert!(session.is_printer());
+        assert_eq!(session.device.as_deref(), Some("ZEUSPRT1"));
+        let mut w = Vec::new();
+        let pages = vec![vec![b"\xC1\xC2".to_vec(), vec![]], vec![vec![0xC3]]];
+        session.print(&mut w, &pages).unwrap();
+        // SCS: lines with NL, pages with FF, then the end of the job
+        assert_eq!(
+            &w[..14],
+            &[
+                E_SCS_DATA, 0, 0, 0, 0, 0xC1, 0xC2, SCS_NL, SCS_NL, SCS_FF, 0xC3, SCS_NL, SCS_FF,
+                IAC
+            ]
+        );
+        assert!(w.windows(2).any(|x| x == [IAC, EOR]));
+        assert!(w.windows(3).any(|x| x == [E_PRINT_EOJ, 0, 0]));
     }
 
     #[test]
@@ -844,7 +1185,7 @@ mod tests {
             input: io::Cursor::new(client),
             output: Vec::new(),
         };
-        let session = negotiate(&mut d, "ZEUS0001", |_| false).unwrap();
+        let session = negotiate(&mut d, |_, _| Ok("ZEUS0001".into())).unwrap();
         assert!(!session.tn3270e);
         assert!(!session.caps.extended);
         assert!(d.output.ends_with(&[IAC, WILL, OPT_BINARY]));

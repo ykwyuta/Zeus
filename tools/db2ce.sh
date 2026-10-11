@@ -15,8 +15,13 @@ password=${ZEUS_DB2_PASSWORD:-zeuspass}
 
 case ${1:-} in
     start)
-        if ! docker ps --format '{{.Names}}' | grep -qx $name; then
-            docker rm -f $name >/dev/null 2>&1 || true
+        since=$(date -u +%Y-%m-%dT%H:%M:%SZ)
+        if docker ps --format '{{.Names}}' | grep -qx $name; then
+            since=1970-01-01T00:00:00Z
+        elif docker ps -a --format '{{.Names}}' | grep -qx $name; then
+            # a stopped container (its database kept) starts again
+            docker start $name >/dev/null
+        else
             docker run -d --name $name --privileged=true -p "$port:50000" \
                 -e LICENSE=accept -e DB2INSTANCE=db2inst1 \
                 -e DB2INST1_PASSWORD="$password" -e DBNAME=ZEUSDB \
@@ -25,7 +30,7 @@ case ${1:-} in
         fi
         # the instance and the database are created on the first start
         i=0
-        until docker logs $name 2>&1 | grep -q "Setup has completed"; do
+        until docker logs --since "$since" $name 2>&1 | grep -q "Setup has completed"; do
             i=$((i + 1))
             if [ $i -gt 180 ]; then
                 docker logs $name 2>&1 | tail -20

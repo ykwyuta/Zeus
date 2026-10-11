@@ -5,6 +5,11 @@
 //! zcics [options] --serve PORT
 //! ```
 //!
+//! `--model N` (2-5) gives the script's terminal the alternate screen size
+//! of a 3278/3279 model N (24x80, 32x80, 43x80, 27x132). `--printer ID`
+//! defines a printer terminal (START TERMID(ID)); what it prints is
+//! appended to DIR/print/ID.txt (a form feed after each page).
+//!
 //! With `--serve`, zcics is a TN3270 server: 3270 emulators connect to the
 //! port (each connection is a terminal).
 //!
@@ -18,6 +23,8 @@
 //! type 12 43 USER01  type text at line 12, column 43
 //! eof 12 43          erase to the end of the field at line 12, column 43
 //! key PF3            press an attention key (ENTER, CLEAR, PA1-3, PF1-24)
+//! sf 0005810101      send structured fields (hex) with AID X'88'
+//! wait 2             wait (seconds); then started transactions due run
 //! show               print the screen
 //! fields             list the fields (position, attributes, data)
 //! expect 4 Sign-on   fail unless line 4 contains the text (* any line)
@@ -44,11 +51,20 @@ fn usage() -> ExitCode {
 }
 
 fn show(t: &Terminal) {
-    println!("+{}+", "-".repeat(80));
+    let w = t.screen.cols;
+    println!("+{}+", "-".repeat(w));
     for l in t.screen.render().lines() {
-        println!("|{l:<80}|");
+        println!("|{l:<w$}|");
     }
-    println!("+{}+", "-".repeat(80));
+    println!("+{}+", "-".repeat(w));
+}
+
+/// Prints the records a task sent beside the screen (structured fields).
+fn outbound(t: &RefCell<Terminal>) {
+    for r in std::mem::take(&mut t.borrow_mut().outbound) {
+        let hex: String = r.iter().map(|b| format!("{b:02X}")).collect();
+        println!("< {hex}");
+    }
 }
 
 /// A terminal script: the lines up to the next attention key are applied
@@ -116,6 +132,26 @@ impl Script {
                     println!("> key {rest}");
                     return Ok(Some(a));
                 }
+                "sf" => {
+                    let hex: String = rest.split_whitespace().collect();
+                    let data: Option<Vec<u8>> = (0..hex.len() / 2)
+                        .map(|i| u8::from_str_radix(hex.get(2 * i..2 * i + 2)?, 16).ok())
+                        .collect();
+                    let Some(data) = data.filter(|_| hex.len().is_multiple_of(2)) else {
+                        return Err(fail("sf HEX expected".into()));
+                    };
+                    term.borrow_mut().inbound_sf = Some(data);
+                    println!("> sf {hex}");
+                    return Ok(Some(zeus_cics::tn3270::AID_STRUCTURED_FIELD));
+                }
+                "wait" => {
+                    let Ok(secs) = rest.trim().parse::<f64>() else {
+                        return Err(fail("wait SECONDS expected".into()));
+                    };
+                    println!("> wait {secs}");
+                    std::thread::sleep(std::time::Duration::from_secs_f64(secs));
+                    return Ok(Some(WAITED));
+                }
                 "show" => show(&term.borrow()),
                 "fields" => fields(&term.borrow()),
                 "expect" => {
@@ -171,33 +207,102 @@ mod server {
     //! the region runs in the main thread.
 
     use std::cell::RefCell;
-    use std::collections::{HashMap, HashSet, VecDeque};
+    use std::collections::{HashMap, VecDeque};
     use std::io::Write;
-    use std::net::{TcpListener, TcpStream};
+    use std::net::{Shutdown, TcpListener, TcpStream};
     use std::path::Path;
     use std::rc::Rc;
     use std::sync::{Arc, Mutex, mpsc};
+    use std::time::Instant;
 
+    use zeus_cics::csd::Csd;
     use zeus_cics::region::{self, Event, Region, Terminal};
-    use zeus_cics::tn3270::{self, Session};
+    use zeus_cics::tn3270::{self, DeviceRequest, Inbound, Refusal, Session};
+    use zeus_cobol::ebcdic;
 
     type Writer = Arc<Mutex<TcpStream>>;
 
     enum Msg {
         Connect(u32, Writer, Session),
         Input(u32, Vec<u8>),
+        Sscp(u32, Vec<u8>),
+        SysReq(u32),
         Gone(u32),
+        /// A started transaction may be due.
+        Tick,
     }
 
-    fn connection(
-        id: u32,
-        mut stream: TcpStream,
-        tx: mpsc::Sender<Msg>,
-        names: Arc<Mutex<HashSet<String>>>,
-    ) {
-        let device = format!("ZEUS{id:04}");
-        let session = tn3270::negotiate(&mut stream, &device, |n| {
-            names.lock().unwrap().contains(&n.to_ascii_uppercase())
+    /// LU names: those in use, and the TERMINAL definitions (identifier,
+    /// NETNAME, PRINTER) that name terminals and pair displays with
+    /// printers.
+    struct Names {
+        in_use: HashMap<String, (u32, bool)>,
+        terminals: Vec<(String, zeus_cics::csd::TerminalDef)>,
+    }
+
+    impl Names {
+        /// The LU name for a connection.
+        fn name(&self, id: u32, ttype: &str, req: DeviceRequest) -> Result<String, Refusal> {
+            let printer = ttype.to_ascii_uppercase().starts_with("IBM-3287");
+            match req {
+                DeviceRequest::Any => Ok(if printer {
+                    format!("ZEUSP{id:03}")
+                } else {
+                    format!("ZEUS{id:04}")
+                }),
+                DeviceRequest::Connect(n) => {
+                    let n = n.to_ascii_uppercase();
+                    if n.is_empty() || n.len() > 8 {
+                        Err(Refusal::InvalidName)
+                    } else if self.in_use.contains_key(&n) {
+                        Err(Refusal::InUse)
+                    } else {
+                        Ok(n)
+                    }
+                }
+                DeviceRequest::Associate(d) => {
+                    let d = d.to_ascii_uppercase();
+                    if !self.in_use.get(&d).is_some_and(|(_, p)| !p) {
+                        return Err(Refusal::InvalidAssociate);
+                    }
+                    // the PRINTER of the display's TERMINAL definition
+                    let by_csd = self
+                        .terminals
+                        .iter()
+                        .find(|(_, t)| t.netname.as_deref() == Some(&d))
+                        .and_then(|(_, t)| t.printer.clone())
+                        .and_then(|p| {
+                            self.terminals
+                                .iter()
+                                .find(|(id, _)| *id == p)
+                                .and_then(|(_, t)| t.netname.clone())
+                        });
+                    let n = by_csd.unwrap_or_else(|| format!("{}P", &d[..d.len().min(7)]));
+                    if self.in_use.contains_key(&n) {
+                        Err(Refusal::InUse)
+                    } else {
+                        Ok(n)
+                    }
+                }
+            }
+        }
+
+        /// The terminal identifier of an LU: the TERMINAL with that
+        /// NETNAME, else T001 / P001 from the connection number.
+        fn termid(&self, id: u32, lu: Option<&str>, printer: bool) -> String {
+            lu.and_then(|lu| {
+                self.terminals
+                    .iter()
+                    .find(|(_, t)| t.netname.as_deref() == Some(lu))
+                    .map(|(tid, _)| tid.clone())
+            })
+            .unwrap_or_else(|| format!("{}{id:03}", if printer { 'P' } else { 'T' }))
+        }
+    }
+
+    fn connection(id: u32, mut stream: TcpStream, tx: mpsc::Sender<Msg>, names: Arc<Mutex<Names>>) {
+        let session = tn3270::negotiate(&mut stream, |ttype, req| {
+            names.lock().unwrap().name(id, ttype, req)
         });
         let session = match session {
             Ok(s) => s,
@@ -206,9 +311,13 @@ mod server {
                 return;
             }
         };
-        let name = session.device.clone().map(|n| n.to_ascii_uppercase());
-        if let Some(n) = &name {
-            names.lock().unwrap().insert(n.clone());
+        let lu = session.device.clone();
+        if let Some(n) = &lu {
+            names
+                .lock()
+                .unwrap()
+                .in_use
+                .insert(n.clone(), (id, session.is_printer()));
         }
         let Ok(writer) = stream.try_clone() else {
             return;
@@ -220,31 +329,33 @@ mod server {
         }
         let mut r = tn3270::Reader::new(stream);
         loop {
-            match r.next_event() {
-                Ok(tn3270::Event::Record(rec)) => {
-                    let Some(rec) = reader_session.inbound(rec) else {
-                        continue;
-                    };
-                    if tx.send(Msg::Input(id, rec)).is_err() {
-                        break;
-                    }
-                }
+            let msg = match r.next_event() {
+                Ok(tn3270::Event::Record(rec)) => match reader_session.inbound(rec) {
+                    Some(Inbound::Data(d)) => Msg::Input(id, d),
+                    Some(Inbound::Sscp(d)) => Msg::Sscp(id, d),
+                    None => continue,
+                },
                 Ok(tn3270::Event::Option(cmd, opt)) => {
                     if let Some(a) = tn3270::answer_option(cmd, opt) {
                         let mut w = writer.lock().unwrap();
                         let _ = w.write_all(&a).and_then(|_| w.flush());
                     }
+                    continue;
                 }
+                Ok(tn3270::Event::SysReq) => Msg::SysReq(id),
                 // ATTN has no meaning for CICS terminals
-                Ok(_) => {}
+                Ok(_) => continue,
                 Err(_) => {
                     let _ = tx.send(Msg::Gone(id));
                     break;
                 }
+            };
+            if tx.send(msg).is_err() {
+                break;
             }
         }
-        if let Some(n) = &name {
-            names.lock().unwrap().remove(n);
+        if let Some(n) = &lu {
+            names.lock().unwrap().in_use.remove(n);
         }
     }
 
@@ -253,22 +364,34 @@ mod server {
         let _ = session.borrow_mut().send(&mut *w, rec);
     }
 
-    fn send_screen(w: &Writer, session: &RefCell<Session>, t: &Terminal) {
-        let rec = tn3270::write_screen(&t.screen, &session.borrow().caps);
+    /// Sends the records a task left for the terminal, then its screen.
+    fn send_screen(w: &Writer, session: &RefCell<Session>, t: &RefCell<Terminal>) {
+        if session.borrow().sscp {
+            return;
+        }
+        let records = std::mem::take(&mut t.borrow_mut().outbound);
+        for r in records {
+            send(w, session, &r);
+        }
+        let rec = tn3270::write_screen(&t.borrow().screen, &session.borrow().caps);
         send(w, session, &rec);
     }
 
-    /// Applies terminal input: a Query Reply updates the session; Some(AID)
-    /// for an attention key.
+    /// Applies terminal input; Some(AID) for an attention key. The reply
+    /// to the server's query updates the terminal model; other structured
+    /// fields go to the program (AID X'88').
     fn input(session: &RefCell<Session>, t: &RefCell<Terminal>, rec: &[u8]) -> Option<u8> {
         if rec.first() == Some(&tn3270::AID_STRUCTURED_FIELD) {
-            session.borrow_mut().caps.apply_query_reply(rec);
-            eprintln!(
-                "zcics: {} query reply: {:?}",
-                t.borrow().id,
-                session.borrow().caps
-            );
-            return None;
+            if session.borrow().query_pending {
+                let mut s = session.borrow_mut();
+                s.query_pending = false;
+                s.caps.apply_query_reply(rec);
+                t.borrow_mut().model = s.caps.model();
+                eprintln!("zcics: {} query reply: {:?}", t.borrow().id, s.caps);
+                return None;
+            }
+            t.borrow_mut().inbound_sf = Some(rec[1..].to_vec());
+            return Some(tn3270::AID_STRUCTURED_FIELD);
         }
         tn3270::apply_input(&mut t.borrow_mut().screen, rec)
     }
@@ -292,11 +415,17 @@ mod server {
         rx: mpsc::Receiver<Msg>,
         held: RefCell<VecDeque<Msg>>,
         terms: RefCell<HashMap<u32, Term>>,
+        names: Arc<Mutex<Names>>,
     }
 
-    fn target(m: &Msg) -> u32 {
+    fn target(m: &Msg) -> Option<u32> {
         match m {
-            Msg::Connect(id, ..) | Msg::Input(id, _) | Msg::Gone(id) => *id,
+            Msg::Connect(id, ..)
+            | Msg::Input(id, _)
+            | Msg::Sscp(id, _)
+            | Msg::SysReq(id)
+            | Msg::Gone(id) => Some(*id),
+            Msg::Tick => None,
         }
     }
 
@@ -308,33 +437,50 @@ mod server {
                 .is_some_and(|t| *t.waiting.borrow())
         }
 
-        /// The next held message `want` accepts, else the next one received.
+        /// The next held message `want` accepts, else the next one received
+        /// (a Tick when a started transaction falls due first).
         fn next(&self, want: impl Fn(&Msg) -> bool) -> Option<Msg> {
             let mut held = self.held.borrow_mut();
             if let Some(i) = held.iter().position(want) {
                 return held.remove(i);
             }
             drop(held);
-            self.rx.recv().ok()
+            match region::next_due(&self.region) {
+                Some(due) => {
+                    let wait = due.saturating_duration_since(Instant::now());
+                    match self.rx.recv_timeout(wait) {
+                        Ok(m) => Some(m),
+                        Err(mpsc::RecvTimeoutError::Timeout) => Some(Msg::Tick),
+                        Err(mpsc::RecvTimeoutError::Disconnected) => None,
+                    }
+                }
+                None => self.rx.recv().ok(),
+            }
         }
 
         fn dispatch(self: &Rc<Self>, msg: Msg) {
+            if let Some(id) = target(&msg)
+                && !matches!(msg, Msg::Connect(..))
+                && self.is_waiting(id)
+            {
+                self.held.borrow_mut().push_back(msg);
+                return;
+            }
             match msg {
                 Msg::Connect(id, w, session) => self.connect(id, w, session),
                 Msg::Input(id, rec) => {
-                    if self.is_waiting(id) {
-                        self.held.borrow_mut().push_back(Msg::Input(id, rec));
-                        return;
-                    }
                     let Some(t) = self.terms.borrow().get(&id).cloned() else {
                         return;
                     };
+                    if t.term.borrow().printer {
+                        return;
+                    }
                     let Some(aid) = input(&t.session, &t.term, &rec) else {
                         return;
                     };
                     let e = region::attention(&self.region, &t.term, aid);
                     if let Event::Abended { transid, code } = &e {
-                        eprintln!("zcics: T{id:03} {transid} abended {code}");
+                        eprintln!("zcics: {} {transid} abended {code}", t.term.borrow().id);
                     }
                     for m in self.region.borrow_mut().log.drain(..) {
                         eprintln!("zcics: {m}");
@@ -351,19 +497,99 @@ mod server {
                             t.term.borrow_mut().good_morning();
                         }
                     }
-                    send_screen(&t.writer, &t.session, &t.term.borrow());
+                    send_screen(&t.writer, &t.session, &t.term);
                     t.term.borrow_mut().screen.alarm = false;
                 }
-                Msg::Gone(id) => {
-                    if self.is_waiting(id) {
-                        self.held.borrow_mut().push_back(Msg::Gone(id));
+                Msg::SysReq(id) => {
+                    let Some(t) = self.terms.borrow().get(&id).cloned() else {
                         return;
+                    };
+                    let sscp = !t.session.borrow().sscp;
+                    t.session.borrow_mut().sscp = sscp;
+                    if sscp {
+                        self.sscp_say(&t, "ZEUS SSCP: ENTER LOGOFF TO END THE SESSION");
+                    } else {
+                        send_screen(&t.writer, &t.session, &t.term);
                     }
+                }
+                Msg::Sscp(id, data) => {
+                    let Some(t) = self.terms.borrow().get(&id).cloned() else {
+                        return;
+                    };
+                    let text: String = ebcdic::decode_latin1(&data)
+                        .iter()
+                        .map(|&b| b as char)
+                        .collect::<String>()
+                        .to_ascii_uppercase();
+                    if text.contains("LOGOFF") {
+                        let mut w = t.writer.lock().unwrap();
+                        let _ = t.session.borrow_mut().unbind(&mut *w);
+                        let _ = w.shutdown(Shutdown::Both);
+                    } else {
+                        self.sscp_say(&t, "ZEUS SSCP: COMMAND NOT RECOGNIZED");
+                    }
+                }
+                Msg::Gone(id) => {
                     if let Some(t) = self.terms.borrow_mut().remove(&id) {
                         // the hook refers to the terminal
                         t.term.borrow_mut().converse = None;
+                        let tid = t.term.borrow().id.clone();
+                        self.region.borrow_mut().terminals.remove(&tid);
+                        eprintln!("zcics: terminal {tid} disconnected");
                     }
-                    eprintln!("zcics: terminal T{id:03} disconnected");
+                }
+                Msg::Tick => {}
+            }
+            self.after();
+        }
+
+        fn sscp_say(&self, t: &Term, text: &str) {
+            let mut w = t.writer.lock().unwrap();
+            let _ = t
+                .session
+                .borrow_mut()
+                .send_sscp(&mut *w, &ebcdic::encode(text));
+        }
+
+        /// After an event: started transactions that are due run, their
+        /// displays get their screens, printers what was printed.
+        fn after(self: &Rc<Self>) {
+            for (termid, e) in region::run_due(&self.region) {
+                if let Event::Abended { transid, code } = &e {
+                    eprintln!("zcics: started {transid} abended {code}");
+                }
+                let t = self
+                    .terms
+                    .borrow()
+                    .values()
+                    .find(|t| t.term.borrow().id == termid)
+                    .cloned();
+                if let Some(t) = t
+                    && !t.term.borrow().printer
+                {
+                    send_screen(&t.writer, &t.session, &t.term);
+                }
+            }
+            for m in self.region.borrow_mut().log.drain(..) {
+                eprintln!("zcics: {m}");
+            }
+            let printers: Vec<Term> = self
+                .terms
+                .borrow()
+                .values()
+                .filter(|t| t.term.borrow().printer)
+                .cloned()
+                .collect();
+            for t in printers {
+                let pages = std::mem::take(&mut t.term.borrow_mut().printed);
+                if !pages.is_empty() {
+                    eprintln!(
+                        "zcics: printer {} printed {} page(s)",
+                        t.term.borrow().id,
+                        pages.len()
+                    );
+                    let mut w = t.writer.lock().unwrap();
+                    let _ = t.session.borrow_mut().print(&mut *w, &pages);
                 }
             }
         }
@@ -372,11 +598,11 @@ mod server {
         /// the other terminals meanwhile.
         fn wait(self: &Rc<Self>, id: u32, t: &Term) -> Option<u8> {
             *t.waiting.borrow_mut() = true;
-            send_screen(&t.writer, &t.session, &t.term.borrow());
+            send_screen(&t.writer, &t.session, &t.term);
             let got = loop {
-                let msg = self.next(|m| {
-                    let i = target(m);
-                    i == id || !self.is_waiting(i)
+                let msg = self.next(|m| match target(m) {
+                    Some(i) => i == id || !self.is_waiting(i),
+                    None => true,
                 });
                 let Some(msg) = msg else { break None };
                 match msg {
@@ -389,7 +615,16 @@ mod server {
                         self.held.borrow_mut().push_back(Msg::Gone(i));
                         break None;
                     }
-                    other => self.dispatch(other),
+                    other => {
+                        // SYSREQ and the SSCP work for the waiting terminal too
+                        if matches!(other, Msg::SysReq(i) | Msg::Sscp(i, _) if i == id) {
+                            *t.waiting.borrow_mut() = false;
+                            self.dispatch(other);
+                            *t.waiting.borrow_mut() = true;
+                        } else {
+                            self.dispatch(other);
+                        }
+                    }
                 }
             };
             *t.waiting.borrow_mut() = false;
@@ -397,23 +632,28 @@ mod server {
         }
 
         fn connect(self: &Rc<Self>, id: u32, w: Writer, session: Session) {
+            let printer = session.is_printer();
+            let termid = self
+                .names
+                .lock()
+                .unwrap()
+                .termid(id, session.device.as_deref(), printer);
+            let term = if printer {
+                Terminal::new_printer(&termid)
+            } else {
+                Terminal::new(&termid)
+            };
             let t = Term {
-                term: Rc::new(RefCell::new(Terminal::new(&format!("T{id:03}")))),
+                term: Rc::new(RefCell::new(term)),
                 writer: w,
                 session: Rc::new(RefCell::new(session)),
                 waiting: Rc::default(),
             };
-            t.term.borrow_mut().good_morning();
-            {
-                let server = Rc::downgrade(self);
-                let me = t.clone();
-                t.term.borrow_mut().converse =
-                    Some(Box::new(move |_| server.upgrade()?.wait(id, &me)));
-            }
             {
                 let s = t.session.borrow();
                 eprintln!(
-                    "zcics: terminal T{id:03} connected ({}{}{})",
+                    "zcics: {} {termid} connected ({}{}{})",
+                    if printer { "printer" } else { "terminal" },
                     s.ttype,
                     if s.tn3270e { ", TN3270E" } else { "" },
                     s.device
@@ -422,11 +662,24 @@ mod server {
                         .unwrap_or_default()
                 );
             }
-            // the capabilities of a terminal with extended attributes
-            if t.session.borrow().caps.extended {
-                send(&t.writer, &t.session, &tn3270::query());
+            self.region
+                .borrow_mut()
+                .terminals
+                .insert(termid, Rc::downgrade(&t.term));
+            if !printer {
+                t.term.borrow_mut().good_morning();
+                let server = Rc::downgrade(self);
+                let me = t.clone();
+                t.term.borrow_mut().converse =
+                    Some(Box::new(move |_| server.upgrade()?.wait(id, &me)));
+                t.term.borrow_mut().model = t.session.borrow().caps.model();
+                // the capabilities of a terminal with extended attributes
+                if t.session.borrow().caps.extended {
+                    t.session.borrow_mut().query_pending = true;
+                    send(&t.writer, &t.session, &tn3270::query());
+                }
+                send_screen(&t.writer, &t.session, &t.term);
             }
-            send_screen(&t.writer, &t.session, &t.term.borrow());
             self.terms.borrow_mut().insert(id, t);
         }
     }
@@ -434,22 +687,30 @@ mod server {
     pub fn run(region: Rc<RefCell<Region>>, home: &Path, port: u16) -> std::io::Result<()> {
         let listener = TcpListener::bind(("0.0.0.0", port))?;
         eprintln!("zcics: TN3270 server listening on port {port}");
+        let csd: Csd = region.borrow().csd.clone();
+        let names = Arc::new(Mutex::new(Names {
+            in_use: HashMap::new(),
+            terminals: csd.terminals.into_iter().collect(),
+        }));
         let (tx, rx) = mpsc::channel();
-        let names: Arc<Mutex<HashSet<String>>> = Arc::default();
-        std::thread::spawn(move || {
-            for (n, s) in listener.incoming().enumerate() {
-                if let Ok(s) = s {
-                    let (tx, names) = (tx.clone(), names.clone());
-                    std::thread::spawn(move || connection(n as u32 + 1, s, tx, names));
+        {
+            let names = names.clone();
+            std::thread::spawn(move || {
+                for (n, s) in listener.incoming().enumerate() {
+                    if let Ok(s) = s {
+                        let (tx, names) = (tx.clone(), names.clone());
+                        std::thread::spawn(move || connection(n as u32 + 1, s, tx, names));
+                    }
                 }
-            }
-        });
+            });
+        }
         let server = Rc::new(Server {
             region,
             home: home.to_path_buf(),
             rx,
             held: RefCell::default(),
             terms: RefCell::default(),
+            names,
         });
         while let Some(msg) = server.next(|_| true) {
             server.dispatch(msg);
@@ -520,6 +781,8 @@ fn main() -> ExitCode {
     let mut mapsets = Vec::new();
     let mut script = None;
     let mut serve: Option<u16> = None;
+    let mut model: Option<u8> = None;
+    let mut printers: Vec<String> = Vec::new();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -537,6 +800,8 @@ fn main() -> ExitCode {
             "--loadlib" => loadlibs.push(PathBuf::from(it.next().unwrap_or_default())),
             "--mapsets" => mapsets.push(PathBuf::from(it.next().unwrap_or_default())),
             "--serve" => serve = it.next().and_then(|p| p.parse().ok()),
+            "--model" => model = it.next().and_then(|p| p.parse().ok()),
+            "--printer" => printers.push(it.next().unwrap_or_default().to_ascii_uppercase()),
             _ => script = Some(a),
         }
     }
@@ -569,35 +834,108 @@ fn main() -> ExitCode {
     };
     let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
     let term = Rc::new(RefCell::new(Terminal::new("T001")));
+    if let Some(n) = model {
+        let caps = zeus_cics::tn3270::Capabilities::of_type(&format!("IBM-3279-{n}-E"));
+        term.borrow_mut().model = caps.model();
+    }
     let script = Rc::new(RefCell::new(Script {
         name: script,
         lines: text.lines().map(str::to_string).collect(),
         pos: 0,
     }));
+    region
+        .borrow_mut()
+        .terminals
+        .insert("T001".into(), Rc::downgrade(&term));
+    // printers: what is printed goes to DIR/print/<termid>.txt
+    let printers: Vec<Rc<RefCell<Terminal>>> = printers
+        .iter()
+        .map(|p| {
+            let t = Rc::new(RefCell::new(Terminal::new_printer(p)));
+            region
+                .borrow_mut()
+                .terminals
+                .insert(p.clone(), Rc::downgrade(&t));
+            t
+        })
+        .collect();
     // a task waiting for input (conversational RECEIVE) reads the script on
     let s = script.clone();
-    term.borrow_mut().converse = Some(Box::new(move |t| match s.borrow_mut().next_key(t) {
-        Ok(k) => k,
-        Err(code) => std::process::exit(code),
+    term.borrow_mut().converse = Some(Box::new(move |t| {
+        loop {
+            match s.borrow_mut().next_key(t) {
+                Ok(Some(WAITED)) => continue,
+                Ok(k) => return k,
+                Err(code) => std::process::exit(code),
+            }
+        }
     }));
+    let report = |e: &Event, started: bool| {
+        let how = if started { "started " } else { "" };
+        match e {
+            Event::Abended { transid, code } => println!("* {how}{transid} abended {code}"),
+            Event::Ended { transid } => println!("* {how}{transid} ended"),
+            Event::Idle => {}
+        }
+    };
+    let after = || {
+        for (_, e) in region::run_due(&region) {
+            report(&e, true);
+        }
+        outbound(&term);
+        for msg in region.borrow_mut().log.drain(..) {
+            println!("* {msg}");
+        }
+        submit_jobs(&region, &home);
+        for p in &printers {
+            let pages = std::mem::take(&mut p.borrow_mut().printed);
+            if pages.is_empty() {
+                continue;
+            }
+            let id = p.borrow().id.clone();
+            let dir = home.join("print");
+            let mut text = String::new();
+            for page in &pages {
+                for l in page {
+                    let line: String = zeus_cobol::ebcdic::decode_latin1(l)
+                        .iter()
+                        .map(|&b| b as char)
+                        .collect();
+                    text.push_str(&line);
+                    text.push('\n');
+                }
+                text.push('\u{c}');
+            }
+            let r = std::fs::create_dir_all(&dir).and_then(|_| {
+                use std::io::Write;
+                std::fs::OpenOptions::new()
+                    .create(true)
+                    .append(true)
+                    .open(dir.join(format!("{id}.txt")))
+                    .and_then(|mut f| f.write_all(text.as_bytes()))
+            });
+            match r {
+                Ok(()) => println!("* printer {id} printed {} page(s)", pages.len()),
+                Err(e) => println!("* printer {id}: {e}"),
+            }
+        }
+    };
     loop {
         let key = script.borrow_mut().next_key(&term);
         match key {
+            Ok(Some(WAITED)) => after(),
             Ok(Some(a)) => {
                 let e = region::attention(&region, &term, a);
-                match &e {
-                    Event::Abended { transid, code } => println!("* {transid} abended {code}"),
-                    Event::Ended { transid } => println!("* {transid} ended"),
-                    Event::Idle => {}
-                }
-                for msg in region.borrow_mut().log.drain(..) {
-                    println!("* {msg}");
-                }
-                submit_jobs(&region, &home);
+                report(&e, false);
+                after();
             }
             Ok(None) => break,
             Err(code) => return ExitCode::from(code as u8),
         }
     }
+    after();
     ExitCode::SUCCESS
 }
+
+/// What `next_key` returns after a `wait` line (not an AID).
+const WAITED: u8 = 0;

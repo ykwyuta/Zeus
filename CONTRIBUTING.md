@@ -104,3 +104,11 @@ tools/carddemo-db2.sh test                # CardDemo's Db2 module, batch and onl
 
 `ZEUS_DB2_SCHEMA` sets the default schema; `ZEUS_DRDA_TRACE=1` prints the
 DRDA flows.
+
+## 3270 terminals
+
+`tools/carddemo-online.sh tn3270`, `tools/genapp.sh tn3270` and
+`tools/tn3270-test.sh` drive the TN3270 server with the x3270 family's
+scripted display emulator `s3270` and printer emulator `pr3287`
+(`apt-get install s3270 pr3287`). `ZEUS_TN3270_TRACE=1` prints the records
+the server sends and receives.

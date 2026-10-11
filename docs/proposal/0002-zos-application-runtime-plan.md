@@ -190,9 +190,20 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   オーダーと誤解されないよう空白にする。CLEAR・Telnet の TIMING-MARK・未知のオプションの拒否・
   ATTN (IP/BREAK) を扱う。GenApp の会話型画面 (Db2 の照会・更新) を s3270 で TN3270E と TN3270
   の両方から操作する試験を CI で実行している。
-  未着手: プリンタセッション (TN3270E ASSOCIATE、SCS)、BIND-IMAGE・SYSREQ 機能、
-  代替画面サイズでの送信 (Erase/Write Alternate)、構造化フィールドの他の用途、
-  会話型タスクが入力を待つ間の他端末の処理 (領域を待たせる)。
+  さらに、プリンタセッション (TN3270E の ASSOCIATE と CONNECT、CSD の TERMINAL 定義の
+  NETNAME・PRINTER による LU 名と端末 ID の対応、SCS-CTL-CODES 合意時は SCS データと
+  PRINT-EOJ、それ以外は印刷開始付きの 3270 書き込み)、BIND-IMAGE (LU 2 / 1 / 3 の BIND に
+  既定・代替画面サイズ) と UNBIND、SYSREQ (SSCP-LU データ、LOGOFF でセッション終了)、
+  代替画面サイズ (ERASE ALTERNATE で Erase/Write Alternate、CLEAR で既定サイズに戻る、
+  ASSIGN SCRNHT/ALTSCRNHT/COLOR など)、構造化フィールド (SEND STRFIELD を Write Structured
+  Field で送り、AID X'88' の応答を RECEIVE に渡す)、RECEIVE BUFFER、ERASEAUP、
+  START (TERMID・FROM・INTERVAL/AFTER/AT/TIME・REQID) / RETRIEVE / CANCEL と開始コード、
+  を実装した。会話型タスクが入力を待つ間は、他の端末の入力をその待ちの中で処理し (入れ子に
+  タスクを実行し、待っている端末宛ての入力は保留する)、各タスクは自分の Db2 接続を使う。
+  `tools/tn3270-test.sh` が s3270 (3279 モデル 5、TN3270E) と pr3287 (ASSOCIATE) でこれらを
+  確認し、GenApp の TN3270 試験は 2 端末の同時操作も確認する (いずれも CI)。
+  未着手: 端末からの入力待ちでない処理の並行実行 (計算の長いタスクは他を待たせる)、
+  SNA 応答 (RESPONSES は合意するが要求しない)、プリンタの BIND 以外の SNA 制御。
 
 ### Phase 5: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C6
 - EXEC SQL のコンパイラ統合、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。

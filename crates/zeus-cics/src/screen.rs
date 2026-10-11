@@ -139,6 +139,58 @@ impl Screen {
         }
     }
 
+    /// Erases the screen and gives it `rows` x `cols` (Erase/Write or
+    /// Erase/Write Alternate).
+    pub fn erase_to(&mut self, rows: usize, cols: usize) {
+        if (rows, cols) != (self.rows, self.cols) {
+            let (locked, alarm) = (self.locked, self.alarm);
+            *self = Screen::new(rows, cols);
+            self.locked = locked;
+            self.alarm = alarm;
+        } else {
+            self.erase();
+        }
+    }
+
+    /// Erase All Unprotected: nulls in the unprotected fields, their
+    /// modified data tags off, the cursor to the first of them.
+    pub fn erase_unprotected(&mut self) {
+        let n = self.size();
+        let mut first = None;
+        for f in self.fields() {
+            let Some(a) = self.attrs[f.attr_pos].as_mut() else {
+                continue;
+            };
+            if a.protected {
+                continue;
+            }
+            a.mdt = false;
+            first.get_or_insert(f.start);
+            for k in 0..f.len {
+                self.chars[(f.start + k) % n] = 0;
+            }
+        }
+        if let Some(c) = first {
+            self.cursor = c;
+        }
+    }
+
+    /// The buffer as a Read Buffer sends it: characters, SF and the
+    /// attribute byte at field positions.
+    pub fn read_buffer(&self) -> Vec<u8> {
+        let mut out = Vec::with_capacity(self.size() * 2);
+        for (c, a) in self.chars.iter().zip(&self.attrs) {
+            match a {
+                Some(a) => {
+                    out.push(0x1D);
+                    out.push(a.byte());
+                }
+                None => out.push(*c),
+            }
+        }
+        out
+    }
+
     pub fn size(&self) -> usize {
         self.rows * self.cols
     }

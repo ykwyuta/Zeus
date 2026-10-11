@@ -95,6 +95,11 @@ struct State {
     /// The terminal input that started the task has not been read nor
     /// overwritten by a SEND; otherwise RECEIVE waits for new input.
     input_pending: bool,
+    /// How the task started: TD (terminal input), S / SD (START without /
+    /// with data).
+    startcode: &'static str,
+    /// The FROM data of START, for RETRIEVE.
+    start_data: Option<Vec<u8>>,
     browses: HashMap<String, Browse>,
     /// Primary key of the record each file last read for UPDATE.
     updates: HashMap<String, Vec<u8>>,
@@ -121,6 +126,35 @@ pub fn run(
     aid_byte: u8,
     commarea: Option<Vec<u8>>,
 ) -> Result<(), String> {
+    run_task(region, term, transid, aid_byte, commarea, None)
+}
+
+/// Runs a transaction started by START (with its FROM data, for
+/// RETRIEVE) at its terminal, or without one.
+pub fn run_started(
+    region: &Shared<Region>,
+    term: &Shared<Terminal>,
+    transid: &str,
+    data: Option<Vec<u8>>,
+) -> Result<(), String> {
+    run_task(region, term, transid, 0, None, Some(data))
+}
+
+fn run_task(
+    region: &Shared<Region>,
+    term: &Shared<Terminal>,
+    transid: &str,
+    aid_byte: u8,
+    commarea: Option<Vec<u8>>,
+    start: Option<Option<Vec<u8>>>,
+) -> Result<(), String> {
+    let startcode = match &start {
+        None => "TD",
+        Some(None) => "S",
+        Some(Some(_)) => "SD",
+    };
+    let start_data = start.flatten();
+    term.borrow_mut().busy = true;
     let program = region.borrow().csd.transactions[transid].clone();
     let loadlibs = region.borrow().loadlibs.clone();
     let taskn = {
@@ -144,7 +178,9 @@ pub fn run(
             programs: Vec::new(),
             handlers: HashMap::new(),
             xctl: None,
-            input_pending: true,
+            input_pending: startcode == "TD",
+            startcode,
+            start_data,
             browses: HashMap::new(),
             updates: HashMap::new(),
             undo: Vec::new(),
@@ -160,7 +196,11 @@ pub fn run(
         (a, c.len())
     });
     let r = task.run_level(&mut m, &program, ca, true);
-    term.borrow_mut().screen.locked = false;
+    {
+        let mut t = term.borrow_mut();
+        t.screen.locked = false;
+        t.busy = false;
+    }
     // end of task: the unit of work is committed, or backed out on abend
     let r = match task.end_uow(r.is_ok()) {
         Ok(()) => r,
@@ -577,6 +617,26 @@ impl Task {
     fn send(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
         self.st.borrow_mut().input_pending = false;
         let mut t = self.term.borrow_mut();
+        if call.has("STRFIELD") {
+            // structured fields, for a Write Structured Field
+            let mut rec = vec![0xF3];
+            rec.extend(Self::from_data(m, call));
+            t.outbound.push(rec);
+            drop(t);
+            return self.finish(m, call, "NORMAL", 0);
+        }
+        // ERASE: the default screen size, or the alternate with ALTERNATE
+        if call.has("ERASE") {
+            let (r, c) = if call.has("ALTERNATE") {
+                t.model.alternate
+            } else {
+                crate::region::DEFAULT_SIZE
+            };
+            t.screen.erase_to(r, c);
+        }
+        if call.has("ERASEAUP") {
+            t.screen.erase_unprotected();
+        }
         let screen = &mut t.screen;
         if call.has("MAP") {
             let map_name = Self::opt_text(m, call, "MAP").unwrap_or_default();
@@ -602,19 +662,9 @@ impl Task {
             } else {
                 None
             };
-            bms::send_map(
-                screen,
-                map,
-                data.as_deref(),
-                mode,
-                call.has("ERASE"),
-                cursor,
-            );
+            bms::send_map(screen, map, data.as_deref(), mode, false, cursor);
         } else if call.has("TEXT") {
             let data = Self::from_data(m, call);
-            if call.has("ERASE") {
-                screen.erase();
-            }
             let cols = screen.cols;
             let mut pos = 0;
             for line in data.split(|&b| b == 0x15) {
@@ -624,18 +674,12 @@ impl Task {
                 }
             }
         } else if call.has("CONTROL") {
-            if call.has("ERASE") {
-                screen.erase();
-            }
             if let Some(c) = Self::opt_num(m, call, "CURSOR") {
                 screen.cursor = c.max(0) as usize % screen.size();
             }
         } else {
             // SEND FROM: unformatted output
             let data = Self::from_data(m, call);
-            if call.has("ERASE") {
-                screen.erase();
-            }
             screen.write(0, &data);
         }
         if call.has("FREEKB") {
@@ -644,8 +688,101 @@ impl Task {
         if call.has("ALARM") {
             screen.alarm = true;
         }
+        // a printer prints what it was sent
+        if t.printer && !call.has("ACCUM") {
+            t.print_buffer();
+        }
         drop(t);
         self.finish(m, call, "NORMAL", 0)
+    }
+
+    // ---- interval control ---------------------------------------------------
+
+    /// START TRANSID [TERMID] [FROM LENGTH] [INTERVAL | TIME | AFTER | AT]
+    /// [REQID], CANCEL REQID, RETRIEVE.
+    fn interval(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        match call.command.as_str() {
+            "START" => {
+                let transid = Self::opt_text(m, call, "TRANSID")
+                    .unwrap_or_default()
+                    .trim_end()
+                    .to_string();
+                let termid = Self::opt_text(m, call, "TERMID").map(|t| t.trim_end().to_string());
+                {
+                    let r = self.region.borrow();
+                    if !r.csd.transactions.contains_key(&transid) {
+                        drop(r);
+                        return self.finish(m, call, "TRANSIDERR", 0);
+                    }
+                    // a terminal of the region, or one defined (it may
+                    // connect later)
+                    if let Some(t) = &termid
+                        && !r.terminals.contains_key(t)
+                        && !r.csd.terminals.contains_key(t)
+                    {
+                        drop(r);
+                        return self.finish(m, call, "TERMIDERR", 0);
+                    }
+                }
+                let data = call.arg("FROM").map(|_| Self::from_data(m, call));
+                let hms = |v: i64| (v / 10000) * 3600 + (v / 100 % 100) * 60 + v % 100;
+                let secs = if let Some(v) = Self::opt_num(m, call, "INTERVAL") {
+                    hms(v)
+                } else if call.has("AFTER") {
+                    Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
+                        + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
+                        + Self::opt_num(m, call, "SECONDS").unwrap_or(0)
+                } else if let Some(v) = Self::opt_num(m, call, "TIME") {
+                    let (_, _, _, _, h, mi, sec, _) = time::split(time::abstime_now());
+                    (hms(v) - (h * 3600 + mi * 60 + sec)).max(0)
+                } else if call.has("AT") {
+                    let (_, _, _, _, h, mi, sec, _) = time::split(time::abstime_now());
+                    let at = Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
+                        + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
+                        + Self::opt_num(m, call, "SECONDS").unwrap_or(0);
+                    (at - (h * 3600 + mi * 60 + sec)).max(0)
+                } else {
+                    0
+                };
+                let reqid = Self::opt_text(m, call, "REQID").map(|r| r.trim_end().to_string());
+                self.region.borrow_mut().starts.push(region::StartRequest {
+                    transid,
+                    termid,
+                    data,
+                    reqid,
+                    due: std::time::Instant::now()
+                        + std::time::Duration::from_secs(secs.max(0) as u64),
+                });
+                self.finish(m, call, "NORMAL", 0)
+            }
+            "CANCEL" => {
+                let reqid = Self::opt_text(m, call, "REQID").map(|r| r.trim_end().to_string());
+                let mut r = self.region.borrow_mut();
+                let before = r.starts.len();
+                r.starts.retain(|s| reqid.is_none() || s.reqid != reqid);
+                let gone = r.starts.len() < before;
+                drop(r);
+                self.finish(m, call, if gone { "NORMAL" } else { "NOTFND" }, 0)
+            }
+            // RETRIEVE: the data of the START, once
+            _ => {
+                let data = self.st.borrow_mut().start_data.take();
+                let Some(data) = data else {
+                    return self.finish(m, call, "ENDDATA", 0);
+                };
+                if let Some(a) = Self::area(call, "SET") {
+                    let addr = m.getmain(data.len(), 0);
+                    m.storage_mut()[addr..addr + data.len()].copy_from_slice(&data);
+                    Self::store_num(m, &a, addr as i64);
+                    if let Some(l) = Self::area(call, "LENGTH") {
+                        Self::store_num(m, &l, data.len() as i64);
+                    }
+                    return self.finish(m, call, "NORMAL", 0);
+                }
+                let cond = Self::deliver(m, call, &data);
+                self.finish(m, call, cond, 0)
+            }
+        }
     }
 
     fn receive(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
@@ -681,6 +818,18 @@ impl Task {
                     return Ok(ExecOutcome::Goto(l));
                 }
             }
+        }
+        if call.has("BUFFER") {
+            // the whole buffer, as a Read Buffer returns it
+            let data = self.term.borrow().screen.read_buffer();
+            let cond = Self::deliver(m, call, &data);
+            return self.finish(m, call, cond, 0);
+        }
+        if aid_byte == 0x88 {
+            // structured fields from the terminal (a reply to SEND STRFIELD)
+            let data = self.term.borrow_mut().inbound_sf.take().unwrap_or_default();
+            let cond = Self::deliver(m, call, &data);
+            return self.finish(m, call, cond, 0);
         }
         if call.has("MAP") {
             let map_name = Self::opt_text(m, call, "MAP").unwrap_or_default();
@@ -1284,16 +1433,30 @@ impl Task {
                 "USERID" | "USERNAME" => userid.clone(),
                 "PROGRAM" => program.clone(),
                 "INVOKINGPROG" => invoking.clone(),
-                "STARTCODE" => "TD".into(),
+                "STARTCODE" => self.st.borrow().startcode.into(),
                 "FACILITY" | "NETNAME" | "TERMCODE" => termid.clone(),
                 "OPID" => String::new(),
                 "ABCODE" => abcode.clone(),
-                "SCRNHT" => {
-                    Self::store_num(m, a, 24);
+                "SCRNHT" | "SCRNWD" | "DEFSCRNHT" | "DEFSCRNWD" | "ALTSCRNHT" | "ALTSCRNWD" => {
+                    let t = self.term.borrow();
+                    let (r, c) = match name.as_str() {
+                        "SCRNHT" | "SCRNWD" => (t.screen.rows, t.screen.cols),
+                        "ALTSCRNHT" | "ALTSCRNWD" => t.model.alternate,
+                        _ => crate::region::DEFAULT_SIZE,
+                    };
+                    drop(t);
+                    Self::store_num(m, a, if name.ends_with("HT") { r } else { c } as i64);
                     continue;
                 }
-                "SCRNWD" => {
-                    Self::store_num(m, a, 80);
+                "COLOR" | "HILIGHT" | "EXTDS" | "PS" | "OUTLINE" | "VALIDATION" => {
+                    let model = self.term.borrow().model;
+                    let yes = match name.as_str() {
+                        "COLOR" => model.color,
+                        "HILIGHT" => model.hilight,
+                        "EXTDS" => model.extended,
+                        _ => false,
+                    };
+                    m.storage_mut()[a.addr] = if yes { 0xFF } else { 0 };
                     continue;
                 }
                 "CWALENG" | "TWALENG" | "TCTUALENG" => {
@@ -1458,6 +1621,8 @@ impl ExecHost for Task {
             {
                 self.counters(m, call)
             }
+            "START" | "RETRIEVE" => self.interval(m, call),
+            "CANCEL" if call.has("REQID") => self.interval(m, call),
             "SEND" => self.send(m, call),
             "RECEIVE" => self.receive(m, call),
             "READ" | "WRITE" | "REWRITE" | "DELETE" | "UNLOCK" | "STARTBR" | "READNEXT"

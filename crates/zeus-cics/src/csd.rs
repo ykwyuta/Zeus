@@ -4,6 +4,14 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 
+/// A TERMINAL definition.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct TerminalDef {
+    pub netname: Option<String>,
+    /// The printer (terminal identifier) of a display.
+    pub printer: Option<String>,
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Csd {
     /// TRANSACTION -> PROGRAM.
@@ -12,6 +20,8 @@ pub struct Csd {
     pub files: BTreeMap<String, String>,
     /// FILEs with RECOVERY(BACKOUTONLY) or RECOVERY(ALL).
     pub recoverable: BTreeSet<String>,
+    /// TERMINALs: identifier -> NETNAME (LU name) and PRINTER.
+    pub terminals: BTreeMap<String, TerminalDef>,
     pub programs: Vec<String>,
     pub mapsets: Vec<String>,
 }
@@ -78,6 +88,14 @@ impl Csd {
                 if let Some(d) = get("DSNAME") {
                     csd.files.insert(f, d);
                 }
+            } else if let Some(t) = get("TERMINAL") {
+                csd.terminals.insert(
+                    t,
+                    TerminalDef {
+                        netname: get("NETNAME"),
+                        printer: get("PRINTER"),
+                    },
+                );
             } else if let Some(p) = get("PROGRAM") {
                 csd.programs.push(p);
             } else if let Some(m) = get("MAPSET") {
@@ -110,6 +128,7 @@ impl Csd {
         self.transactions.extend(other.transactions);
         self.files.extend(other.files);
         self.recoverable.extend(other.recoverable);
+        self.terminals.extend(other.terminals);
         self.programs.extend(other.programs);
         self.mapsets.extend(other.mapsets);
     }

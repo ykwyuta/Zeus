@@ -88,7 +88,7 @@ case ${1:-} in
         ;;
     tn3270)
         # a 3270 emulator (s3270) works the conversational screens on Db2:
-        # TN3270E with an LU name, then plain TN3270
+        # TN3270E with an LU name, then plain TN3270, then two terminals
         port=13271
         (exec $bin/zcics --home "$home" --csd "$home/GENAPP.CSD" --loadlib "$home/loadlib" \
             --mapsets "$home/maps" --serve $port >"$home/tn3270-server.log" 2>&1) &
@@ -96,7 +96,25 @@ case ${1:-} in
         sleep 1
         sed "s/localhost:3270/localhost:$port/" tools/genapp/tn3270.s3270 |
             timeout 120 s3270 >"$home/tn3270.log" 2>&1 || true
+        # two terminals: A waits in a conversational update while B's
+        # inquiry runs; B ends first, then A's update goes through
+        a='Connect(localhost:'$port')\nWait(10,InputField)\nClear()\nString("SSC1")\nEnter()\nWait(10,Output)\nString("0000000005")\nMoveCursor(21,24)\nString("4")\nEnter()\nWait(10,Output)\n'
+        a2='MoveCursor(12,50)\nEraseEOF()\nString("graham@example.com")\nEnter()\nWait(10,Output)\nAscii(23,0,1,80)\nQuit()\n'
+        b='Connect(localhost:'$port')\nWait(10,InputField)\nClear()\nString("SSC1")\nEnter()\nWait(10,Output)\nString("0000000006")\nMoveCursor(21,24)\nString("1")\nEnter()\nWait(10,Output)\nAscii(4,0,1,80)\nQuit()\n'
+        ( (printf "$a"; sleep 4; printf "$a2") | timeout 60 s3270 >"$home/tn3270-a.log" 2>&1
+            date +%s%N >"$home/tn3270-a.end" ) &
+        session_a=$!
+        sleep 2
+        printf "$b" | timeout 30 s3270 >"$home/tn3270-b.log" 2>&1
+        date +%s%N >"$home/tn3270-b.end"
+        wait $session_a
         kill $server
+        grep -q "Brian" "$home/tn3270-b.log" && grep -q "Customer details updated" "$home/tn3270-a.log" &&
+            [ "$(cat "$home/tn3270-b.end")" -lt "$(cat "$home/tn3270-a.end")" ] || {
+            cat "$home/tn3270-a.log" "$home/tn3270-b.log" "$home/tn3270-server.log"
+            echo "TN3270 test failed: terminal B did not run while A waited" >&2
+            exit 1
+        }
         for want in "HIGH CUSTOMER=0000000011" "Andrew" "Customer details updated" \
             "07700 900004" "Transaction ended" "Louis"; do
             if ! grep -q "$want" "$home/tn3270.log"; then
@@ -105,7 +123,7 @@ case ${1:-} in
                 exit 1
             fi
         done
-        for want in "TN3270E, LU ZEUSLU01" "T002 connected (IBM-327[89]-[2-5]-E)\$" \
+        for want in "TN3270E, LU ZEUSLU01" "T002 connected (IBM-327[89]-[2-5]-E, LU ZEUS0002)" \
             "T001 query reply"; do
             if ! grep -q -- "$want" "$home/tn3270-server.log"; then
                 cat "$home/tn3270-server.log"
@@ -113,7 +131,7 @@ case ${1:-} in
                 exit 1
             fi
         done
-        echo "GenApp through s3270 (TN3270E and TN3270) passed"
+        echo "GenApp through s3270 (TN3270E, TN3270, two terminals) passed"
         ;;
     *) echo "usage: $0 setup | run SCRIPT... | serve [PORT] | test | tn3270" >&2; exit 2 ;;
 esac

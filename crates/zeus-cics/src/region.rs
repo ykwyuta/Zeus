@@ -94,6 +94,12 @@ pub struct Region {
     pub task_count: u32,
     /// Messages of the region (abends, ...).
     pub log: Vec<String>,
+    /// Transactions started by START, run when due and their terminal is
+    /// free.
+    pub starts: Vec<StartRequest>,
+    /// Terminals of the region by terminal identifier (displays and
+    /// printers), for START TERMID.
+    pub terminals: HashMap<String, std::rc::Weak<RefCell<Terminal>>>,
     /// Named counters by (pool, name).
     pub counters: BTreeMap<(String, String), Counter>,
     /// Whether the region is attached to Db2 (ZEUS_DB2), for EXEC SQL.
@@ -120,6 +126,16 @@ impl Region {
     pub fn db2_release(&mut self, h: Rc<zeus_db2::Db2Host>) {
         self.db2_free.push(h);
     }
+}
+
+/// A START request.
+#[derive(Debug, Clone)]
+pub struct StartRequest {
+    pub transid: String,
+    pub termid: Option<String>,
+    pub data: Option<Vec<u8>>,
+    pub reqid: Option<String>,
+    pub due: std::time::Instant,
 }
 
 /// A named counter: the next value to assign and its range.
@@ -150,6 +166,8 @@ impl Region {
             files: HashMap::new(),
             task_count: 0,
             counters: BTreeMap::new(),
+            starts: Vec::new(),
+            terminals: HashMap::new(),
             log: Vec::new(),
             db2: std::env::var_os("ZEUS_DB2").is_some(),
             db2_free: Vec::new(),
@@ -211,7 +229,82 @@ pub struct Terminal {
     /// conversational RECEIVE): it updates the screen and returns the
     /// attention key, None when no more input comes.
     pub converse: Option<Converse>,
+    /// The terminal model: alternate screen size and extended attributes.
+    pub model: Model,
+    /// Records for the terminal outside the screen (structured fields of
+    /// SEND STRFIELD), sent before the next screen.
+    pub outbound: Vec<Vec<u8>>,
+    /// Structured fields the terminal sent (AID X'88') for RECEIVE.
+    pub inbound_sf: Option<Vec<u8>>,
+    /// A printer: what tasks send to it is printed (pages in `printed`).
+    pub printer: bool,
+    /// Pages printed and not yet delivered: lines of EBCDIC text.
+    pub printed: Vec<Vec<Vec<u8>>>,
+    /// A task runs at the terminal.
+    pub busy: bool,
 }
+
+impl Terminal {
+    /// A printer terminal.
+    pub fn new_printer(id: &str) -> Terminal {
+        let mut t = Terminal::new(id);
+        t.printer = true;
+        t
+    }
+
+    /// Prints the buffer of a printer: its lines (trailing blanks and
+    /// empty lines at the end dropped) become a page.
+    pub fn print_buffer(&mut self) {
+        let s = &self.screen;
+        let mut lines: Vec<Vec<u8>> = (0..s.rows)
+            .map(|r| {
+                let mut l: Vec<u8> = (0..s.cols)
+                    .map(|c| {
+                        let p = r * s.cols + c;
+                        match (s.attrs[p], s.chars[p]) {
+                            (Some(_), _) | (None, 0) => ebcdic::SPACE,
+                            (None, ch) => ch,
+                        }
+                    })
+                    .collect();
+                while l.last() == Some(&ebcdic::SPACE) {
+                    l.pop();
+                }
+                l
+            })
+            .collect();
+        while lines.last().is_some_and(Vec::is_empty) {
+            lines.pop();
+        }
+        if !lines.is_empty() {
+            self.printed.push(lines);
+        }
+        self.screen.erase();
+    }
+}
+
+/// What a terminal can do (ASSIGN ALTSCRNHT, COLOR, ...).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct Model {
+    pub alternate: (usize, usize),
+    pub extended: bool,
+    pub color: bool,
+    pub hilight: bool,
+}
+
+impl Default for Model {
+    fn default() -> Model {
+        Model {
+            alternate: (24, 80),
+            extended: true,
+            color: true,
+            hilight: true,
+        }
+    }
+}
+
+/// The default screen size (Erase/Write).
+pub const DEFAULT_SIZE: (usize, usize) = (24, 80);
 
 pub type Converse = Box<dyn FnMut(&Shared<Terminal>) -> Option<u8>>;
 
@@ -249,12 +342,23 @@ impl Terminal {
             userid: "ZEUSUSER".into(),
             next: None,
             converse: None,
+            model: Model::default(),
+            outbound: Vec::new(),
+            inbound_sf: None,
+            printer: false,
+            printed: Vec::new(),
+            busy: false,
         }
     }
 }
 
 /// The operator pressed attention key `aid` at terminal `term`.
 pub fn attention(region: &Shared<Region>, term: &Shared<Terminal>, aid: u8) -> Event {
+    if aid == aid::CLEAR {
+        // CLEAR erases the screen and gives it the default size
+        let (r, c) = DEFAULT_SIZE;
+        term.borrow_mut().screen.erase_to(r, c);
+    }
     let next = term.borrow_mut().next.take();
     let (transid, commarea) = match next {
         Some(n) => n,
@@ -313,4 +417,53 @@ pub fn attention(region: &Shared<Region>, term: &Shared<Terminal>, aid: u8) -> E
             Event::Abended { transid, code }
         }
     }
+}
+
+/// Runs the started transactions that are due and whose terminal (if any)
+/// is free; their events, with the terminal identifier.
+pub fn run_due(region: &Shared<Region>) -> Vec<(String, Event)> {
+    let mut events = Vec::new();
+    loop {
+        let now = std::time::Instant::now();
+        let pick = {
+            let r = region.borrow();
+            r.starts.iter().position(|s| {
+                s.due <= now
+                    && match &s.termid {
+                        None => true,
+                        Some(t) => r
+                            .terminals
+                            .get(t)
+                            .and_then(std::rc::Weak::upgrade)
+                            .is_some_and(|t| !t.borrow().busy),
+                    }
+            })
+        };
+        let Some(i) = pick else { break };
+        let s = region.borrow_mut().starts.remove(i);
+        let term = match &s.termid {
+            Some(t) => region.borrow().terminals[t].upgrade().unwrap(),
+            // no terminal: the task has no principal facility
+            None => Rc::new(RefCell::new(Terminal::new(""))),
+        };
+        if !region.borrow().csd.transactions.contains_key(&s.transid) {
+            continue;
+        }
+        let e = match crate::task::run_started(region, &term, &s.transid, s.data) {
+            Ok(()) => Event::Ended {
+                transid: s.transid.clone(),
+            },
+            Err(code) => Event::Abended {
+                transid: s.transid.clone(),
+                code,
+            },
+        };
+        events.push((s.termid.unwrap_or_default(), e));
+    }
+    events
+}
+
+/// When the next started transaction is due.
+pub fn next_due(region: &Shared<Region>) -> Option<std::time::Instant> {
+    region.borrow().starts.iter().map(|s| s.due).min()
 }
