@@ -15,4 +15,5 @@ pub mod region;
 pub mod screen;
 pub mod task;
 pub mod time;
+pub mod tls;
 pub mod tn3270;

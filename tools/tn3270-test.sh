@@ -145,6 +145,32 @@ $bin/zjob --home "$work" catalog print ZEUS.FT.TEXT | grep -q "second, a longer 
 [ "$(grep -c 'TRANS03 File transfer complete' "$work/server4.log")" = 4 ] ||
     { cat "$work/server4.log"; fail "four transfers did not complete"; }
 
+# TLS: TN3270 over TLS on its own port, STARTTLS on the plain one (and
+# a client that refuses it goes on in plain)
+openssl req -x509 -newkey rsa:2048 -nodes -keyout "$work/key.pem" -out "$work/cert.pem" \
+    -days 2 -subj "/CN=localhost" 2>/dev/null
+tport=$((port + 1))
+(exec $bin/zcics --home "$work" --csd "$src/TEST.CSD" --loadlib "$work/loadlib" \
+    --serve $port --serve-tls $tport --tls-cert "$work/cert.pem" --tls-key "$work/key.pem" \
+    >"$work/server6.log" 2>&1) &
+server=$!
+sleep 1
+for target in "L:Y:localhost:$tport" "Y:localhost:$port" "localhost:$port -set startTls=false"; do
+    host=${target%% *}
+    opts=${target#"$host"}
+    # (s3270 4.1 may crash on leaving when STARTTLS is off; what it read
+    # before is what the test checks)
+    # shellcheck disable=SC2086
+    (printf 'Connect(%s)\nWait(10,InputField)\nQuery(Tls)\nClear()\nString("ZALT")\nEnter()\nWait(10,Output)\nWait(1,Seconds)\nAscii(0,0,1,40)\nQuit()\n' "$host" |
+        timeout 30 s3270 $opts >>"$work/tls.log" 2>&1) 2>/dev/null || true
+done
+kill $server 2>/dev/null || true
+wait $server 2>/dev/null || true
+[ "$(grep -c 'data: secure host-unverified' "$work/tls.log")" = 2 ] &&
+    [ "$(grep -c 'data: not secure' "$work/tls.log")" = 1 ] &&
+    [ "$(grep -c 'data: SIZE ' "$work/tls.log")" = 3 ] ||
+    { cat "$work/tls.log" "$work/server6.log"; fail "TLS sessions"; }
+
 # a Japanese screen (CCSID 939)
 jp=crates/zeus-cics/tests/japanese
 mkdir -p "$work/jp/maps" "$work/jp/copy" "$work/jp/loadlib"
@@ -165,4 +191,4 @@ for want in "日本語の画面" "お名前：   山田" "こんにちは、  �
     grep -q "$want" "$work/japanese.log" || { cat "$work/japanese.log" "$work/server3.log"; fail "Japanese: '$want' not shown"; }
 done
 grep -q "dbcs: true" "$work/server3.log" || fail "Japanese: DBCS not in the Query Reply"
-echo "TN3270E display (model 5, oversize, Japanese), printer, structured fields, SYSREQ and IND\$FILE passed"
+echo "TN3270E display (model 5, oversize, Japanese), printer, structured fields, SYSREQ, IND\$FILE and TLS passed"

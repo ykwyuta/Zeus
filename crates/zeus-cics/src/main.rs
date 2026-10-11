@@ -3,7 +3,11 @@
 //! ```text
 //! zcics [--home DIR] [--csd FILE]... [--loadlib DIR]... [--mapsets DIR]... SCRIPT
 //! zcics [options] --serve PORT
+//! zcics [options] --serve-tls PORT --tls-cert CERT.pem --tls-key KEY.pem
 //! ```
+//!
+//! `--serve-tls` listens for TN3270 over TLS (with `--serve`, or alone);
+//! with a certificate, the `--serve` port offers STARTTLS.
 //!
 //! `--model N` (2-5) gives the script's terminal the alternate screen size
 //! of a 3278/3279 model N (24x80, 32x80, 43x80, 27x132). `--printer ID`
@@ -209,9 +213,10 @@ mod server {
     use std::cell::RefCell;
     use std::collections::{HashMap, VecDeque};
     use std::io::Write;
-    use std::net::{Shutdown, TcpListener, TcpStream};
+    use std::net::TcpListener;
     use std::path::Path;
     use std::rc::Rc;
+    use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex, mpsc};
     use std::time::Instant;
 
@@ -220,7 +225,9 @@ mod server {
     use zeus_cics::tn3270::{self, DeviceRequest, Inbound, Refusal, Session};
     use zeus_cobol::ebcdic;
 
-    type Writer = Arc<Mutex<TcpStream>>;
+    use zeus_cics::tls::{self, Conn};
+
+    type Writer = Arc<Mutex<Conn>>;
 
     enum Msg {
         Connect(u32, Writer, Session),
@@ -300,7 +307,7 @@ mod server {
         }
     }
 
-    fn connection(id: u32, mut stream: TcpStream, tx: mpsc::Sender<Msg>, names: Arc<Mutex<Names>>) {
+    fn connection(id: u32, mut stream: Conn, tx: mpsc::Sender<Msg>, names: Arc<Mutex<Names>>) {
         let session = tn3270::negotiate(&mut stream, |ttype, req| {
             names.lock().unwrap().name(id, ttype, req)
         });
@@ -540,7 +547,7 @@ mod server {
                     if text.contains("LOGOFF") {
                         let mut w = t.writer.lock().unwrap();
                         let _ = t.session.borrow_mut().unbind(&mut *w);
-                        let _ = w.shutdown(Shutdown::Both);
+                        let _ = w.shutdown();
                     } else {
                         self.sscp_say(&t, "ZEUS SSCP: COMMAND NOT RECOGNIZED");
                     }
@@ -700,26 +707,58 @@ mod server {
         }
     }
 
-    pub fn run(region: Rc<RefCell<Region>>, home: &Path, port: u16) -> std::io::Result<()> {
-        let listener = TcpListener::bind(("0.0.0.0", port))?;
-        eprintln!("zcics: TN3270 server listening on port {port}");
+    /// A port the server listens on, with TLS when it has a configuration.
+    pub struct Listen {
+        pub port: u16,
+        pub tls: Option<Arc<rustls::ServerConfig>>,
+        /// A plain port that offers STARTTLS with this configuration.
+        pub starttls: Option<Arc<rustls::ServerConfig>>,
+    }
+
+    pub fn run(
+        region: Rc<RefCell<Region>>,
+        home: &Path,
+        ports: Vec<Listen>,
+    ) -> std::io::Result<()> {
         let csd: Csd = region.borrow().csd.clone();
         let names = Arc::new(Mutex::new(Names {
             in_use: HashMap::new(),
             terminals: csd.terminals.into_iter().collect(),
         }));
         let (tx, rx) = mpsc::channel();
-        {
-            let names = names.clone();
+        let ids = Arc::new(AtomicU32::new(1));
+        for l in ports {
+            let listener = TcpListener::bind(("0.0.0.0", l.port))?;
+            eprintln!(
+                "zcics: TN3270 server listening on port {}{}",
+                l.port,
+                if l.tls.is_some() { " (TLS)" } else { "" }
+            );
+            let (names, tx, ids) = (names.clone(), tx.clone(), ids.clone());
             std::thread::spawn(move || {
-                for (n, s) in listener.incoming().enumerate() {
-                    if let Ok(s) = s {
-                        let (tx, names) = (tx.clone(), names.clone());
-                        std::thread::spawn(move || connection(n as u32 + 1, s, tx, names));
-                    }
+                for s in listener.incoming().flatten() {
+                    let id = ids.fetch_add(1, Ordering::SeqCst);
+                    let (tx, names, tls) = (tx.clone(), names.clone(), l.tls.clone());
+                    let starttls = l.starttls.clone();
+                    std::thread::spawn(move || {
+                        let conn = match (tls, starttls) {
+                            (Some(cfg), _) => tls::accept(s, cfg),
+                            (None, Some(cfg)) => tls::starttls(s, cfg),
+                            (None, None) => Ok(Conn::Tcp(s)),
+                        };
+                        let conn = match conn {
+                            Ok(c) => c,
+                            Err(e) => {
+                                eprintln!("zcics: connection {id}: TLS: {e}");
+                                return;
+                            }
+                        };
+                        connection(id, conn, tx, names)
+                    });
                 }
             });
         }
+        drop(tx);
         let server = Rc::new(Server {
             region,
             home: home.to_path_buf(),
@@ -797,6 +836,9 @@ fn main() -> ExitCode {
     let mut mapsets = Vec::new();
     let mut script = None;
     let mut serve: Option<u16> = None;
+    let mut serve_tls: Option<u16> = None;
+    let mut tls_cert: Option<String> = None;
+    let mut tls_key: Option<String> = None;
     let mut model: Option<u8> = None;
     let mut printers: Vec<String> = Vec::new();
     let mut it = std::env::args().skip(1);
@@ -816,6 +858,9 @@ fn main() -> ExitCode {
             "--loadlib" => loadlibs.push(PathBuf::from(it.next().unwrap_or_default())),
             "--mapsets" => mapsets.push(PathBuf::from(it.next().unwrap_or_default())),
             "--serve" => serve = it.next().and_then(|p| p.parse().ok()),
+            "--serve-tls" => serve_tls = it.next().and_then(|p| p.parse().ok()),
+            "--tls-cert" => tls_cert = it.next(),
+            "--tls-key" => tls_key = it.next(),
             "--model" => model = it.next().and_then(|p| p.parse().ok()),
             "--printer" => printers.push(it.next().unwrap_or_default().to_ascii_uppercase()),
             _ => script = Some(a),
@@ -828,9 +873,39 @@ fn main() -> ExitCode {
             return ExitCode::from(16);
         }
     };
-    if let Some(port) = serve {
+    if serve.is_some() || serve_tls.is_some() {
+        let cfg = match (&tls_cert, &tls_key) {
+            (Some(cert), Some(key)) => match zeus_cics::tls::config(cert, key) {
+                Ok(c) => Some(c),
+                Err(e) => {
+                    eprintln!("zcics: {e}");
+                    return ExitCode::from(16);
+                }
+            },
+            _ => None,
+        };
+        let mut ports = Vec::new();
+        if let Some(port) = serve {
+            // with a certificate, the plain port offers STARTTLS
+            ports.push(server::Listen {
+                port,
+                tls: None,
+                starttls: cfg.clone(),
+            });
+        }
+        if let Some(port) = serve_tls {
+            let Some(cfg) = cfg else {
+                eprintln!("zcics: --serve-tls needs --tls-cert and --tls-key");
+                return ExitCode::from(2);
+            };
+            ports.push(server::Listen {
+                port,
+                tls: Some(cfg),
+                starttls: None,
+            });
+        }
         let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
-        return match server::run(region, &home, port) {
+        return match server::run(region, &home, ports) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
                 eprintln!("zcics: {e}");
