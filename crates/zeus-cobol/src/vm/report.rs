@@ -236,9 +236,9 @@ impl Machine {
         st.phys = st.phys.max(line.saturating_sub(1)) + 1;
         let mut out = vec![b'\n'; blank as usize];
         if let Some(c) = &def.code {
-            out.extend(ebcdic::decode_latin1(c));
+            out.extend(ebcdic::to_host(c));
         }
-        let mut t = ebcdic::decode_latin1(text);
+        let mut t = ebcdic::to_host(text);
         while t.last() == Some(&b' ') {
             t.pop();
         }

@@ -2380,6 +2380,7 @@ impl<'a> Gen<'a> {
             let cat = match &d.ty {
                 DataType::Alphabetic { .. } => Category::Alphabetic,
                 DataType::Alphanumeric { .. } | DataType::Group => Category::Alphanumeric,
+                DataType::Dbcs => Category::Dbcs,
                 DataType::Numeric(_) => Category::Numeric,
                 DataType::NumericEdited { .. } => Category::NumericEdited,
                 DataType::AlphanumericEdited { .. } => Category::AlphanumericEdited,
@@ -3112,7 +3113,10 @@ pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
     for p in programs {
         compile_nested(p, None, &[], &mut out)?;
     }
-    Ok(zir::Module { programs: out })
+    Ok(zir::Module {
+        programs: out,
+        ccsid: crate::codepage::active().ccsid,
+    })
 }
 
 fn compile_nested<'a>(

@@ -278,6 +278,13 @@ impl Machine {
                 }
             },
             Val::Item(DataType::Index, b) => int_digits(Dec::new(binary::read(b, true), 0)),
+            // DBCS data is displayed between SO and SI
+            Val::Item(DataType::Dbcs, b) => {
+                let mut out = vec![crate::codepage::SO];
+                out.extend_from_slice(b);
+                out.push(crate::codepage::SI);
+                out
+            }
             Val::Item(_, b) | Val::Alnum(b) => b.clone(),
             Val::NumLit(x, _) | Val::Num(x) => ebcdic::encode(&x.to_string()),
             Val::Fig(f) => vec![fig_byte(*f)],
@@ -519,10 +526,13 @@ impl Machine {
         let v = match from {
             AcceptFrom::Stdin => {
                 let line = self.stdin_line().unwrap_or_default();
-                let bytes: Vec<u8> = line
-                    .chars()
-                    .map(|c| ebcdic::from_latin1(u32::from(c).min(255) as u8))
-                    .collect();
+                let bytes: Vec<u8> = if crate::codepage::active().ccsid == 37 {
+                    line.chars()
+                        .map(|c| ebcdic::from_latin1(u32::from(c).min(255) as u8))
+                        .collect()
+                } else {
+                    ebcdic::encode(&line)
+                };
                 // The data is transferred as alphanumeric data, whatever
                 // the receiving item's class.
                 let (a, l) = self.addr(cur, dst)?;
@@ -879,6 +889,11 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         DataType::Alphanumeric { just } | DataType::Alphabetic { just } => {
             let bytes = alnum_source(v);
             d::move_alnum(&bytes, out, *just);
+        }
+        // padded with DBCS spaces (X'4040')
+        DataType::Dbcs => {
+            let bytes = alnum_source(v);
+            d::move_alnum(&bytes, out, false);
         }
         DataType::AlphanumericEdited { edit } => {
             let bytes = alnum_source(v);

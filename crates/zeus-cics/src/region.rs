@@ -290,6 +290,8 @@ pub struct Model {
     pub extended: bool,
     pub color: bool,
     pub hilight: bool,
+    /// Double-byte characters (SO / SI).
+    pub dbcs: bool,
 }
 
 impl Default for Model {
@@ -299,6 +301,8 @@ impl Default for Model {
             extended: true,
             color: true,
             hilight: true,
+            // a script terminal shows what the code page has
+            dbcs: zeus_cobol::codepage::active().is_mixed(),
         }
     }
 }

@@ -110,11 +110,7 @@ pub struct StepCtx<'a> {
 pub type ProgramResult = Result<i32, Outcome>;
 
 fn text_of(rec: &[u8]) -> String {
-    let mut t: Vec<u8> = ebcdic::decode_latin1(rec);
-    while t.last() == Some(&b' ') {
-        t.pop();
-    }
-    t.iter().map(|&b| b as char).collect()
+    ebcdic::decode(rec).trim_end_matches(' ').to_string()
 }
 
 impl StepCtx<'_> {

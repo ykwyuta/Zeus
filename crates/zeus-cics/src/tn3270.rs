@@ -80,6 +80,9 @@ const ORDER_SFE: u8 = 0x29;
 const ORDER_MF: u8 = 0x2C;
 const ORDER_RA: u8 = 0x3C;
 const DUP: u8 = 0x1C;
+/// Shift out / in (double-byte characters between them).
+const SO: u8 = 0x0E;
+const SI: u8 = 0x0F;
 /// SCS new line, form feed; end of message (3270 printer buffers).
 const SCS_NL: u8 = 0x15;
 const SCS_FF: u8 = 0x0C;
@@ -118,6 +121,8 @@ pub struct Capabilities {
     pub hilight: bool,
     /// Alternate screen size (rows, columns) from the model or the query.
     pub alternate: (usize, usize),
+    /// Double-byte characters (DBCS-Asia in the Query Reply).
+    pub dbcs: bool,
 }
 
 impl Capabilities {
@@ -128,6 +133,7 @@ impl Capabilities {
             extended: self.extended,
             color: self.color,
             hilight: self.hilight,
+            dbcs: self.dbcs,
         }
     }
 
@@ -146,6 +152,7 @@ impl Capabilities {
             color: extended && t.contains("3279"),
             hilight: extended,
             alternate,
+            dbcs: false,
         }
     }
 
@@ -164,6 +171,8 @@ impl Capabilities {
                     // Color: pairs after the flags and count
                     0x86 => self.color = sf.get(5).is_some_and(|&n| n > 2),
                     0x87 => self.hilight = true,
+                    // DBCS-Asia
+                    0x91 => self.dbcs = true,
                     // Implicit Partition: default and alternate sizes
                     0xA6 if sf.len() >= 17 => {
                         let w = u16::from_be_bytes([sf[13], sf[14]]) as usize;
@@ -189,7 +198,7 @@ pub fn query() -> Vec<u8> {
 /// A byte of character data that the terminal shows as a character:
 /// codes below X'40' are orders or controls, sent as blanks.
 fn graphic(c: u8) -> u8 {
-    if c < 0x40 && c != DUP && c != FM {
+    if c < 0x40 && !matches!(c, DUP | FM | SO | SI) {
         0x40
     } else {
         c
@@ -211,6 +220,7 @@ pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
     let mut pos = usize::MAX;
     let n = s.size();
     let mut p = 0;
+    let mut dbcs = false;
     while p < n {
         let a = s.attrs[p];
         let c = s.chars[p];
@@ -224,11 +234,17 @@ pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
         }
         if let Some(a) = a {
             field_order(&mut out, &a, caps);
+            dbcs = false;
+            p += 1;
+        } else if c == SO || c == SI || dbcs {
+            // double-byte characters go as they are
+            dbcs = (dbcs || c == SO) && c != SI;
+            out.push(c);
             p += 1;
         } else {
             // a run of the same character: Repeat to Address
             let mut e = p + 1;
-            while e < n && s.attrs[e].is_none() && s.chars[e] == c {
+            while e < n && s.attrs[e].is_none() && s.chars[e] == c && c != SO {
                 e += 1;
             }
             if e - p > 4 {
@@ -252,7 +268,8 @@ pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
 fn field_order(out: &mut Vec<u8>, a: &Attr, caps: &Capabilities) {
     let color = if caps.color { a.color } else { 0 };
     let hilight = if caps.hilight { a.hilight } else { 0 };
-    if !caps.extended || (color == 0 && hilight == 0) {
+    let ext = color != 0 || hilight != 0 || a.validation != 0 || a.outline != 0 || a.sosi;
+    if !caps.extended || !ext {
         out.push(ORDER_SF);
         out.push(a.byte());
         return;
@@ -263,6 +280,16 @@ fn field_order(out: &mut Vec<u8>, a: &Attr, caps: &Capabilities) {
     }
     if color != 0 {
         pairs.push((0x42, color));
+    }
+    if a.validation != 0 {
+        pairs.push((0xC1, a.validation));
+    }
+    if a.outline != 0 {
+        pairs.push((0xC2, a.outline));
+    }
+    // input control: SO / SI creation
+    if a.sosi {
+        pairs.push((0xFE, 0x01));
     }
     out.push(ORDER_SFE);
     out.push(pairs.len() as u8);
@@ -318,6 +345,9 @@ pub fn apply_write(s: &mut Screen, rec: &[u8]) {
                         }
                         0x41 => a.hilight = v,
                         0x42 => a.color = v,
+                        0xC1 => a.validation = v,
+                        0xC2 => a.outline = v,
+                        0xFE => a.sosi = v == 0x01,
                         _ => {}
                     }
                 }
@@ -489,6 +519,8 @@ pub struct Session {
     pub caps: Capabilities,
     /// The server's own Read Partition Query awaits its reply.
     pub query_pending: bool,
+    /// The alternate screen size of the last BIND image sent.
+    pub bound: Option<(usize, usize)>,
     /// SYSREQ was pressed: the terminal talks to the SSCP (SSCP-LU data).
     pub sscp: bool,
     seq: u16,
@@ -503,6 +535,7 @@ impl Session {
             functions: Vec::new(),
             caps: Capabilities::of_type(ttype),
             query_pending: false,
+            bound: None,
             sscp: false,
             seq: 0,
         }
@@ -540,7 +573,19 @@ impl Session {
             3
         };
         let img = bind_image(lu, crate::region::DEFAULT_SIZE, self.caps.alternate);
+        self.bound = Some(self.caps.alternate);
         self.send_typed(w, E_BIND_IMAGE, &img)
+    }
+
+    /// After a Query Reply: a new BIND image when the terminal's alternate
+    /// size differs from the one bound (oversize screens).
+    pub fn rebind(&mut self, w: &mut impl Write) -> io::Result<bool> {
+        if !self.has(FN_BIND_IMAGE) || self.bound == Some(self.caps.alternate) {
+            return Ok(false);
+        }
+        self.unbind(w)?;
+        self.bind(w)?;
+        Ok(true)
     }
 
     /// UNBIND (when BIND-IMAGE was agreed), before the session ends.

@@ -332,6 +332,7 @@ impl DataModel {
         match p.category {
             Category::Alphabetic => DataType::Alphabetic { just },
             Category::Alphanumeric => DataType::Alphanumeric { just },
+            Category::Dbcs => DataType::Dbcs,
             Category::AlphanumericEdited => DataType::AlphanumericEdited {
                 edit: p.edit.clone(),
             },

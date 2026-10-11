@@ -14,6 +14,14 @@ pub use crate::sema::picture::{Category, EditSym};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     pub programs: Vec<ProgramCode>,
+    /// The CCSID of the literals (the code page the module was compiled
+    /// for).
+    #[serde(default = "default_ccsid")]
+    pub ccsid: u32,
+}
+
+fn default_ccsid() -> u32 {
+    37
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -322,6 +330,8 @@ pub enum DataType {
     Alphanumeric {
         just: bool,
     },
+    /// DBCS data: double-byte characters without SO / SI.
+    Dbcs,
     Numeric(NumType),
     NumericEdited {
         edit: Vec<EditSym>,

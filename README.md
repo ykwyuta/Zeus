@@ -71,6 +71,16 @@ motor, endowment and house policy inquiry, add, update and delete;
 commercial policy inquiry, add and delete) work on Db2 and VSAM, with customer numbers from
 named counters (`tools/genapp.sh test`).
 
+Code pages: data stays in EBCDIC; text crosses to the host in the code page
+named by `ZEUS_CCSID` (or `--ccsid` of `zcobc` / `zjob`): 037 by default, or
+the Japanese mixed code pages 930, 939, 1390 and 1399, converted by Zeus's
+own code from ICU's mapping tables (`crates/zeus-cobol/codepages`). Mixed
+data shifts to double-byte characters with SO / SI; PIC G and PIC N
+(DISPLAY-1) items and G"..." / N"..." literals hold DBCS data. DISPLAY,
+ACCEPT, text files, data set import and print, the zcics screen, Db2 host
+variables and the TN3270 server (DBCS-capable emulators, SOSI fields)
+convert through it.
+
 ## Layout
 
 | Path | Content |
@@ -86,7 +96,7 @@ named counters (`tools/genapp.sh test`).
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |
 | `ccvs85/` | Harness data (X-card values, Zeus overlay, reference manifest) |
-| `tools/` | Download scripts for test suites and the applications, `carddemo.sh`, `carddemo-online.sh`, `carddemo-db2.sh`, `genapp.sh`, `tn3270-test.sh`, `db2ce.sh`, `apps-inventory.sh` |
+| `tools/` | Download scripts for test suites and the applications, `carddemo.sh`, `carddemo-online.sh`, `carddemo-db2.sh`, `genapp.sh`, `tn3270-test.sh`, `icu-codepages.sh`, `db2ce.sh`, `apps-inventory.sh` |
 | `docs/oracle/` | Exclusions and known oracle differences |
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the clean-room rules and how to

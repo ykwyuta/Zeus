@@ -510,7 +510,8 @@ impl Parser {
 
     fn usage_word(&mut self) -> Option<Usage> {
         let u = match self.peek()?.word()? {
-            "DISPLAY" => Usage::Display,
+            // DISPLAY-1 (DBCS) items are DISPLAY items of PICTURE G / N
+            "DISPLAY" | "DISPLAY-1" => Usage::Display,
             "COMP" | "COMPUTATIONAL" | "COMP-4" | "COMPUTATIONAL-4" | "BINARY" => Usage::Binary,
             "COMP-3" | "COMPUTATIONAL-3" | "PACKED-DECIMAL" => Usage::Packed,
             "COMP-5" | "COMPUTATIONAL-5" => Usage::NativeBinary,

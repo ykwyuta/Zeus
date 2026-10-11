@@ -45,3 +45,52 @@ fn terminal_facilities() {
         "ZPR2: HELLO PRINTER        SD\n\u{c}ZPR2: PRINTED LATER        SD\n\u{c}"
     );
 }
+
+/// A Japanese BMS map (CCSID 939): double-byte INITIAL values, a SOSI
+/// field the operator types kanji into, mixed data in the reply.
+#[test]
+fn japanese_screen() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/japanese");
+    let dir = tempfile::tempdir().unwrap();
+    let (maps, copy, loadlib) = (
+        dir.path().join("maps"),
+        dir.path().join("copy"),
+        dir.path().join("loadlib"),
+    );
+    for d in [&maps, &copy, &loadlib] {
+        std::fs::create_dir(d).unwrap();
+    }
+    let run = |cmd: &mut Command| {
+        let out = cmd.env("ZEUS_CCSID", "939").output().unwrap();
+        let text = format!(
+            "{}{}",
+            String::from_utf8_lossy(&out.stdout),
+            String::from_utf8_lossy(&out.stderr)
+        );
+        assert!(out.status.success(), "{text}");
+        text
+    };
+    let bin = |name: &str| Path::new(env!("CARGO_BIN_EXE_zcics")).with_file_name(name);
+    run(Command::new(bin("zbms"))
+        .arg(src.join("JPMAP.bms"))
+        .arg("--copy")
+        .arg(copy.join("JPMAP.cpy"))
+        .arg("--map")
+        .arg(maps.join("JPMAP.json")));
+    run(Command::new(bin("zcobc"))
+        .args(["compile", "--cics", "-I"])
+        .arg(&copy)
+        .arg("-o")
+        .arg(loadlib.join("JPGM.zo"))
+        .arg(src.join("JPGM.cbl")));
+    run(Command::new(env!("CARGO_BIN_EXE_zcics"))
+        .arg("--home")
+        .arg(dir.path())
+        .arg("--csd")
+        .arg(src.join("TEST.CSD"))
+        .arg("--loadlib")
+        .arg(&loadlib)
+        .arg("--mapsets")
+        .arg(&maps)
+        .arg(src.join("script.txt")));
+}

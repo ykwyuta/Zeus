@@ -312,6 +312,7 @@ pub fn parse(text: &str) -> Result<Mapset, String> {
                     ps: s("PS"),
                     validn: get("VALIDN").map(Value::list).unwrap_or_default(),
                     outline: get("OUTLINE").map(Value::list).unwrap_or_default(),
+                    sosi: s("SOSI").is_some_and(|v| v.eq_ignore_ascii_case("YES")),
                     justify: get("JUSTIFY").map(Value::list).unwrap_or_default(),
                     initial: s("INITIAL"),
                     xinit: s("XINIT"),

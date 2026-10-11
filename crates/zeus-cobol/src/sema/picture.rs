@@ -6,6 +6,9 @@ use serde::{Deserialize, Serialize};
 pub enum Category {
     Alphabetic,
     Alphanumeric,
+    /// DBCS (PIC G, PIC N with NSYMBOL(DBCS) / USAGE DISPLAY-1): two bytes
+    /// per character.
+    Dbcs,
     Numeric,
     NumericEdited,
     AlphanumericEdited,
@@ -108,6 +111,16 @@ pub fn analyze(pic: &str, decimal_comma: bool, currency: char) -> Result<Picture
             digits,
             scale,
             signed,
+            edit: Vec::new(),
+        });
+    }
+    if chars.iter().all(|c| matches!(c, 'G' | 'N')) {
+        return Ok(Picture {
+            category: Category::Dbcs,
+            size: 2 * chars.len() as u32,
+            digits: 0,
+            scale: 0,
+            signed: false,
             edit: Vec::new(),
         });
     }

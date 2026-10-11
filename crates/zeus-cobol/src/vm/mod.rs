@@ -606,7 +606,7 @@ impl Machine {
                 Instr::StopLiteral(src) => {
                     let v = self.eval_src(cur, src)?;
                     let bytes = self.display_bytes(cur, &v)?;
-                    let _ = self.stdout.write_all(&ebcdic::decode_latin1(&bytes));
+                    let _ = self.stdout.write_all(&ebcdic::to_host(&bytes));
                     let _ = self.stdout.write_all(b"\n");
                     let _ = self.stdout.flush();
                     // The run waits for the operator's reply; an interrupt
@@ -651,7 +651,7 @@ impl Machine {
                         let v = self.eval_src(cur, it)?;
                         out.extend(self.display_bytes(cur, &v)?);
                     }
-                    let _ = self.stdout.write_all(&ebcdic::decode_latin1(&out));
+                    let _ = self.stdout.write_all(&ebcdic::to_host(&out));
                     if *advance {
                         let _ = self.stdout.write_all(b"\n");
                     }
@@ -956,7 +956,7 @@ impl Machine {
                     let v = self.eval_src(cur, it)?;
                     out.extend(self.display_bytes(cur, &v)?);
                 }
-                let _ = self.stdout.write_all(&ebcdic::decode_latin1(&out));
+                let _ = self.stdout.write_all(&ebcdic::to_host(&out));
                 if *advance {
                     let _ = self.stdout.write_all(b"\n");
                 }

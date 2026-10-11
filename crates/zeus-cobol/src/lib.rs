@@ -4,6 +4,7 @@
 //! and code generation to ZIR ([`sema`], [`zir`]), and execution by the ZIR
 //! interpreter ([`vm`]).
 
+pub mod codepage;
 pub mod diag;
 pub mod ebcdic;
 pub mod front;

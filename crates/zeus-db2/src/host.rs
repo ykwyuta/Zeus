@@ -117,21 +117,16 @@ fn comm_error(msg: &str) -> SqlCa {
     }
 }
 
-/// Text of an EBCDIC field.
+/// Text of an EBCDIC field in the active code page (mixed data: SO / SI
+/// shift to double-byte characters).
 fn text_of(b: &[u8]) -> String {
-    ebcdic::decode_latin1(b)
-        .iter()
-        .map(|&c| c as char)
-        .collect()
+    ebcdic::decode(b)
 }
 
-/// EBCDIC of a text (characters outside Latin-1 become '?').
+/// EBCDIC of a text in the active code page (characters it lacks become
+/// the substitution character).
 fn ebcdic_of(s: &str) -> Vec<u8> {
-    let latin: String = s
-        .chars()
-        .map(|c| if (c as u32) < 256 { c } else { '?' })
-        .collect();
-    ebcdic::encode(&latin)
+    ebcdic::encode(s)
 }
 
 fn quote(s: &str) -> String {
@@ -155,6 +150,8 @@ fn literal(m: &Machine, area: &Area, varchar: bool, ind: Option<&Area>) -> Strin
         DataType::Pointer | DataType::Index => {
             i32::from_be_bytes([b[0], b[1], b[2], b[3]]).to_string()
         }
+        // DBCS (PIC G): double-byte characters without SO / SI
+        DataType::Dbcs => quote(&zeus_cobol::codepage::active().decode_dbcs(b)),
         _ => quote(&text_of(b)),
     }
 }
@@ -200,6 +197,10 @@ fn store(m: &mut Machine, area: &Area, varchar: bool, ind: Option<&Area>, v: &Va
         DataType::Numeric(t) => {
             let d = Dec::parse(text.trim()).unwrap_or(Dec::ZERO);
             data::store_num(t, mem, d, false);
+        }
+        DataType::Dbcs => {
+            let e = zeus_cobol::codepage::active().encode_dbcs(&text);
+            data::move_alnum(&e, mem, false);
         }
         _ => {
             let e = ebcdic_of(&text);

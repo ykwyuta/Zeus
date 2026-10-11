@@ -1448,12 +1448,13 @@ impl Task {
                     Self::store_num(m, a, if name.ends_with("HT") { r } else { c } as i64);
                     continue;
                 }
-                "COLOR" | "HILIGHT" | "EXTDS" | "PS" | "OUTLINE" | "VALIDATION" => {
+                "COLOR" | "HILIGHT" | "EXTDS" | "PS" | "OUTLINE" | "VALIDATION" | "SOSI" => {
                     let model = self.term.borrow().model;
                     let yes = match name.as_str() {
                         "COLOR" => model.color,
                         "HILIGHT" => model.hilight,
-                        "EXTDS" => model.extended,
+                        "EXTDS" | "OUTLINE" | "VALIDATION" => model.extended,
+                        "SOSI" => model.dbcs,
                         _ => false,
                     };
                     m.storage_mut()[a.addr] = if yes { 0xFF } else { 0 };

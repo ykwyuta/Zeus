@@ -68,6 +68,9 @@ pub struct Field {
     pub ps: Option<String>,
     pub validn: Vec<String>,
     pub outline: Vec<String>,
+    /// SOSI=YES: the operator may enter double-byte characters (SO / SI).
+    #[serde(default)]
+    pub sosi: bool,
     pub justify: Vec<String>,
     /// INITIAL (EBCDIC is produced at run time) or XINIT (hexadecimal).
     pub initial: Option<String>,

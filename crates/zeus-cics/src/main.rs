@@ -185,9 +185,9 @@ fn fields(t: &Terminal) {
     let s = &t.screen;
     for f in s.fields() {
         let a = s.attrs[f.attr_pos].unwrap();
-        let data: String = zeus_cobol::ebcdic::decode_latin1(&s.field_data(&f))
-            .iter()
-            .map(|&b| if b < 0x20 { '.' } else { b as char })
+        let data: String = zeus_cobol::ebcdic::decode(&s.field_data(&f))
+            .chars()
+            .map(|c| if c < ' ' { '.' } else { c })
             .collect();
         println!(
             "({:2},{:2}) {}{}{} len {:3} |{}|",
@@ -380,7 +380,12 @@ mod server {
     /// Applies terminal input; Some(AID) for an attention key. The reply
     /// to the server's query updates the terminal model; other structured
     /// fields go to the program (AID X'88').
-    fn input(session: &RefCell<Session>, t: &RefCell<Terminal>, rec: &[u8]) -> Option<u8> {
+    fn input(
+        session: &RefCell<Session>,
+        w: &Writer,
+        t: &RefCell<Terminal>,
+        rec: &[u8],
+    ) -> Option<u8> {
         if rec.first() == Some(&tn3270::AID_STRUCTURED_FIELD) {
             if session.borrow().query_pending {
                 let mut s = session.borrow_mut();
@@ -388,6 +393,13 @@ mod server {
                 s.caps.apply_query_reply(rec);
                 t.borrow_mut().model = s.caps.model();
                 eprintln!("zcics: {} query reply: {:?}", t.borrow().id, s.caps);
+                // a BIND with the terminal's own alternate size, then the
+                // screen again
+                let rebound = s.rebind(&mut *w.lock().unwrap()).unwrap_or(false);
+                drop(s);
+                if rebound {
+                    send_screen(w, session, t);
+                }
                 return None;
             }
             t.borrow_mut().inbound_sf = Some(rec[1..].to_vec());
@@ -475,7 +487,7 @@ mod server {
                     if t.term.borrow().printer {
                         return;
                     }
-                    let Some(aid) = input(&t.session, &t.term, &rec) else {
+                    let Some(aid) = input(&t.session, &t.writer, &t.term, &rec) else {
                         return;
                     };
                     let e = region::attention(&self.region, &t.term, aid);
@@ -607,7 +619,7 @@ mod server {
                 let Some(msg) = msg else { break None };
                 match msg {
                     Msg::Input(i, rec) if i == id => {
-                        if let Some(a) = input(&t.session, &t.term, &rec) {
+                        if let Some(a) = input(&t.session, &t.writer, &t.term, &rec) {
                             break Some(a);
                         }
                     }
@@ -897,10 +909,7 @@ fn main() -> ExitCode {
             let mut text = String::new();
             for page in &pages {
                 for l in page {
-                    let line: String = zeus_cobol::ebcdic::decode_latin1(l)
-                        .iter()
-                        .map(|&b| b as char)
-                        .collect();
+                    let line = zeus_cobol::ebcdic::decode(l);
                     text.push_str(&line);
                     text.push('\n');
                 }

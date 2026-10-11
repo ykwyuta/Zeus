@@ -26,6 +26,13 @@ pub struct Attr {
     /// Extended highlighting (0 = default, X'F1' blink, X'F2' reverse,
     /// X'F4' underscore).
     pub hilight: u8,
+    /// Field validation: X'04' mandatory fill, X'02' mandatory entry,
+    /// X'01' trigger (0: none).
+    pub validation: u8,
+    /// Field outlining: X'01' under, X'02' right, X'04' over, X'08' left.
+    pub outline: u8,
+    /// SO / SI creation: double-byte characters may be entered.
+    pub sosi: bool,
 }
 
 /// 3270 attribute byte (the graphic form programs use, e.g. DFHBMPRF) to
@@ -338,20 +345,47 @@ impl Screen {
                 }
             }
         }
-        let mut out = String::new();
-        for r in 0..self.rows {
-            let mut line = String::new();
-            for c in 0..self.cols {
-                let p = r * self.cols + c;
-                let ch = if self.attrs[p].is_some() || self.chars[p] == 0 || dark[p] {
-                    ' '
+        // characters of the code page; with a mixed code page, SO and SI
+        // (shown as blanks) enclose double-byte characters, which take two
+        // positions; a field attribute ends double-byte mode
+        let cp = zeus_cobol::codepage::active();
+        let mut lines = vec![String::new(); self.rows];
+        let mut dbcs = false;
+        let mut p = 0;
+        while p < self.size() {
+            let row = p / self.cols;
+            let c = self.chars[p];
+            if self.attrs[p].is_some() {
+                dbcs = false;
+                lines[row].push(' ');
+            } else if cp.is_mixed()
+                && (c == zeus_cobol::codepage::SO || c == zeus_cobol::codepage::SI)
+            {
+                dbcs = c == zeus_cobol::codepage::SO;
+                lines[row].push(' ');
+            } else if dbcs && p + 1 < self.size() && self.attrs[p + 1].is_none() {
+                let ch = if dark[p] {
+                    "  ".to_string()
                 } else {
-                    let b = ebcdic::decode_latin1(&[self.chars[p]])[0];
-                    if b < 0x20 { ' ' } else { b as char }
+                    cp.decode_dbcs(&[c, self.chars[p + 1]])
                 };
-                line.push(ch);
+                lines[row].push_str(&ch);
+                p += 1;
+            } else if c == 0 || dark[p] {
+                lines[row].push(' ');
+            } else {
+                let ch = cp.decode(&[c]);
+                lines[row].push_str(if ch.chars().all(|x| x < ' ') {
+                    " "
+                } else {
+                    &ch
+                });
             }
-            out.push_str(line.trim_end());
+            p += 1;
+        }
+        let mut out = String::new();
+        for l in lines {
+            out.push_str(l.trim_end());
             out.push('\n');
         }
         out

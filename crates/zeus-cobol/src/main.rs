@@ -6,6 +6,10 @@
 //! zcobc check [-I <dir>]... [--cics] <source>...   (compile without output)
 //! zcobc inventory [-I <dir>]... <source>...  (statements, functions, EXEC usage)
 //! ```
+//!
+//! `--ccsid N` (or ZEUS_CCSID) chooses the EBCDIC code page of literals and
+//! of the data a run reads and writes as text: 37 (default), or the
+//! Japanese code pages 930, 939, 1390, 1399.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -14,9 +18,9 @@ use zeus_cobol::front::FrontOptions;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] -o <artifact> <source>"
+        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] -o <artifact> <source>"
     );
-    eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>");
+    eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] <artifact>");
     eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
     eprintln!("       zcobc inventory [-I <dir>]... <source>...");
     ExitCode::from(2)
@@ -56,6 +60,16 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "--debugging-lines" => a.debugging_lines = true,
             "--cics" => a.cics = true,
             "--parm" => a.parm = it.next()?.clone(),
+            "--ccsid" => {
+                let c: u32 = it.next()?.parse().ok()?;
+                if !zeus_cobol::codepage::set_active(c) {
+                    eprintln!(
+                        "zcobc: CCSID {c} is not supported ({:?})",
+                        zeus_cobol::codepage::CCSIDS
+                    );
+                    return None;
+                }
+            }
             "--dd" => {
                 let (n, p) = it.next()?.split_once('=')?;
                 a.dds.push((n.to_string(), PathBuf::from(p)));
@@ -146,6 +160,10 @@ fn run(args: &Args) -> ExitCode {
             return ExitCode::from(16);
         }
     };
+    // the module's code page, unless --ccsid or ZEUS_CCSID chose one
+    if std::env::var_os("ZEUS_CCSID").is_none() {
+        zeus_cobol::codepage::set_active(module.ccsid);
+    }
     let dir = artifact
         .parent()
         .map(|p| {

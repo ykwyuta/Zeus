@@ -18,6 +18,11 @@ use:
 - Test suites and OS images (CCVS85, MVS 3.8j, ...) are downloaded by scripts
   under `tools/` and are never committed.
 
+- Code page tables come from ICU (Unicode License V3): `tools/icu-codepages.sh`
+  downloads its mapping files at a pinned commit and regenerates
+  `crates/zeus-cobol/codepages`, which carries ICU's license. Zeus converts
+  with its own code; it does not use iconv or ICU at run time.
+
 When an oracle and the IBM specification disagree, the specification wins;
 record the case under `docs/oracle/`.
 

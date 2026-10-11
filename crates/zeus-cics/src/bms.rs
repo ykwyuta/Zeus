@@ -104,6 +104,28 @@ pub fn field_attr(f: &Field) -> Attr {
         mdt: has("FSET"),
         color: f.color.as_deref().map_or(0, color),
         hilight: f.hilight.as_deref().map_or(0, hilight),
+        validation: f.validn.iter().fold(0, |v, x| {
+            v | match x.as_str() {
+                "MUSTFILL" => 0x04,
+                "MUSTENTER" => 0x02,
+                "TRIGGER" => 0x01,
+                _ => 0,
+            }
+        }),
+        outline: if f.outline.iter().any(|x| x == "BOX") {
+            0x0F
+        } else {
+            f.outline.iter().fold(0, |v, x| {
+                v | match x.as_str() {
+                    "UNDER" => 0x01,
+                    "RIGHT" => 0x02,
+                    "OVER" => 0x04,
+                    "LEFT" => 0x08,
+                    _ => 0,
+                }
+            })
+        },
+        sosi: f.sosi,
     }
 }
 
@@ -191,6 +213,9 @@ pub fn send_map(
                     match s {
                         'C' => attr.color = if b == 0xFF { 0 } else { b },
                         'H' => attr.hilight = if b == 0xFF { 0 } else { b },
+                        'V' => attr.validation = if b == 0xFF { 0 } else { b & 0x07 },
+                        'U' => attr.outline = if b == 0xFF { 0 } else { b & 0x0F },
+                        'M' => attr.sosi = b == 0x01,
                         _ => {}
                     }
                 }

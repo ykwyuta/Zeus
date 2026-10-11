@@ -236,6 +236,19 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路と
   イベント処理 (LGASTAT1)。
 
+- 日本語 EBCDIC (2026-10): CCSID 930・939・1390・1399 の変換を、ICU の対応表 (unicode-org/icu-data
+  の UCM を `tools/icu-codepages.sh` で取得・変換し、ライセンスとともに同梱) から Zeus 自身のコードで
+  行う (iconv や ICU には依存しない)。混在データの SO/SI、2 バイト部分の共有表、往復・片方向の
+  代替対応、補助面の文字と結合文字の並び、代替文字に対応。プロセスの使用コードページは
+  `ZEUS_CCSID` (zcobc・zjob は `--ccsid`、モジュールはコンパイル時の CCSID を記録)。
+  コンパイラは混在文字定数、DBCS 定数 G"..." / N"..."、PIC G / PIC N (DISPLAY-1、NSYMBOL(DBCS)
+  相当) を扱い、DISPLAY は DBCS 項目を SO/SI で囲む。DISPLAY・ACCEPT・テキストファイル・
+  データセットの取り込みと印刷・zcics の画面・Db2 のホスト変数・TN3270 (DBCS 対応端末の
+  Query Reply、SOSI 項目の SO/SI 入力許可、DBCS 部分を RA で圧縮しない) がこのコードページで
+  変換する。s3270 (cp939) から日本語の BMS 画面を操作し、漢字の入力と表示を CI で確認する。
+  未着手: NATIONAL (UTF-16、PIC N USAGE NATIONAL、NATIONAL-OF / DISPLAY-OF)、DBCS の利用者語、
+  中国語・韓国語のコードページ。
+
 ### Phase 6: Bank of Z (CICS 経路) (6〜8 週)
 - Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
 - Bank of Z のバッチ部品。

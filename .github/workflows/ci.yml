@@ -123,6 +123,18 @@ jobs:
             work/carddemo/spool
             work/genapp/spool
 
+  codepages:
+    # The code page tables are those ICU's mapping files give.
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: tools/icu-codepages.sh
+      - name: Tables are up to date
+        run: git diff --exit-code crates/zeus-cobol/codepages
+
   apps-inventory:
     # Compiles every COBOL program of CardDemo, GenApp and Bank of Z and
     # checks that docs/inventory/apps.md matches the result.

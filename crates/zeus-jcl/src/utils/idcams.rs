@@ -518,10 +518,7 @@ impl Idcams<'_, '_> {
                 let h: String = r.iter().map(|b| format!("{b:02X}")).collect();
                 self.msg(&format!("RECORD {n}: {h}"));
             } else {
-                let t: String = ebcdic::decode_latin1(r)
-                    .iter()
-                    .map(|&b| b as char)
-                    .collect();
+                let t = ebcdic::decode(r);
                 self.msg(&format!("RECORD {n}: {}", t.trim_end()));
             }
         }

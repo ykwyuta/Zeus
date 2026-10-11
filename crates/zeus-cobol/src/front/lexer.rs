@@ -237,6 +237,15 @@ impl Lexer<'_> {
                     let s = self.literal(c)?;
                     self.push(Tok::Str(s), pos);
                 }
+                // DBCS literal G"..." / N"..." (NSYMBOL(DBCS)): the
+                // double-byte characters of the active code page
+                'G' | 'g' | 'N' | 'n' if matches!(self.peek(1), Some('"' | '\'')) => {
+                    self.i += 1;
+                    let q = self.peek(0).unwrap();
+                    let s = self.literal(q)?;
+                    let bytes = crate::codepage::active().encode_dbcs(&s);
+                    self.push(Tok::Hex(bytes), pos);
+                }
                 'X' | 'x' if matches!(self.peek(1), Some('"' | '\'')) => {
                     self.i += 1;
                     let q = self.peek(0).unwrap();
