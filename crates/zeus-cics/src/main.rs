@@ -373,6 +373,10 @@ mod server {
         for r in records {
             send(w, session, &r);
         }
+        // a file transfer exchanges structured fields only
+        if t.borrow().transfer {
+            return;
+        }
         let rec = tn3270::write_screen(&t.borrow().screen, &session.borrow().caps);
         send(w, session, &rec);
     }

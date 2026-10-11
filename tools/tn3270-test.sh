@@ -7,7 +7,7 @@
 # and SYSREQ / LOGOFF (SSCP-LU data, UNBIND); then an oversize screen
 # (160 x 62, 14-bit addresses, a new BIND after the Query Reply) and a
 # Japanese screen (CCSID 939 on both sides: double-byte characters with SO /
-# SI, a SOSI input field).
+# SI, a SOSI input field), and file transfers with IND$FILE.
 #
 # usage: tools/tn3270-test.sh      (needs s3270 and pr3287)
 set -eu
@@ -102,6 +102,36 @@ for want in "data: 62 160" "SIZE 062X160 ALT 062X160"; do
     grep -q "$want" "$work/oversize.log" || { cat "$work/oversize.log" "$work/server2.log"; fail "oversize: '$want' not shown"; }
 done
 
+# file transfer (IND$FILE, DFT): text to a data set and back, binary
+# data to a TS queue and back
+printf 'first record\nsecond, a longer record\nthird\n' >"$work/up.txt"
+head -c 300 /dev/urandom >"$work/up.bin"
+(exec $bin/zcics --home "$work" --csd "$src/TEST.CSD" --loadlib "$work/loadlib" \
+    --serve $port >"$work/server4.log" 2>&1) &
+server=$!
+sleep 1
+cat <<EOS | timeout 60 s3270 >"$work/transfer.log" 2>&1 || true
+Connect(localhost:$port)
+Wait(10,InputField)
+Clear()
+Transfer(Direction=send,HostFile=ZEUS.FT.TEXT,LocalFile=$work/up.txt,Host=cics,Mode=ascii,Cr=remove,Lrecl=40)
+Clear()
+Transfer(Direction=receive,HostFile=ZEUS.FT.TEXT,LocalFile=$work/down.txt,Host=cics,Mode=ascii,Cr=add)
+Clear()
+Transfer(Direction=send,HostFile=BINQ,LocalFile=$work/up.bin,Host=cics,Mode=binary)
+Clear()
+Transfer(Direction=receive,HostFile=BINQ,LocalFile=$work/down.bin,Host=cics,Mode=binary)
+Quit()
+EOS
+kill $server 2>/dev/null || true
+wait $server 2>/dev/null || true
+cmp -s "$work/up.txt" "$work/down.txt" || { cat "$work/transfer.log" "$work/server4.log"; fail "text transfer differs"; }
+cmp -s "$work/up.bin" "$work/down.bin" || { cat "$work/transfer.log" "$work/server4.log"; fail "binary transfer differs"; }
+$bin/zjob --home "$work" catalog print ZEUS.FT.TEXT | grep -q "second, a longer record" ||
+    fail "the uploaded data set lacks the record"
+[ "$(grep -c 'TRANS03 File transfer complete' "$work/server4.log")" = 4 ] ||
+    { cat "$work/server4.log"; fail "four transfers did not complete"; }
+
 # a Japanese screen (CCSID 939)
 jp=crates/zeus-cics/tests/japanese
 mkdir -p "$work/jp/maps" "$work/jp/copy" "$work/jp/loadlib"
@@ -122,4 +152,4 @@ for want in "日本語の画面" "お名前：   山田" "こんにちは、  �
     grep -q "$want" "$work/japanese.log" || { cat "$work/japanese.log" "$work/server3.log"; fail "Japanese: '$want' not shown"; }
 done
 grep -q "dbcs: true" "$work/server3.log" || fail "Japanese: DBCS not in the Query Reply"
-echo "TN3270E display (model 5, oversize, Japanese), printer, structured fields and SYSREQ passed"
+echo "TN3270E display (model 5, oversize, Japanese), printer, structured fields, SYSREQ and IND\$FILE passed"

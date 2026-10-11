@@ -242,6 +242,9 @@ pub struct Terminal {
     pub printed: Vec<Vec<Vec<u8>>>,
     /// A task runs at the terminal.
     pub busy: bool,
+    /// A file transfer (IND$FILE) is in progress: only structured fields
+    /// go to the terminal.
+    pub transfer: bool,
 }
 
 impl Terminal {
@@ -352,6 +355,7 @@ impl Terminal {
             printer: false,
             printed: Vec::new(),
             busy: false,
+            transfer: false,
         }
     }
 }
@@ -399,6 +403,18 @@ pub fn attention(region: &Shared<Region>, term: &Shared<Terminal>, aid: u8) -> E
                 .to_ascii_uppercase();
             if t.is_empty() {
                 return Event::Idle;
+            }
+            // file transfer from the emulator (DFT)
+            let command = text.trim();
+            if command.to_ascii_uppercase().starts_with("IND$FILE ") {
+                let msg = crate::indfile::run(region, term, command);
+                let mut t = term.borrow_mut();
+                t.screen.erase();
+                t.screen.write(0, &ebcdic::encode(&msg));
+                region.borrow_mut().log.push(format!("IND$FILE: {msg}"));
+                return Event::Ended {
+                    transid: "IND$".into(),
+                };
             }
             (t, None)
         }
