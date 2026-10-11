@@ -20,7 +20,7 @@ port=${ZEUS_TN3270_PORT:-13273}
 cargo build --release -q -p zeus-cobol -p zeus-cics
 rm -rf "$work"
 mkdir -p "$work/loadlib"
-for p in ZPRT ZPR2P ZALT ZSF ZBUF; do
+for p in ZPRT ZPR2P ZALT ZSF ZBUF ZSA; do
     $bin/zcobc compile -o "$work/loadlib/$p.zo" "$src/$p.cbl"
 done
 (exec $bin/zcics --home "$work" --csd "$src/TEST.CSD" --loadlib "$work/loadlib" \
@@ -100,6 +100,19 @@ kill $server 2>/dev/null || true
 wait $server 2>/dev/null || true
 for want in "data: 62 160" "SIZE 062X160 ALT 062X160"; do
     grep -q "$want" "$work/oversize.log" || { cat "$work/oversize.log" "$work/server2.log"; fail "oversize: '$want' not shown"; }
+done
+
+# a program's own data stream: field and character attributes (SA)
+(exec $bin/zcics --home "$work" --csd "$src/TEST.CSD" --loadlib "$work/loadlib" \
+    --serve $port >"$work/server5.log" 2>&1) &
+server=$!
+sleep 1
+printf 'Connect(localhost:%s)\nWait(10,InputField)\nClear()\nString("ZSA")\nEnter()\nWait(10,Output)\nReadBuffer(Ascii)\nQuit()\n' $port |
+    timeout 30 s3270 -model 3279-2-E >"$work/sa.log" 2>&1 || true
+kill $server 2>/dev/null || true
+wait $server 2>/dev/null || true
+for want in "SF(c0=e0,42=f2) 52 45 44" "SA(42=f6) 59 45 4c SA(41=f2) 52 45 56" "SF(c0=c0,43=f1) 2a"; do
+    grep -qF "$want" "$work/sa.log" || { cat "$work/sa.log"; fail "attributes: '$want' not in the buffer"; }
 done
 
 # file transfer (IND$FILE, DFT): text to a data set and back, binary

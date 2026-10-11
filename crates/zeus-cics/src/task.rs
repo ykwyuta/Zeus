@@ -678,9 +678,18 @@ impl Task {
                 screen.cursor = c.max(0) as usize % screen.size();
             }
         } else {
-            // SEND FROM: unformatted output
+            // SEND FROM: a 3270 data stream (orders and characters), with
+            // CTLCHAR as its write control character; a Write starts at
+            // the cursor (ERASE has already erased the screen)
             let data = Self::from_data(m, call);
-            screen.write(0, &data);
+            let wcc = call
+                .arg("CTLCHAR")
+                .map(|a| Self::bytes(m, a))
+                .and_then(|b| b.first().copied())
+                .unwrap_or(0x40);
+            let mut rec = vec![0xF1, wcc];
+            rec.extend(data);
+            crate::tn3270::apply_write(screen, &rec);
         }
         if call.has("FREEKB") {
             screen.locked = false;

@@ -12,3 +12,8 @@ expect 1 SF BYTES: 008 AID: SF
 # RECEIVE BUFFER
 tran ZBUF
 expect 1 BUFFER BYTES 1920 ZBUF
+# a program's own 3270 data stream (SEND FROM): fields, SA, RA, IC
+tran ZSA
+expect 2 RED FIELDYELREV PLAIN
+expect 4  *********
+fields

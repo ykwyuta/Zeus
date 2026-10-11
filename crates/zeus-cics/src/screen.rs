@@ -33,6 +33,8 @@ pub struct Attr {
     pub outline: u8,
     /// SO / SI creation: double-byte characters may be entered.
     pub sosi: bool,
+    /// Character set of the field (programmed symbols; 0: base).
+    pub charset: u8,
 }
 
 /// 3270 attribute byte (the graphic form programs use, e.g. DFHBMPRF) to
@@ -123,6 +125,17 @@ pub struct Screen {
     /// The keyboard is locked (until the program sends FREEKB).
     pub locked: bool,
     pub alarm: bool,
+    /// Character attributes (Set Attribute) of each position.
+    pub cattrs: Vec<CharAttr>,
+}
+
+/// Attributes of one character (SA order); 0: the field's.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub struct CharAttr {
+    pub color: u8,
+    pub hilight: u8,
+    /// Character set (programmed symbols), e.g. X'F8' DBCS.
+    pub charset: u8,
 }
 
 /// A field: attribute position, data start and length.
@@ -143,6 +156,7 @@ impl Screen {
             cursor: 0,
             locked: false,
             alarm: false,
+            cattrs: vec![CharAttr::default(); rows * cols],
         }
     }
 
@@ -210,6 +224,9 @@ impl Screen {
     pub fn erase(&mut self) {
         self.chars.iter_mut().for_each(|c| *c = 0);
         self.attrs.iter_mut().for_each(|a| *a = None);
+        self.cattrs
+            .iter_mut()
+            .for_each(|a| *a = CharAttr::default());
         self.cursor = 0;
     }
 
@@ -253,6 +270,7 @@ impl Screen {
                 break;
             }
             self.chars[p] = b;
+            self.cattrs[p] = CharAttr::default();
         }
     }
 

@@ -17,7 +17,7 @@
 
 use std::io::{self, Read, Write};
 
-use crate::screen::{Attr, Screen, attr_bits, attr_byte};
+use crate::screen::{Attr, CharAttr, Screen, attr_bits, attr_byte};
 
 pub const IAC: u8 = 255;
 pub const DONT: u8 = 254;
@@ -221,6 +221,8 @@ pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
     let n = s.size();
     let mut p = 0;
     let mut dbcs = false;
+    // the character attributes in force (Set Attribute)
+    let mut cur = CharAttr::default();
     while p < n {
         let a = s.attrs[p];
         let c = s.chars[p];
@@ -231,6 +233,23 @@ pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
         if pos != p {
             out.push(ORDER_SBA);
             out.extend(encode_addr(p));
+        }
+        if a.is_none() && caps.extended {
+            let want = CharAttr {
+                color: if caps.color { s.cattrs[p].color } else { 0 },
+                hilight: if caps.hilight { s.cattrs[p].hilight } else { 0 },
+                charset: s.cattrs[p].charset,
+            };
+            for (t, have, v) in [
+                (0x41, cur.hilight, want.hilight),
+                (0x42, cur.color, want.color),
+                (0x43, cur.charset, want.charset),
+            ] {
+                if have != v {
+                    out.extend([ORDER_SA, t, v]);
+                }
+            }
+            cur = want;
         }
         if let Some(a) = a {
             field_order(&mut out, &a, caps);
@@ -244,7 +263,12 @@ pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
         } else {
             // a run of the same character: Repeat to Address
             let mut e = p + 1;
-            while e < n && s.attrs[e].is_none() && s.chars[e] == c && c != SO {
+            while e < n
+                && s.attrs[e].is_none()
+                && s.chars[e] == c
+                && s.cattrs[e] == s.cattrs[p]
+                && c != SO
+            {
                 e += 1;
             }
             if e - p > 4 {
@@ -268,7 +292,12 @@ pub fn write_screen(s: &Screen, caps: &Capabilities) -> Vec<u8> {
 fn field_order(out: &mut Vec<u8>, a: &Attr, caps: &Capabilities) {
     let color = if caps.color { a.color } else { 0 };
     let hilight = if caps.hilight { a.hilight } else { 0 };
-    let ext = color != 0 || hilight != 0 || a.validation != 0 || a.outline != 0 || a.sosi;
+    let ext = color != 0
+        || hilight != 0
+        || a.validation != 0
+        || a.outline != 0
+        || a.sosi
+        || a.charset != 0;
     if !caps.extended || !ext {
         out.push(ORDER_SF);
         out.push(a.byte());
@@ -280,6 +309,9 @@ fn field_order(out: &mut Vec<u8>, a: &Attr, caps: &Capabilities) {
     }
     if color != 0 {
         pairs.push((0x42, color));
+    }
+    if a.charset != 0 {
+        pairs.push((0x43, a.charset));
     }
     if a.validation != 0 {
         pairs.push((0xC1, a.validation));
@@ -300,16 +332,40 @@ fn field_order(out: &mut Vec<u8>, a: &Attr, caps: &Capabilities) {
 }
 
 /// Applies an outbound Write / Erase/Write record to a screen (what a
-/// terminal does with it).
+/// terminal does with it): the WCC, then the orders and characters (a
+/// Write starts at the cursor address, an Erase/Write at 0).
 pub fn apply_write(s: &mut Screen, rec: &[u8]) {
     let Some(&cmd) = rec.first() else { return };
-    if matches!(cmd, 0xF5 | 0x7E | 0x05 | 0x0D) {
+    let erase = matches!(cmd, 0xF5 | 0x7E | 0x05 | 0x0D);
+    if erase {
         s.erase();
     }
     let n = s.size();
-    let mut pos = 0usize;
+    if let Some(&wcc) = rec.get(1) {
+        let bits = attr_bits(wcc);
+        if bits & 0x01 != 0 {
+            // reset the modified data tags
+            for a in s.attrs.iter_mut().flatten() {
+                a.mdt = false;
+            }
+        }
+        if bits & 0x02 != 0 {
+            s.locked = false;
+        }
+        if bits & 0x04 != 0 {
+            s.alarm = true;
+        }
+    }
+    let mut pos = if erase { 0 } else { s.cursor % n };
+    let mut cur = CharAttr::default();
     let mut i = 2;
     let addr = |i: usize| decode_addr([rec[i], rec[i + 1]]) % n;
+    let put = |s: &mut Screen, pos: &mut usize, c: u8, cur: CharAttr| {
+        s.chars[*pos] = c;
+        s.attrs[*pos] = None;
+        s.cattrs[*pos] = cur;
+        *pos = (*pos + 1) % n;
+    };
     while i < rec.len() {
         match rec[i] {
             ORDER_SBA if i + 2 < rec.len() => {
@@ -329,22 +385,15 @@ pub fn apply_write(s: &mut Screen, rec: &[u8]) {
                     Attr::default()
                 };
                 for j in 0..k {
-                    let Some(&[t, v]) = rec
-                        .get(i + 2 + 2 * j..i + 4 + 2 * j)
-                        .map(|x| <&[u8; 2]>::try_from(x).unwrap())
+                    let (Some(&t), Some(&v)) = (rec.get(i + 2 + 2 * j), rec.get(i + 3 + 2 * j))
                     else {
                         break;
                     };
                     match t {
-                        0xC0 => {
-                            a = Attr {
-                                color: a.color,
-                                hilight: a.hilight,
-                                ..a.with_byte(v)
-                            }
-                        }
+                        0xC0 => a = a.with_byte(v),
                         0x41 => a.hilight = v,
                         0x42 => a.color = v,
+                        0x43 => a.charset = v,
                         0xC1 => a.validation = v,
                         0xC2 => a.outline = v,
                         0xFE => a.sosi = v == 0x01,
@@ -355,7 +404,17 @@ pub fn apply_write(s: &mut Screen, rec: &[u8]) {
                 pos = (pos + 1) % n;
                 i += 2 + 2 * k;
             }
-            ORDER_SA => i += 3,
+            ORDER_SA if i + 2 < rec.len() => {
+                let v = rec[i + 2];
+                match rec[i + 1] {
+                    0x00 => cur = CharAttr::default(),
+                    0x41 => cur.hilight = v,
+                    0x42 => cur.color = v,
+                    0x43 => cur.charset = v,
+                    _ => {}
+                }
+                i += 3;
+            }
             ORDER_IC => {
                 s.cursor = pos;
                 i += 1;
@@ -369,9 +428,7 @@ pub fn apply_write(s: &mut Screen, rec: &[u8]) {
                     skip = 5;
                 }
                 loop {
-                    s.chars[pos] = c;
-                    s.attrs[pos] = None;
-                    pos = (pos + 1) % n;
+                    put(s, &mut pos, c, cur);
                     if pos == to {
                         break;
                     }
@@ -407,15 +464,11 @@ pub fn apply_write(s: &mut Screen, rec: &[u8]) {
                 i += 1;
             }
             ORDER_GE if i + 1 < rec.len() => {
-                s.chars[pos] = rec[i + 1];
-                s.attrs[pos] = None;
-                pos = (pos + 1) % n;
+                put(s, &mut pos, rec[i + 1], cur);
                 i += 2;
             }
-            b => {
-                s.chars[pos] = b;
-                s.attrs[pos] = None;
-                pos = (pos + 1) % n;
+            c => {
+                put(s, &mut pos, c, cur);
                 i += 1;
             }
         }
@@ -1265,6 +1318,30 @@ mod tests {
         // colour terminal: SFE
         let ext = write_screen(&s, &Capabilities::of_type("IBM-3279-2-E"));
         assert!(ext.windows(2).any(|w| w == [ORDER_SFE, 2]));
+    }
+
+    #[test]
+    fn character_attributes() {
+        // a Write with SA: the characters keep their attributes, and the
+        // screen goes out with SA again (no RA across a change)
+        let mut s = Screen::new(24, 80);
+        let mut rec = vec![0xF5, 0xC3, ORDER_SA, 0x42, 0xF2];
+        rec.extend([0xC1; 6]);
+        rec.extend([ORDER_SA, 0x42, 0x00, 0xC1, 0xC1]);
+        apply_write(&mut s, &rec);
+        assert_eq!(s.cattrs[0].color, 0xF2);
+        assert_eq!(s.cattrs[5].color, 0xF2);
+        assert_eq!(s.cattrs[6].color, 0);
+        let caps = Capabilities::of_type("IBM-3279-2-E");
+        let out = write_screen(&s, &caps);
+        let mut t = Screen::new(24, 80);
+        apply_write(&mut t, &out);
+        assert_eq!(t.chars[..8], s.chars[..8]);
+        assert_eq!(t.cattrs[..8], s.cattrs[..8]);
+        assert!(out.windows(3).any(|w| w == [ORDER_SA, 0x42, 0xF2]));
+        // a terminal without extended attributes gets no SA
+        let plain = write_screen(&s, &Capabilities::of_type("IBM-3278-2"));
+        assert!(!plain.contains(&ORDER_SA));
     }
 
     #[test]

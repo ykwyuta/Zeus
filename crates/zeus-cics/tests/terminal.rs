@@ -13,7 +13,7 @@ fn terminal_facilities() {
     let dir = tempfile::tempdir().unwrap();
     let loadlib = dir.path().join("loadlib");
     std::fs::create_dir(&loadlib).unwrap();
-    for p in ["ZPRT", "ZPR2P", "ZALT", "ZSF", "ZBUF"] {
+    for p in ["ZPRT", "ZPR2P", "ZALT", "ZSF", "ZBUF", "ZSA"] {
         let module =
             zeus_cobol::compile_file(&src.join(format!("{p}.cbl")), &FrontOptions::default())
                 .unwrap();

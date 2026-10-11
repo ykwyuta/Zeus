@@ -126,7 +126,27 @@ pub fn field_attr(f: &Field) -> Attr {
             })
         },
         sosi: f.sosi,
+        charset: f.ps.as_deref().map_or(0, charset),
     }
+}
+
+/// PS=BASE | psid (a character, or X'hh'): the character set.
+fn charset(ps: &str) -> u8 {
+    let p = ps.trim();
+    if p.eq_ignore_ascii_case("BASE") {
+        return 0;
+    }
+    if let Some(h) = p
+        .strip_prefix("X'")
+        .or_else(|| p.strip_prefix("x'"))
+        .and_then(|h| h.strip_suffix('\''))
+    {
+        return u8::from_str_radix(h, 16).unwrap_or(0);
+    }
+    p.trim_matches('\'')
+        .chars()
+        .next()
+        .map_or(0, |c| ebcdic::encode(&c.to_string())[0])
 }
 
 /// Screen address of the attribute of field `f` (occurrence `k`).
@@ -216,6 +236,7 @@ pub fn send_map(
                         'V' => attr.validation = if b == 0xFF { 0 } else { b & 0x07 },
                         'U' => attr.outline = if b == 0xFF { 0 } else { b & 0x0F },
                         'M' => attr.sosi = b == 0x01,
+                        'P' => attr.charset = if b == 0xFF { 0 } else { b },
                         _ => {}
                     }
                 }
