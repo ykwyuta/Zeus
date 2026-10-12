@@ -1,0 +1,9 @@
+A001LOCATED 
+B001LOCATED 
+C001LOCATED 
+REGION 5  
+KEY 3                   '1'B
+2                       REGION 2            
+5                       REGION 5 UPDATED    
+1                       RECORD 1
+7                       RECORD 7

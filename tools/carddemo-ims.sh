@@ -6,7 +6,8 @@
 #                                             # IMS libraries, programs, data
 #        tools/carddemo-ims.sh batch          # the IMS batch jobs
 #        tools/carddemo-ims.sh run SCRIPT...  # zcics with the IMS transactions
-#        tools/carddemo-ims.sh test           # setup, batch (checked), online scripts
+#        tools/carddemo-ims.sh test           # setup, DFSURGU0/DFSURGL0 round trip,
+#                                             # batch (checked), online scripts
 #
 # The DBDs and PSBs are members of OEM.IMS.IMSP.DBDLIB / PSBLIB (and
 # IMS.DBDLIB / PSBLIB, as CBPAUP0J names them); the databases are in
@@ -88,6 +89,33 @@ JCL
     $zjob submit "$home/RELOADPA.jcl"
 }
 
+roundtrip() {
+    # unload (DFSURGU0) the reloaded database, reload that into a new store
+    # and unload it again: the same segments, the same unload
+    for n in 1 2; do
+        cat >"$home/UNLOADPA.jcl" <<JCL
+//UNLOADPA JOB 'UNLOAD DBPAUTP0'
+//DELETE   EXEC PGM=IEFBR14
+//OLD      DD DSN=ZEUS.TEST.DBPAUTP0.UNLOAD$n,DISP=(MOD,DELETE)
+//UNLOAD   EXEC PGM=DFSRRC00,PARM=(ULU,DFSURGU0,DBPAUTP0)
+//IMS      DD DSN=OEM.IMS.IMSP.PSBLIB,DISP=SHR
+//         DD DSN=OEM.IMS.IMSP.DBDLIB,DISP=SHR
+//SYSPRINT DD SYSOUT=*
+//DFSUROUT DD DSN=ZEUS.TEST.DBPAUTP0.UNLOAD$n,DISP=(NEW,CATLG),
+//            RECFM=VB,LRECL=27994
+JCL
+        $zjob submit "$home/UNLOADPA.jcl"
+        [ $n = 2 ] && break
+        rm -f "$home/catalog/ims/ims.wal"
+        sed 's/AWS.M2.CARDDEMO.IMSDATA.DBPAUTP0/ZEUS.TEST.DBPAUTP0.UNLOAD1/' \
+            "$home/RELOADPA.jcl" >"$home/RELOADP2.jcl"
+        $zjob submit "$home/RELOADP2.jcl"
+        echo "segments: $(count)"
+    done
+    cmp "$home/catalog/datasets/ZEUS.TEST.DBPAUTP0.UNLOAD1" \
+        "$home/catalog/datasets/ZEUS.TEST.DBPAUTP0.UNLOAD2" && echo "unloads: same"
+}
+
 count() { # segments in the database
     $bin/zims count "$home/catalog/ims/ims.wal" "$mod/ims/DBPAUTP0.dbd"
 }
@@ -117,6 +145,13 @@ case ${1:-} in
         ;;
     test)
         setup >"$home/carddemo-ims-setup.log"
+        roundtrip >"$home/carddemo-ims-roundtrip.log"
+        if [ "$(grep -E '^(segments|unloads):' "$home/carddemo-ims-roundtrip.log")" != "segments: 224
+unloads: same" ]; then
+            cat "$home/carddemo-ims-roundtrip.log"
+            echo "the unload and reload do not agree" >&2
+            exit 1
+        fi
         batch >"$home/carddemo-ims-batch.log"
         if grep -hE "RC=[0-9]{4}|ABEND|JCL ERROR" "$home"/carddemo-ims-*.log | grep -vq "RC=0000"; then
             cat "$home"/carddemo-ims-*.log

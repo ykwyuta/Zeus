@@ -246,6 +246,7 @@ impl Compiler {
             update: false,
             keyed: false,
             direct: false,
+            regional: false,
         };
         for a in attrs {
             match a {
@@ -257,6 +258,9 @@ impl Compiler {
                 Attr::Update => f.update = true,
                 Attr::Keyed => f.keyed = true,
                 Attr::Direct => f.direct = true,
+                Attr::Environment(e) if e.to_ascii_uppercase().contains("REGIONAL") => {
+                    f.regional = true;
+                }
                 Attr::External(Some(n)) => f.ddname = n.chars().take(8).collect(),
                 _ => {}
             }

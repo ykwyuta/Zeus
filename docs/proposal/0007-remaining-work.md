@@ -24,13 +24,13 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 13 | M | PL/I の EXEC SQL: FLOAT・PICTURE・BIT のホスト変数、構造体のホスト変数の展開、動的 SQL と SQLDA | 0004 | **済** (動的 SQL は COBOL でも使える) |
 | 14 | M | MQ: MQSET、パブリッシュ/サブスクライブ、メッセージハンドル、MQCB/MQCTL、MQOD・MQPMO 2 以降のフィールド | 0005 | **済** (配布リストを除く) |
 | 15 | M | GenApp のイベント処理 (LGASTAT1) | 0002 Phase 5 | **済** (LINK の捕捉と取引開始アダプター) |
-| 16 | M | Db2 のユーティリティ (DSNTIAUL・LOAD)、EBCDIC 照合のデータベース | 0002 Phase 5 | 未着手 |
-| 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | 未着手 |
-| 18 | S | PL/I からの MQI 呼出し | 0005 | 未着手 |
-| 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | 未着手 |
-| 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | 未着手 |
-| 21 | S | IMS のアンロード (DFSURGU0) | 0006 | 未着手 |
-| 22 | S | BMS: JUSTIFY=RIGHT の入力フィールドの右寄せの確認、DBCS の利用者語 | 0002 | 未着手 |
+| 16 | M | Db2 のユーティリティ (DSNTIAUL・LOAD)、EBCDIC 照合のデータベース | 0002 Phase 5 | **済** (EBCDIC 照合は PostgreSQL だけ。Db2 CE は非対応) |
+| 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | **済** |
+| 18 | S | PL/I からの MQI 呼出し | 0005 | **済** |
+| 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | **済** |
+| 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | **済** |
+| 21 | S | IMS のアンロード (DFSURGU0) | 0006 | **済** |
+| 22 | S | BMS: JUSTIFY=RIGHT の入力フィールドの右寄せの確認、DBCS の利用者語 | 0002 | **済** |
 
 ## 2. この一覧の対象外
 
@@ -134,3 +134,37 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
   - 構造体の途中の REFER: REFER のメンバーが今の値で大きさを変え、後のメンバーの位置と構造体の大きさに反映する。
   - CONTROLLED の仮引数: 引数として呼出し側の変数の世代の起点を渡し、呼ばれた手続きの ALLOCATE / FREE がそれに作用する。
   - `crates/zeus-pli/tests/programs.rs` の `areas_isub_refer_and_controlled_parameters`。
+- **#17 PL/I の LOCATE と番号付きのレコード** (2026-10):
+  - LOCATE: BASED 変数を割り当てて位置指定子を設定し、その記憶域を次のレコードにする。前のバッファは次の LOCATE・WRITE か CLOSE で書く。
+  - ENVIRONMENT(REGIONAL(1)): 0 からの領域番号を KEY / KEYFROM / KEYTO にする。DIRECT の WRITE で途中の領域はダミー (先頭が X'FF')、
+    DELETE はダミーにし、順次 READ はダミーを飛ばす。
+  - VSAM RRDS (カタログの NUMBERED のクラスター): JCL がその DD を相対データセットとして渡し、1 からの相対レコード番号をキーにする。
+  - `crates/zeus-pli/tests/programs.rs` の `locate_and_numbered_records`。
+- **#18 PL/I からの MQI 呼出し** (2026-10):
+  - PL/I のステップは実行単位の COBOL のマシンのネイティブの呼出しを使うので、MQI はそのまま呼べた。足りなかったのは
+    %INCLUDE のメンバーで、COBOL のコピーメンバーと同じ定義から CMQP・CMQEPP・構造体のメンバーを作る。
+  - MQCB の CallbackName が COBOL のプログラムでなければ、実行単位のリンカーで PL/I のモジュールを探して呼ぶ。
+  - 合わせて直したもの: 仮引数の INITIAL (LIKE で写したもの) を手続きの入口で実行していた。仮引数には初期値を設定しない。
+  - `crates/zeus-jcl/tests/jobs.rs` の `mq_calls_from_pli`。
+- **#19 COBOL から CALL された PL/I 手続きの EXEC CICS** (2026-10):
+  - 外部手続きの呼出しごとに CICS のプログラムのインスタンスを分け、HANDLE CONDITION のラベルを呼んだプログラムのものと区別する。
+  - その中の RETURN / XCTL は呼出し元に STOP RUN と同じ終わり方を返し、呼んだ COBOL のプログラムも終える
+    (CALL は論理レベルを作らないので、LINK のレベルが終わる)。
+  - `crates/zeus-cics/tests/pli.rs` (CBGREET が PLLEN と PLRET を CALL する)。
+- **#20 PL/I のプリプロセッサ** (2026-10):
+  - %GO TO: 実行中のテキスト (%DO・%IF の中なら外側のテキストへ順にたどる) からラベル付きの % 文を探して続ける。
+    ラベルだけの文 (`%L: ;`) も書ける。プリプロセッサ手続きの中の GO TO は手続きの文のラベルへ。
+  - STATEMENT 形式: STATEMENT オプションの手続きは `名前(位置引数) 仮引数名(引数) ...;` で呼べ、`;` まで置き換える。
+  - 合わせて直したもの: 手続きの CHARACTER の局所変数への代入が FIXED に変換されていた。
+  - `crates/zeus-pli/tests/programs/macros2.pli`。
+- **#21 IMS のアンロード DFSURGU0** (2026-10):
+  - `PARM=(ULU,DFSURGU0,DBD)` がデータベースを DD DFSUROUT に DFSURGU0 の形で書き出す。読み込み (DFSURGL0) も
+    1 階層の子に限らず、複数階層を親子の順で戻せるようにした。
+  - CardDemo の DBPAUTP0 では、セグメントのレコードが付属のアンロードと同じ内容・順序になる。
+  - `crates/zeus-ims/src/unload.rs` の往復のテストと `tools/carddemo-ims.sh test`。
+- **#22 BMS の JUSTIFY=RIGHT と DBCS の利用者語** (2026-10):
+  - JUSTIFY=RIGHT: 入力の後続ブランクを除いてから右寄せする。IBM の文書は「右寄せ」とだけ書いているが、GenApp
+    (自動車保険の更新) は X(8) に左詰めで入れた CC を FSET で受け取り、右寄せ・ゼロ詰めで 9(4) に戻すことを前提にしている。
+    JUSTIFY を書かない NUM のフィールドは文書どおり RIGHT・ZERO。
+  - DBCS の利用者語: COBOL の字句解析が ASCII 以外の英字・数字 (漢字・かな・全角) を語の文字として受け付ける。
+  - `tools/genapp/motor.txt` (更新後の CC) と `crates/zeus-cobol/tests/japanese.cbl`。

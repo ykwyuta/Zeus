@@ -86,6 +86,10 @@ pub fn run(
                 };
                 let p = p.to_ascii_uppercase();
                 let r = match p.as_str() {
+                    "DSNTIAUL" => {
+                        let parms = operand(&cmd, "PARMS").unwrap_or_default();
+                        super::db2util::dsntiaul(ctx, &parms)
+                    }
                     "DSNTIAD" | "DSNTEP2" | "DSNTEP4" => {
                         let rc0 = operand(&cmd, "PARMS")
                             .is_some_and(|x| x.to_ascii_uppercase().contains("RC0"));

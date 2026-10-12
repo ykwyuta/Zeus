@@ -292,14 +292,21 @@ pub fn receive_map(screen: &Screen, map: &Map) -> Option<Vec<u8>> {
                 area[off + 2] = 0x80;
                 continue;
             }
-            let right = f.justify.iter().any(|j| j == "RIGHT");
-            let pad = if f.justify.iter().any(|j| j == "ZERO") {
+            // without JUSTIFY a NUM field is RIGHT and ZERO
+            let num = f.justify.is_empty() && f.attrb.iter().any(|a| a == "NUM");
+            let right = num || f.justify.iter().any(|j| j == "RIGHT");
+            let pad = if num || f.justify.iter().any(|j| j == "ZERO") {
                 ebcdic::ZERO
             } else {
                 ebcdic::SPACE
             };
             let mut v = vec![pad; f.length as usize];
             if right {
+                // the data right-adjusted: without the blanks after it (a
+                // field sent with FSET comes back with them)
+                while data.last() == Some(&ebcdic::SPACE) {
+                    data.pop();
+                }
                 let s = v.len() - data.len();
                 v[s..].copy_from_slice(&data);
             } else {

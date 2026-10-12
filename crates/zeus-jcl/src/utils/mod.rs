@@ -1,6 +1,7 @@
 //! System utilities run as step programs.
 
 mod compile;
+pub mod db2util;
 pub mod idcams;
 mod iebgener;
 pub mod sort;
@@ -16,6 +17,7 @@ pub fn run(program: &str, ctx: &mut StepCtx) -> Option<ProgramResult> {
         "IEFBR14" => Ok(0),
         "IEBGENER" | "ICEGENER" => iebgener::run(ctx),
         "IDCAMS" => idcams::run(ctx),
+        "DSNUTILB" => db2util::dsnutilb(ctx),
         "SORT" | "ICEMAN" | "DFSORT" | "SYNCSORT" => sort::run(ctx),
         "IGYCRCTL" => compile::cobol(ctx),
         "IBMZPLI" | "IEL1AA" | "IEL0AA" => compile::pli(ctx),

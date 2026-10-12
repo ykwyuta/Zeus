@@ -1199,6 +1199,9 @@ impl Compiler {
                     };
                     let root = self.m.vars[v as usize].root;
                     match &self.m.vars[root as usize].storage {
+                        // a parameter is the argument's storage (INITIAL
+                        // copied by LIKE does not apply)
+                        Storage::Param(_) => {}
                         Storage::Static(_) => self.m.static_inits.push(init),
                         Storage::Based(_) | Storage::Controlled(..) => {
                             self.m.static_inits.push(Init {

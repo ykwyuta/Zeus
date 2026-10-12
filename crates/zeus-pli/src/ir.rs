@@ -165,6 +165,9 @@ pub struct FileDecl {
     pub update: bool,
     pub keyed: bool,
     pub direct: bool,
+    /// ENVIRONMENT(REGIONAL(1)): records in numbered regions.
+    #[serde(default)]
+    pub regional: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -545,6 +548,8 @@ pub enum Stmt {
     /// CONTROLLED variable: by generation slot).
     /// ... and the AREA to allocate in.
     Allocate(Vec<AllocItem>),
+    /// LOCATE: the based variable allocated in the file's output buffer.
+    Locate(AllocItem, RecordIo),
     Free(Vec<(VarId, Option<Expr>)>),
     /// FETCH: the entry names and the load module titles (character).
     Fetch(Vec<(String, Option<Expr>)>),

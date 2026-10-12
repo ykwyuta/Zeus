@@ -56,6 +56,12 @@ pub struct FileState {
     /// The current line was written out early (at the return of a call
     /// from another module); the next line end writes nothing.
     pub held: bool,
+    /// A relative record data set (VSAM RRDS) and its records.
+    pub relative: bool,
+    pub relative_ds: Option<zeus_ds::relative::RelativeDataset>,
+    /// The output buffer of the last LOCATE: its address, length and key,
+    /// written by the next LOCATE, WRITE or CLOSE.
+    pub pending: Option<(u32, usize, Option<Vec<u8>>)>,
 }
 
 impl FileState {
@@ -74,6 +80,9 @@ impl FileState {
             line: Vec::new(),
             fresh: true,
             held: false,
+            relative: false,
+            relative_ds: None,
+            pending: None,
             lineno: 1,
             pageno: 1,
             linesize: 120,
@@ -132,6 +141,7 @@ impl Machine {
                     update: false,
                     keyed: false,
                     direct: false,
+                    regional: false,
                 };
                 Rc::make_mut(&mut self.module).files.push(decl.clone());
                 self.files.push(FileState::new(&decl));
@@ -168,6 +178,7 @@ impl Machine {
                 st.path = Some(d.path.clone());
                 st.format = d.format;
                 st.keys = d.keys;
+                st.relative = d.relative;
                 if st.stream && st.output {
                     st.sink = Some(match (d.sysout, d.format) {
                         (false, Some(fmt)) => Sink::Records(d.path.clone(), fmt, Vec::new()),
@@ -586,6 +597,7 @@ impl Machine {
             update: false,
             keyed: false,
             direct: false,
+            regional: false,
         };
         let mut st = FileState::new(&decl);
         st.open = true;
@@ -941,6 +953,7 @@ impl Machine {
                 update: false,
                 keyed: false,
                 direct: false,
+                regional: false,
             });
             st.open = true;
             st.inrecs = vec![text];

@@ -365,6 +365,27 @@ impl Machine {
         Some(f(&mut self.mem, &addrs))
     }
 
+    /// Calls program `name`: a COBOL program of the run unit, else one
+    /// the linker finds (a PL/I module), with this machine's storage
+    /// lent to it; None when there is no such program.
+    pub fn call_external(
+        &mut self,
+        name: &str,
+        args: &[crate::interlang::XRef],
+    ) -> Result<Option<crate::interlang::XEnd>, String> {
+        if let Some(e) = self.call_program(name, args)? {
+            return Ok(Some(e));
+        }
+        let Some(l) = self.linker.clone() else {
+            return Ok(None);
+        };
+        let _ = self.stdout.flush();
+        let me = std::mem::replace(self, Machine::placeholder());
+        let (back, r) = l.call(&name.to_ascii_uppercase(), me, args);
+        *self = back;
+        r.transpose()
+    }
+
     /// Passes `args` (addresses in this machine's storage, see
     /// [`Machine::getmain`]) to the USING parameters of the main program
     /// in place of the PARM.

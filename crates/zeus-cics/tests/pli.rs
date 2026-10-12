@@ -38,7 +38,7 @@ fn pli_transaction() {
         .arg(copy.join("PLMAP.pli"))
         .arg("--map")
         .arg(maps.join("PLMAP.json")));
-    for p in ["PLGR", "PLUPPER", "PLLEN"] {
+    for p in ["PLGR", "PLUPPER", "PLLEN", "PLRET"] {
         run(Command::new(bin("zpli"))
             .args(["compile", "-I"])
             .arg(&copy)

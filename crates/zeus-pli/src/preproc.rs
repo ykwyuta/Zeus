@@ -8,7 +8,12 @@
 //! `%LEAVE`, `%ITERATE`, `%ACTIVATE`, `%DEACTIVATE`, `%REPLACE`, `%NOTE`,
 //! `%INCLUDE` / `%XINCLUDE` and preprocessor procedures
 //! (`%name: PROCEDURE(params) RETURNS(CHAR | FIXED); ... %END;`), which
-//! are invoked from the text with their arguments as character strings.
+//! are invoked from the text with their arguments as character strings;
+//! with the STATEMENT option also in the statement form `name(positional)
+//! param(argument) ...;` (keyword arguments; the `;` is replaced too).
+//! `%GO TO label` continues at a labelled % statement of the same text
+//! (forward or backward, out of %DO groups), and GO TO in a preprocessor
+//! procedure at a labelled statement of it.
 
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -61,6 +66,8 @@ enum Scan {
 struct Proc {
     params: Vec<String>,
     returns_char: bool,
+    /// The STATEMENT option: the statement form with keyword arguments.
+    statement: bool,
     body: Vec<Token>,
 }
 
@@ -70,6 +77,8 @@ enum Flow {
     Leave(Option<String>),
     Iterate(Option<String>),
     Return(Val),
+    /// GO TO a label not yet found.
+    Goto(String),
 }
 
 struct Pp<'a> {
@@ -84,6 +93,8 @@ struct Pp<'a> {
     included: HashSet<PathBuf>,
     depth: usize,
     counter: i64,
+    /// %GO TO statements executed (a loop of them ends with an error).
+    gotos: u32,
 }
 
 fn is_op(t: &Token, o: &str) -> bool {
@@ -131,6 +142,38 @@ fn keyword(t: &[Token], mut i: usize, end: usize) -> (Option<String>, usize, Vec
         i,
         labels,
     )
+}
+
+/// The text inside the parentheses opening at `i`, and the index of the
+/// closing one.
+fn paren_text(t: &[Token], i: usize, end: usize) -> (usize, String) {
+    let mut depth = 0;
+    let mut j = i;
+    while j < end {
+        match &t[j].tok {
+            Tok::Op("(") => depth += 1,
+            Tok::Op(")") => {
+                depth -= 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            _ => {}
+        }
+        j += 1;
+    }
+    (j, tokens_text(&t[(i + 1).min(j)..j]))
+}
+
+/// The index of the `%` of the statement labelled `label` in `t[i..end]`.
+fn label_at(t: &[Token], mut i: usize, end: usize, label: &str) -> Option<usize> {
+    while i + 1 < end {
+        if is_op(&t[i], "%") && keyword(t, i + 1, end).2.iter().any(|l| l == label) {
+            return Some(i);
+        }
+        i += 1;
+    }
+    None
 }
 
 /// The index after the `%END ...;` that closes the group whose body
@@ -237,7 +280,8 @@ fn sql_include(t: &[Token]) -> Option<String> {
 fn system_member(member: &str) -> Option<String> {
     let name = member.to_ascii_uppercase();
     if name != "DFHAID" && name != "DFHBMSCA" {
-        return None;
+        // the MQ interface (CMQP, CMQEPP, CMQMDP, ...)
+        return zeus_cobol::front::syslib::pli_member(&name);
     }
     let cobol = zeus_cobol::front::syslib::member(&name)?;
     let mut out = String::new();
@@ -290,10 +334,15 @@ impl Pp<'_> {
         self.depth += 1;
         let r = self.run(&toks, 0, n);
         self.depth -= 1;
-        r.map(|_| ())
+        match r? {
+            // a label is looked for in the member only
+            Flow::Goto(l) => Err(self.err(pos, format!("%GO TO {l}: no such label"))),
+            _ => Ok(()),
+        }
     }
 
     fn run(&mut self, t: &[Token], mut i: usize, end: usize) -> Result<Flow> {
+        let start = i;
         while i < end {
             if let Some(member) = sql_include(&t[i..end]) {
                 // EXEC SQL INCLUDE member; (SQLCA is declared by the compiler)
@@ -303,10 +352,21 @@ impl Pp<'_> {
             }
             if is_op(&t[i], "%") {
                 let (next, flow) = self.statement(t, i + 1, end)?;
-                if !matches!(flow, Flow::Next) {
-                    return Ok(flow);
+                match flow {
+                    Flow::Next => i = next,
+                    // the labelled statement, if it is in this text
+                    Flow::Goto(l) => match label_at(t, start, end, &l) {
+                        Some(p) => {
+                            self.gotos += 1;
+                            if self.gotos > 1_000_000 {
+                                return Err(self.err(t[i].pos, "%GO TO loop does not end"));
+                            }
+                            i = p;
+                        }
+                        None => return Ok(Flow::Goto(l)),
+                    },
+                    f => return Ok(f),
                 }
-                i = next;
                 continue;
             }
             i = self.text(t, i, end)?;
@@ -353,6 +413,31 @@ impl Pp<'_> {
                 }
                 args.push(tokens_text(&cur));
                 j += 1;
+            }
+            if proc.statement {
+                // the statement form (at the start of a statement):
+                // keyword arguments, and the ';' that ends it
+                let at_start = self
+                    .out
+                    .last()
+                    .is_none_or(|x| is_op(x, ";") || is_op(x, ":"));
+                let mut by_pos: Vec<Option<String>> = args.into_iter().map(Some).collect();
+                by_pos.resize(by_pos.len().max(proc.params.len()), None);
+                let mut keywords = false;
+                while let Some(k) = (j + 1 < end && is_op(&t[j + 1], "("))
+                    .then(|| word(&t[j]))
+                    .flatten()
+                    .and_then(|w| proc.params.iter().position(|p| p == w))
+                {
+                    let (close, text) = paren_text(t, j + 1, end);
+                    by_pos[k] = Some(text);
+                    keywords = true;
+                    j = close + 1;
+                }
+                if (at_start || keywords) && j < end && is_op(&t[j], ";") {
+                    j += 1;
+                }
+                args = by_pos.into_iter().map(Option::unwrap_or_default).collect();
             }
             let v = self.call(&proc, args.into_iter().map(Val::Char).collect(), tok.pos)?;
             (v, j)
@@ -415,6 +500,10 @@ impl Pp<'_> {
             return Ok((i + 1, Flow::Next));
         }
         let Some(kw) = kw else {
+            // a labelled null statement
+            if !labels.is_empty() && k < end && is_op(&t[k], ";") {
+                return Ok((k + 1, Flow::Next));
+            }
             return Err(self.err(pos, "preprocessor statement expected"));
         };
         // assignment
@@ -676,6 +765,7 @@ impl Pp<'_> {
                     .ok_or_else(|| self.err(pos, "a preprocessor procedure needs a name"))?;
                 let mut params = Vec::new();
                 let mut returns_char = false;
+                let mut statement = false;
                 let mut j = k + 1;
                 while j < se {
                     if is_op(&t[j], "(") {
@@ -686,6 +776,8 @@ impl Pp<'_> {
                             }
                             j += 1;
                         }
+                    } else if is_word(&t[j], "STATEMENT") {
+                        statement = true;
                     } else if is_word(&t[j], "RETURNS") {
                         returns_char = t
                             .get(j + 2)
@@ -704,12 +796,22 @@ impl Pp<'_> {
                     Proc {
                         params,
                         returns_char,
+                        statement,
                         body,
                     },
                 );
                 Ok((after, Flow::Next))
             }
-            "GO" | "GOTO" => Err(self.err(pos, "%GO TO is not supported")),
+            "GO" | "GOTO" => {
+                let mut j = k + 1;
+                if kw == "GO" && j < se && is_word(&t[j], "TO") {
+                    j += 1;
+                }
+                match t.get(j).filter(|_| j + 1 == se).and_then(word) {
+                    Some(l) => Ok((se + 1, Flow::Goto(l.to_string()))),
+                    None => Err(self.err(pos, "%GO TO: a label expected")),
+                }
+            }
             "END" => Err(self.err(pos, "%END without a group")),
             other => Err(self.err(
                 pos,
@@ -906,17 +1008,7 @@ impl Pp<'_> {
     }
 
     fn assign(&mut self, name: &str, v: Val, locals: &mut HashMap<String, Val>) {
-        let is_char = self.chars.contains(name);
-        let v = if is_char {
-            Val::Char(v.text())
-        } else {
-            match v {
-                Val::Char(s) if !locals.contains_key(name) && !self.vars.contains_key(name) => {
-                    Val::Char(s)
-                }
-                other => Val::Fixed(other.num()),
-            }
-        };
+        // a local variable keeps the type of its declaration
         if let Some(x) = locals.get_mut(name) {
             *x = match (&*x, v) {
                 (Val::Char(_), v) => Val::Char(v.text()),
@@ -924,6 +1016,15 @@ impl Pp<'_> {
             };
             return;
         }
+        let is_char = self.chars.contains(name);
+        let v = if is_char {
+            Val::Char(v.text())
+        } else {
+            match v {
+                Val::Char(s) if !self.vars.contains_key(name) => Val::Char(s),
+                other => Val::Fixed(other.num()),
+            }
+        };
         self.vars.insert(name.to_string(), v);
     }
 
@@ -1026,6 +1127,7 @@ impl Pp<'_> {
         self.depth -= 1;
         let v = match r? {
             Flow::Return(v) => v,
+            Flow::Goto(l) => return Err(self.err(pos, format!("GO TO {l}: no such label"))),
             _ => Val::Char(String::new()),
         };
         Ok(if p.returns_char {
@@ -1037,10 +1139,22 @@ impl Pp<'_> {
 
     /// Executes statements of a preprocessor procedure.
     fn exec(&mut self, stmts: &[ast::Stmt], locals: &mut HashMap<String, Val>) -> Result<Flow> {
-        for s in stmts {
-            let f = self.exec_one(s, locals)?;
-            if !matches!(f, Flow::Next) {
-                return Ok(f);
+        let mut i = 0;
+        while i < stmts.len() {
+            match self.exec_one(&stmts[i], locals)? {
+                Flow::Next => i += 1,
+                // GO TO a statement of this list
+                Flow::Goto(l) => match stmts.iter().position(|s| s.labels.contains(&l)) {
+                    Some(p) => {
+                        self.gotos += 1;
+                        if self.gotos > 1_000_000 {
+                            return Err(self.err(stmts[i].pos, "GO TO loop does not end"));
+                        }
+                        i = p;
+                    }
+                    None => return Ok(Flow::Goto(l)),
+                },
+                f => return Ok(f),
             }
         }
         Ok(Flow::Next)
@@ -1103,6 +1217,7 @@ impl Pp<'_> {
                             match self.exec(body, locals)? {
                                 Flow::Leave(_) => return Ok(Flow::Next),
                                 Flow::Return(v) => return Ok(Flow::Return(v)),
+                                Flow::Goto(l) => return Ok(Flow::Goto(l)),
                                 _ => {}
                             }
                             if let Some(u) = until
@@ -1114,6 +1229,7 @@ impl Pp<'_> {
                         DoSpec::Forever => match self.exec(body, locals)? {
                             Flow::Leave(_) => return Ok(Flow::Next),
                             Flow::Return(v) => return Ok(Flow::Return(v)),
+                            Flow::Goto(l) => return Ok(Flow::Goto(l)),
                             _ => {}
                         },
                         DoSpec::Iterative { var, specs } => {
@@ -1147,6 +1263,7 @@ impl Pp<'_> {
                                     match self.exec(body, locals)? {
                                         Flow::Leave(_) => return Ok(Flow::Next),
                                         Flow::Return(v) => return Ok(Flow::Return(v)),
+                                        Flow::Goto(l) => return Ok(Flow::Goto(l)),
                                         _ => {}
                                     }
                                     if let Some(u) = &sp.until
@@ -1200,6 +1317,7 @@ impl Pp<'_> {
                 None => Val::Char(String::new()),
             })),
             StmtKind::Leave(l) => Ok(Flow::Leave(l.clone())),
+            StmtKind::GoTo(Expr::Ref(r)) => Ok(Flow::Goto(r.name().to_string())),
             StmtKind::Iterate(l) => Ok(Flow::Iterate(l.clone())),
             StmtKind::Null => Ok(Flow::Next),
             _ => Err(self.err(s.pos, "statement not supported in a preprocessor procedure")),
@@ -1300,9 +1418,11 @@ pub fn preprocess(
         included: HashSet::new(),
         depth: 0,
         counter: 0,
+        gotos: 0,
     };
     match pp.run(&toks, 0, n)? {
         Flow::Next => {}
+        Flow::Goto(l) => return Err(Diag::error(eof.pos, format!("%GO TO {l}: no such label"))),
         _ => {
             return Err(Diag::error(
                 eof.pos,

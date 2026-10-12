@@ -1,0 +1,4 @@
+ /* CALLed from COBOL: EXEC CICS RETURN ends the calling program too. */
+ PLRET: PROC;
+   EXEC CICS RETURN;
+ END PLRET;

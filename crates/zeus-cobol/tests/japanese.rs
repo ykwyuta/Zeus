@@ -1,6 +1,7 @@
 //! Japanese EBCDIC (CCSIDs 930, 939, 1390, 1399): mixed literals (SO /
 //! SI), DBCS items and literals (PIC G / N, G"..." / N"..."), DISPLAY and
-//! ACCEPT through zcobc (each run is a process with its code page).
+//! ACCEPT through zcobc (each run is a process with its code page), and
+//! DBCS user-defined words.
 
 use std::io::Write;
 use std::path::Path;
@@ -44,7 +45,8 @@ fn japanese_code_pages() {
                 "漢字データ",
                 "山田  様",
                 "12",
-                "入力=東京タワー"
+                "入力=東京タワー",
+                "合計=00042"
             ],
             "CCSID {ccsid}"
         );

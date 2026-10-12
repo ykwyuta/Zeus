@@ -1,5 +1,6 @@
-//! Record-oriented transmission: consecutive data sets and key-sequenced
-//! (VSAM KSDS) data sets.
+//! Record-oriented transmission: consecutive data sets, key-sequenced
+//! (VSAM KSDS) data sets, REGIONAL(1) and relative (VSAM RRDS) data sets
+//! with numbered records, and LOCATE.
 
 use super::stream::FileState;
 use super::value::{SPACE, Value};
@@ -13,7 +14,16 @@ impl Machine {
         let Some(path) = st.path.clone() else {
             return self.undefined_file(f, act).map(|_| ());
         };
-        if let Some((len, off)) = st.keys {
+        if st.relative {
+            st.relative_ds = Some(
+                zeus_ds::relative::RelativeDataset::load(&path)
+                    .ok()
+                    .flatten()
+                    .filter(|_| !(st.output && !st.update))
+                    .unwrap_or_default(),
+            );
+            st.dirty = st.output && !st.update;
+        } else if let Some((len, off)) = st.keys {
             let spec = vec![KeySpec {
                 offset: off as usize,
                 len: len as usize,
@@ -41,11 +51,21 @@ impl Machine {
     }
 
     pub(crate) fn close_records(&mut self, f: FileId) -> R<()> {
+        // the buffer of the last LOCATE
+        if let Some((addr, len, key)) = self.files[f as usize].pending.take() {
+            let rec = self.read(addr, len)?;
+            let _ = self.put_record(f, rec, key);
+        }
         let st = &mut self.files[f as usize];
         let Some(path) = st.path.clone() else {
             return Ok(());
         };
-        if let Some(ds) = &st.keyed_ds {
+        if let Some(ds) = &st.relative_ds {
+            if st.dirty {
+                let _ = ds.store(&path);
+            }
+            st.relative_ds = None;
+        } else if let Some(ds) = &st.keyed_ds {
             if st.dirty {
                 let _ = ds.store(&path);
             }
@@ -152,6 +172,9 @@ impl Machine {
             return Ok(());
         };
         let key = self.key_of(&r.key, act)?;
+        if self.is_slotted(f) {
+            return self.read_slot(r, f, key, act);
+        }
         let st = &mut self.files[f as usize];
         if let Some(ds) = &st.keyed_ds {
             let found = match &key {
@@ -237,8 +260,65 @@ impl Machine {
         let Some(f) = self.record_file(&r.file, true, false, act)? else {
             return Ok(());
         };
+        self.flush_locate(f, act)?;
         let rec = self.source_bytes(r, act)?;
         let key = self.key_of(&r.keyfrom, act)?;
+        if !self.put_record(f, rec, key)? {
+            return self.raise(Cond::Key(f), 52, act);
+        }
+        Ok(())
+    }
+
+    /// Writes the buffer of the file's last LOCATE.
+    fn flush_locate(&mut self, f: FileId, act: usize) -> R<()> {
+        if let Some((addr, len, key)) = self.files[f as usize].pending.take() {
+            let rec = self.read(addr, len)?;
+            if !self.put_record(f, rec, key)? {
+                return self.raise(Cond::Key(f), 52, act);
+            }
+        }
+        Ok(())
+    }
+
+    /// LOCATE: writes the previous buffer, then allocates the based
+    /// variable as the next record (its locator set) to be written later.
+    pub(crate) fn locate_stmt(&mut self, item: &AllocItem, r: &RecordIo, act: usize) -> R<()> {
+        let Some(f) = self.record_file(&r.file, true, false, act)? else {
+            return Ok(());
+        };
+        self.flush_locate(f, act)?;
+        self.exec(&Stmt::Allocate(vec![item.clone()]), act)?;
+        // the buffer: where the locator now points
+        let p = match &item.1 {
+            Some(t) => {
+                let TargetLoc::Loc(l) = self.target_loc(t, act)? else {
+                    return err("LOCATE SET: not a locator variable");
+                };
+                self.load(&l)?
+            }
+            None => {
+                let Storage::Based(Some(loc)) = &self.module.vars[item.0 as usize].storage else {
+                    return err("LOCATE of a BASED variable without a locator");
+                };
+                let loc = loc.clone();
+                self.eval(&loc, act)?
+            }
+        };
+        let Value::Ptr(p) = p else {
+            return err("LOCATE: the locator is not a pointer");
+        };
+        let len = self.var_size(item.0, act, Some(u64::from(p) * 8))? as usize;
+        let key = self.key_of(&r.keyfrom, act)?;
+        self.files[f as usize].pending = Some((p, len, key));
+        Ok(())
+    }
+
+    /// Adds a record to an output file (at its key for keyed and
+    /// numbered files); false: the key is in use or not valid.
+    fn put_record(&mut self, f: FileId, rec: Vec<u8>, key: Option<Vec<u8>>) -> R<bool> {
+        if self.is_slotted(f) {
+            return Ok(self.write_slot(f, rec, key));
+        }
         let st = &mut self.files[f as usize];
         st.dirty = true;
         if let Some(ds) = &mut st.keyed_ds {
@@ -254,10 +334,7 @@ impl Machine {
             }
             let k = ds.key_of(&rec, 0);
             st.last_key = k;
-            if ds.insert(rec).is_err() {
-                return self.raise(Cond::Key(f), 52, act);
-            }
-            return Ok(());
+            return Ok(ds.insert(rec).is_ok());
         }
         let rec = match st.format {
             Some(RecordFormat::Fixed(n)) => {
@@ -268,7 +345,123 @@ impl Machine {
             _ => rec,
         };
         st.recs.push(rec);
+        Ok(true)
+    }
+
+    // ---- REGIONAL(1) and relative (RRDS) data sets ------------------------
+
+    /// Records in numbered slots: REGIONAL(1) (regions from 0, a dummy
+    /// record has X'FF' first) or VSAM RRDS (records from 1).
+    fn is_slotted(&self, f: FileId) -> bool {
+        let st = &self.files[f as usize];
+        st.relative_ds.is_some() || (st.decl.regional && st.keyed_ds.is_none())
+    }
+
+    /// The slot number of a key (a character string of digits).
+    fn slot_of(key: &[u8]) -> Option<u64> {
+        zeus_cobol::ebcdic::decode(key).trim().parse().ok()
+    }
+
+    fn slot_text(n: u64) -> Vec<u8> {
+        zeus_cobol::ebcdic::encode(&n.to_string())
+    }
+
+    fn dummy(rec: &[u8]) -> bool {
+        rec.first() == Some(&0xFF)
+    }
+
+    /// The record in slot `n`, if any.
+    fn slot_get(&self, f: FileId, n: u64) -> Option<Vec<u8>> {
+        let st = &self.files[f as usize];
+        match &st.relative_ds {
+            Some(ds) => ds.get(n).map(<[u8]>::to_vec),
+            None => st.recs.get(n as usize).filter(|r| !Self::dummy(r)).cloned(),
+        }
+    }
+
+    /// The first record in slot `from` or after.
+    fn slot_next(&self, f: FileId, from: u64) -> Option<(u64, Vec<u8>)> {
+        let st = &self.files[f as usize];
+        match &st.relative_ds {
+            Some(ds) => ds.next_from(from).map(|(n, r)| (n, r.to_vec())),
+            None => st
+                .recs
+                .iter()
+                .enumerate()
+                .skip(from as usize)
+                .find(|(_, r)| !Self::dummy(r))
+                .map(|(i, r)| (i as u64, r.clone())),
+        }
+    }
+
+    fn read_slot(&mut self, r: &RecordIo, f: FileId, key: Option<Vec<u8>>, act: usize) -> R<()> {
+        let relative = self.files[f as usize].relative_ds.is_some();
+        let found = match &key {
+            Some(k) => Self::slot_of(k).and_then(|n| self.slot_get(f, n).map(|r| (n, r))),
+            None => {
+                let st = &self.files[f as usize];
+                let from = match st.last_read {
+                    Some(n) => n as u64 + 1,
+                    None => u64::from(relative),
+                };
+                match self.slot_next(f, from) {
+                    Some(x) => Some(x),
+                    None => return self.raise(Cond::EndFile(f), 70, act),
+                }
+            }
+        };
+        let Some((n, rec)) = found else {
+            return self.raise(Cond::Key(f), 51, act);
+        };
+        self.files[f as usize].last_read = Some(n as usize);
+        self.deliver(r, f, rec, act)?;
+        if let Some((t, ty)) = &r.keyto {
+            let l = self.target_loc(t, act)?;
+            self.assign_target(t, l, Value::Char(Self::slot_text(n)), ty, act)?;
+        }
         Ok(())
+    }
+
+    /// WRITE to a numbered slot (KEYFROM) or the next one.
+    fn write_slot(&mut self, f: FileId, rec: Vec<u8>, key: Option<Vec<u8>>) -> bool {
+        let n = match &key {
+            Some(k) => match Self::slot_of(k) {
+                Some(n) => Some(n),
+                None => return false,
+            },
+            None => None,
+        };
+        let st = &mut self.files[f as usize];
+        st.dirty = true;
+        if let Some(ds) = &mut st.relative_ds {
+            return match n {
+                Some(n) => ds.insert(n, rec).is_ok(),
+                None => {
+                    ds.append(rec);
+                    true
+                }
+            };
+        }
+        let len = match st.format {
+            Some(RecordFormat::Fixed(n)) => n as usize,
+            _ => rec.len(),
+        };
+        let mut rec = rec;
+        rec.resize(len, SPACE);
+        match n {
+            Some(n) => {
+                let n = n as usize;
+                while st.recs.len() <= n {
+                    st.recs.push(vec![0xFF; len]);
+                }
+                if !Self::dummy(&st.recs[n]) && st.decl.direct {
+                    return false;
+                }
+                st.recs[n] = rec;
+            }
+            None => st.recs.push(rec),
+        }
+        true
     }
 
     pub(crate) fn rewrite_stmt(&mut self, r: &RecordIo, act: usize) -> R<()> {
@@ -280,6 +473,29 @@ impl Machine {
         }
         let rec = self.source_bytes(r, act)?;
         let key = self.key_of(&r.key, act)?;
+        if self.is_slotted(f) {
+            let n = match &key {
+                Some(k) => Self::slot_of(k),
+                None => self.files[f as usize].last_read.map(|n| n as u64),
+            };
+            let Some(n) = n.filter(|&n| self.slot_get(f, n).is_some()) else {
+                return self.raise(Cond::Key(f), 51, act);
+            };
+            let st = &mut self.files[f as usize];
+            st.dirty = true;
+            match &mut st.relative_ds {
+                Some(ds) => {
+                    let _ = ds.replace(n, rec);
+                }
+                None => {
+                    let slot = &mut st.recs[n as usize];
+                    let mut rec = rec;
+                    rec.resize(slot.len(), SPACE);
+                    *slot = rec;
+                }
+            }
+            return Ok(());
+        }
         let st = &mut self.files[f as usize];
         st.dirty = true;
         if let Some(ds) = &mut st.keyed_ds {
@@ -320,6 +536,25 @@ impl Machine {
             return Ok(());
         };
         let key = self.key_of(&r.key, act)?;
+        if self.is_slotted(f) {
+            let n = match &key {
+                Some(k) => Self::slot_of(k),
+                None => self.files[f as usize].last_read.map(|n| n as u64),
+            };
+            let Some(n) = n.filter(|&n| self.slot_get(f, n).is_some()) else {
+                return self.raise(Cond::Key(f), 51, act);
+            };
+            let st = &mut self.files[f as usize];
+            st.dirty = true;
+            match &mut st.relative_ds {
+                Some(ds) => {
+                    let _ = ds.delete(n);
+                }
+                // a dummy record
+                None => st.recs[n as usize].fill(0xFF),
+            }
+            return Ok(());
+        }
         let st = &mut self.files[f as usize];
         st.dirty = true;
         if let Some(ds) = &mut st.keyed_ds {

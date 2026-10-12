@@ -5,7 +5,8 @@
 # usage: tools/carddemo-db2.sh setup        # after tools/carddemo.sh setup
 #        tools/carddemo-db2.sh batch        # MNTTRDB2: COBTUPDT updates the table
 #        tools/carddemo-db2.sh run SCRIPT... # zcics with the Db2 transactions
-#        tools/carddemo-db2.sh test         # setup, batch, tools/carddemo-db2/*.txt
+#        tools/carddemo-db2.sh test         # setup, batch, tools/carddemo-db2/*.txt,
+#                                           # TRANEXTR (DSNTIAUL)
 #
 # ZEUS_DB2 names the Db2 server (tools/db2ce.sh start prints it).
 set -eu
@@ -106,6 +107,16 @@ case ${1:-} in
             zcics "tools/carddemo-db2/$s.txt" >"$out/db2-$s.log" ||
                 { cat "$out/db2-$s.log"; exit 1; }
         done
+        # TRANEXTR: DSNTIAUL unloads the tables to the sequential files the
+        # VSAM files are loaded from (their backups are generations)
+        $zjob catalog list | grep -q "^$hlq.TRANTYPE.BKUP " || submit "$app/jcl/DEFGDGD.jcl" >/dev/null
+        echo "=== TRANEXTR"
+        submit "$mod/jcl/TRANEXTR.jcl" >"$home/tranextr.log"
+        if grep -E "RC=[0-9]{4}|ERROR|FLUSH" "$home/tranextr.log" | grep -vq "RC=0000"; then
+            cat "$home/tranextr.log"; exit 1
+        fi
+        $zjob catalog print $hlq.TRANTYPE.PS | head -1 | grep -q "^01PURCHASE  *00000000$" ||
+            { echo "TRANTYPE.PS is not the unloaded table" >&2; exit 1; }
         echo "all CardDemo Db2 tests passed"
         ;;
     *) echo "usage: $0 setup | batch | run SCRIPT... | test" >&2; exit 2 ;;

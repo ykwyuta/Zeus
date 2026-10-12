@@ -11,3 +11,5 @@ pub mod host;
 pub mod pg;
 
 pub use host::Db2Host;
+/// The DRDA result types (rows, columns, values, SQLCA).
+pub use zeus_drda::sql;

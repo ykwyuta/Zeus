@@ -230,8 +230,9 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   COUNTER)、FROM と LENGTH でデータ項目の先まで送る SEND を実装し、顧客の照会・追加・更新と、
   自動車・養老・住宅保険の照会・追加・更新・削除、商業保険の照会・追加・削除が Db2 と VSAM の
   両方で動く (`tools/genapp/` の 3 シナリオを CI で実行)。
-  未確認: JUSTIFY=RIGHT の入力フィールドが後続ブランク付きで戻ったときに BMS が右寄せするか
-  (現状は端末から来たとおり。自動車保険の更新で CC が 0 になる)。
+  JUSTIFY=RIGHT の入力フィールドは、端末から来たデータの後続ブランクを除いてから右寄せする
+  (FSET で送り返されたフィールドの値が保たれる。自動車保険の更新で CC が変わらないことを
+  `tools/genapp/motor.txt` で確かめる)。JUSTIFY のない NUM のフィールドは RIGHT・ZERO とする。
   作業単位: 回復可能なファイル (VSAM クラスタの LOG(UNDO/ALL)、なければ FILE 定義の
   RECOVERY) への変更は SYNCPOINT ROLLBACK と異常終了で Db2 と一緒に取り消され、SYNCPOINT と
   タスク終了で Db2 と一緒に確定する (ログは領域内のメモリ。領域の障害からの回復はない)。
@@ -241,7 +242,17 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   (DFHEP.CCECONTEXT、DFHEP.NAME.nnnnn、DFHEP.DATA.nnnnn) で START する (START CHANNEL も実装)。
   GenApp のバンドル GENAEV01 (CDEF125 の LGST・SSST) で LGASTAT1 が要求ごとの名前付きカウンターを
   数える (`tools/genapp/events.txt`)。
-  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路。
+  Db2 のユーティリティ: DSNTIAUL (TSO の DSN RUN。PARMS('SQL') の問い合わせか表名ごとに SYSRECnn へ
+  Db2 の内部形式の固定長レコード (NULL 可の列の後に標識バイト、NULL は '?')、SYSPUNCH に LOAD 文)。
+  DSNUTILB の LOAD (区切り形式 FORMAT DELIMITED と位置指定形式 POSITION・CHAR・VARCHAR・INTEGER・
+  SMALLINT・BIGINT・DECIMAL PACKED/ZONED/EXTERNAL・FLOAT・DATE/TIME/TIMESTAMP EXTERNAL・NULLIF、
+  REPLACE・RESUME)。CardDemo の TRANEXTR (`tools/carddemo-db2.sh test`) と Bank of Z の IMS 経路の
+  Db2-insert (`tools/bankofz-ims.sh db2`) が動く。
+  EBCDIC 照合: PostgreSQL では `tools/pg.sh start-ebcdic` が ICU の規則 (コードページ 037 の文字を
+  符号順に並べたもの、`tools/pg-ebcdic037.rules`) で照合するデータベース zeusebcdic を作る。
+  Db2 CE (Linux) は EBCDIC_819_037 などの照合を受け付けない (SQL1083N 理由 4) ため、Db2 では
+  バイナリ照合のまま。
+  未着手: 静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路。
 
 - 日本語 EBCDIC (2026-10): CCSID 930・939・1390・1399 の変換を、ICU の対応表 (unicode-org/icu-data
   の UCM を `tools/icu-codepages.sh` で取得・変換し、ライセンスとともに同梱) から Zeus 自身のコードで
@@ -257,7 +268,8 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   NSYMBOL(NATIONAL) 相当、`--nsymbol dbcs` で PIC N・N"..." を DBCS に)。MOVE (英数字・DBCS との
   変換)、比較、文字単位の部分参照、LENGTH / BYTE-LENGTH、NATIONAL-OF / DISPLAY-OF (CCSID 指定可)、
   DISPLAY・ACCEPT・Db2 ホスト変数に対応。
-  未着手: DBCS の利用者語。中国語・韓国語のコードページは対象外とする。
+  DBCS の利用者語: ASCII 以外の文字 (漢字・かな・全角英数字) を含む語をデータ名・段落名などに使える
+  (`crates/zeus-cobol/tests/japanese.cbl`)。中国語・韓国語のコードページは対象外とする。
 
 ### Phase 6: Bank of Z (CICS 経路) (6〜8 週)
 - Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。

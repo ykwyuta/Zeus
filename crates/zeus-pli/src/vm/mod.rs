@@ -35,6 +35,8 @@ pub struct DdInfo {
     pub keys: Option<(u32, u32)>,
     /// A SYSOUT data set (text).
     pub sysout: bool,
+    /// A relative record data set (VSAM RRDS).
+    pub relative: bool,
 }
 
 /// The environment of a run.
@@ -1576,6 +1578,7 @@ impl Machine {
             }
             Stmt::Read(r) => self.read_stmt(r, act),
             Stmt::Write(r) => self.write_stmt(r, act),
+            Stmt::Locate(item, r) => self.locate_stmt(item, r, act),
             Stmt::Rewrite(r) => self.rewrite_stmt(r, act),
             Stmt::Delete(r) => self.delete_stmt(r, act),
             Stmt::Allocate(items) => {
@@ -2343,6 +2346,14 @@ impl Machine {
         }
         let saved = (CUR_ENABLED.with(|c| c.get()), CUR_LINE.with(|c| c.get()));
         CUR_ENABLED.with(|c| c.set(cond::DEFAULT));
+        // each call is a program instance of its own for the CICS host:
+        // its HANDLE CONDITION labels are not the caller's
+        let saved_instance = self.cics_instance;
+        self.cics_instance = CALLED_INSTANCE.with(|c| {
+            let n = c.get() + 1;
+            c.set(n);
+            CALLED_INSTANCE_BASE + n
+        });
         let r = (|| -> R<Option<Value>> {
             let a = self.activate(proc.block, None, bindings, proc.returns.clone())?;
             let body = &m.blocks[proc.block as usize].body;
@@ -2362,13 +2373,16 @@ impl Machine {
                 Err(e) => Err(e),
             }
         })();
+        self.cics_instance = saved_instance;
         CUR_ENABLED.with(|c| c.set(saved.0));
         CUR_LINE.with(|c| c.set(saved.1));
         self.complete_lines();
         let _ = self.env.stdout.flush();
         let (v, stop) = match r {
             Ok(v) => (v, false),
-            Err(Intr::Stop) => (None, true),
+            // EXEC CICS RETURN or XCTL in a called procedure ends the
+            // program that called it as well (its LINK level)
+            Err(Intr::Stop) | Err(Intr::CicsReturn) => (None, true),
             Err(e) => return Err(self.report(e)),
         };
         let ret = match (v, &proc.returns) {
@@ -3069,7 +3083,14 @@ fn signal_code(c: &Cond) -> i32 {
     }
 }
 
+/// The CICS program instances of called procedures: this plus a count
+/// of calls (the CICS host numbers PL/I programs from 1 << 30 plus the
+/// LINK level).
+const CALLED_INSTANCE_BASE: usize = (1 << 30) + (1 << 20);
+
 thread_local! {
+    /// Calls of external procedures so far (their CICS instances).
+    static CALLED_INSTANCE: std::cell::Cell<usize> = const { std::cell::Cell::new(0) };
     static CUR_ENABLED: std::cell::Cell<u16> = const { std::cell::Cell::new(cond::DEFAULT) };
     static CUR_LINE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     static PTR_OVERRIDE: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };

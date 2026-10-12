@@ -27,8 +27,16 @@ impl SqlCa {
 
 /// Reads an SQLCARD (SQLCAGRP); `le`: integers are little-endian.
 pub fn parse_sqlca(d: &[u8], le: bool) -> SqlCa {
+    parse_sqlca_len(d, le).0
+}
+
+/// An SQLCA and the bytes it takes (with its null indicator).
+fn parse_sqlca_len(d: &[u8], le: bool) -> (SqlCa, usize) {
     if d.first() != Some(&0) {
-        return SqlCa::ok();
+        return (SqlCa::ok(), 1);
+    }
+    if d.len() < 19 {
+        return (SqlCa::ok(), d.len());
     }
     let int = |b: &[u8]| -> i32 {
         let a = [b[0], b[1], b[2], b[3]];
@@ -74,8 +82,10 @@ pub fn parse_sqlca(d: &[u8], le: bool) -> SqlCa {
         let sm = vc(&mut i);
         let msg = if m.is_empty() { sm } else { m };
         ca.tokens = msg.split(|&b| b == 0xFF).map(s).collect();
+    } else {
+        i += 1;
     }
-    ca
+    (ca, i.min(d.len()))
 }
 
 /// A section of the dynamic SQL package.
@@ -180,9 +190,15 @@ impl Connection {
                     data.extend(&d.object.data);
                 }
             }
+            let warning = std::mem::take(&mut rows.sqlca);
             let (done, ca) = self.decode_rows(&data, &mut rows)?;
+            if rows.sqlca.sqlcode == 0 && warning.sqlcode > 0 {
+                rows.sqlca = warning;
+            }
             if done {
-                rows.sqlca = ca;
+                if ca.sqlcode != 100 || rows.sqlca.sqlcode <= 0 {
+                    rows.sqlca = ca;
+                }
                 break;
             }
             if r.iter().any(|d| d.object.cp == cp::ENDQRYRM) {
@@ -217,15 +233,25 @@ impl Connection {
         let mut i = 0;
         while i < data.len() {
             match data[i] {
-                // an SQLCA for the row: the end of the data or an error
+                // an SQLCA for the row: the end of the data, an error, or
+                // a warning on the row that follows
                 0x00 => {
-                    let ca = parse_sqlca(&data[i..], le);
-                    return Ok((true, ca));
+                    let (ca, n) = parse_sqlca_len(&data[i..], le);
+                    if ca.sqlcode == 100 || ca.sqlcode < 0 {
+                        return Ok((true, ca));
+                    }
+                    i += n;
+                    // a null SQLDIAGGRP
+                    if data.get(i) == Some(&0xFF) && data.get(i + 1) == Some(&0) {
+                        i += 1;
+                    }
+                    if rows.sqlca.sqlcode == 0 {
+                        rows.sqlca = ca;
+                    }
                 }
-                0xFF => {}
+                0xFF => i += 1,
                 b => return Err(Error(format!("unexpected row indicator {b:02X}"))),
             }
-            i += 1;
             // the row (group) is present
             if data.get(i) != Some(&0) {
                 i += 1;

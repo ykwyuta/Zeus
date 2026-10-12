@@ -158,6 +158,12 @@ const CEEIGZCT: &str = "
               88 CEE000 VALUE LOW-VALUE.
 ";
 
+/// Source text of a PL/I include member of the system library (the MQ
+/// interface: CMQP, CMQEPP, CMQMDP, ...).
+pub fn pli_member(name: &str) -> Option<String> {
+    super::syslib_mq::pli_member(name)
+}
+
 /// Source text of a system member, in fixed format.
 pub fn member(name: &str) -> Option<String> {
     Some(match name {

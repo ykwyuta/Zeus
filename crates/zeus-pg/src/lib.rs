@@ -51,6 +51,9 @@ pub struct Column {
     /// The type modifier (`atttypmod`): -1, or for VARCHAR / CHAR the length
     /// + 4, for NUMERIC ((precision << 16) | scale) + 4.
     pub type_mod: i32,
+    /// The table and column number of a table's column (0 otherwise).
+    pub table_oid: u32,
+    pub attnum: i16,
 }
 
 /// Type OIDs of the built-in types.
@@ -330,7 +333,8 @@ impl Connection {
                     cur.columns = (0..n)
                         .map(|_| {
                             let name = cstr(b, &mut at);
-                            at += 6;
+                            let table_oid = int32(b, &mut at) as u32;
+                            let attnum = int16(b, &mut at);
                             let type_oid = int32(b, &mut at) as u32;
                             at += 2;
                             let type_mod = int32(b, &mut at);
@@ -339,6 +343,8 @@ impl Connection {
                                 name,
                                 type_oid,
                                 type_mod,
+                                table_oid,
+                                attnum,
                             }
                         })
                         .collect();

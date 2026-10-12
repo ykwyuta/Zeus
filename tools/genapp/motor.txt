@@ -57,6 +57,8 @@ type 22 25 1
 key ENTER
 expect 8 TOYOTA
 expect 12 RED
+# JUSTIFY=(RIGHT,ZERO) fields sent back unchanged keep their values
+expect 13 1600
 key PF3
 tran SSP1
 type 4 51 0001000001
