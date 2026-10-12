@@ -243,7 +243,12 @@ impl Lexer {
                     self.i += 1;
                 }
                 let w: String = self.c[start..self.i].iter().collect();
-                self.push(Tok::Ident(w.to_ascii_uppercase()), pos);
+                let w = w.to_ascii_uppercase();
+                let exec = w == "EXEC";
+                self.push(Tok::Ident(w), pos);
+                if exec {
+                    self.exec_text()?;
+                }
                 continue;
             }
             if c.is_ascii_digit() || (c == '.' && self.peek(1).is_some_and(|d| d.is_ascii_digit()))
@@ -285,6 +290,55 @@ impl Lexer {
             };
             self.push(Tok::Op(op), pos);
         }
+    }
+
+    /// `EXEC SQL|CICS|DLI text;`: the kind as a name and the text up to
+    /// the semicolon (outside quotes) as a character string.
+    fn exec_text(&mut self) -> Result<()> {
+        let save = (self.i, self.line);
+        self.skip_blanks()?;
+        let pos = self.pos();
+        let start = self.i;
+        while self.peek(0).is_some_and(ident_char) {
+            self.i += 1;
+        }
+        let kind: String = self.c[start..self.i].iter().collect::<String>().to_ascii_uppercase();
+        if !matches!(kind.as_str(), "SQL" | "CICS" | "DLI") {
+            (self.i, self.line) = save;
+            return Ok(());
+        }
+        self.push(Tok::Ident(kind), pos);
+        let tpos = self.pos();
+        let mut text = String::new();
+        let mut quote = None;
+        loop {
+            let Some(c) = self.peek(0) else {
+                return Err(Diag::error(tpos, "';' expected at the end of the EXEC statement"));
+            };
+            self.i += 1;
+            match (quote, c) {
+                (None, ';') => break,
+                (None, '\'' | '"') => quote = Some(c),
+                (Some(q), c) if c == q => quote = None,
+                _ => {}
+            }
+            if c == '\n' {
+                self.line += 1;
+                text.push(' ');
+            } else {
+                text.push(c);
+            }
+        }
+        self.push(
+            Tok::Str {
+                text: text.trim().to_string(),
+                kind: StrKind::Char,
+            },
+            tpos,
+        );
+        let end = self.pos();
+        self.push(Tok::Op(";"), end);
+        Ok(())
     }
 
     fn number(&mut self, pos: Pos) {

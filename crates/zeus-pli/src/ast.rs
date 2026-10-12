@@ -348,6 +348,8 @@ pub enum StmtKind {
         reply: Option<Expr>,
     },
     Delay(Expr),
+    /// `EXEC SQL|CICS|DLI text`.
+    Exec(String, String),
     Format(Vec<Format>),
     Null,
 }

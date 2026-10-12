@@ -9,7 +9,8 @@
 //! SYSPRINT goes to standard output and SYSIN comes from standard input
 //! unless allocated with `--dd`. External procedures of other modules
 //! (PL/I modules and COBOL programs) are looked up in the `-L`
-//! directories and the directory of the module. Messages go to standard error. The exit
+//! directories and the directory of the module. EXEC SQL runs on the Db2
+//! server named by ZEUS_DB2 (`db2://user:pw@host:port/DB`). Messages go to standard error. The exit
 //! status is the return code (PLIRETC), or 16 after an ERROR condition.
 
 use std::collections::HashMap;
@@ -111,6 +112,13 @@ fn main() -> ExitCode {
     if let Some(d) = file.parent() {
         libs.push(if d.as_os_str().is_empty() { PathBuf::from(".") } else { d.to_path_buf() });
     }
+    // EXEC SQL runs on the Db2 server named by ZEUS_DB2
+    let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
+    let host = |d: &Option<std::rc::Rc<zeus_db2::Db2Host>>| {
+        d.clone().map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>)
+    };
+    let sub_db2 = host(&db2);
+    let cobol_db2 = db2.clone();
     let sub_dds = dds.clone();
     let cobol_dirs = libs.clone();
     let cobol_dds = dds.clone();
@@ -124,6 +132,7 @@ fn main() -> ExitCode {
             stdin: Some(Vec::new()),
             stdin_reader: None,
             linker: None,
+            exec_host: sub_db2.clone(),
         }),
         Some(Box::new(move || {
             let mut m = zeus_cobol::vm::Machine::new(cobol_dirs.clone());
@@ -137,6 +146,9 @@ fn main() -> ExitCode {
                 );
             }
             m.set_stdout(Box::new(std::io::stdout()));
+            if let Some(h) = &cobol_db2 {
+                m.set_exec_host(h.clone());
+            }
             m
         })),
     );
@@ -148,9 +160,14 @@ fn main() -> ExitCode {
         stdin: None,
         stdin_reader: Some(Box::new(std::io::stdin())),
         linker: Some(linker.clone()),
+        exec_host: host(&db2),
     };
     let end = zeus_pli::run(module, env);
     linker.finish();
+    // the unit of work ends with the run: committed, or backed out
+    if let Some(h) = &db2 {
+        let _ = h.end_uow(matches!(end, RunEnd::Rc(_)));
+    }
     match end {
         RunEnd::Rc(rc) => ExitCode::from(rc.clamp(0, 255) as u8),
         RunEnd::Abend(code) => {

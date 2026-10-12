@@ -4,6 +4,7 @@
 mod bif;
 mod conv;
 mod record;
+mod sql;
 mod stream;
 pub mod value;
 
@@ -49,6 +50,8 @@ pub struct RunEnv {
     pub stdin_reader: Option<Box<dyn std::io::Read>>,
     /// Finds external procedures of other modules (PL/I or COBOL).
     pub linker: Option<Rc<dyn Linker>>,
+    /// Runs EXEC SQL statements (the Db2 interface).
+    pub exec_host: Option<Rc<dyn zeus_cobol::vm::exec::ExecHost>>,
 }
 
 /// How a run ended.
@@ -1018,6 +1021,7 @@ impl Machine {
     fn exec(&mut self, s: &Stmt, act: usize) -> R<()> {
         match s {
             Stmt::Null => Ok(()),
+            Stmt::Exec(x) => self.exec_stmt(x, act),
             Stmt::Assign(targets, value) => {
                 // subscripts of the targets first, then the value
                 let mut locs = Vec::new();

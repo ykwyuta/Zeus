@@ -8,6 +8,14 @@
 use crate::ast::*;
 use crate::lexer::{Diag, Pos, Result, StrKind, Tok, Token};
 
+/// The SQLCA declaration (EXEC SQL INCLUDE SQLCA): 136 bytes.
+const SQLCA: &str = "DCL 1 SQLCA, 2 SQLCAID CHAR(8), 2 SQLCABC FIXED BIN(31), \
+2 SQLCODE FIXED BIN(31), 2 SQLERRM CHAR(70) VARYING, 2 SQLERRP CHAR(8), \
+2 SQLERRD(6) FIXED BIN(31), 2 SQLWARN, 3 SQLWARN0 CHAR(1), 3 SQLWARN1 CHAR(1), \
+3 SQLWARN2 CHAR(1), 3 SQLWARN3 CHAR(1), 3 SQLWARN4 CHAR(1), 3 SQLWARN5 CHAR(1), \
+3 SQLWARN6 CHAR(1), 3 SQLWARN7 CHAR(1), 2 SQLEXT, 3 SQLWARN8 CHAR(1), \
+3 SQLWARN9 CHAR(1), 3 SQLWARNA CHAR(1), 3 SQLSTATE CHAR(5);";
+
 pub struct Parser {
     toks: Vec<Token>,
     i: usize,
@@ -1627,6 +1635,21 @@ impl Parser {
                 }
                 self.semi()?;
                 StmtKind::Display { value, reply }
+            }
+            "EXEC" if matches!(self.tok(), Tok::Ident(_)) && matches!(self.tok_at(1), Tok::Str { .. }) => {
+                let kind = self.ident()?;
+                let Tok::Str { text, .. } = self.bump() else {
+                    unreachable!()
+                };
+                self.semi()?;
+                let words: Vec<String> = text.split_whitespace().map(|w| w.to_ascii_uppercase()).collect();
+                if kind == "SQL" && words == ["INCLUDE", "SQLCA"] {
+                    // the SQL communication area
+                    let mut toks = crate::lexer::tokenize_raw(SQLCA, pos)?;
+                    toks.push(Token { tok: Tok::Eof, pos });
+                    return Parser::new(toks).statement().map(|s| s.kind);
+                }
+                StmtKind::Exec(kind, text)
             }
             "DELAY" => {
                 let e = self.paren_expr()?;

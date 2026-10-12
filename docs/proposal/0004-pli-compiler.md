@@ -61,6 +61,7 @@ z/OS 上の Enterprise PL/I で書かれたバッチプログラムを、ソー�
 | 組込み関数 | 算術 (ABS、MOD、REM、ROUND、TRUNC、CEIL、FLOOR、MAX、MIN、SIGN、ADD/SUBTRACT/MULTIPLY/DIVIDE、PRECISION、BINARY、DECIMAL、FIXED、FLOAT など)、数学関数、文字列 (SUBSTR、INDEX、SEARCH、VERIFY、TALLY、LENGTH、MAXLENGTH、TRIM、LEFT、RIGHT、CENTER、COPY、REPEAT、REVERSE、TRANSLATE、UPPERCASE、LOWERCASE、HIGH、LOW、COLLATE、HEX、BOOL、UNSPEC、STRING、CHAR、BIT)、配列 (DIM、LBOUND、HBOUND、SUM、PROD、ALL、ANY)、記憶域 (ADDR、NULL、SYSNULL、SIZE、CURRENTSIZE、ALLOCATION、POINTERADD)、日付 (DATE、TIME、DATETIME、DAYS、DAYSTODATE、WEEKDAY)、PLIRETC/PLIRETV |
 | プリプロセッサ | %DECLARE (FIXED・CHARACTER・BIT)、% 代入、%IF/%THEN/%ELSE、%DO (グループ・反復・WHILE/UNTIL・SKIP)、%SELECT、%LEAVE/%ITERATE、%ACTIVATE/%DEACTIVATE (RESCAN・NORESCAN)、%REPLACE、%NOTE、%INCLUDE/%XINCLUDE、プリプロセッサ手続き (引数、RETURNS、ソース中の呼出し) と主な組込み関数、置換後の再走査 |
 | 外部呼出し | 別モジュールの外部手続き (PL/I モジュールをロードライブラリから読込み、関数の戻り値、`*` の範囲・長さの記述子)、COBOL プログラムの呼出しと COBOL からの PL/I 手続きの呼出し (戻りコードは RETURN-CODE と PLIRETV で受け渡し)。引数はコピーして渡し、戻るときに書き戻す |
+| EXEC SQL | INCLUDE SQLCA (コンパイラが宣言する 136 バイトの SQLCA)、INCLUDE メンバー (DCLGEN)、ホスト変数 (`:a.b`、標識変数 `:x :ind` / `INDICATOR`)、DECLARE CURSOR / OPEN / FETCH / CLOSE、SELECT INTO、INSERT / UPDATE / DELETE、COMMIT / ROLLBACK、WHENEVER (SQLERROR・SQLWARNING・NOT FOUND の GO TO / CONTINUE)。ホスト変数の型は CHAR、CHAR VARYING (VARCHAR)、FIXED DEC、FIXED BIN(15/31/63)。COBOL と同じ Db2 インターフェース (zeus-db2、ZEUS_DB2) で実行する |
 | JCL | `IBMZPLI` (SYSIN のソース、SYSLIB の %INCLUDE メンバー) → `IEWL` → `EXEC PGM=` で実行。DD はファイル名 (または TITLE) で対応付け、SYSPRINT・SYSIN・SYSOUT (メッセージ)、PARM、戻りコード、U4038 |
 
 ## 5. 未対応 (今後)
@@ -70,12 +71,14 @@ z/OS 上の Enterprise PL/I で書かれたバッチプログラムを、ソー�
 - COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ (E/K)、DEFAULT 文、GENERIC、ORDINAL、HANDLE と DEFINE STRUCTURE
 - ENTRY 変数による呼出し、FETCH/RELEASE
 - 言語間呼出しの制約: 引数はコピー渡しなので、呼ばれた側が保持したポインタは戻った後は無効。呼出し中のモジュールへの再帰的な呼出しはできない。呼ばれた PL/I モジュールは自分の SYSPRINT に書く (行の単位で呼出し側と順序を合わせる)
-- EXEC SQL / EXEC CICS / EXEC DLI、マルチスレッド (ATTACH)
+- EXEC CICS / EXEC DLI: CICS のタスクは COBOL の実行時記憶域の上で EIB・COMMAREA・SET(ADDRESS) のポインタを受け渡すので、PL/I プログラムを CICS で動かすには、記憶域を共有する形に PL/I の実行時を作り直す必要がある
+- EXEC SQL: FLOAT・PICTURE・BIT のホスト変数、構造体のホスト変数の展開、動的 SQL (PREPARE / EXECUTE)、SQLDA
+- マルチスレッド (ATTACH)
 - LOCATE、REGIONAL・相対データセット
 
 ## 6. テスト
 
-- `crates/zeus-pli/tests/programs/`: 基本機能、条件処理、レコード・ストリーム入出力、リスト出力、プリプロセッサ、CONTROLLED と REFER の各プログラムと、期待する SYSPRINT 出力・戻りコード。
+- `crates/zeus-pli/tests/programs/`: 基本機能、条件処理、レコード・ストリーム入出力、リスト出力、プリプロセッサ、CONTROLLED と REFER、EXEC SQL (ZEUS_DB2 があるときだけ実行) の各プログラムと、期待する SYSPRINT 出力・戻りコード。
   - モジュールを直列化して読み戻してから実行するので、ロードモジュールの形も検証している。
 - 単体テスト:
   - 字句解析、構文解析、精度規則

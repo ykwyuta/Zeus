@@ -186,14 +186,58 @@ fn find_pct(t: &[Token], mut i: usize, end: usize, w: &str) -> Option<usize> {
     None
 }
 
+/// The member of `EXEC SQL INCLUDE member;` (not SQLCA or SQLDA).
+fn sql_include(t: &[Token]) -> Option<String> {
+    match t {
+        [Token { tok: Tok::Ident(e), .. }, Token { tok: Tok::Ident(k), .. }, Token { tok: Tok::Str { text, .. }, .. }, ..]
+            if e == "EXEC" && k == "SQL" =>
+        {
+            let w: Vec<&str> = text.split_whitespace().collect();
+            match w.as_slice() {
+                [inc, m] if inc.eq_ignore_ascii_case("INCLUDE") && !m.eq_ignore_ascii_case("SQLCA") && !m.eq_ignore_ascii_case("SQLDA") => {
+                    Some(m.trim_matches('\'').to_string())
+                }
+                _ => None,
+            }
+        }
+        _ => None,
+    }
+}
+
 impl Pp<'_> {
     fn err(&self, pos: Pos, m: impl Into<String>) -> Diag {
         Diag::error(pos, m)
     }
 
     /// Executes tokens from `i` to `end`: % statements and text.
+    /// Processes the text of an included member.
+    fn include(&mut self, member: &str, once: bool, pos: Pos) -> Result<()> {
+        let path = crate::lexer::find_include(&self.opts.include_dirs, member)
+            .ok_or_else(|| self.err(pos, format!("INCLUDE member {member} not found")))?;
+        if once && self.included.contains(&path) {
+            return Ok(());
+        }
+        self.included.insert(path.clone());
+        if self.depth > 20 {
+            return Err(self.err(pos, "%INCLUDE nested too deeply"));
+        }
+        let mut toks = crate::lexer::tokenize(&path, self.opts, self.files)?;
+        toks.pop(); // end of file
+        let n = toks.len();
+        self.depth += 1;
+        let r = self.run(&toks, 0, n);
+        self.depth -= 1;
+        r.map(|_| ())
+    }
+
     fn run(&mut self, t: &[Token], mut i: usize, end: usize) -> Result<Flow> {
         while i < end {
+            if let Some(member) = sql_include(&t[i..end]) {
+                // EXEC SQL INCLUDE member; (SQLCA is declared by the compiler)
+                self.include(&member, false, t[i].pos)?;
+                i += 4;
+                continue;
+            }
             if is_op(&t[i], "%") {
                 let (next, flow) = self.statement(t, i + 1, end)?;
                 if !matches!(flow, Flow::Next) {
@@ -408,22 +452,7 @@ impl Pp<'_> {
                         [] => continue,
                         _ => return Err(self.err(pos, "invalid %INCLUDE item")),
                     };
-                    let path = crate::lexer::find_include(&self.opts.include_dirs, &member)
-                        .ok_or_else(|| self.err(pos, format!("%INCLUDE member {member} not found")))?;
-                    if once && self.included.contains(&path) {
-                        continue;
-                    }
-                    self.included.insert(path.clone());
-                    if self.depth > 20 {
-                        return Err(self.err(pos, "%INCLUDE nested too deeply"));
-                    }
-                    let mut toks = crate::lexer::tokenize(&path, self.opts, self.files)?;
-                    toks.pop(); // end of file
-                    let n = toks.len();
-                    self.depth += 1;
-                    let r = self.run(&toks, 0, n);
-                    self.depth -= 1;
-                    r?;
+                    self.include(&member, once, pos)?;
                 }
                 Ok((se + 1, Flow::Next))
             }
@@ -1064,7 +1093,7 @@ fn builtin(name: &str, a: &[Val], pp: &mut Pp) -> Option<Val> {
 /// Runs the preprocessor over a token stream (ending with Eof); returns
 /// the tokens for the parser and the messages.
 pub fn preprocess(toks: Vec<Token>, opts: &LexOptions, files: &mut Files) -> Result<(Vec<Token>, Vec<Diag>)> {
-    if !toks.iter().any(|t| is_op(t, "%")) {
+    if !toks.iter().any(|t| is_op(t, "%")) && !(0..toks.len()).any(|i| sql_include(&toks[i..]).is_some()) {
         return Ok((toks, Vec::new()));
     }
     let eof = toks.last().cloned().unwrap_or(Token {

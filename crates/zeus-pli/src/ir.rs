@@ -537,8 +537,29 @@ pub enum Stmt {
     Free(Vec<(VarId, Option<Expr>)>),
     Display(Expr, Option<(Target, Ty)>),
     Delay(Expr),
+    /// EXEC SQL / CICS / DLI.
+    Exec(Box<ExecStmt>),
     Begin(BlockId),
     /// Executes a statement list (DO group without loop).
     Group(List),
     Null,
+}
+
+/// Host variables of an SQL statement and their indicator variables.
+pub type HostVars = Vec<(Ref, Option<Ref>)>;
+
+/// An EXEC statement: its text with host variables replaced by `?`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecStmt {
+    /// SQL, CICS or DLI.
+    pub kind: String,
+    pub text: String,
+    /// Host variables and their indicator variables.
+    pub host: HostVars,
+    /// OPEN: the query of the cursor.
+    pub query: Option<String>,
+    pub sqlca: Option<Ref>,
+    /// WHENEVER actions: 0 SQLERROR, 1 SQLWARNING, 2 NOT FOUND, and the
+    /// GO TO target.
+    pub whenever: Vec<(u8, Expr)>,
 }

@@ -741,7 +741,11 @@ fn cobol_factory(
 
 /// The PL/I run-time environment of a step; the in-stream data sets
 /// written to temporary files are added to `temps`.
-fn pli_env(ctx: &StepCtx, temps: &mut Vec<PathBuf>) -> zeus_pli::link::EnvFactory {
+fn pli_env(
+    ctx: &StepCtx,
+    temps: &mut Vec<PathBuf>,
+    db2: Option<std::rc::Rc<zeus_db2::Db2Host>>,
+) -> zeus_pli::link::EnvFactory {
     use zeus_pli::vm::{DdInfo, RunEnv};
     let mut dds = std::collections::HashMap::new();
     let mut stdin = None;
@@ -820,6 +824,7 @@ fn pli_env(ctx: &StepCtx, temps: &mut Vec<PathBuf>) -> zeus_pli::link::EnvFactor
             stdin: stdin.borrow_mut().take(),
             stdin_reader: None,
             linker: None,
+            exec_host: db2.clone().map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>),
         }
     })
 }
@@ -833,11 +838,11 @@ fn run_pli(
 ) -> ProgramResult {
     use zeus_pli::vm::RunEnd;
     let mut temps = Vec::new();
-    let env = pli_env(ctx, &mut temps);
     let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
+    let env = pli_env(ctx, &mut temps, db2.clone());
     let linker = zeus_pli::link::ModuleLinker::new(
         libs.to_vec(),
-        pli_env(ctx, &mut temps),
+        pli_env(ctx, &mut temps, db2.clone()),
         Some(cobol_factory(ctx, libs, job, step, db2.clone())),
     );
     let mut env = env();
@@ -885,7 +890,7 @@ pub(crate) fn run_cobol(
     let mut temps = Vec::new();
     let linker = zeus_pli::link::ModuleLinker::new(
         libs.to_vec(),
-        pli_env(ctx, &mut temps),
+        pli_env(ctx, &mut temps, db2.clone()),
         Some(cobol_factory(ctx, libs, job, step, db2.clone())),
     );
     m.set_linker(linker.clone());

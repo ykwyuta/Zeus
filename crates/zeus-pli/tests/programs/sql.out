@@ -1,0 +1,7 @@
+SQLCA                              136
+COUNT                                3                601.50                         0
+             1          ACCOUNT 1                     100.25                   -1
+             2          ACCOUNT 2                     200.50                   -1
+             3          ACCOUNT 3                     300.75                   -1
+MISSING                            100          02000
+UPDATED                              1

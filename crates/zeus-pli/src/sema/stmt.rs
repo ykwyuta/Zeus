@@ -848,6 +848,7 @@ impl Compiler {
                 Stmt::Display(x, reply)
             }
             StmtKind::Delay(e) => Stmt::Delay(self.int_expr(e)?),
+            StmtKind::Exec(kind, text) => self.exec_stmt(kind, text, pos)?,
         })
     }
 

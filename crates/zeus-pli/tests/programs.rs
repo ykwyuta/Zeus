@@ -29,6 +29,15 @@ fn dir() -> PathBuf {
 
 /// Compiles and runs a program; its SYSPRINT, messages and end.
 fn run(name: &str, dds: HashMap<String, DdInfo>, stdin: &str) -> (String, String, RunEnd) {
+    run_with(name, dds, stdin, None)
+}
+
+fn run_with(
+    name: &str,
+    dds: HashMap<String, DdInfo>,
+    stdin: &str,
+    exec_host: Option<Rc<dyn zeus_cobol::vm::exec::ExecHost>>,
+) -> (String, String, RunEnd) {
     let src = dir().join(format!("{name}.pli"));
     let (rc, c) = zeus_pli::compile_file(&src, &zeus_pli::Options::default());
     let module = c
@@ -46,6 +55,7 @@ fn run(name: &str, dds: HashMap<String, DdInfo>, stdin: &str) -> (String, String
         stdin: Some(stdin.lines().map(str::to_string).collect()),
         stdin_reader: None,
         linker: None,
+        exec_host,
     };
     let end = zeus_pli::run(module, env);
     let o = String::from_utf8(out.0.borrow().clone()).unwrap();
@@ -131,4 +141,18 @@ fn controlled_and_refer() {
     let (out, msg, end) = run("storage", HashMap::new(), "");
     assert_eq!(end, RunEnd::Rc(0), "{msg}");
     assert_eq!(out, expected("storage"));
+}
+
+/// EXEC SQL on the Db2 server named by ZEUS_DB2 (skipped without it).
+#[test]
+fn embedded_sql() {
+    let Some(h) = zeus_db2::Db2Host::from_env() else {
+        eprintln!("ZEUS_DB2 is not set: EXEC SQL test skipped");
+        return;
+    };
+    let h = Rc::new(h);
+    let (out, msg, end) = run_with("sql", HashMap::new(), "", Some(h.clone()));
+    let _ = h.end_uow(true);
+    assert_eq!(end, RunEnd::Rc(0), "{msg}");
+    assert_eq!(out, expected("sql"));
 }

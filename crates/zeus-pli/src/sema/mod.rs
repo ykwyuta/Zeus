@@ -2,6 +2,7 @@
 //! translation of statements and expressions into the typed IR.
 
 mod decl;
+mod exec;
 pub mod expr;
 mod stmt;
 
@@ -75,6 +76,10 @@ pub struct Compiler {
     pub externals: HashMap<String, VarId>,
     /// REFER entries of the declaration being mapped: index, object name.
     pub pending_refers: Vec<(u32, String, Pos)>,
+    /// EXEC SQL DECLARE CURSOR: text and host variables by cursor name.
+    pub sql_cursors: HashMap<String, (String, HostVars)>,
+    /// EXEC SQL WHENEVER: SQLERROR, SQLWARNING, NOT FOUND targets.
+    pub whenever: [Option<String>; 3],
     /// REFER initial extents, compiled after the block's declarations.
     pub late_refers: Vec<(u32, crate::ast::Expr)>,
     /// Declarations of level-1 variables (for LIKE).
@@ -116,6 +121,8 @@ impl Compiler {
             loops: Vec::new(),
             externals: HashMap::new(),
             pending_refers: Vec::new(),
+            sql_cursors: HashMap::new(),
+            whenever: [None, None, None],
             late_refers: Vec::new(),
             decl_ast: HashMap::new(),
             outer: 0,
