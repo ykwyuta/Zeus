@@ -152,6 +152,8 @@ fn literal(m: &Machine, area: &Area, varchar: bool, ind: Option<&Area>) -> Strin
         }
         // DBCS (PIC G): double-byte characters without SO / SI
         DataType::Dbcs => quote(&zeus_cobol::codepage::active().decode_dbcs(b)),
+        // NATIONAL (PIC N): UTF-16 without trailing national spaces
+        DataType::National => quote(data::from_utf16(b).trim_end_matches(' ')),
         _ => quote(&text_of(b)),
     }
 }
@@ -202,6 +204,7 @@ fn store(m: &mut Machine, area: &Area, varchar: bool, ind: Option<&Area>, v: &Va
             let e = zeus_cobol::codepage::active().encode_dbcs(&text);
             data::move_alnum(&e, mem, false);
         }
+        DataType::National => data::move_national(&data::utf16(&text), mem),
         _ => {
             let e = ebcdic_of(&text);
             data::move_alnum(&e, mem, false);

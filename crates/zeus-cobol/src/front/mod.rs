@@ -29,6 +29,16 @@ pub struct FrontOptions {
     /// Translate as a CICS program (the CICS compiler option); a source
     /// with EXEC CICS commands is always translated.
     pub cics: bool,
+    /// NSYMBOL(DBCS): N literals and PICTURE N are DBCS (default
+    /// NSYMBOL(NATIONAL): national, UTF-16).
+    pub nsymbol_dbcs: bool,
+}
+
+static NSYMBOL_DBCS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+/// NSYMBOL(DBCS) in effect for the compilation (`FrontOptions`).
+pub fn nsymbol_dbcs() -> bool {
+    NSYMBOL_DBCS.load(std::sync::atomic::Ordering::Relaxed)
 }
 
 /// Source-wide settings that must be known before lexing: WITH DEBUGGING
@@ -162,6 +172,7 @@ pub fn parse_file(
     opts: &FrontOptions,
     files: &mut FileTable,
 ) -> Result<Vec<ast::Program>> {
+    NSYMBOL_DBCS.store(opts.nsymbol_dbcs, std::sync::atomic::Ordering::Relaxed);
     let (tokens, cics_option) = source_tokens(path, opts, files)?;
     let cics = opts.cics || cics_option || cics::uses(&tokens, "CICS");
     let dli = cics::uses(&tokens, "DLI");

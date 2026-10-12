@@ -9,7 +9,8 @@
 //!
 //! `--ccsid N` (or ZEUS_CCSID) chooses the EBCDIC code page of literals and
 //! of the data a run reads and writes as text: 37 (default), or the
-//! Japanese code pages 930, 939, 1390, 1399.
+//! Japanese code pages 930, 939, 1390, 1399. `--nsymbol dbcs` makes N
+//! literals and PICTURE N DBCS data (default NATIONAL: UTF-16).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -18,7 +19,7 @@ use zeus_cobol::front::FrontOptions;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] -o <artifact> <source>"
+        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] [--nsymbol dbcs|national] -o <artifact> <source>"
     );
     eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] <artifact>");
     eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
@@ -33,6 +34,8 @@ struct Args {
     debugging_lines: bool,
     /// `--cics`: translate as a CICS program.
     cics: bool,
+    /// `--nsymbol dbcs`: N literals and PICTURE N are DBCS.
+    nsymbol_dbcs: bool,
     /// DD allocations (`--dd NAME=PATH`).
     dds: Vec<(String, PathBuf)>,
     /// `--parm TEXT`: the EXEC PARM of the main program.
@@ -47,6 +50,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         subprogram: false,
         debugging_lines: false,
         cics: false,
+        nsymbol_dbcs: false,
         dds: Vec::new(),
         parm: String::new(),
         inputs: Vec::new(),
@@ -59,6 +63,13 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "--subprogram" => a.subprogram = true,
             "--debugging-lines" => a.debugging_lines = true,
             "--cics" => a.cics = true,
+            "--nsymbol" => {
+                a.nsymbol_dbcs = match it.next()?.to_ascii_uppercase().as_str() {
+                    "DBCS" => true,
+                    "NATIONAL" => false,
+                    _ => return None,
+                }
+            }
             "--parm" => a.parm = it.next()?.clone(),
             "--ccsid" => {
                 let c: u32 = it.next()?.parse().ok()?;
@@ -86,6 +97,7 @@ fn check(args: &Args) -> ExitCode {
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
         cics: args.cics,
+        nsymbol_dbcs: args.nsymbol_dbcs,
     };
     let mut worst = 0;
     for input in &args.inputs {
@@ -111,6 +123,7 @@ fn inventory(args: &Args) -> ExitCode {
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
         cics: args.cics,
+        nsymbol_dbcs: args.nsymbol_dbcs,
     };
     let paths: Vec<&std::path::Path> = args.inputs.iter().map(|p| p.as_path()).collect();
     let (inv, failed) = zeus_cobol::inventory::inventory(&paths, &opts);
@@ -129,6 +142,7 @@ fn compile(args: &Args) -> ExitCode {
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
         cics: args.cics,
+        nsymbol_dbcs: args.nsymbol_dbcs,
     };
     match zeus_cobol::compile_file(input, &opts) {
         Ok(module) => {

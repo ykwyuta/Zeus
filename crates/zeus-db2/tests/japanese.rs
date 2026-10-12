@@ -1,5 +1,5 @@
 //! Japanese data (CCSID 939) through Db2: mixed data (PIC X with SO / SI)
-//! and DBCS data (PIC G) as host variables, stored in a Unicode database
+//! DBCS data (PIC G) and national data (PIC N, UTF-16) as host variables, stored in a Unicode database
 //! and read back. Runs against ZEUS_DB2 (skipped when it is not set); a
 //! process of its own, as the code page is chosen per process.
 
@@ -32,24 +32,30 @@ WORKING-STORAGE SECTION.
 01 WS-ID       PIC S9(9) COMP.
 01 WS-NAME     PIC X(30).
 01 WS-KANJI    PIC G(8).
+01 WS-NAT      PIC N(10).
 01 WS-COUNT    PIC S9(9) COMP.
 PROCEDURE DIVISION.
     EXEC SQL DROP TABLE ZEUSTEST.JP1 END-EXEC.
     EXEC SQL CREATE TABLE ZEUSTEST.JP1 (ID INTEGER NOT NULL,
-        NAME VARCHAR(60), KANJI VARCHAR(40)) END-EXEC.
+        NAME VARCHAR(60), KANJI VARCHAR(40),
+        NAT VARCHAR(40)) END-EXEC.
     MOVE 1 TO WS-ID.
     MOVE 'ヤマダ 山田太郎' TO WS-NAME.
     MOVE G'東京都千代田区' TO WS-KANJI.
+    MOVE N'大阪市北区' TO WS-NAT.
     EXEC SQL INSERT INTO ZEUSTEST.JP1
-        VALUES (:WS-ID, :WS-NAME, :WS-KANJI) END-EXEC.
+        VALUES (:WS-ID, :WS-NAME, :WS-KANJI, :WS-NAT) END-EXEC.
     DISPLAY 'INSERT ' SQLCODE.
     MOVE SPACES TO WS-NAME.
     MOVE SPACES TO WS-KANJI.
-    EXEC SQL SELECT NAME, KANJI INTO :WS-NAME, :WS-KANJI
+    MOVE SPACES TO WS-NAT.
+    EXEC SQL SELECT NAME, KANJI, NAT
+        INTO :WS-NAME, :WS-KANJI, :WS-NAT
         FROM ZEUSTEST.JP1 WHERE ID = 1 END-EXEC.
     DISPLAY 'SELECT ' SQLCODE.
     DISPLAY WS-NAME.
     DISPLAY WS-KANJI.
+    DISPLAY WS-NAT.
     EXEC SQL SELECT COUNT(*) INTO :WS-COUNT FROM ZEUSTEST.JP1
         WHERE KANJI LIKE '東京%' END-EXEC.
     DISPLAY 'LIKE ' WS-COUNT.
@@ -83,6 +89,7 @@ fn japanese_through_db2() {
             "SELECT 00000000{",
             "ヤマダ 山田太郎",
             "東京都千代田区",
+            "大阪市北区",
             "LIKE 00000000A"
         ]
     );

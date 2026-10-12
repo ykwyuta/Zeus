@@ -246,8 +246,11 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   データセットの取り込みと印刷・zcics の画面・Db2 のホスト変数・TN3270 (DBCS 対応端末の
   Query Reply、SOSI 項目の SO/SI 入力許可、DBCS 部分を RA で圧縮しない) がこのコードページで
   変換する。s3270 (cp939) から日本語の BMS 画面を操作し、漢字の入力と表示を CI で確認する。
-  未着手: NATIONAL (UTF-16、PIC N USAGE NATIONAL、NATIONAL-OF / DISPLAY-OF)、DBCS の利用者語、
-  中国語・韓国語のコードページ。
+  NATIONAL (2026-10): PIC N USAGE NATIONAL・N"..."・NX"..." を UTF-16 で扱う (既定は
+  NSYMBOL(NATIONAL) 相当、`--nsymbol dbcs` で PIC N・N"..." を DBCS に)。MOVE (英数字・DBCS との
+  変換)、比較、文字単位の部分参照、LENGTH / BYTE-LENGTH、NATIONAL-OF / DISPLAY-OF (CCSID 指定可)、
+  DISPLAY・ACCEPT・Db2 ホスト変数に対応。
+  未着手: DBCS の利用者語。中国語・韓国語のコードページは対象外とする。
 
 ### Phase 6: Bank of Z (CICS 経路) (6〜8 週)
 - Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。

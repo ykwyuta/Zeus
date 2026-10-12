@@ -46,6 +46,8 @@ fn alnum_function(f: Func) -> bool {
             | Func::Reverse
             | Func::Trim
             | Func::WhenCompiled
+            | Func::NationalOf
+            | Func::DisplayOf
     )
 }
 
@@ -67,6 +69,9 @@ pub fn function(name: &str) -> Option<Func> {
         "INTEGER" => Func::Integer,
         "INTEGER-PART" => Func::IntegerPart,
         "LENGTH" => Func::Length,
+        "BYTE-LENGTH" => Func::ByteLength,
+        "NATIONAL-OF" => Func::NationalOf,
+        "DISPLAY-OF" => Func::DisplayOf,
         "LOG" => Func::Log,
         "LOG10" => Func::Log10,
         "LOWER-CASE" => Func::LowerCase,
@@ -283,6 +288,7 @@ impl Gen<'_> {
                 let (d, digits) = lit::numeric(n).map_err(|m| Diag::error(self.pos, m))?;
                 Src::NumLit(d, digits)
             }
+            Operand::Lit(Literal::National(b)) => Src::National(b.clone()),
             Operand::Lit(l) => Src::Alnum(lit::literal_bytes(l)),
             Operand::Fig(Figurative::Symbolic(name)) => {
                 let b = self.symbolic_byte(name)?;

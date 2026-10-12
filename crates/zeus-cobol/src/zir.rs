@@ -332,6 +332,8 @@ pub enum DataType {
     },
     /// DBCS data: double-byte characters without SO / SI.
     Dbcs,
+    /// National data: UTF-16 big-endian.
+    National,
     Numeric(NumType),
     NumericEdited {
         edit: Vec<EditSym>,
@@ -422,6 +424,10 @@ pub enum Arg {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Func {
+    /// NATIONAL-OF(alphanumeric [, CCSID]): national (UTF-16) data.
+    NationalOf,
+    /// DISPLAY-OF(national [, CCSID]): alphanumeric data in a code page.
+    DisplayOf,
     /// TRIM (Enterprise COBOL); a second argument "L" / "T" trims
     /// only leading / trailing spaces.
     Trim,
@@ -443,6 +449,7 @@ pub enum Func {
     Integer,
     IntegerPart,
     Length,
+    ByteLength,
     Log,
     Log10,
     LowerCase,
@@ -490,6 +497,8 @@ pub enum Src {
     Loc(Loc),
     /// Alphanumeric literal (EBCDIC bytes).
     Alnum(Vec<u8>),
+    /// National literal (UTF-16 big-endian).
+    National(Vec<u8>),
     /// Numeric literal: value and its digits as EBCDIC characters.
     NumLit(Dec, Vec<u8>),
     Fig(Fig),

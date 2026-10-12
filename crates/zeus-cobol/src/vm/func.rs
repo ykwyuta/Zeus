@@ -80,9 +80,11 @@ impl Machine {
             Ok(())
         };
         Ok(match func {
-            Func::Length => {
+            Func::Length | Func::ByteLength => {
                 let vals = self.arg_values(cur, args)?;
                 let n = match vals.first() {
+                    // national data: characters (two bytes each)
+                    Some(Val::Item(DataType::National, b)) if func == Func::Length => b.len() / 2,
                     Some(Val::Item(DataType::Numeric(_), b) | Val::Item(_, b)) => b.len(),
                     Some(Val::Alnum(b) | Val::All(b)) => b.len(),
                     Some(Val::NumLit(_, d)) => d.len(),
@@ -177,6 +179,33 @@ impl Machine {
     pub(super) fn func_alnum(&mut self, cur: usize, func: Func, args: &[Arg]) -> RResult<Vec<u8>> {
         let vals = self.arg_values(cur, args)?;
         Ok(match func {
+            // the code page: the second argument (a CCSID), else the
+            // program's
+            Func::NationalOf | Func::DisplayOf => {
+                let cp = match vals.get(1) {
+                    Some(v) => {
+                        let c = super::data::to_raw(self.val_num(v), 0, false);
+                        crate::codepage::get(c as u32)
+                            .ok_or_else(|| super::RunError(format!("CCSID {c} is not supported")))?
+                    }
+                    None => crate::codepage::active(),
+                };
+                match (func, vals.first()) {
+                    (Func::NationalOf, Some(Val::Item(DataType::National, b))) => b.clone(),
+                    (Func::NationalOf, Some(Val::Item(DataType::Dbcs, b))) => {
+                        super::data::utf16(&cp.decode_dbcs(b))
+                    }
+                    (Func::NationalOf, Some(v)) => {
+                        let b = self.alnum_bytes(cur, v, 0)?;
+                        super::data::utf16(&cp.decode(&b))
+                    }
+                    (Func::DisplayOf, Some(v)) => {
+                        let b = self.national_bytes(cur, v)?;
+                        cp.encode(&super::data::from_utf16(&b))
+                    }
+                    _ => vec![],
+                }
+            }
             Func::Char => {
                 let n = vals.first().map(|v| self.val_num(v)).unwrap_or(Dec::ZERO);
                 let n = super::data::to_raw(n, 0, false);

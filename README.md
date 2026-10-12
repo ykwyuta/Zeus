@@ -75,11 +75,15 @@ Code pages: data stays in EBCDIC; text crosses to the host in the code page
 named by `ZEUS_CCSID` (or `--ccsid` of `zcobc` / `zjob`): 037 by default, or
 the Japanese mixed code pages 930, 939, 1390 and 1399, converted by Zeus's
 own code from ICU's mapping tables (`crates/zeus-cobol/codepages`). Mixed
-data shifts to double-byte characters with SO / SI; PIC G and PIC N
-(DISPLAY-1) items and G"..." / N"..." literals hold DBCS data. DISPLAY,
-ACCEPT, text files, data set import and print, the zcics screen, Db2 host
-variables and the TN3270 server (DBCS-capable emulators, SOSI fields)
-convert through it.
+data shifts to double-byte characters with SO / SI; PIC G (DISPLAY-1) items
+and G"..." literals hold DBCS data. DISPLAY, ACCEPT, text files, data set
+import and print, the zcics screen, Db2 host variables and the TN3270 server
+(DBCS-capable emulators, SOSI fields) convert through it. PIC N items
+(USAGE NATIONAL) and N"..." / NX"..." literals hold UTF-16 data, as with
+NSYMBOL(NATIONAL); `zcobc --nsymbol dbcs` makes PIC N and N"..." DBCS
+instead. MOVE, comparisons, reference modification, LENGTH / BYTE-LENGTH,
+NATIONAL-OF / DISPLAY-OF (with an optional CCSID), DISPLAY, ACCEPT and Db2
+host variables handle national data.
 
 ## Layout
 

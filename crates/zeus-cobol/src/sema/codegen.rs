@@ -2381,6 +2381,9 @@ impl<'a> Gen<'a> {
                 DataType::Alphabetic { .. } => Category::Alphabetic,
                 DataType::Alphanumeric { .. } | DataType::Group => Category::Alphanumeric,
                 DataType::Dbcs => Category::Dbcs,
+                // initialized to national spaces, as alphanumeric data to
+                // spaces
+                DataType::National => Category::Alphanumeric,
                 DataType::Numeric(_) => Category::Numeric,
                 DataType::NumericEdited { .. } => Category::NumericEdited,
                 DataType::AlphanumericEdited { .. } => Category::AlphanumericEdited,

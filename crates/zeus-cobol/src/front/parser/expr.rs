@@ -111,7 +111,9 @@ impl Parser {
     /// Whether the current token can start an operand.
     pub(super) fn is_operand_start(&self) -> bool {
         match self.peek().map(|t| &t.tok) {
-            Some(Tok::Num(_)) | Some(Tok::Str(_)) | Some(Tok::Hex(_)) => true,
+            Some(Tok::Num(_)) | Some(Tok::Str(_)) | Some(Tok::Hex(_)) | Some(Tok::National(_)) => {
+                true
+            }
             Some(Tok::Word(w)) => {
                 !VERBS.contains(&w.as_str()) && !NOT_OPERANDS.contains(&w.as_str())
             }
@@ -213,6 +215,7 @@ impl Parser {
             Some(Tok::Num(n)) => Literal::Num(n.clone()),
             Some(Tok::Str(s)) => Literal::Str(s.clone()),
             Some(Tok::Hex(b)) => Literal::Hex(b.clone()),
+            Some(Tok::National(b)) => Literal::National(b.clone()),
             _ => return None,
         };
         self.i += 1;

@@ -208,6 +208,10 @@ pub struct Linage {
 pub enum Usage {
     #[default]
     Display,
+    /// DISPLAY-1: DBCS data.
+    Display1,
+    /// NATIONAL: UTF-16 data.
+    National,
     Binary,
     Packed,
     /// COMP-5: native binary, not truncated to the picture.
@@ -418,6 +422,8 @@ pub enum Literal {
     /// Alphanumeric literal (host characters; converted to EBCDIC later).
     Str(String),
     Hex(Vec<u8>),
+    /// National literal (UTF-16 big-endian).
+    National(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -13,6 +13,9 @@ pub enum Tok {
     Str(String),
     /// Hexadecimal literal `X"..."` (bytes as written).
     Hex(Vec<u8>),
+    /// National literal `N"..."` (NSYMBOL(NATIONAL)) or `NX"..."`:
+    /// UTF-16 big-endian.
+    National(Vec<u8>),
     /// PICTURE character-string.
     Pic(String),
     /// An embedded `EXEC <kind> ... END-EXEC` block: the kind (`CICS`,
@@ -61,6 +64,10 @@ impl Token {
             Tok::Str(s) => format!("\"{s}\""),
             Tok::Hex(b) => format!(
                 "X\"{}\"",
+                b.iter().map(|x| format!("{x:02X}")).collect::<String>()
+            ),
+            Tok::National(b) => format!(
+                "NX\"{}\"",
                 b.iter().map(|x| format!("{x:02X}")).collect::<String>()
             ),
             Tok::Pseudo(_) => "==...==".to_string(),
@@ -237,14 +244,36 @@ impl Lexer<'_> {
                     let s = self.literal(c)?;
                     self.push(Tok::Str(s), pos);
                 }
-                // DBCS literal G"..." / N"..." (NSYMBOL(DBCS)): the
-                // double-byte characters of the active code page
+                // national hexadecimal literal NX"..." (UTF-16 code units)
+                'N' | 'n'
+                    if matches!(self.peek(1), Some('X' | 'x'))
+                        && matches!(self.peek(2), Some('"' | '\'')) =>
+                {
+                    self.i += 2;
+                    let q = self.peek(0).unwrap();
+                    let s = self.literal(q)?;
+                    let bytes = parse_hex(&s).filter(|b| b.len() % 2 == 0).ok_or_else(|| {
+                        Diag::error(
+                            pos,
+                            format!("invalid national hexadecimal literal NX\"{s}\""),
+                        )
+                    })?;
+                    self.push(Tok::National(bytes), pos);
+                }
+                // N"...": national (UTF-16) or, with NSYMBOL(DBCS), DBCS;
+                // G"...": DBCS (double-byte characters of the code page)
                 'G' | 'g' | 'N' | 'n' if matches!(self.peek(1), Some('"' | '\'')) => {
+                    let national = matches!(c, 'N' | 'n') && !super::nsymbol_dbcs();
                     self.i += 1;
                     let q = self.peek(0).unwrap();
                     let s = self.literal(q)?;
-                    let bytes = crate::codepage::active().encode_dbcs(&s);
-                    self.push(Tok::Hex(bytes), pos);
+                    if national {
+                        let bytes = s.encode_utf16().flat_map(u16::to_be_bytes).collect();
+                        self.push(Tok::National(bytes), pos);
+                    } else {
+                        let bytes = crate::codepage::active().encode_dbcs(&s);
+                        self.push(Tok::Hex(bytes), pos);
+                    }
                 }
                 'X' | 'x' if matches!(self.peek(1), Some('"' | '\'')) => {
                     self.i += 1;
