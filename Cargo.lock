@@ -804,6 +804,7 @@ dependencies = [
  "zeus-cobol",
  "zeus-decimal",
  "zeus-drda",
+ "zeus-pg",
 ]
 
 [[package]]
@@ -870,6 +871,13 @@ version = "0.1.0"
 dependencies = [
  "libloading",
  "zeus-cobol",
+]
+
+[[package]]
+name = "zeus-pg"
+version = "0.1.0"
+dependencies = [
+ "sha2",
 ]
 
 [[package]]

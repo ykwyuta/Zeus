@@ -62,6 +62,11 @@ IKJEFT01 `DSN RUN PROGRAM` (with DSNTIAD / DSNTEP2 / DSNTEP4 as SQL script
 runners) and `zcics` gives transactions a Db2 connection committed at
 SYNCPOINT and task end, together with the recoverable files (VSAM
 LOG(UNDO), FILE RECOVERY), whose changes ROLLBACK and abends back out.
+PostgreSQL can stand in for Db2: with `ZEUS_DB2=postgres://user:pw@host:port/db`
+(`tools/pg.sh start`), `zeus-pg` (a client of the PostgreSQL protocol) runs
+the statements translated to PostgreSQL's dialect, each unit of work in a
+transaction block with a savepoint per statement, and the SQLCODE of each
+SQLSTATE; the three applications' Db2 scenarios pass on it too.
 CardDemo's optional Db2 module (transaction types) works: table creation, the MNTTRDB2 batch maintenance job and the list,
 update, delete and add screens (`tools/carddemo-db2.sh test`, with
 `ZEUS_DB2` naming the server started by `tools/db2ce.sh start`).
@@ -162,7 +167,8 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
 | `crates/zeus-zconnect` | `zconn`: REST gateway of z/OS Connect API projects to CICS programs and IMS transactions |
 | `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
-| `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
+| `crates/zeus-db2` | EXEC SQL runtime on Db2 or PostgreSQL: host variables, cursors, SQLCA, z/OS SQL dialect |
+| `crates/zeus-pg` | PostgreSQL client (startup, SCRAM-SHA-256, simple query protocol) |
 | `crates/zeus-ims` | `zims`: IMS DB (DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I, GSAM, TM queues) and the CBLTDLI / EXEC DLI / DFSRRC00 run-time glue |
 | `crates/zeus-mq` | MQI calls of COBOL programs on IBM MQ through the IBM MQ C client library; z/OS structure conversion |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL and PL/I symbolic maps |

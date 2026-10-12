@@ -17,7 +17,7 @@ hlq=AWS.M2.CARDDEMO
 bin=target/release
 zjob="$bin/zjob --home $home"
 out=$home/online
-: "${ZEUS_DB2:?set ZEUS_DB2 (tools/db2ce.sh start)}"
+: "${ZEUS_DB2:?set ZEUS_DB2 (tools/db2ce.sh start, or tools/pg.sh start for PostgreSQL)}"
 export ZEUS_DB2
 
 submit() { # JCL file, with TYPRUN=SCAN removed as the installer does

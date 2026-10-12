@@ -15,15 +15,92 @@ use zeus_cobol::vm::{Machine, RResult, RunError, data};
 use zeus_cobol::zir::{DataType, ExecKind};
 use zeus_decimal::Dec;
 use zeus_drda::sql::{Rows, SqlCa, Value};
-use zeus_drda::{Connection, Params};
+
+/// The database server: Db2 (DRDA) or PostgreSQL.
+#[derive(Clone)]
+pub enum Server {
+    Db2(zeus_drda::Params),
+    Postgres(zeus_pg::Params),
+}
+
+impl Server {
+    /// `db2://user:pw@host:port/DB` or `postgres://user:pw@host:port/db`.
+    pub fn from_url(url: &str) -> Result<Server, String> {
+        if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+            zeus_pg::Params::from_url(url).map(Server::Postgres)
+        } else {
+            zeus_drda::Params::from_url(url)
+                .map(Server::Db2)
+                .map_err(|e| e.0)
+        }
+    }
+}
+
+/// A connection to the server.
+enum Connection {
+    Db2(zeus_drda::Connection),
+    Postgres(crate::pg::Session),
+}
+
+impl Connection {
+    fn connect(s: &Server, schema: Option<&str>) -> Result<Connection, String> {
+        Ok(match s {
+            Server::Db2(p) => {
+                let mut c = zeus_drda::Connection::connect(p).map_err(|e| e.0)?;
+                if let Some(s) = schema {
+                    c.execute(&format!("SET CURRENT SCHEMA = '{s}'"))
+                        .map_err(|e| e.0)?;
+                }
+                Connection::Db2(c)
+            }
+            Server::Postgres(p) => {
+                let mut c = crate::pg::Session::connect(p)?;
+                if let Some(s) = schema {
+                    c.set_schema(s)?;
+                }
+                Connection::Postgres(c)
+            }
+        })
+    }
+
+    fn execute(&mut self, sql: &str) -> Result<SqlCa, String> {
+        match self {
+            Connection::Db2(c) => c.execute(sql).map_err(|e| e.0),
+            Connection::Postgres(c) => c.execute(sql),
+        }
+    }
+
+    fn query(&mut self, sql: &str) -> Result<Rows, String> {
+        match self {
+            Connection::Db2(c) => c.query(sql).map_err(|e| e.0),
+            Connection::Postgres(c) => c.query(sql),
+        }
+    }
+
+    /// Whether positioned updates need cursors of the server.
+    fn server_cursors(&self) -> bool {
+        matches!(self, Connection::Postgres(_))
+    }
+
+    fn end(&mut self, commit: bool) -> Result<SqlCa, String> {
+        match self {
+            Connection::Db2(c) if commit => c.commit().map_err(|e| e.0),
+            Connection::Db2(c) => c.rollback().map_err(|e| e.0),
+            Connection::Postgres(c) => c.end(commit),
+        }
+    }
+}
 
 struct Cursor {
     rows: Vec<Vec<Value>>,
     next: usize,
+    /// The rows come from a cursor of the server, one FETCH at a time
+    /// (a cursor FOR UPDATE on PostgreSQL, for WHERE CURRENT OF).
+    server: bool,
 }
 
 struct State {
-    params: Option<Params>,
+    params: Option<Server>,
     schema: Option<String>,
     conn: Option<Connection>,
     cursors: HashMap<String, Cursor>,
@@ -35,15 +112,16 @@ pub struct Db2Host {
 }
 
 impl Db2Host {
-    /// A host for the server named by ZEUS_DB2 (`db2://user:pw@host:port/DB`)
-    /// with the qualifier ZEUS_DB2_SCHEMA; None when ZEUS_DB2 is not set.
+    /// A host for the server named by ZEUS_DB2 (`db2://user:pw@host:port/DB`,
+    /// or `postgres://user:pw@host:port/db` for PostgreSQL) with the
+    /// qualifier ZEUS_DB2_SCHEMA; None when ZEUS_DB2 is not set.
     pub fn from_env() -> Option<Db2Host> {
         let url = std::env::var("ZEUS_DB2").ok()?;
-        let params = Params::from_url(&url).ok();
+        let params = Server::from_url(&url).ok();
         Some(Db2Host::new(params, std::env::var("ZEUS_DB2_SCHEMA").ok()))
     }
 
-    pub fn new(params: Option<Params>, schema: Option<String>) -> Db2Host {
+    pub fn new(params: Option<Server>, schema: Option<String>) -> Db2Host {
         Db2Host {
             st: RefCell::new(State {
                 params,
@@ -56,22 +134,18 @@ impl Db2Host {
 
     fn with_conn<T>(
         &self,
-        f: impl FnOnce(&mut Connection) -> zeus_drda::client::Result<T>,
+        f: impl FnOnce(&mut Connection) -> Result<T, String>,
     ) -> Result<T, SqlCa> {
         let mut st = self.st.borrow_mut();
         if st.conn.is_none() {
             let Some(p) = st.params.clone() else {
                 return Err(comm_error("no Db2 server configured (ZEUS_DB2)"));
             };
-            let mut c = Connection::connect(&p).map_err(|e| comm_error(&e.0))?;
-            if let Some(s) = st.schema.clone() {
-                c.execute(&format!("SET CURRENT SCHEMA = '{s}'"))
-                    .map_err(|e| comm_error(&e.0))?;
-            }
+            let c = Connection::connect(&p, st.schema.as_deref()).map_err(|e| comm_error(&e))?;
             st.conn = Some(c);
         }
         let c = st.conn.as_mut().unwrap();
-        let r = f(c).map_err(|e| comm_error(&e.0));
+        let r = f(c).map_err(|e| comm_error(&e));
         if r.is_err() {
             // the connection is no longer usable
             st.conn = None;
@@ -85,7 +159,7 @@ impl Db2Host {
         if self.st.borrow().conn.is_none() {
             return Ok(SqlCa::ok());
         }
-        self.with_conn(|c| if commit { c.commit() } else { c.rollback() })
+        self.with_conn(|c| c.end(commit))
     }
 
     /// Runs one SQL statement of a script (DSNTIAD), translated for the
@@ -447,6 +521,41 @@ impl Db2Host {
                     }
                 };
                 let q = bind(&query, &Self::inputs(m, call, 0..n));
+                // a cursor FOR UPDATE stays on the server where positioned
+                // updates need it
+                let server = find_kw(&q, "FOR", 0).is_some_and(|at| {
+                    q[at..].to_ascii_uppercase().split_whitespace().nth(1) == Some("UPDATE")
+                }) && self.with_conn(|c| Ok(c.server_cursors())).unwrap_or(false);
+                if server {
+                    if self
+                        .st
+                        .borrow_mut()
+                        .cursors
+                        .remove(&name)
+                        .is_some_and(|c| c.server)
+                    {
+                        let _ = self.with_conn(|c| c.execute(&format!("CLOSE {name}")));
+                    }
+                    let t = crate::dialect::translate(&q).unwrap_or(q);
+                    return Some(
+                        match self
+                            .with_conn(|c| c.execute(&format!("DECLARE {name} CURSOR FOR {t}")))
+                        {
+                            Ok(ca) if ca.sqlcode >= 0 => {
+                                self.st.borrow_mut().cursors.insert(
+                                    name,
+                                    Cursor {
+                                        rows: Vec::new(),
+                                        next: 0,
+                                        server: true,
+                                    },
+                                );
+                                SqlCa::ok()
+                            }
+                            Ok(ca) | Err(ca) => ca,
+                        },
+                    );
+                }
                 match self.query(&q) {
                     Ok(r) if r.sqlca.sqlcode >= 0 => {
                         self.st.borrow_mut().cursors.insert(
@@ -454,6 +563,7 @@ impl Db2Host {
                             Cursor {
                                 rows: r.rows,
                                 next: 0,
+                                server: false,
                             },
                         );
                         r.sqlca
@@ -468,15 +578,25 @@ impl Db2Host {
                     .find(|x| !matches!(x.as_str(), "NEXT" | "FROM"))
                     .cloned()
                     .unwrap_or_default();
-                let row = {
-                    let mut st = self.st.borrow_mut();
-                    let Some(c) = st.cursors.get_mut(&name) else {
+                let server = match self.st.borrow().cursors.get(&name) {
+                    None => {
                         return Some(SqlCa {
                             sqlcode: -501,
                             sqlstate: "24501".into(),
                             ..SqlCa::default()
                         });
-                    };
+                    }
+                    Some(c) => c.server,
+                };
+                let row = if server {
+                    match self.with_conn(|c| c.query(&format!("FETCH NEXT FROM {name}"))) {
+                        Ok(r) if r.sqlca.sqlcode < 0 => return Some(r.sqlca),
+                        Ok(r) => r.rows.into_iter().next(),
+                        Err(ca) => return Some(ca),
+                    }
+                } else {
+                    let mut st = self.st.borrow_mut();
+                    let c = st.cursors.get_mut(&name).unwrap();
                     let r = c.rows.get(c.next).cloned();
                     c.next += 1;
                     r
@@ -491,7 +611,11 @@ impl Db2Host {
                 }
             }
             "CLOSE" => {
-                if self.st.borrow_mut().cursors.remove(w(1)).is_some() {
+                let closed = self.st.borrow_mut().cursors.remove(w(1));
+                if let Some(c) = closed {
+                    if c.server {
+                        let _ = self.with_conn(|cn| cn.execute(&format!("CLOSE {}", w(1))));
+                    }
                     SqlCa::ok()
                 } else {
                     SqlCa {

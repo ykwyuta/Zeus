@@ -11,6 +11,7 @@ repository.workspace = true
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-decimal = { path = "../zeus-decimal" }
 zeus-drda = { path = "../zeus-drda" }
+zeus-pg = { path = "../zeus-pg" }
 
 [dev-dependencies]
 tempfile.workspace = true

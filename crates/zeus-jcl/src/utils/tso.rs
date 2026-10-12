@@ -117,7 +117,8 @@ pub fn run(
 }
 
 /// DSNTIAD / DSNTEP2 / DSNTEP4: the SQL statements of SYSIN. With
-/// PARMS('RC0') warnings leave the return code at 0.
+/// PARMS('RC0') warnings and errors leave the return code at 0 (the unit
+/// of work is still backed out after an error).
 fn sql_script(ctx: &mut StepCtx, program: &str, rc0: bool) -> ProgramResult {
     let mut out = ctx
         .sysout("SYSPRINT")
@@ -136,6 +137,7 @@ fn sql_script(ctx: &mut StepCtx, program: &str, rc0: bool) -> ProgramResult {
         })
         .collect();
     let mut rc = 0;
+    let mut failed = false;
     for stmt in zeus_db2::dialect::split_script(&text) {
         let _ = writeln!(out, "{program}: {stmt}");
         let up = stmt.to_ascii_uppercase();
@@ -166,14 +168,17 @@ fn sql_script(ctx: &mut StepCtx, program: &str, rc0: bool) -> ProgramResult {
                     ca.tokens.join(" ")
                 );
                 if ca.sqlcode < 0 {
-                    rc = rc.max(8);
+                    failed = true;
+                    if !rc0 {
+                        rc = rc.max(8);
+                    }
                 } else if ca.sqlcode > 0 && ca.sqlcode != 100 && !rc0 {
                     rc = rc.max(4);
                 }
             }
         }
     }
-    let _ = db2.end_uow(rc < 8);
+    let _ = db2.end_uow(!failed);
     Ok(rc)
 }
 

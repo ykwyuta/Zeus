@@ -18,7 +18,7 @@ bin=target/release
 zjob="$bin/zjob --home $home"
 hlq=ZEUS.GENAPP
 db=GENASA1
-: "${ZEUS_DB2:?set ZEUS_DB2 (tools/db2ce.sh start)}"
+: "${ZEUS_DB2:?set ZEUS_DB2 (tools/db2ce.sh start, or tools/pg.sh start for PostgreSQL)}"
 export ZEUS_DB2
 # the programs' unqualified tables, as BIND QUALIFIER(<DB2DBID>) gives them
 export ZEUS_DB2_SCHEMA=$db

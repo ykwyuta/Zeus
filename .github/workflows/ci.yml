@@ -151,6 +151,43 @@ jobs:
             work/genapp/spool
             work/bankofz/spool
 
+  postgres:
+    # PostgreSQL in a container instead of Db2: the same Db2 scenarios of
+    # CardDemo, GenApp and Bank of Z through zeus-pg.
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: .cache/carddemo
+          key: carddemo-${{ hashFiles('tools/fetch-carddemo.sh') }}
+      - name: Start PostgreSQL
+        run: echo "ZEUS_DB2=$(tools/pg.sh start)" >> "$GITHUB_ENV"
+      - run: cargo test -p zeus-pg -p zeus-db2
+      - run: tools/carddemo.sh setup
+      - run: tools/carddemo-db2.sh test
+      - uses: actions/cache@v4
+        with:
+          path: .cache/genapp
+          key: genapp-${{ hashFiles('tools/fetch-genapp.sh') }}
+      - run: tools/genapp.sh test
+      - uses: actions/cache@v4
+        with:
+          path: .cache/bankofz
+          key: bankofz-${{ hashFiles('tools/fetch-bankofz.sh') }}
+      - run: tools/bankofz.sh test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: postgres-spool
+          path: |
+            work/carddemo/spool
+            work/genapp/spool
+            work/bankofz/spool
+
   codepages:
     # The code page tables are those ICU's mapping files give.
     runs-on: ubuntu-24.04

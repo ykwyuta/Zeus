@@ -16,7 +16,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 5 | L | **CICS のトリガーモニター (CKTI)**: 開始キューのトリガーメッセージから取引を START し、RETRIEVE で MQTM を渡す。CardDemo の CODATE01・COACCT01・COPAUA0C | 0005・0006 | **済** (`tools/carddemo-mq.sh test`) |
 | 6 | L | zcics のタスクの並行実行 (入力待ちでない処理が他の端末を待たせない) | 0002 Phase 4 | **済** (`tools/tn3270-test.sh`) |
 | 7 | L | IMS の WAL の共有 (zcics とバッチの同時アクセス、常駐サーバー) | 0006 | **済** (常駐サーバーなしで共有。`tools/carddemo-ims.sh test`) |
-| 8 | L | PostgreSQL バックエンド (Db2 方言の変換、SQLCODE の対応表) | 0002 Phase 7 | 未着手 |
+| 8 | L | PostgreSQL バックエンド (Db2 方言の変換、SQLCODE の対応表) | 0002 Phase 7 | **済** (`ZEUS_DB2=postgres://...`、CI) |
 | 9 | M | DL/I の機能: コマンドコード、ブール演算子の修飾、等号以外の比較、パス呼出し、XRST・記号チェックポイント | 0006 | 未着手 |
 | 10 | M | PL/I: ENTRY 変数による呼出し、FETCH/RELEASE | 0004 | 未着手 |
 | 11 | M | PL/I: AREA と OFFSET、iSUB 定義、構造体の途中の REFER、CONTROLLED の引数 | 0004 | 未着手 |
@@ -98,3 +98,18 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
     - 開くとき: 排他ロックが取れれば、失敗した書き込みの残り (末尾の不完全なフレーム) を切り詰める。
   - `tools/carddemo-ims.sh test` は、データベースを開いた zcics のリージョンが待つ間にバッチジョブ (アンロード・削除・再ロード) を流し、
     その後のオンライン取引がバッチの結果を表示することを確かめる。
+- **#8 PostgreSQL バックエンド** (2026-10):
+  - zeus-pg: PostgreSQL のプロトコル (版 3) のクライアント。起動、パスワード・SCRAM-SHA-256 の認証、単純問合せ (結果はテキスト)。
+    SCRAM は RFC 7677 の例で確かめた。
+  - zeus-db2 は ZEUS_DB2 の URL で Db2 (DRDA) と PostgreSQL を選ぶ (`postgres://user:pw@host:port/db`、`tools/pg.sh start`)。
+    - 作業単位: 最初の文で BEGIN し、文ごとにセーブポイントを置く。失敗した文だけを取り消すので、Db2 と同じく作業単位は続く。
+    - SQLCODE: SQLSTATE から Db2 の SQLCODE に対応付ける (23505 → -803、23503 → -530 / -532、42P01 → -204 など)。
+      変更行のない INSERT・UPDATE・DELETE は +100。SQLERRD(3) は変更行数。
+    - 値: TIMESTAMP は `yyyy-mm-dd-hh.mm.ss.nnnnnn`、TIME は `hh.mm.ss` で返す。Db2 の形式の日付・時刻・タイムスタンプの文字列定数は
+      PostgreSQL の形式にする。NUL 文字 (LOW-VALUE) は空白にする。
+    - 方言の変換: 特殊レジスター (CURRENT TIMESTAMP など)、SYSIBM.SYSDUMMY1、VALUE・IDENTITY_VAL_LOCAL・CHAR(日付, ISO)・YEAR などの関数、
+      FOR UPDATE OF、WITH UR、NEXT VALUE FOR、DDL (NOT NULL WITH DEFAULT、識別列の指定、FOR BIT DATA、修飾した索引名、スキーマの自動作成、
+      ALTER TABLE の ADD、DROP TABLE の CASCADE)。
+    - FOR UPDATE のカーソルはサーバーのカーソルにして、WHERE CURRENT OF の位置付け更新を PostgreSQL で行う。
+  - 合わせて直したもの: DSNTIAD の PARMS('RC0') はエラーでも戻りコード 0 (IBM の仕様どおり)。
+  - CI の `postgres` ジョブが、CardDemo の Db2 モジュール・GenApp・Bank of Z を PostgreSQL で流す。

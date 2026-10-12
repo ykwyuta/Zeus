@@ -1,0 +1,14 @@
+[package]
+name = "zeus-pg"
+description = "Zeus PostgreSQL client: the frontend/backend protocol (simple query) for EXEC SQL on PostgreSQL"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+sha2.workspace = true
+
+[lints]
+workspace = true
