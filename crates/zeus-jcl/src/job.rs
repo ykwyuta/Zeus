@@ -683,6 +683,94 @@ impl Runner<'_> {
     }
 }
 
+/// Runs a PL/I program compiled by zpli (or IBMZPLI in a job): its DD
+/// allocations, PARM, SYSPRINT and SYSIN; messages go to SYSOUT.
+fn run_pli(ctx: &mut StepCtx, module: zeus_pli::ir::Module) -> ProgramResult {
+    use zeus_pli::vm::{DdInfo, RunEnd, RunEnv};
+    let mut dds = std::collections::HashMap::new();
+    let mut stdin = None;
+    let mut temps = Vec::new();
+    for dd in &ctx.dds {
+        let info = match &dd.kind {
+            DdKind::Dummy => DdInfo {
+                path: PathBuf::from("/dev/null"),
+                format: None,
+                keys: None,
+                sysout: true,
+            },
+            DdKind::Sysout => DdInfo {
+                path: dd.path.clone(),
+                format: None,
+                keys: None,
+                sysout: true,
+            },
+            DdKind::Instream(lines) => {
+                if dd.name == "SYSIN" {
+                    stdin = Some(lines.clone());
+                    continue;
+                }
+                // in-stream data as 80-byte EBCDIC records
+                let path = std::env::temp_dir().join(format!(
+                    "zeus-pli-{}-{}",
+                    std::process::id(),
+                    dd.name
+                ));
+                let mut data = Vec::new();
+                for l in lines {
+                    let mut r = ebcdic::encode(l);
+                    r.resize(80, ebcdic::SPACE);
+                    data.extend(r);
+                }
+                let _ = std::fs::write(&path, data);
+                temps.push(path.clone());
+                DdInfo {
+                    path,
+                    format: Some(RecordFormat::Fixed(80)),
+                    keys: None,
+                    sysout: false,
+                }
+            }
+            DdKind::Dataset { dsn, .. } => {
+                let keys = match ctx.env.catalog.get(dsn).map(|e| &e.kind) {
+                    Some(EntryKind::Cluster { keys, .. }) => *keys,
+                    _ => None,
+                };
+                DdInfo {
+                    path: dd.path.clone(),
+                    format: dd.format.or_else(|| ctx.env.catalog.record_format(dsn)),
+                    keys,
+                    sysout: false,
+                }
+            }
+        };
+        dds.insert(dd.name.clone(), info);
+    }
+    let stdout: Box<dyn std::io::Write> = match ctx.sysout("SYSPRINT") {
+        Ok(f) => Box::new(f),
+        Err(_) => Box::new(std::io::sink()),
+    };
+    let msgout: Box<dyn std::io::Write> = match ctx.sysout("SYSOUT") {
+        Ok(f) => Box::new(f),
+        Err(_) => Box::new(std::io::sink()),
+    };
+    let env = RunEnv {
+        dds,
+        parm: ctx.parm.clone(),
+        stdout,
+        msgout,
+        stdin,
+        stdin_reader: None,
+    };
+    let end = zeus_pli::run(module, env);
+    for t in temps {
+        let _ = std::fs::remove_file(t);
+    }
+    match end {
+        RunEnd::Rc(rc) => Ok(rc),
+        RunEnd::Abend(code) => Err(Outcome::Abend(code)),
+    }
+}
+
 /// Runs a COBOL program compiled by zcobc.
 pub(crate) fn run_cobol(
     ctx: &mut StepCtx,
@@ -691,12 +779,20 @@ pub(crate) fn run_cobol(
     job: &str,
     step: &Step,
 ) -> ProgramResult {
-    let module = libs
+    let path = libs
         .iter()
         .flat_map(|d| [d.join(program), d.join(format!("{program}.zo"))])
         .find(|p| p.is_file())
-        .and_then(|p| zeus_cobol::load_module(&p).ok())
         .ok_or_else(|| Outcome::Abend("S806".into()))?;
+    // a PL/I load module
+    if let Ok(data) = std::fs::read(&path)
+        && zeus_pli::is_module(&data)
+    {
+        let module =
+            zeus_pli::load_module_bytes(&data).map_err(|_| Outcome::Abend("S806".into()))?;
+        return run_pli(ctx, module);
+    }
+    let module = zeus_cobol::load_module(&path).map_err(|_| Outcome::Abend("S806".into()))?;
     let mut m = zeus_cobol::vm::Machine::new(libs.to_vec());
     crate::native::register(&mut m);
     // embedded SQL runs on the Db2 server named by ZEUS_DB2

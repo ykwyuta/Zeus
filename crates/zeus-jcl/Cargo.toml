@@ -10,6 +10,7 @@ repository.workspace = true
 [dependencies]
 zeus-ds = { path = "../zeus-ds" }
 zeus-cobol = { path = "../zeus-cobol" }
+zeus-pli = { path = "../zeus-pli" }
 zeus-db2 = { path = "../zeus-db2" }
 zeus-decimal = { path = "../zeus-decimal" }
 

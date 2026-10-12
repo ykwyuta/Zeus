@@ -86,13 +86,30 @@ instead. MOVE, comparisons, reference modification, LENGTH / BYTE-LENGTH,
 NATIONAL-OF / DISPLAY-OF (with an optional CCSID), DISPLAY, ACCEPT and Db2
 host variables handle national data.
 
+PL/I: `zpli` compiles Enterprise PL/I programs (procedures with recursion,
+structures mapped as on z/OS, arrays, BASED / DEFINED storage, pictures,
+ON-units, stream and record I/O including VSAM KSDS) and runs them with data
+in z/OS formats (EBCDIC, packed decimal, hexadecimal floating point). The
+language rules follow the IBM Enterprise PL/I Language Reference (RULES(IBM),
+LIMITS(FIXEDDEC(15) FIXEDBIN(31))). `zpli source.pli` compiles and runs a
+program; in a job, `IBMZPLI` compiles SYSIN, `IEWL` binds and `EXEC PGM=`
+runs it with its DD statements. Scope and limits:
+[docs/proposal/0004-pli-compiler.md](docs/proposal/0004-pli-compiler.md).
+
+JCL: `zjob` is the JCL interpreter (in Rust): it parses jobs, expands
+catalogued and in-stream procedures, INCLUDE groups and symbolic
+parameters, selects steps by COND and IF/THEN/ELSE/ENDIF, allocates data
+sets through the catalog (DISP, GDGs, temporary data sets, concatenation)
+and runs programs and utilities, including the compilers and the binder.
+
 ## Layout
 
 | Path | Content |
 |---|---|
 | `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
+| `crates/zeus-pli` | `zpli`: PL/I front end (margins, %INCLUDE), semantics, typed IR and interpreter |
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
-| `crates/zeus-jcl` | `zjob`: JCL interpreter in Rust: parsing, PROC / INCLUDE expansion, COND and IF/THEN/ELSE/ENDIF, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT / IKJEFT01, compile and bind steps (IGYCRCTL, IEWL) |
+| `crates/zeus-jcl` | `zjob`: JCL interpreter in Rust: parsing, PROC / INCLUDE expansion, COND and IF/THEN/ELSE/ENDIF, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT / IKJEFT01, compile and bind steps (IGYCRCTL, IBMZPLI, IEWL) |
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
 | `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
 | `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |

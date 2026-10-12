@@ -679,6 +679,19 @@ dependencies = [
  "zeus-db2",
  "zeus-decimal",
  "zeus-ds",
+ "zeus-pli",
+]
+
+[[package]]
+name = "zeus-pli"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zeus-cobol",
+ "zeus-decimal",
+ "zeus-ds",
 ]
 
 [[package]]

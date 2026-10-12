@@ -273,7 +273,9 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
 次のフェーズ (本計画の完了後に別提案):
 - **IMS**: EXEC DLI / CALL 'CBLTDLI' のコンパイラ統合、DL/I (DBD/PSB、階層データストア、GU/GN/GNP/ISRT/REPL/DLET、SSA)、
   IMS バッチ (DFSRRC00 相当)、IMS TM。対象は Bank of Z の IMS 経路と CardDemo の承認モジュール (IMS+Db2+MQ)。
-- **PL/I**: zeus-cobol の中間表現 (ZIR)・zeus-decimal・ランタイムを共用し、PL/I フロントエンドを追加する。
+- **PL/I**: 着手済み (2026-10)。zeus-decimal・zeus-ds・コードページを共用する独立したコンパイラと
+  インタプリタ (zeus-pli、`zpli`) として実装し、JCL の IBMZPLI / IEWL / EXEC PGM で動く。
+  再帰・AUTOMATIC・ON ユニットの動的探索のため ZIR は使わない。範囲と未対応は 0004 を参照。
 
 任意トラック:
 - **z/Architecture CPU エミュレータ (0001 案)**: Assembler 資産やロードモジュールしか残っていない

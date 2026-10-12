@@ -1,6 +1,6 @@
 //! Compilers and the binder as step programs.
 //!
-//! * `IGYCRCTL` (COBOL) and `IBMZPLI` (PL/I) compile the source read from
+//! * `IGYCRCTL` (COBOL) and `IBMZPLI` / `IEL1AA` (PL/I) compile the source read from
 //!   SYSIN; COPY members and %INCLUDE files come from the SYSLIB
 //!   libraries. The module is written to SYSLIN (Zeus has no object
 //!   decks: the "object" is the executable module). Messages go to
@@ -127,6 +127,43 @@ pub fn cobol(ctx: &mut StepCtx) -> ProgramResult {
     Ok(rc)
 }
 
+pub fn pli(ctx: &mut StepCtx) -> ProgramResult {
+    let mut print = ctx
+        .sysout("SYSPRINT")
+        .map_err(crate::job::Outcome::JclError)?;
+    let tmp = tempdir()?;
+    let (name, text) = match source(ctx) {
+        Ok(s) => s,
+        Err(e) => {
+            let _ = writeln!(print, "ZEUS PL/I: SYSIN: {e}");
+            return Ok(16);
+        }
+    };
+    let src = tmp.join(source_file(&name, "pli"));
+    std::fs::write(&src, text).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
+    let opts = zeus_pli::Options {
+        include_dirs: syslib(ctx, &tmp),
+        ..Default::default()
+    };
+    let _ = writeln!(print, "ZEUS PL/I COMPILER (IBMZPLI)  SOURCE {name}");
+    let (rc, compiled) = zeus_pli::compile_file(&src, &opts);
+    for m in &compiled.messages {
+        let _ = writeln!(print, "{m}");
+    }
+    if let Some(m) = compiled.module {
+        let written = zeus_pli::module_bytes(&m)
+            .map_err(|e| e.to_string())
+            .and_then(|d| write_syslin(ctx, &d));
+        if let Err(e) = written {
+            let _ = writeln!(print, "ZEUS PL/I: SYSLIN: {e}");
+            return Ok(16);
+        }
+    }
+    let _ = writeln!(print, "END OF COMPILATION, RETURN CODE {rc}");
+    let _ = std::fs::remove_dir_all(&tmp);
+    Ok(rc)
+}
+
 /// The binder: the module of SYSLIN into the SYSLMOD library.
 pub fn bind(ctx: &mut StepCtx) -> ProgramResult {
     let mut print = ctx
@@ -140,6 +177,7 @@ pub fn bind(ctx: &mut StepCtx) -> ProgramResult {
         .chain(lin.concat.iter())
         .filter_map(|d| std::fs::read(&d.path).ok())
         .find(|d| d.first() == Some(&b'{'));
+    // (COBOL and PL/I modules are both JSON documents)
     let Some(data) = data else {
         let _ = writeln!(print, "IEW2202E NO MODULE IN SYSLIN");
         return Ok(12);
