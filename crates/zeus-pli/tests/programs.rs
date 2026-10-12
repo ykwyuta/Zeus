@@ -235,3 +235,17 @@ fn areas_isub_refer_and_controlled_parameters() {
         assert_eq!(out, expected(name), "{name}");
     }
 }
+
+/// GENERIC, ORDINAL (with UPTHRU/DOWNTHRU), DEFAULT, floating-point
+/// pictures, DEFINE STRUCTURE / ALIAS with HANDLE and NEW, GRAPHIC and
+/// WIDECHAR, and COMPLEX.
+#[test]
+fn types_and_type_definitions() {
+    for name in [
+        "generic", "default", "floatpic", "handle", "wide", "complex",
+    ] {
+        let (out, msg, end) = run(name, HashMap::new(), "");
+        assert_eq!(end, RunEnd::Rc(0), "{name}: {msg}");
+        assert_eq!(out, expected(name), "{name}");
+    }
+}

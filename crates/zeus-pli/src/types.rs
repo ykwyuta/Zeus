@@ -52,6 +52,16 @@ pub enum Ty {
         var: Var,
         aligned: bool,
     },
+    /// GRAPHIC (DBCS, `graphic`) or WIDECHAR (UTF-16) string: two bytes
+    /// a character. Its values are the stored bytes; in expressions it is
+    /// converted to CHARACTER.
+    Wchar {
+        len: Ext,
+        var: Var,
+        graphic: bool,
+    },
+    /// COMPLEX: real and imaginary parts of the arithmetic type.
+    Complex(Box<Ty>),
     /// Numeric or character PICTURE.
     Pic(Box<crate::picture::Picture>),
     Pointer,
@@ -127,6 +137,14 @@ impl Ty {
         matches!(self, Ty::Bit { .. })
     }
 
+    /// The type of the parts of a COMPLEX type.
+    pub fn complex_part(&self) -> Option<&Ty> {
+        match self {
+            Ty::Complex(t) => Some(t),
+            _ => None,
+        }
+    }
+
     /// The arithmetic attributes of a numeric picture.
     pub fn numeric_pic(&self) -> Option<Ty> {
         match self {
@@ -164,7 +182,7 @@ impl Ty {
 
     pub fn str_len(&self) -> Option<Ext> {
         match self {
-            Ty::Char { len, .. } | Ty::Bit { len, .. } => Some(*len),
+            Ty::Char { len, .. } | Ty::Bit { len, .. } | Ty::Wchar { len, .. } => Some(*len),
             Ty::Pic(p) => Some(Ext::Const(p.len as u32)),
             _ => None,
         }
@@ -174,6 +192,11 @@ impl Ty {
     pub fn with_len(&self, l: Ext) -> Ty {
         match self {
             Ty::Char { var, .. } => Ty::Char { len: l, var: *var },
+            Ty::Wchar { var, graphic, .. } => Ty::Wchar {
+                len: l,
+                var: *var,
+                graphic: *graphic,
+            },
             Ty::Bit { var, aligned, .. } => Ty::Bit {
                 len: l,
                 var: *var,
@@ -185,7 +208,7 @@ impl Ty {
 
     pub fn varying(&self) -> Var {
         match self {
-            Ty::Char { var, .. } | Ty::Bit { var, .. } => *var,
+            Ty::Char { var, .. } | Ty::Bit { var, .. } | Ty::Wchar { var, .. } => *var,
             _ => Var::Fixed,
         }
     }
@@ -229,6 +252,14 @@ impl Ty {
                     Var::Fixed => (bytes, 1),
                     _ => (bytes + 2, if aligned { 2 } else { 1 }),
                 }
+            }
+            Ty::Wchar { len: l, var, .. } => match var {
+                Var::Fixed => (2 * len(l), if aligned { 2 } else { 1 }),
+                _ => (2 * len(l) + 2, if aligned { 2 } else { 1 }),
+            },
+            Ty::Complex(t) => {
+                let (n, a) = t.storage(aligned);
+                (2 * n, a)
             }
             Ty::Pic(p) => (p.len as u32, 1),
             Ty::Pointer | Ty::Offset(_) | Ty::File => (4, if aligned { 4 } else { 1 }),

@@ -714,6 +714,7 @@ impl Machine {
                 len: Ext::Const(n),
                 var: *var,
             },
+            (t @ Ty::Wchar { .. }, Some(n)) => t.with_len(Ext::Const(n)),
             (Ty::Bit { var, aligned, .. }, Some(n)) => Ty::Bit {
                 len: Ext::Const(n),
                 var: *var,
@@ -997,6 +998,33 @@ impl Machine {
                 }
             }
             Ty::Pic(p) => Value::Char(self.read(addr, p.len)?),
+            Ty::Complex(t) => {
+                let (n, _) = t.storage(true);
+                let re = self.load(&Loc {
+                    bit: loc.bit,
+                    ty: (**t).clone(),
+                })?;
+                let im = self.load(&Loc {
+                    bit: loc.bit + u64::from(n) * 8,
+                    ty: (**t).clone(),
+                })?;
+                Value::cplx(re, im)
+            }
+            // GRAPHIC, WIDECHAR: the stored bytes
+            Ty::Wchar { len, var, .. } => {
+                let n = match len {
+                    Ext::Const(n) => *n as usize,
+                    _ => 0,
+                };
+                match var {
+                    Varying::Fixed => Value::Char(self.read(addr, 2 * n)?),
+                    _ => {
+                        let l = self.read(addr, 2)?;
+                        let cur = (usize::from(u16::from_be_bytes([l[0], l[1]]))).min(n);
+                        Value::Char(self.read(addr + 2, 2 * cur)?)
+                    }
+                }
+            }
             Ty::Pointer | Ty::Offset(_) => {
                 let b = self.read(addr, 4)?;
                 Value::Ptr(u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
@@ -1100,6 +1128,44 @@ impl Machine {
                 let mut b = s.clone();
                 b.resize(p.len, SPACE);
                 self.write(addr, &b)?;
+            }
+            (Ty::Complex(t), Value::Cplx(c)) => {
+                let (n, _) = t.storage(true);
+                self.store(
+                    &Loc {
+                        bit: loc.bit,
+                        ty: (**t).clone(),
+                    },
+                    &c.0,
+                )?;
+                self.store(
+                    &Loc {
+                        bit: loc.bit + u64::from(n) * 8,
+                        ty: (**t).clone(),
+                    },
+                    &c.1,
+                )?;
+            }
+            (Ty::Wchar { len, var, graphic }, Value::Char(s)) => {
+                let n = match len {
+                    Ext::Const(n) => *n as usize,
+                    _ => s.len() / 2,
+                };
+                let cur = (s.len() / 2).min(n);
+                match var {
+                    Varying::Fixed => {
+                        let mut b = s[..2 * cur].to_vec();
+                        let pad = conv::wide_space(*graphic);
+                        while b.len() < 2 * n {
+                            b.extend(pad);
+                        }
+                        self.write(addr, &b)?;
+                    }
+                    _ => {
+                        self.write(addr, &(cur as u16).to_be_bytes())?;
+                        self.write(addr + 2, &s[..2 * cur])?;
+                    }
+                }
             }
             (Ty::Pointer | Ty::Offset(_), Value::Ptr(p)) => self.write(addr, &p.to_be_bytes())?,
             (Ty::Area(cap), Value::Char(b)) => {
@@ -2751,6 +2817,14 @@ impl Machine {
             Ek::Neg(x) => match self.eval(x, act)? {
                 Value::Fixed { m, q, dec } => Value::fixed(-m, q, dec),
                 Value::Float(f) => Value::Float(-f),
+                Value::Cplx(c) => {
+                    let neg = |v: Value| match v {
+                        Value::Fixed { m, q, dec } => Value::fixed(-m, q, dec),
+                        Value::Float(f) => Value::Float(-f),
+                        v => v,
+                    };
+                    Value::cplx(neg(c.0), neg(c.1))
+                }
                 v => return err(format!("negation of {v:?}")),
             },
             Ek::Arith(op, a, b) => {

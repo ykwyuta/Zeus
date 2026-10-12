@@ -450,6 +450,17 @@ impl Machine {
     fn list_text(&mut self, v: &Value, ty: &Ty, print: bool, data: bool) -> Vec<u8> {
         match (v, ty) {
             (Value::Char(s), Ty::Pic(_)) => s.clone(),
+            (Value::Cplx(c), Ty::Complex(t)) => {
+                let r = self.arith_text(&c.0, t);
+                let i = self.arith_text(&c.1, t);
+                let i = i.trim_start();
+                let sign = if i.starts_with('-') { "" } else { "+" };
+                ebcdic(&format!("{r}{sign}{i}I"))
+            }
+            (Value::Char(s), Ty::Wchar { graphic, .. }) => {
+                let c = Value::Char(super::conv::from_wide(s, *graphic));
+                self.list_text(&c, &crate::sema::expr::char_any(), print, data)
+            }
             (Value::Char(s), _) => {
                 if print && !data {
                     s.clone()

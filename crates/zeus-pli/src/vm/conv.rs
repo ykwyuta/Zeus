@@ -14,11 +14,78 @@ fn ebcdic(s: &str) -> Vec<u8> {
     zeus_cobol::ebcdic::encode(s)
 }
 
+/// The blank of a GRAPHIC (DBCS) or WIDECHAR (UTF-16) string.
+pub fn wide_space(graphic: bool) -> [u8; 2] {
+    if graphic { [0x40, 0x40] } else { [0x00, 0x20] }
+}
+
+/// EBCDIC characters as GRAPHIC or WIDECHAR bytes.
+pub fn to_wide(s: &[u8], graphic: bool) -> Vec<u8> {
+    let mut out = Vec::with_capacity(2 * s.len());
+    if graphic {
+        for &c in s {
+            out.extend(if c == SPACE { [0x40, 0x40] } else { [0x42, c] });
+        }
+    } else {
+        for c in ebcdic_text(s).chars() {
+            let mut u = [0u16; 2];
+            for x in c.encode_utf16(&mut u) {
+                out.extend(x.to_be_bytes());
+            }
+        }
+    }
+    out
+}
+
+/// GRAPHIC or WIDECHAR bytes as EBCDIC characters (those without a
+/// single-byte form: SUB, X'3F').
+pub fn from_wide(b: &[u8], graphic: bool) -> Vec<u8> {
+    if graphic {
+        return b
+            .chunks(2)
+            .map(|p| match p {
+                [0x40, 0x40] => SPACE,
+                [0x42, c] => *c,
+                _ => 0x3F,
+            })
+            .collect();
+    }
+    let units: Vec<u16> = b
+        .chunks(2)
+        .map(|p| u16::from_be_bytes([p[0], *p.get(1).unwrap_or(&0)]))
+        .collect();
+    let mut out = Vec::new();
+    for c in char::decode_utf16(units) {
+        match c {
+            Ok(c) => {
+                let e = ebcdic(&c.to_string());
+                // characters the code page lacks
+                if e.len() == 1 && ebcdic_text(&e).starts_with(c) {
+                    out.push(e[0]);
+                } else {
+                    out.push(0x3F);
+                }
+            }
+            Err(_) => out.push(0x3F),
+        }
+    }
+    out
+}
+
 impl Machine {
     /// The arithmetic value of a value of type `from` (pictures: their
     /// numeric value; strings: the constant they hold).
     fn arith_value(&mut self, v: Value, from: &Ty, act: usize) -> R<Value> {
         match (&v, from) {
+            (Value::Char(img), Ty::Pic(p)) if p.float.is_some() => {
+                match p.value_float(&ebcdic_text(img)) {
+                    Some(f) => Ok(Value::Float(f)),
+                    None => {
+                        self.conversion(img, act)?;
+                        Ok(Value::Float(0.0))
+                    }
+                }
+            }
             (Value::Char(img), Ty::Pic(p)) if p.numeric => {
                 let text = ebcdic_text(img);
                 match p.value(&text) {
@@ -79,7 +146,72 @@ impl Machine {
 
     /// Converts a value of type `from` to type `to` (assignment rules).
     pub fn convert(&mut self, v: Value, from: &Ty, to: &Ty, act: usize) -> R<Value> {
+        // GRAPHIC and WIDECHAR: through CHARACTER unless of the same kind
+        if let Ty::Wchar { graphic: fg, .. } = from {
+            let same = matches!(to, Ty::Wchar { graphic, .. } if graphic == fg);
+            if !same {
+                let Value::Char(b) = v else {
+                    return err("wide string value");
+                };
+                let c = Value::Char(from_wide(&b, *fg));
+                return self.convert(c, &crate::sema::expr::char_any(), to, act);
+            }
+        }
+        // COMPLEX: by parts; to a real type, the real part; to a string,
+        // re+imI
+        if let Ty::Complex(ft) = from {
+            let Value::Cplx(c) = v else {
+                return err("complex value");
+            };
+            let (re, im) = *c;
+            return match to {
+                Ty::Complex(tt) => Ok(Value::cplx(
+                    self.convert(re, ft, tt, act)?,
+                    self.convert(im, ft, tt, act)?,
+                )),
+                Ty::Char { .. } | Ty::Wchar { .. } => {
+                    let r = self.arith_text(&re, ft);
+                    let i = self.arith_text(&im, ft);
+                    let i = i.trim_start();
+                    let sign = if i.starts_with('-') { "" } else { "+" };
+                    let text = Value::Char(ebcdic(&format!("{r}{sign}{i}I")));
+                    self.convert(text, &crate::sema::expr::char_any(), to, act)
+                }
+                _ => self.convert(re, ft, to, act),
+            };
+        }
+        if let Ty::Complex(tt) = to {
+            let re = self.convert(v, from, tt, act)?;
+            let im = self.convert(Value::int(0), &Ty::fixed_bin(15, 0), tt, act)?;
+            return Ok(Value::cplx(re, im));
+        }
         match to {
+            Ty::Wchar { len, var, graphic } => {
+                let b = match (v, from) {
+                    (Value::Char(b), Ty::Wchar { .. }) => b,
+                    (v, _) => {
+                        let Value::Char(s) =
+                            self.convert(v, from, &crate::sema::expr::char_any(), act)?
+                        else {
+                            return err("wide string value");
+                        };
+                        to_wide(&s, *graphic)
+                    }
+                };
+                // fit to the length in characters
+                let n = match len {
+                    Ext::Const(n) => *n as usize,
+                    _ => b.len() / 2,
+                };
+                let mut b = b;
+                b.truncate(2 * n);
+                if *var == Varying::Fixed {
+                    while b.len() < 2 * n {
+                        b.extend(wide_space(*graphic));
+                    }
+                }
+                Ok(Value::Char(b))
+            }
             Ty::Fixed {
                 dec,
                 p,
@@ -174,6 +306,13 @@ impl Machine {
                 }
                 let a = p.arith();
                 let v = self.convert(v, from, &a, act)?;
+                if p.float.is_some() {
+                    let (text, lost) = p.edit_float(v.as_f64());
+                    if lost {
+                        self.size_check(act)?;
+                    }
+                    return Ok(Value::Char(ebcdic(&text)));
+                }
                 let Value::Fixed { m, q, .. } = v else {
                     return err("picture value");
                 };
@@ -211,6 +350,62 @@ impl Machine {
             },
             _ => Ok(v),
         }
+    }
+
+    /// Arithmetic on COMPLEX operands with parts of type `ct`.
+    #[allow(clippy::too_many_arguments)]
+    fn complex_arith(
+        &mut self,
+        op: ArOp,
+        x: Value,
+        xt: &Ty,
+        y: Value,
+        yt: &Ty,
+        ct: &Ty,
+        act: usize,
+    ) -> R<Value> {
+        let rt = Ty::Complex(Box::new(ct.clone()));
+        let parts = |v: Value| match v {
+            Value::Cplx(c) => *c,
+            v => (v, Value::int(0)),
+        };
+        let (a, b) = parts(self.convert(x, xt, &rt, act)?);
+        let (c, d) = parts(self.convert(y, yt, &rt, act)?);
+        if matches!(op, ArOp::Add | ArOp::Sub) {
+            let re = self.arith(op, a, ct, c, ct, ct, act)?;
+            let im = self.arith(op, b, ct, d, ct, ct, act)?;
+            return Ok(Value::cplx(re, im));
+        }
+        let (a, b, c, d) = (a.as_f64(), b.as_f64(), c.as_f64(), d.as_f64());
+        let (re, im) = match op {
+            ArOp::Mul => (a * c - b * d, a * d + b * c),
+            ArOp::Div => {
+                let den = c * c + d * d;
+                if den == 0.0 {
+                    self.zero_divide(act)?;
+                    (0.0, 0.0)
+                } else {
+                    ((a * c + b * d) / den, (b * c - a * d) / den)
+                }
+            }
+            _ => {
+                // z ** w = exp(w log z)
+                let (r, t) = ((a * a + b * b).sqrt(), b.atan2(a));
+                if r == 0.0 {
+                    (0.0, 0.0)
+                } else {
+                    let (lr, li) = (r.ln(), t);
+                    let (er, ei) = (c * lr - d * li, c * li + d * lr);
+                    let m = er.exp();
+                    (m * ei.cos(), m * ei.sin())
+                }
+            }
+        };
+        let ft = Ty::Float { dec: false, p: 53 };
+        Ok(Value::cplx(
+            self.convert(Value::Float(re), &ft, ct, act)?,
+            self.convert(Value::Float(im), &ft, ct, act)?,
+        ))
     }
 
     /// Character form of an arithmetic value.
@@ -255,6 +450,9 @@ impl Machine {
         rt: &Ty,
         act: usize,
     ) -> R<Value> {
+        if let Ty::Complex(ct) = rt {
+            return self.complex_arith(op, x, xt, y, yt, ct, act);
+        }
         let x = self.arith_value(x, xt, act)?;
         let y = self.arith_value(y, yt, act)?;
         match rt {
@@ -443,6 +641,19 @@ impl Machine {
             (Value::Label(x, _), Value::Label(y, _)) => x.cmp(y),
             (Value::Entry(x, _), Value::Entry(y, _)) => x.cmp(y),
             (Value::File(x), Value::File(y)) => x.cmp(y),
+            // COMPLEX: equal or not
+            (Value::Cplx(x), Value::Cplx(y)) => {
+                let (Some(xt), Some(yt)) = (at.complex_part(), bt.complex_part()) else {
+                    return err("complex comparison");
+                };
+                let r = self.compare(&x.0, xt, &y.0, yt)?;
+                let i = self.compare(&x.1, xt, &y.1, yt)?;
+                if r == Ordering::Equal && i == Ordering::Equal {
+                    Ordering::Equal
+                } else {
+                    Ordering::Less
+                }
+            }
             _ => return self.cmp_arith(a, at, b, bt),
         })
     }

@@ -12,6 +12,8 @@ pub enum Value {
         dec: bool,
     },
     Float(f64),
+    /// COMPLEX: real and imaginary parts.
+    Cplx(Box<(Value, Value)>),
     /// Character string (EBCDIC bytes); also the image of a picture.
     Char(Vec<u8>),
     Bit(Vec<bool>),
@@ -37,6 +39,10 @@ impl Value {
         }
     }
 
+    pub fn cplx(re: Value, im: Value) -> Value {
+        Value::Cplx(Box::new((re, im)))
+    }
+
     pub fn bit1(b: bool) -> Value {
         Value::Bit(vec![b])
     }
@@ -50,6 +56,7 @@ impl Value {
             }
             Value::Float(f) => *f,
             Value::Bit(b) => bits_to_u128(b) as f64,
+            Value::Cplx(c) => c.0.as_f64(),
             _ => 0.0,
         }
     }

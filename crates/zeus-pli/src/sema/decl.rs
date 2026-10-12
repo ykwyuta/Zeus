@@ -6,6 +6,7 @@ use crate::ast::{Bound as AstBound, Extent, Init as AstInit};
 use crate::types::{Ext, Var as Varying};
 
 /// A declared item with its members (after LIKE expansion).
+#[derive(Clone)]
 struct Node {
     item: DeclItem,
     children: Vec<Node>,
@@ -148,6 +149,20 @@ impl Compiler {
         block: BlockId,
         dyn_ok: bool,
     ) -> Result<Ty> {
+        // COMPLEX: two parts of the arithmetic type
+        if has(attrs, |a| matches!(a, Attr::Complex)) {
+            let rest: Vec<Attr> = attrs
+                .iter()
+                .filter(|a| !matches!(a, Attr::Complex))
+                .cloned()
+                .collect();
+            let t = self.scalar_type_in(&rest, name, pos, block, dyn_ok)?;
+            let t = match t {
+                Ty::Fixed { .. } | Ty::Float { .. } => t,
+                _ => return Err(self.err(pos, "COMPLEX needs an arithmetic type")),
+            };
+            return Ok(Ty::Complex(Box::new(t)));
+        }
         let mut fixed = false;
         let mut float = false;
         let mut bin = false;
@@ -156,6 +171,7 @@ impl Compiler {
         let mut var = Varying::Fixed;
         let mut unsigned = false;
         let mut string: Option<(bool, Ext)> = None;
+        let mut wide: Option<(bool, Ext)> = None;
         for a in attrs {
             match a {
                 Attr::Fixed => fixed = true,
@@ -178,7 +194,6 @@ impl Compiler {
                 Attr::Unsigned => unsigned = true,
                 Attr::Varying => var = Varying::Varying,
                 Attr::VaryingZ => var = Varying::VaryingZ,
-                Attr::Complex => return Err(self.err(pos, "COMPLEX data is not supported")),
                 Attr::Character(l) | Attr::Bit(l) => {
                     let len = match l {
                         Some(e) => self.extent(e, block, dyn_ok, pos)?,
@@ -186,14 +201,18 @@ impl Compiler {
                     };
                     string = Some((matches!(a, Attr::Bit(_)), len));
                 }
-                Attr::Graphic(_) | Attr::Widechar(_) => {
-                    return Err(self.err(pos, "GRAPHIC and WIDECHAR data are not supported"));
+                Attr::Graphic(l) | Attr::Widechar(l) => {
+                    let len = match l {
+                        Some(e) => self.extent(e, block, dyn_ok, pos)?,
+                        None => Ext::Const(1),
+                    };
+                    wide = Some((matches!(a, Attr::Graphic(_)), len));
                 }
                 Attr::Picture(s) => {
                     let p = crate::picture::Picture::parse(s).map_err(|e| self.err(pos, e))?;
                     return Ok(Ty::Pic(Box::new(p)));
                 }
-                Attr::Pointer | Attr::Handle => return Ok(Ty::Pointer),
+                Attr::Pointer | Attr::Handle(_) => return Ok(Ty::Pointer),
                 Attr::Offset(area) => {
                     let v = match area {
                         Some(a) => {
@@ -222,6 +241,14 @@ impl Compiler {
                 Attr::File => return Ok(Ty::File),
                 _ => {}
             }
+        }
+        if let Some((graphic, len)) = wide {
+            let var = if var == Varying::Fixed {
+                var
+            } else {
+                Varying::Varying
+            };
+            return Ok(Ty::Wchar { len, var, graphic });
         }
         if let Some((bit, len)) = string {
             return Ok(if bit {
@@ -288,6 +315,37 @@ impl Compiler {
             });
             let mut it2 = it.clone();
             it2.attrs.retain(|a| !matches!(a, Attr::Like(_)));
+            // TYPE of a DEFINE ALIAS: its attributes
+            let mut k = 0;
+            while k < it2.attrs.len() {
+                if let Attr::Type(n) = &it2.attrs[k]
+                    && let Some(a) = self.aliases.get(n)
+                {
+                    let a = a.clone();
+                    it2.attrs.splice(k..=k, a);
+                    continue;
+                }
+                k += 1;
+            }
+            // TYPE of a DEFINE STRUCTURE: its members below the item
+            let st = it2.attrs.iter().find_map(|a| match a {
+                Attr::Type(n) => self.structs.get(n).cloned(),
+                _ => None,
+            });
+            if let Some(members) = st {
+                it2.attrs.retain(|a| !matches!(a, Attr::Type(_)));
+                out.push(it2);
+                let shifted: Vec<DeclItem> = members[1..]
+                    .iter()
+                    .map(|d| {
+                        let mut c = d.clone();
+                        c.level = it.level + d.level - 1;
+                        c
+                    })
+                    .collect();
+                out.extend(self.expand_like(&shifted)?);
+                continue;
+            }
             out.push(it2);
             let Some(r) = like else { continue };
             let target = self
@@ -339,6 +397,15 @@ impl Compiler {
         block: BlockId,
         params: &[String],
     ) -> Result<()> {
+        // DEFAULT statements apply to the whole block
+        let mut kept = Vec::new();
+        for it in items {
+            match it.attrs.first() {
+                Some(Attr::DefaultRules(r)) => self.defaults.extend(r.iter().cloned()),
+                _ => kept.push(it.clone()),
+            }
+        }
+        let items = &kept[..];
         // trees by level
         let mut roots: Vec<Node> = Vec::new();
         // declarations are processed one level-1 tree at a time so that
@@ -352,7 +419,27 @@ impl Compiler {
             }
         }
         let mut late: Vec<(VarId, Vec<Attr>, Pos)> = Vec::new();
-        for g in groups {
+        for mut g in groups {
+            // DEFINE ALIAS
+            if let Some(Attr::AliasDef(a)) = g[0].attrs.first() {
+                self.aliases.insert(g[0].name.clone(), a.clone());
+                continue;
+            }
+            // DEFINE STRUCTURE: the type, and a BASED structure %name that
+            // handle references (h => member) are resolved in
+            if g[0].attrs.iter().any(|a| matches!(a, Attr::StructDef)) {
+                g[0].attrs.retain(|a| !matches!(a, Attr::StructDef));
+                let base = g[0].level;
+                for d in g.iter_mut() {
+                    d.level = d.level + 1 - base;
+                }
+                let name = g[0].name.clone();
+                let expanded = self.expand_like(&g)?;
+                self.structs.insert(name.clone(), g.clone());
+                g = expanded;
+                g[0].name = format!("%{name}");
+                g[0].attrs.push(Attr::Based(None));
+            }
             let g = self.expand_like(&g)?;
             let tree = build_tree(&g);
             for t in tree {
@@ -371,6 +458,94 @@ impl Compiler {
             self.m.refers[n as usize].init = self.conv(ex, &Ty::fixed_bin(31, 0));
         }
         Ok(())
+    }
+
+    /// Adds the attributes of the DEFAULT rules for its name to a
+    /// declaration without data attributes, and the VALUE precisions and
+    /// lengths it lacks.
+    fn apply_defaults(&self, item: &mut DeclItem) {
+        use crate::ast::DefaultRange;
+        let first = item.name.chars().next().unwrap_or(' ');
+        let applies = |r: &crate::ast::DefaultRule| {
+            r.ranges.is_empty()
+                || r.ranges.iter().any(|g| match g {
+                    DefaultRange::All => true,
+                    DefaultRange::Letters(a, b) => (*a..=*b).contains(&first),
+                    DefaultRange::Prefix(p) => item.name.starts_with(p.as_str()),
+                })
+        };
+        let data = |a: &Attr| {
+            matches!(
+                a,
+                Attr::Fixed
+                    | Attr::Float
+                    | Attr::Binary
+                    | Attr::Decimal
+                    | Attr::Character(_)
+                    | Attr::Bit(_)
+                    | Attr::Picture(_)
+                    | Attr::Pointer
+                    | Attr::Offset(_)
+                    | Attr::Handle(_)
+                    | Attr::Area(_)
+                    | Attr::Entry(_)
+                    | Attr::Returns(_)
+                    | Attr::File
+                    | Attr::Label
+                    | Attr::Format
+                    | Attr::Graphic(_)
+                    | Attr::Widechar(_)
+                    | Attr::Type(_)
+                    | Attr::Builtin
+                    | Attr::Condition
+                    | Attr::Generic(_)
+                    | Attr::OrdinalDef(_)
+                    | Attr::Like(_)
+            )
+        };
+        if !item.attrs.iter().any(data)
+            && let Some(r) = self
+                .defaults
+                .iter()
+                .find(|r| applies(r) && !r.attrs.is_empty())
+        {
+            item.attrs.extend(r.attrs.iter().cloned());
+        }
+        for r in self.defaults.iter().filter(|r| applies(r)) {
+            for v in &r.values {
+                let base: Vec<&Attr> = v
+                    .iter()
+                    .filter(|a| {
+                        !matches!(a, Attr::Precision(..) | Attr::Character(_) | Attr::Bit(_))
+                    })
+                    .collect();
+                if !base.iter().all(|b| item.attrs.contains(b)) {
+                    continue;
+                }
+                if let Some(p) = v.iter().find(|a| matches!(a, Attr::Precision(..)))
+                    && !item.attrs.iter().any(|a| matches!(a, Attr::Precision(..)))
+                    && item.attrs.iter().any(|a| {
+                        matches!(a, Attr::Fixed | Attr::Float | Attr::Binary | Attr::Decimal)
+                    })
+                {
+                    item.attrs.push(p.clone());
+                }
+                for (k, a) in item.attrs.iter_mut().enumerate() {
+                    let _ = k;
+                    match (
+                        a,
+                        v.iter()
+                            .find(|x| matches!(x, Attr::Character(Some(_)) | Attr::Bit(Some(_)))),
+                    ) {
+                        (Attr::Character(l @ None), Some(Attr::Character(Some(e)))) => {
+                            *l = Some(e.clone())
+                        }
+                        (Attr::Bit(l @ None), Some(Attr::Bit(Some(e)))) => *l = Some(e.clone()),
+                        _ => {}
+                    }
+                }
+            }
+        }
     }
 
     /// The parameter descriptors and RETURNS of an ENTRY declaration.
@@ -441,7 +616,51 @@ impl Compiler {
         late: &mut Vec<(VarId, Vec<Attr>, Pos)>,
         group: &[DeclItem],
     ) -> Result<Option<VarId>> {
-        let v = self.declare_tree_inner(t, block, params, late, group)?;
+        // the attributes DEFAULT statements give
+        let defaulted;
+        let t = if t.children.is_empty() && !self.defaults.is_empty() {
+            let mut d = t.clone();
+            self.apply_defaults(&mut d.item);
+            defaulted = d;
+            &defaulted
+        } else {
+            t
+        };
+        // TYPE of an ORDINAL: a FIXED BIN(31) variable of the type
+        let ordinal = t.item.attrs.iter().find_map(|a| match a {
+            Attr::Type(n) => self.ordinals.iter().position(|(o, _)| o == n),
+            _ => None,
+        });
+        let v = if let Some(o) = ordinal {
+            let mut t2 = t.clone();
+            t2.item.attrs.retain(|a| !matches!(a, Attr::Type(_)));
+            t2.item.attrs.push(Attr::Fixed);
+            t2.item.attrs.push(Attr::Binary);
+            t2.item.attrs.push(Attr::Precision(
+                crate::ast::Expr::Num {
+                    text: "31".into(),
+                    binary: false,
+                    pos: t.item.pos,
+                },
+                None,
+            ));
+            let v = self.declare_tree_inner(&t2, block, params, late, group)?;
+            if let Some(v) = v {
+                self.ordinal_vars.insert(v, o);
+            }
+            v
+        } else {
+            self.declare_tree_inner(t, block, params, late, group)?
+        };
+        // a HANDLE: its structure type
+        if let Some(v) = v
+            && let Some(n) = t.item.attrs.iter().find_map(|a| match a {
+                Attr::Handle(Some(n)) => Some(n.clone()),
+                _ => None,
+            })
+        {
+            self.handles.insert(v, n);
+        }
         // an ENTRY variable: its signature for calls through it
         let attrs = &t.item.attrs;
         if let Some(v) = v
@@ -467,6 +686,43 @@ impl Compiler {
         let pos = it.pos;
         let is_param = params.contains(&it.name);
         if !is_param && t.children.is_empty() {
+            // DEFINE ORDINAL: the type and its members (named constants)
+            if let Some(members) = attrs.iter().find_map(|a| match a {
+                Attr::OrdinalDef(m) => Some(m.clone()),
+                _ => None,
+            }) {
+                let id = self.ordinals.len();
+                let mut next = 0i64;
+                let mut list = Vec::new();
+                for (m, v) in members {
+                    let v = match v {
+                        Some(e) => self
+                            .const_int(&e)
+                            .ok_or_else(|| self.err(pos, "an ORDINAL VALUE must be a constant"))?,
+                        None => next,
+                    };
+                    next = v + 1;
+                    self.define(
+                        block,
+                        &m,
+                        Sym::Const(super::expr::mk(
+                            Ek::Fixed(i128::from(v), 0),
+                            Ty::fixed_bin(31, 0),
+                        )),
+                    );
+                    self.ordinal_members.insert(m.clone(), id);
+                    list.push((m, v));
+                }
+                self.ordinals.push((it.name.clone(), list));
+                return Ok(None);
+            }
+            if let Some(alts) = attrs.iter().find_map(|a| match a {
+                Attr::Generic(g) => Some(g.clone()),
+                _ => None,
+            }) {
+                self.define(block, &it.name, Sym::Generic(alts));
+                return Ok(None);
+            }
             // non-variable declarations
             if has(attrs, |a| matches!(a, Attr::Builtin)) {
                 if let Some(b) = crate::builtin::lookup(&it.name) {

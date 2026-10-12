@@ -86,6 +86,33 @@ pub struct Bound {
     pub upper: Extent,
 }
 
+/// A rule of a DEFAULT statement: the names it applies to (empty: all)
+/// and the attributes it adds, and the VALUE attribute lists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefaultRule {
+    pub ranges: Vec<DefaultRange>,
+    pub attrs: Vec<Attr>,
+    pub values: Vec<Vec<Attr>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DefaultRange {
+    All,
+    /// Names starting with a letter from .. to.
+    Letters(char, char),
+    /// Names starting with the text.
+    Prefix(String),
+}
+
+/// An alternative of a GENERIC declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericAlt {
+    pub entry: String,
+    /// The attribute words of each argument's descriptor; None for
+    /// OTHERWISE.
+    pub when: Option<Vec<Vec<String>>>,
+}
+
 /// Data and other attributes of a declaration.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Attr {
@@ -110,7 +137,12 @@ pub enum Attr {
     Pointer,
     /// OFFSET (with the name of its area).
     Offset(Option<String>),
-    Handle,
+    /// HANDLE of a structure type.
+    Handle(Option<String>),
+    /// DEFINE STRUCTURE: the level-1 item of a structure type.
+    StructDef,
+    /// DEFINE ALIAS: a name for these attributes.
+    AliasDef(Vec<Attr>),
     Area(Option<Extent>),
     Label,
     Format,
@@ -150,7 +182,14 @@ pub enum Attr {
     Value(Expr),
     Options(Vec<String>),
     Parameter,
-    Generic,
+    /// GENERIC: the alternatives (entry, and the descriptors that select
+    /// it; None: OTHERWISE).
+    Generic(Vec<GenericAlt>),
+    /// DEFINE ORDINAL: the members and their VALUEs (as a declaration of
+    /// the type's name).
+    OrdinalDef(Vec<(String, Option<Expr>)>),
+    /// The rules of a DEFAULT statement (as a declaration).
+    DefaultRules(Vec<DefaultRule>),
     Abnormal,
     Normal,
     Assignable,
@@ -207,6 +246,8 @@ pub enum DoSpec {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoItem {
+    /// UPTHRU (true) / DOWNTHRU (false): `to` is the last value.
+    pub thru: Option<bool>,
     pub start: Expr,
     pub to: Option<Expr>,
     pub by: Option<Expr>,

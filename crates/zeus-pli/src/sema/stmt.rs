@@ -139,6 +139,7 @@ impl Compiler {
                     ty.ok_or_else(|| self.err(var.pos, "DO control variable must be a scalar"))?;
                 let mut out = Vec::new();
                 for s in specs {
+                    let s = &self.thru_spec(var, s);
                     let start = self.expr(&s.start)?;
                     let start = self.conv(start, &ty);
                     let arith = |c: &mut Compiler, e: &Option<ast::Expr>| -> Result<Option<Expr>> {
@@ -944,4 +945,51 @@ fn member_ref(parent: &Ref, member: VarId, m: &Module) -> Ref {
 #[allow(dead_code)]
 fn unused() -> (Ty, Ty) {
     (bit_any(), char_any())
+}
+
+impl Compiler {
+    /// UPTHRU / DOWNTHRU: for an ORDINAL control variable, through the
+    /// members (REPEAT ORDINALSUCC / ORDINALPRED, UNTIL the last); else
+    /// TO with BY 1 / -1.
+    fn thru_spec(&self, var: &ast::Ref, s: &ast::DoItem) -> ast::DoItem {
+        let Some(up) = s.thru else { return s.clone() };
+        let pos = var.pos;
+        let mut out = s.clone();
+        out.thru = None;
+        let v = ast::Expr::Ref(var.clone());
+        if self.ordinal_of(&v).is_some()
+            && let Some(last) = s.to.clone()
+        {
+            let step = ast::Ref {
+                locator: None,
+                parts: vec![(
+                    if up { "ORDINALSUCC" } else { "ORDINALPRED" }.to_string(),
+                    vec![vec![v.clone()]],
+                )],
+                pos,
+            };
+            out.to = None;
+            out.by = None;
+            out.repeat = Some(ast::Expr::Ref(step));
+            let at_last = ast::Expr::Binary("=", Box::new(v), Box::new(last), pos);
+            out.until = Some(match s.until.clone() {
+                Some(u) => ast::Expr::Binary("|", Box::new(u), Box::new(at_last), pos),
+                None => at_last,
+            });
+            return out;
+        }
+        if out.by.is_none() {
+            let one = ast::Expr::Num {
+                text: "1".into(),
+                binary: false,
+                pos,
+            };
+            out.by = Some(if up {
+                one
+            } else {
+                ast::Expr::Unary("-", Box::new(one), pos)
+            });
+        }
+        out
+    }
 }

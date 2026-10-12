@@ -20,7 +20,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 9 | M | DL/I の機能: コマンドコード、ブール演算子の修飾、等号以外の比較、パス呼出し、XRST・記号チェックポイント | 0006 | **済** (ISRT のパス呼出しを除く) |
 | 10 | M | PL/I: ENTRY 変数による呼出し、FETCH/RELEASE | 0004 | **済** |
 | 11 | M | PL/I: AREA と OFFSET、iSUB 定義、構造体の途中の REFER、CONTROLLED の引数 | 0004 | **済** |
-| 12 | M | PL/I: 型の追加 (COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ、ORDINAL)、DEFAULT 文、GENERIC、HANDLE と DEFINE STRUCTURE | 0004 | 未着手 |
+| 12 | M | PL/I: 型の追加 (COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ、ORDINAL)、DEFAULT 文、GENERIC、HANDLE と DEFINE STRUCTURE | 0004 | **済** (UCHAR などの残りは 0004) |
 | 13 | M | PL/I の EXEC SQL: FLOAT・PICTURE・BIT のホスト変数、構造体のホスト変数の展開、動的 SQL と SQLDA | 0004 | 未着手 |
 | 14 | M | MQ: MQSET、パブリッシュ/サブスクライブ、メッセージハンドル、MQCB/MQCTL、MQOD・MQPMO 2 以降のフィールド | 0005 | 未着手 |
 | 15 | M | GenApp のイベント処理 (LGASTAT1) | 0002 Phase 5 | 未着手 |

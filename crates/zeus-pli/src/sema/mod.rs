@@ -31,6 +31,8 @@ pub enum Sym {
     Const(Expr),
     /// FORMAT statement label.
     Format(u32),
+    /// GENERIC entry: its alternatives.
+    Generic(Vec<crate::ast::GenericAlt>),
 }
 
 #[derive(Debug, Clone)]
@@ -84,6 +86,19 @@ pub struct Compiler {
     pub late_refers: Vec<(u32, crate::ast::Expr)>,
     /// The parameter descriptors and RETURNS of ENTRY variables.
     pub entry_sigs: HashMap<VarId, EntryDecl>,
+    /// ORDINAL types: name and members (name, value) in order.
+    pub ordinals: Vec<(String, Vec<(String, i64)>)>,
+    /// The ordinal type of variables and of member names.
+    pub ordinal_vars: HashMap<VarId, usize>,
+    pub ordinal_members: HashMap<String, usize>,
+    /// The rules of the DEFAULT statements.
+    pub defaults: Vec<crate::ast::DefaultRule>,
+    /// DEFINE STRUCTURE types: their members (levels from 1); DEFINE
+    /// ALIAS types: their attributes.
+    pub structs: HashMap<String, Vec<DeclItem>>,
+    pub aliases: HashMap<String, Vec<crate::ast::Attr>>,
+    /// The structure type of HANDLE variables.
+    pub handles: HashMap<VarId, String>,
     /// Declarations of level-1 variables (for LIKE).
     pub decl_ast: HashMap<VarId, Vec<DeclItem>>,
     /// The outermost procedure block (implicit declarations).
@@ -127,6 +142,13 @@ impl Compiler {
             whenever: [None, None, None],
             late_refers: Vec::new(),
             entry_sigs: HashMap::new(),
+            ordinals: Vec::new(),
+            ordinal_vars: HashMap::new(),
+            ordinal_members: HashMap::new(),
+            defaults: Vec::new(),
+            structs: HashMap::new(),
+            aliases: HashMap::new(),
+            handles: HashMap::new(),
             decl_ast: HashMap::new(),
             outer: 0,
             index_rank: 0,

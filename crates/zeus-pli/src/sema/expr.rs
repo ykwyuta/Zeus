@@ -43,13 +43,41 @@ impl Compiler {
         if e.ty == *ty {
             return e;
         }
+        // a GRAPHIC / WIDECHAR value used as such: without the CHARACTER
+        // it converts to in expressions
+        if let Ty::Wchar { graphic, .. } = ty
+            && let Ek::Conv(inner) = &*e.k
+            && matches!(&inner.ty, Ty::Wchar { graphic: g, .. } if g == graphic)
+        {
+            let Ek::Conv(inner) = *e.k else {
+                unreachable!()
+            };
+            return self.conv(inner, ty);
+        }
         mk(Ek::Conv(e), ty.clone())
+    }
+
+    /// GRAPHIC and WIDECHAR values in expressions: as CHARACTER.
+    fn decay(&self, e: Expr) -> Expr {
+        match &e.ty {
+            Ty::Wchar { len, var, .. } => {
+                let ty = match len {
+                    Ext::Const(n) => Ty::Char {
+                        len: Ext::Const(*n),
+                        var: *var,
+                    },
+                    _ => char_any(),
+                };
+                mk(Ek::Conv(e), ty)
+            }
+            _ => e,
+        }
     }
 
     /// Type conversion of an operand of an arithmetic operator.
     pub fn to_arith(&self, e: Expr) -> Expr {
         match &e.ty {
-            Ty::Fixed { .. } | Ty::Float { .. } => e,
+            Ty::Fixed { .. } | Ty::Float { .. } | Ty::Complex(_) => e,
             t => {
                 let a = operand_arith(t);
                 self.conv(e, &a)
@@ -136,6 +164,12 @@ impl Compiler {
     pub fn arith_op(&self, op: ArOp, a: Expr, b: Expr) -> Expr {
         let a = self.to_arith(a);
         let b = self.to_arith(b);
+        // COMPLEX: on the parts' common type
+        if matches!(a.ty, Ty::Complex(_)) || matches!(b.ty, Ty::Complex(_)) {
+            let rt = Ty::Complex(Box::new(self.complex_common(&a.ty, &b.ty, op)));
+            let (a, b) = (self.conv(a, &rt), self.conv(b, &rt));
+            return mk(Ek::Arith(op, a, b), rt);
+        }
         let rt = if op == ArOp::Pow {
             let n = match (&*b.k, &b.ty) {
                 (Ek::Fixed(m, 0), Ty::Fixed { .. }) if *m >= 0 => Some(*m as u32),
@@ -164,7 +198,30 @@ impl Compiler {
         mk(Ek::Arith(op, a, b), rt)
     }
 
+    /// The part type of a COMPLEX result.
+    fn complex_common(&self, a: &Ty, b: &Ty, op: ArOp) -> Ty {
+        let part = |t: &Ty| match t {
+            Ty::Complex(p) => (**p).clone(),
+            t => operand_arith(t),
+        };
+        let (pa, pb) = (part(a), part(b));
+        match op {
+            ArOp::Add | ArOp::Sub => arith_result("+", &pa, &pb),
+            ArOp::Mul if !pa.is_float() && !pb.is_float() => arith_result("*", &pa, &pb),
+            _ => arith_result(
+                "*",
+                &crate::types::to_float_ty(&pa),
+                &crate::types::to_float_ty(&pb),
+            ),
+        }
+    }
+
     pub fn compare(&self, op: CmpOp, a: Expr, b: Expr) -> Expr {
+        if matches!(a.ty, Ty::Complex(_)) || matches!(b.ty, Ty::Complex(_)) {
+            let rt = Ty::Complex(Box::new(self.complex_common(&a.ty, &b.ty, ArOp::Add)));
+            let (a, b) = (self.conv(a, &rt), self.conv(b, &rt));
+            return mk(Ek::Cmp(op, a, b), Ty::bit(1));
+        }
         let arith = |t: &Ty| t.arith().is_some();
         let (a, b) = if arith(&a.ty) || arith(&b.ty) {
             let a = self.to_arith(a);
@@ -233,6 +290,16 @@ impl Compiler {
 
     /// A numeric constant.
     pub fn number(&self, text: &str, binary: bool, pos: Pos) -> Result<Expr> {
+        // an imaginary constant: COMPLEX(0, n)
+        if let Some(t) = text.strip_suffix('I') {
+            let x = self.number(t, binary, pos)?;
+            let ty = x.ty.clone();
+            let zero = self.conv(mk(Ek::Fixed(0, 0), Ty::fixed_dec(1, 0)), &ty);
+            return Ok(mk(
+                Ek::Builtin(crate::builtin::Bif::Complex, vec![zero, x]),
+                Ty::Complex(Box::new(ty)),
+            ));
+        }
         let bad = || self.err(pos, format!("invalid number {text}"));
         if let Some(e) = text.find('E') {
             let mant = &text[..e];
@@ -346,6 +413,11 @@ impl Compiler {
     }
 
     pub fn expr(&mut self, e: &ast::Expr) -> Result<Expr> {
+        let x = self.expr_wide(e)?;
+        Ok(self.decay(x))
+    }
+
+    fn expr_wide(&mut self, e: &ast::Expr) -> Result<Expr> {
         Ok(match e {
             ast::Expr::Num { text, binary, pos } => self.number(text, *binary, *pos)?,
             ast::Expr::Str { text, kind, pos } => self.string(text, *kind, *pos)?,
@@ -479,9 +551,40 @@ impl Compiler {
         self.lookup(name).into_iter().map(|(_, s)| s).next()
     }
 
+    /// The structure type of a HANDLE variable.
+    pub fn handle_type(&self, v: VarId) -> Option<String> {
+        if let Some(n) = self.handles.get(&v) {
+            return Some(n.clone());
+        }
+        let var = &self.m.vars[v as usize];
+        self.decl_ast
+            .get(&var.root)?
+            .iter()
+            .find(|d| d.name == var.name && d.level == var.level)?
+            .attrs
+            .iter()
+            .find_map(|a| match a {
+                ast::Attr::Handle(Some(n)) => Some(n.clone()),
+                _ => None,
+            })
+    }
+
+    /// The qualified names of a reference; after a handle (h => x) they
+    /// are in the BASED structure of its type.
+    pub fn ref_names(&self, r: &ast::Ref) -> Vec<String> {
+        let mut names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
+        if let Some(l) = &r.locator
+            && let Some(v) = self.resolve_var(&self.ref_names(l))
+            && let Some(t) = self.handle_type(v)
+        {
+            names.insert(0, format!("%{t}"));
+        }
+        names
+    }
+
     /// A variable reference with its subscripts.
     pub fn reference(&mut self, r: &ast::Ref, allow_aggregate: bool) -> Result<Ref> {
-        let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
+        let names = self.ref_names(r);
         let v = match self.resolve_var(&names) {
             Some(v) => v,
             None if names.len() == 1 && r.parts[0].1.is_empty() => {
@@ -634,6 +737,13 @@ impl Compiler {
                 Some(Sym::Cond(_)) => {
                     return Err(self.err(r.pos, format!("condition {name} used in an expression")));
                 }
+                Some(Sym::Generic(alts)) => {
+                    let args = args.first().map(|v| v.as_slice()).unwrap_or(&[]);
+                    let entry = self.generic_choice(&alts, args, r.pos)?;
+                    let mut chosen = r.clone();
+                    chosen.parts[0].0 = entry;
+                    return self.ref_expr(&chosen);
+                }
             }
             if self.resolve_var(&names).is_none() {
                 // the CICS translator's constants
@@ -675,6 +785,65 @@ impl Compiler {
         let rr = self.reference(r, true)?;
         // an ENTRY variable invoked with arguments is not supported
         self.load(rr, r.pos)
+    }
+
+    /// The entry of a GENERIC reference its arguments select.
+    fn generic_choice(
+        &mut self,
+        alts: &[ast::GenericAlt],
+        args: &[ast::Expr],
+        pos: Pos,
+    ) -> Result<String> {
+        let mut tys = Vec::new();
+        for a in args {
+            tys.push(self.expr(a)?.ty);
+        }
+        let mut otherwise = None;
+        for alt in alts {
+            match &alt.when {
+                None => otherwise = Some(alt.entry.clone()),
+                Some(descs) => {
+                    if descs.len() == tys.len()
+                        && descs.iter().zip(&tys).all(|(d, t)| generic_matches(d, t))
+                    {
+                        return Ok(alt.entry.clone());
+                    }
+                }
+            }
+        }
+        otherwise.ok_or_else(|| self.err(pos, "no GENERIC alternative matches the arguments"))
+    }
+
+    /// The ORDINAL type of an expression: a variable or member of one, or
+    /// ORDINALSUCC / ORDINALPRED of one.
+    pub fn ordinal_of(&self, e: &ast::Expr) -> Option<usize> {
+        let ast::Expr::Ref(r) = e else { return None };
+        if r.parts.len() != 1 {
+            return None;
+        }
+        let (name, lists) = &r.parts[0];
+        if let Some(&o) = self.ordinal_members.get(name) {
+            return Some(o);
+        }
+        match self.sym(name) {
+            Some(Sym::Var(v)) => self.ordinal_vars.get(&v).copied(),
+            None if matches!(name.as_str(), "ORDINALSUCC" | "ORDINALPRED") => {
+                self.ordinal_of(lists.first()?.first()?)
+            }
+            _ => None,
+        }
+    }
+
+    /// The members of ORDINAL type `o` as data for the VM: each value (8
+    /// bytes) and name (length byte, ASCII).
+    fn ordinal_table(&self, o: usize) -> Expr {
+        let mut t = Vec::new();
+        for (n, v) in &self.ordinals[o].1 {
+            t.extend(v.to_be_bytes());
+            t.push(n.len() as u8);
+            t.extend(n.as_bytes());
+        }
+        mk(Ek::Char(t), Ty::char(0))
     }
 
     /// A procedure name used as an entry value (assigned to an ENTRY
@@ -883,6 +1052,12 @@ impl Compiler {
                 Ok(Stmt::Call(callee, a))
             }
             Some(Sym::Builtin(b)) => self.call_builtin(b, args, r.pos),
+            Some(Sym::Generic(alts)) => {
+                let entry = self.generic_choice(&alts, args, r.pos)?;
+                let mut chosen = r.clone();
+                chosen.parts[0].0 = entry;
+                self.call_stmt(&chosen)
+            }
             Some(Sym::Var(v)) if matches!(self.m.vars[v as usize].ty, Some(Ty::Entry)) => {
                 let mut with_args = r.clone();
                 // CALL E; without arguments
@@ -923,6 +1098,13 @@ impl Compiler {
                 ))
             }
             PliDump => Ok(Stmt::CallBuiltin(b, Vec::new())),
+            // storage of NEW is not reused
+            PliFree => {
+                for a in args {
+                    self.expr(a)?;
+                }
+                Ok(Stmt::CallBuiltin(PliDump, Vec::new()))
+            }
             PliFill | PliMove => {
                 let mut v = Vec::new();
                 for a in args {
@@ -944,6 +1126,40 @@ impl Compiler {
         };
         match b {
             Null => return Ok(mk(Ek::Null, Ty::Pointer)),
+            OrdinalName | OrdinalSucc | OrdinalPred => {
+                let [x] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs one argument")));
+                };
+                let o = self.ordinal_of(x).ok_or_else(|| {
+                    self.err(pos, format!("{b:?}: the argument is not an ORDINAL"))
+                })?;
+                let v = self.expr(x)?;
+                let v = self.conv(v, &Ty::fixed_bin(31, 0));
+                let table = self.ordinal_table(o);
+                let ty = if b == OrdinalName {
+                    Ty::char_var(31)
+                } else {
+                    Ty::fixed_bin(31, 0)
+                };
+                return Ok(mk(Ek::Builtin(b, vec![v, table]), ty));
+            }
+            First | Last => {
+                let o = match args {
+                    [ast::Expr::Ref(r)] if r.parts.len() == 1 => {
+                        self.ordinals.iter().position(|(n, _)| *n == r.parts[0].0)
+                    }
+                    _ => None,
+                }
+                .ok_or_else(|| self.err(pos, format!("{b:?} needs an ORDINAL type")))?;
+                let members = &self.ordinals[o].1;
+                let v = if b == First {
+                    members.first()
+                } else {
+                    members.last()
+                }
+                .map_or(0, |m| m.1);
+                return Ok(mk(Ek::Fixed(i128::from(v), 0), Ty::fixed_bin(31, 0)));
+            }
             // POINTER(offset, area), OFFSET(pointer, area): the area is a
             // reference
             PointerOf | OffsetOf => {
@@ -963,6 +1179,93 @@ impl Compiler {
                 return Ok(mk(Ek::RefBuiltin(b, ar, vec![x]), rt));
             }
             SysNull => return Ok(mk(Ek::SysNull, Ty::Pointer)),
+            Real | Imag | Conjg => {
+                let [x] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs one argument")));
+                };
+                let x = self.expr(x)?;
+                let x = self.to_arith(x);
+                let ct = match &x.ty {
+                    Ty::Complex(p) => (**p).clone(),
+                    t => t.clone(),
+                };
+                let ty = if b == Conjg {
+                    Ty::Complex(Box::new(ct.clone()))
+                } else {
+                    ct
+                };
+                let x = self.conv(
+                    x,
+                    &Ty::Complex(Box::new(ty.complex_part().unwrap_or(&ty).clone())),
+                );
+                return Ok(mk(Ek::Builtin(b, vec![x]), ty));
+            }
+            Complex => {
+                let [x, y] = args else {
+                    return Err(self.err(pos, "COMPLEX needs two arguments"));
+                };
+                let x = self.expr(x)?;
+                let x = self.to_arith(x);
+                let y = self.expr(y)?;
+                let y = self.to_arith(y);
+                let ct = arith_result("+", &x.ty, &y.ty);
+                let (x, y) = (self.conv(x, &ct), self.conv(y, &ct));
+                return Ok(mk(Ek::Builtin(b, vec![x, y]), Ty::Complex(Box::new(ct))));
+            }
+            Abs if args.len() == 1 => {
+                let x = self.expr(&args[0])?;
+                if let Ty::Complex(p) = &x.ty {
+                    let ty = crate::types::to_float_ty(p);
+                    return Ok(mk(Ek::Builtin(b, vec![x]), ty));
+                }
+            }
+            // GRAPHIC(x [,n]), WIDECHAR(x [,n])
+            Graphic | Widechar => {
+                let x = args
+                    .first()
+                    .ok_or_else(|| self.err(pos, format!("{b:?} needs an argument")))?;
+                let x = self.expr(x)?;
+                let len = match args.get(1) {
+                    Some(n) => Ext::Const(
+                        self.const_int(n)
+                            .filter(|n| *n >= 0)
+                            .ok_or_else(|| self.err(pos, format!("{b:?}: a constant length")))?
+                            as u32,
+                    ),
+                    None => match &x.ty {
+                        Ty::Char {
+                            len: Ext::Const(n),
+                            var: Varying::Fixed,
+                        } => Ext::Const(*n),
+                        _ => Ext::Star,
+                    },
+                };
+                let var = if matches!(len, Ext::Const(_)) {
+                    Varying::Fixed
+                } else {
+                    Varying::Varying
+                };
+                let ty = Ty::Wchar {
+                    len,
+                    var,
+                    graphic: b == Graphic,
+                };
+                return Ok(self.conv(x, &ty));
+            }
+            New => {
+                let t = match args {
+                    [ast::Expr::Ref(r)] if r.parts.len() == 1 => r.parts[0]
+                        .0
+                        .strip_prefix(':')
+                        .and_then(|t| t.strip_suffix(':'))
+                        .map(str::to_string),
+                    _ => None,
+                }
+                .filter(|t| self.structs.contains_key(t))
+                .ok_or_else(|| self.err(pos, "NEW needs a structure type :t:"))?;
+                let rr = self.reference(&ast::Ref::simple(&format!("%{t}"), pos), true)?;
+                return Ok(mk(Ek::RefBuiltin(b, rr, Vec::new()), Ty::Pointer));
+            }
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
                 return Ok(mk(Ek::OnValue(b), ty));
@@ -1033,10 +1336,14 @@ impl Compiler {
                 }
             }
         }
-        // value arguments
+        // value arguments (HEX: the bytes of GRAPHIC and WIDECHAR)
         let mut xs = Vec::new();
         for a in args {
-            xs.push(self.expr(a)?);
+            xs.push(if b == Hex {
+                self.expr_wide(a)?
+            } else {
+                self.expr(a)?
+            });
         }
         let consts: Vec<Option<i64>> = args.iter().map(|a| self.const_int(a)).collect();
         let tys: Vec<Ty> = xs.iter().map(|x| x.ty.clone()).collect();
@@ -1279,4 +1586,35 @@ fn resolve_star(p: &Ty, a: &Ty) -> Ty {
         },
         t => t.clone(),
     }
+}
+
+/// Whether a type has the attributes of a GENERIC descriptor.
+fn generic_matches(words: &[String], ty: &Ty) -> bool {
+    words.iter().all(|w| match w.as_str() {
+        "*" | "REAL" | "ALIGNED" | "UNALIGNED" | "SIGNED" | "NONVARYING" => true,
+        "FIXED" => matches!(ty, Ty::Fixed { .. }),
+        "FLOAT" => matches!(ty, Ty::Float { .. }),
+        "BINARY" | "BIN" => {
+            matches!(
+                ty,
+                Ty::Fixed { dec: false, .. } | Ty::Float { dec: false, .. }
+            )
+        }
+        "DECIMAL" | "DEC" => matches!(
+            ty,
+            Ty::Fixed { dec: true, .. } | Ty::Float { dec: true, .. }
+        ),
+        "UNSIGNED" => matches!(ty, Ty::Fixed { unsigned: true, .. }),
+        "CHARACTER" | "CHAR" => matches!(ty, Ty::Char { .. }),
+        "BIT" => matches!(ty, Ty::Bit { .. }),
+        "VARYING" | "VAR" => ty.varying() != crate::types::Var::Fixed,
+        "PICTURE" | "PIC" => matches!(ty, Ty::Pic(_)),
+        "POINTER" | "PTR" | "HANDLE" => matches!(ty, Ty::Pointer),
+        "OFFSET" => matches!(ty, Ty::Offset(_)),
+        "ENTRY" => matches!(ty, Ty::Entry),
+        "FILE" => matches!(ty, Ty::File),
+        "LABEL" => matches!(ty, Ty::Label),
+        "AREA" => matches!(ty, Ty::Area(_)),
+        _ => false,
+    })
 }

@@ -21,6 +21,8 @@ pub struct Parser {
     i: usize,
     /// Unnamed structure members (`*`) so far.
     anon: u32,
+    /// Attribute lists end at VALUE (in a DEFAULT statement).
+    stop_at_value: bool,
 }
 
 const COMPOUND: &[&str] = &["+=", "-=", "*=", "/=", "|=", "&=", "||=", "**="];
@@ -31,6 +33,7 @@ impl Parser {
             toks,
             i: 0,
             anon: 0,
+            stop_at_value: false,
         }
     }
 
@@ -241,6 +244,16 @@ impl Parser {
             Tok::Str { text, kind } => {
                 self.bump();
                 Ok(Expr::Str { text, kind, pos })
+            }
+            // :type: in NEW(:t:) and other type functions
+            Tok::Op(":")
+                if matches!(self.tok_at(1), Tok::Ident(_))
+                    && matches!(self.tok_at(2), Tok::Op(":")) =>
+            {
+                self.bump();
+                let t = self.ident()?;
+                self.bump();
+                Ok(Expr::Ref(Ref::simple(&format!(":{t}:"), pos)))
             }
             Tok::Op("(") => {
                 self.bump();
@@ -493,6 +506,9 @@ impl Parser {
     pub fn attributes(&mut self) -> Result<Vec<Attr>> {
         let mut attrs = Vec::new();
         loop {
+            if self.stop_at_value && self.is_word("VALUE") {
+                return Ok(attrs);
+            }
             let Tok::Ident(w) = self.tok().clone() else {
                 // (p,q) alone after a base
                 if self.is_op("(") && !attrs.is_empty() {
@@ -542,10 +558,15 @@ impl Parser {
                     Attr::Offset(area.filter(|a| !a.is_empty()))
                 }
                 "HANDLE" => {
-                    if self.is_op("(") {
-                        self.paren_text()?;
-                    }
-                    Attr::Handle
+                    // HANDLE name or HANDLE(name)
+                    let t = if self.is_op("(") {
+                        Some(self.paren_text()?)
+                    } else if matches!(self.tok(), Tok::Ident(_)) {
+                        Some(self.ident()?)
+                    } else {
+                        None
+                    };
+                    Attr::Handle(t.map(|t| t.trim().to_ascii_uppercase()))
                 }
                 "AREA" => Attr::Area(self.opt_extent()?),
                 "LABEL" => {
@@ -676,10 +697,8 @@ impl Parser {
                 }
                 "OPTIONS" => Attr::Options(self.word_list()?),
                 "PARAMETER" | "PARM" => Attr::Parameter,
-                "GENERIC" => {
-                    self.paren_text()?;
-                    Attr::Generic
-                }
+                "GENERIC" => Attr::Generic(self.generic_list()?),
+                "ORDINAL" if matches!(self.tok(), Tok::Ident(_)) => Attr::Type(self.ident()?),
                 "ABNORMAL" => Attr::Abnormal,
                 "NORMAL" => Attr::Normal,
                 "ASSIGNABLE" | "ASGN" => Attr::Assignable,
@@ -691,8 +710,13 @@ impl Parser {
                 "IRREDUCIBLE" | "IRRED" => Attr::Irreducible,
                 "REDUCIBLE" | "RED" => Attr::Reducible,
                 "TYPE" => {
-                    let t = self.paren_text()?;
-                    Attr::Type(t)
+                    // TYPE name or TYPE(name)
+                    let t = if self.is_op("(") {
+                        self.paren_text()?
+                    } else {
+                        self.ident()?
+                    };
+                    Attr::Type(t.trim().to_ascii_uppercase())
                 }
                 "NOINIT" | "NOINITIAL" | "NATIVE" | "NONNATIVE" | "HEXADEC" | "IEEE"
                 | "BIGENDIAN" | "LITTLEENDIAN" | "ASSEMBLER" | "LOCAL" | "RESERVED"
@@ -781,6 +805,51 @@ impl Parser {
         Ok(())
     }
 
+    /// The alternatives of GENERIC: `(entry WHEN(desc, ...), ...,
+    /// entry OTHERWISE)`.
+    fn generic_list(&mut self) -> Result<Vec<crate::ast::GenericAlt>> {
+        self.expect_op("(")?;
+        let mut out = Vec::new();
+        loop {
+            let entry = self.ident()?;
+            let when = if self.eat_word("OTHERWISE") {
+                None
+            } else {
+                if !self.eat_word("WHEN") {
+                    return Err(self.unexpected("WHEN or OTHERWISE"));
+                }
+                self.expect_op("(")?;
+                let mut descs = Vec::new();
+                let mut cur: Vec<String> = Vec::new();
+                let mut depth = 0;
+                loop {
+                    match self.bump() {
+                        Tok::Op("(") => depth += 1,
+                        Tok::Op(")") if depth > 0 => depth -= 1,
+                        Tok::Op(")") => {
+                            if !cur.is_empty() || !descs.is_empty() {
+                                descs.push(std::mem::take(&mut cur));
+                            }
+                            break;
+                        }
+                        Tok::Op(",") if depth == 0 => descs.push(std::mem::take(&mut cur)),
+                        Tok::Op("*") if depth == 0 => cur.push("*".into()),
+                        Tok::Ident(w) if depth == 0 => cur.push(w.to_ascii_uppercase()),
+                        Tok::Eof => return Err(self.unexpected("')'")),
+                        _ => {}
+                    }
+                }
+                Some(descs)
+            };
+            out.push(crate::ast::GenericAlt { entry, when });
+            if self.eat_op(",") {
+                continue;
+            }
+            self.expect_op(")")?;
+            return Ok(out);
+        }
+    }
+
     fn declare(&mut self) -> Result<Vec<DeclItem>> {
         let mut out = Vec::new();
         loop {
@@ -842,6 +911,7 @@ impl Parser {
     fn do_item(&mut self) -> Result<DoItem> {
         let start = self.expr()?;
         let mut it = DoItem {
+            thru: None,
             start,
             to: None,
             by: None,
@@ -852,6 +922,10 @@ impl Parser {
         loop {
             if self.eat_word("TO") {
                 it.to = Some(self.expr()?);
+            } else if self.is_word("UPTHRU") || self.is_word("DOWNTHRU") {
+                let up = self.ident()? == "UPTHRU";
+                it.to = Some(self.expr()?);
+                it.thru = Some(up);
             } else if self.eat_word("BY") {
                 it.by = Some(self.expr()?);
             } else if self.eat_word("REPEAT") {
@@ -1429,8 +1503,134 @@ impl Parser {
                 StmtKind::Entry(params, returns)
             }
             "DECLARE" | "DCL" => StmtKind::Declare(self.declare()?),
+            // DEFINE ORDINAL name (member [VALUE(n)], ...) [PRECISION(p)]
+            // [SIGNED | UNSIGNED]: the declaration of the type's name
+            "DEFINE" if self.eat_word("STRUCTURE") => {
+                let mut items = self.declare()?;
+                match items.first_mut() {
+                    Some(root) if root.level == 1 => root.attrs.push(Attr::StructDef),
+                    _ => return Err(self.unexpected("a level-1 structure name")),
+                }
+                StmtKind::Declare(items)
+            }
+            "DEFINE" if self.eat_word("ALIAS") => {
+                let name = self.ident()?;
+                let attrs = self.attributes()?;
+                self.semi()?;
+                StmtKind::Declare(vec![DeclItem {
+                    level: 1,
+                    name,
+                    dims: Vec::new(),
+                    attrs: vec![Attr::AliasDef(attrs)],
+                    pos,
+                }])
+            }
+            "DEFINE" if self.eat_word("ORDINAL") => {
+                let name = self.ident()?;
+                self.expect_op("(")?;
+                let mut members = Vec::new();
+                loop {
+                    let m = self.ident()?;
+                    let v = if self.eat_word("VALUE") {
+                        Some(self.paren_expr()?)
+                    } else {
+                        None
+                    };
+                    members.push((m, v));
+                    if self.eat_op(",") {
+                        continue;
+                    }
+                    self.expect_op(")")?;
+                    break;
+                }
+                while !self.is_op(";") && !matches!(self.tok(), Tok::Eof) {
+                    self.bump();
+                }
+                self.semi()?;
+                StmtKind::Declare(vec![DeclItem {
+                    level: 1,
+                    name,
+                    dims: Vec::new(),
+                    attrs: vec![Attr::OrdinalDef(members)],
+                    pos,
+                }])
+            }
             "DEFAULT" | "DFT" => {
-                return Err(Diag::error(pos, "DEFAULT statement is not supported"));
+                use crate::ast::{DefaultRange, DefaultRule};
+                let mut rules = Vec::new();
+                loop {
+                    let mut ranges = Vec::new();
+                    let mut descriptors = false;
+                    if self.eat_word("RANGE") {
+                        self.expect_op("(")?;
+                        loop {
+                            if self.eat_op("*") {
+                                ranges.push(DefaultRange::All);
+                            } else {
+                                let a = self.ident()?;
+                                if self.eat_op(":") {
+                                    let b = self.ident()?;
+                                    ranges.push(DefaultRange::Letters(
+                                        a.chars().next().unwrap_or('A'),
+                                        b.chars().next().unwrap_or('Z'),
+                                    ));
+                                } else {
+                                    ranges.push(DefaultRange::Prefix(a));
+                                }
+                            }
+                            if !self.eat_op(",") {
+                                break;
+                            }
+                        }
+                        self.expect_op(")")?;
+                    } else if self.eat_word("DESCRIPTORS") {
+                        descriptors = true;
+                    } else if self.is_op("(") {
+                        // a factored rule: not supported, skipped
+                        self.paren_text()?;
+                    }
+                    let mut attrs = Vec::new();
+                    let mut values = Vec::new();
+                    self.stop_at_value = true;
+                    loop {
+                        if self.is_word("VALUE") && self.is_op_at(1, "(") {
+                            self.bump();
+                            self.bump();
+                            loop {
+                                values.push(self.attributes()?);
+                                if !self.eat_op(",") {
+                                    break;
+                                }
+                            }
+                            self.expect_op(")")?;
+                            continue;
+                        }
+                        let a = self.attributes()?;
+                        if a.is_empty() {
+                            break;
+                        }
+                        attrs.extend(a);
+                    }
+                    self.stop_at_value = false;
+                    if !descriptors {
+                        rules.push(DefaultRule {
+                            ranges,
+                            attrs,
+                            values,
+                        });
+                    }
+                    if !self.eat_op(",") {
+                        break;
+                    }
+                }
+                self.semi()?;
+                StmtKind::Declare(vec![DeclItem {
+                    level: 1,
+                    name: "*DEFAULT".into(),
+                    dims: Vec::new(),
+                    attrs: vec![Attr::DefaultRules(rules)],
+                    pos,
+                }])
             }
             "IF" => {
                 let cond = self.expr()?;
