@@ -123,6 +123,9 @@ impl Compiler {
 
     /// An EXEC statement.
     pub fn exec_stmt(&mut self, kind: &str, text: &str, pos: Pos) -> Result<Stmt> {
+        if kind == "CICS" {
+            return self.exec_cics(text, pos);
+        }
         if kind != "SQL" {
             return Err(self.err(
                 pos,
@@ -200,7 +203,96 @@ impl Compiler {
             query,
             sqlca,
             whenever,
+            command: String::new(),
+            options: Vec::new(),
         })))
+    }
+}
+
+impl Compiler {
+    /// EXEC CICS command options: `NAME` or `NAME(argument)`; an argument
+    /// is a variable (its storage), a label, a value or a name.
+    fn exec_cics(&mut self, text: &str, pos: Pos) -> Result<Stmt> {
+        let mut toks = crate::lexer::tokenize_raw(text, pos)?;
+        toks.push(crate::lexer::Token {
+            tok: crate::lexer::Tok::Eof,
+            pos,
+        });
+        let word = |t: &crate::lexer::Token| match &t.tok {
+            crate::lexer::Tok::Ident(s) => Some(s.clone()),
+            _ => None,
+        };
+        let command = word(&toks[0]).ok_or_else(|| self.err(pos, "EXEC CICS command expected"))?;
+        let mut options = Vec::new();
+        let mut i = 1;
+        while !matches!(toks[i].tok, crate::lexer::Tok::Eof) {
+            let name = word(&toks[i]).ok_or_else(|| {
+                self.err(toks[i].pos, format!("EXEC CICS option expected, found {}", toks[i].tok))
+            })?;
+            i += 1;
+            let mut arg = None;
+            if matches!(toks[i].tok, crate::lexer::Tok::Op("(")) {
+                let mut depth = 0;
+                let start = i + 1;
+                let mut end = None;
+                for (k, t) in toks.iter().enumerate().skip(i) {
+                    match t.tok {
+                        crate::lexer::Tok::Op("(") => depth += 1,
+                        crate::lexer::Tok::Op(")") => {
+                            depth -= 1;
+                            if depth == 0 {
+                                end = Some(k);
+                                break;
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+                let end = end.ok_or_else(|| self.err(pos, "unbalanced parentheses in EXEC CICS"))?;
+                let mut a = toks[start..end].to_vec();
+                a.push(crate::lexer::Token {
+                    tok: crate::lexer::Tok::Eof,
+                    pos,
+                });
+                arg = Some(self.cics_operand(a, pos)?);
+                i = end + 1;
+            }
+            options.push((name, arg));
+        }
+        Ok(Stmt::Exec(Box::new(ExecStmt {
+            kind: "CICS".into(),
+            text: text.to_string(),
+            host: Vec::new(),
+            query: None,
+            sqlca: None,
+            whenever: Vec::new(),
+            command,
+            options,
+        })))
+    }
+
+    fn cics_operand(&mut self, toks: Vec<crate::lexer::Token>, pos: Pos) -> Result<ExecOperand> {
+        let mut p = crate::parser::Parser::new(toks);
+        let e = p.expr()?;
+        if !p.at_end() {
+            return Err(self.err(pos, "EXEC CICS: an option argument is an expression"));
+        }
+        if let ast::Expr::Ref(r) = &e {
+            let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
+            if r.locator.is_none() && names.len() == 1 && r.parts[0].1.is_empty() {
+                match self.sym(&names[0]) {
+                    Some(Sym::Label(l)) => return Ok(ExecOperand::Label(l)),
+                    None if self.resolve_var(&names).is_none() => {
+                        return Ok(ExecOperand::Name(names[0].clone()));
+                    }
+                    _ => {}
+                }
+            }
+            if self.resolve_var(&names).is_some() && matches!(self.sym(&names[0]), Some(Sym::Var(_)) | None) {
+                return Ok(ExecOperand::Ref(self.reference(r, true)?));
+            }
+        }
+        Ok(ExecOperand::Value(self.expr(&e)?))
     }
 }
 

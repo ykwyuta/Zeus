@@ -4,6 +4,7 @@
 mod bif;
 mod conv;
 mod record;
+mod cics;
 mod sql;
 mod stream;
 pub mod value;
@@ -17,12 +18,13 @@ use crate::ir::*;
 use crate::types::{Ext, Ty, Var as Varying};
 pub use value::Value;
 use value::{NULL, SPACE};
-use zeus_cobol::interlang::{ABEND, Linker, XArg, XEnd};
+use zeus_cobol::interlang::{ABEND, Linker, XEnd, XRef};
 
-/// Base address of static storage; addresses below are invalid.
-const STATIC_BASE: u32 = 0x1000;
-/// Base address of the stack (automatic storage).
-const STACK_BASE: u32 = 0x4000_0000;
+/// Addresses below this one are not valid for PL/I pointers (SYSNULL and
+/// the PSA).
+const NULL_PAGE: u32 = 0x10;
+/// Size of a stack segment.
+const STACK_SEGMENT: u32 = 256 * 1024;
 
 /// A data set allocated to a DD name.
 #[derive(Debug, Clone)]
@@ -107,7 +109,7 @@ struct Act {
     params: Vec<Option<Binding>>,
     slots: Vec<i64>,
     on: Vec<(Cond, Option<(BlockId, usize)>)>,
-    stack_mark: usize,
+    stack_mark: (usize, u32),
     /// Indexes of aggregate assignments and repetitive specifications.
     index: Vec<i64>,
     subject: Option<Value>,
@@ -128,8 +130,16 @@ pub struct Machine {
     /// Static storage initialised (by `run` or the first `call_entry`).
     started: bool,
     module: Rc<Module>,
-    low: Vec<u8>,
-    stack: Vec<u8>,
+    /// The storage of the run unit (its COBOL machine), lent to this
+    /// module while it runs.
+    sys: Option<zeus_cobol::vm::Machine>,
+    /// Address of the static storage in the run unit's storage (0: not
+    /// allocated yet).
+    static_base: u32,
+    /// Stack segments in the run unit's storage (address, length) and the
+    /// stack pointer (segment, offset).
+    stack: Vec<(u32, u32)>,
+    sp: (usize, u32),
     acts: Vec<Act>,
     pub env: RunEnv,
     files: Vec<stream::FileState>,
@@ -143,15 +153,33 @@ fn err<T>(m: impl Into<String>) -> R<T> {
 }
 
 impl Machine {
+    /// A machine for `module` with a run unit of its own (no COBOL
+    /// programs).
     pub fn new(module: Module, env: RunEnv) -> Machine {
-        let mut low = vec![0u8; (STATIC_BASE + module.static_size) as usize];
-        low[STATIC_BASE as usize..].copy_from_slice(&module.static_init);
+        let mut m = Machine::module(module, env);
+        m.attach(zeus_cobol::vm::Machine::placeholder());
+        m
+    }
+
+    /// A machine for `module` running in the run unit `sys` (whose COBOL
+    /// programs it can call).
+    pub fn with_storage(module: Module, env: RunEnv, sys: zeus_cobol::vm::Machine) -> Machine {
+        let mut m = Machine::module(module, env);
+        m.attach(sys);
+        m
+    }
+
+    /// A machine for `module` with no storage: it runs when a run unit's
+    /// storage is lent to it (see [`Machine::attach`]).
+    pub fn module(module: Module, env: RunEnv) -> Machine {
         let files = module.files.iter().map(stream::FileState::new).collect();
         Machine {
             started: false,
             module: Rc::new(module),
-            low,
+            sys: None,
+            static_base: 0,
             stack: Vec::new(),
+            sp: (0, 0),
             acts: Vec::new(),
             env,
             files,
@@ -163,38 +191,53 @@ impl Machine {
 
     // ---- memory --------------------------------------------------------
 
-    fn mem(&self, addr: u32, len: usize) -> R<&[u8]> {
-        if addr >= STACK_BASE {
-            let a = (addr - STACK_BASE) as usize;
-            self.stack
-                .get(a..a + len)
-                .ok_or_else(|| Intr::Fatal(format!("address {addr:08X} out of storage")))
-        } else {
-            let a = addr as usize;
-            if a < STATIC_BASE as usize {
-                return err(format!("address {addr:08X} is not valid (null pointer?)"));
-            }
-            self.low
-                .get(a..a + len)
-                .ok_or_else(|| Intr::Fatal(format!("address {addr:08X} out of storage")))
+    /// Lends the run unit's storage to this module: its static storage is
+    /// allocated there the first time.
+    pub fn attach(&mut self, mut sys: zeus_cobol::vm::Machine) {
+        if self.static_base == 0 {
+            let n = self.module.static_size as usize;
+            let a = sys.getmain(n.max(8), 0);
+            sys.storage_mut()[a..a + n].copy_from_slice(&self.module.static_init);
+            self.static_base = a as u32;
         }
+        self.sys = Some(sys);
+    }
+
+    /// Gives the run unit's storage back.
+    pub fn detach(&mut self) -> zeus_cobol::vm::Machine {
+        // the stack segments stay allocated in the run unit for the next
+        // call
+        self.sys.take().unwrap_or_else(zeus_cobol::vm::Machine::placeholder)
+    }
+
+    /// The run unit (its COBOL machine).
+    pub fn sys(&mut self) -> &mut zeus_cobol::vm::Machine {
+        self.sys.as_mut().expect("a PL/I module runs with the storage of its run unit")
+    }
+
+    fn storage(&self) -> &[u8] {
+        self.sys.as_ref().map_or(&[], |s| s.storage())
+    }
+
+    fn mem(&self, addr: u32, len: usize) -> R<&[u8]> {
+        if addr < NULL_PAGE || addr >= NULL {
+            return err(format!("address {addr:08X} is not valid (null pointer?)"));
+        }
+        let a = addr as usize;
+        self.storage()
+            .get(a..a + len)
+            .ok_or_else(|| Intr::Fatal(format!("address {addr:08X} out of storage")))
     }
 
     fn mem_mut(&mut self, addr: u32, len: usize) -> R<&mut [u8]> {
-        if addr >= STACK_BASE {
-            let a = (addr - STACK_BASE) as usize;
-            self.stack
-                .get_mut(a..a + len)
-                .ok_or_else(|| Intr::Fatal(format!("address {addr:08X} out of storage")))
-        } else {
-            let a = addr as usize;
-            if a < STATIC_BASE as usize {
-                return err(format!("address {addr:08X} is not valid (null pointer?)"));
-            }
-            self.low
-                .get_mut(a..a + len)
-                .ok_or_else(|| Intr::Fatal(format!("address {addr:08X} out of storage")))
+        if addr < NULL_PAGE || addr >= NULL {
+            return err(format!("address {addr:08X} is not valid (null pointer?)"));
         }
+        let a = addr as usize;
+        self.sys()
+            .storage_mut()
+            .get_mut(a..a + len)
+            .ok_or_else(|| Intr::Fatal(format!("address {addr:08X} out of storage")))
     }
 
     fn read(&self, addr: u32, len: usize) -> R<Vec<u8>> {
@@ -206,17 +249,35 @@ impl Machine {
         Ok(())
     }
 
-    /// Heap storage (ALLOCATE), doubleword aligned.
+    /// Heap storage (ALLOCATE), doubleword aligned and zeroed.
     fn heap_alloc(&mut self, size: u32) -> u32 {
-        let at = self.low.len().div_ceil(8) * 8;
-        self.low.resize(at + size.max(1) as usize, 0);
-        at as u32
+        self.sys().getmain(size.max(1) as usize, 0) as u32
     }
 
+    /// Storage of an activation (zeroed); released by `deactivate`.
     fn stack_alloc(&mut self, size: u32) -> u32 {
-        let at = self.stack.len().div_ceil(8) * 8;
-        self.stack.resize(at + size as usize, 0);
-        STACK_BASE + at as u32
+        let (seg, off) = self.sp;
+        let at = off.div_ceil(8) * 8;
+        if let Some(&(base, len)) = self.stack.get(seg)
+            && at + size <= len
+        {
+            self.sp = (seg, at + size);
+            let a = base + at;
+            self.sys().storage_mut()[a as usize..(a + size) as usize].fill(0);
+            return a;
+        }
+        // the next segment, or a new one
+        let next = if self.stack.is_empty() { 0 } else { seg + 1 };
+        if self.stack.get(next).is_none_or(|&(_, len)| len < size) {
+            let len = size.max(STACK_SEGMENT);
+            let base = self.sys().getmain(len as usize, 0) as u32;
+            self.stack.truncate(next);
+            self.stack.push((base, len));
+        }
+        let base = self.stack[next].0;
+        self.sp = (next, size);
+        self.sys().storage_mut()[base as usize..(base + size) as usize].fill(0);
+        base
     }
 
     fn read_bits(&self, bit: u64, n: u64) -> R<Vec<bool>> {
@@ -277,7 +338,7 @@ impl Machine {
     ) -> R<usize> {
         let m = self.module.clone();
         let b = &m.blocks[block as usize];
-        let mark = self.stack.len();
+        let mark = self.sp;
         let frame = self.stack_alloc(b.auto_size.max(8));
         self.acts.push(Act {
             block,
@@ -317,7 +378,7 @@ impl Machine {
     fn deactivate(&mut self, act: usize) {
         let mark = self.acts[act].stack_mark;
         self.acts.truncate(act);
-        self.stack.truncate(mark);
+        self.sp = mark;
     }
 
     /// Size in bytes of all elements of a level-1 variable (`rb`: the bit
@@ -435,7 +496,7 @@ impl Machine {
             hdr.extend(x.to_be_bytes());
         }
         self.write(h, &hdr)?;
-        self.write(STATIC_BASE + anchor, &h.to_be_bytes())?;
+        self.write(self.static_base + anchor, &h.to_be_bytes())?;
         let size = self.var_size(v, act, None)?;
         let p = self.heap_alloc(size as u32);
         self.write(h + 4, &p.to_be_bytes())?;
@@ -464,7 +525,7 @@ impl Machine {
 
     /// The header of the current generation of a CONTROLLED variable.
     fn generation(&self, anchor: u32) -> R<u32> {
-        let p = self.read(STATIC_BASE + anchor, 4)?;
+        let p = self.read(self.static_base + anchor, 4)?;
         Ok(u32::from_be_bytes([p[0], p[1], p[2], p[3]]))
     }
 
@@ -546,7 +607,7 @@ impl Machine {
         let root = &m.vars[var.root as usize];
         let mut param_dims: Option<Vec<(i64, i64, u64)>> = None;
         let base: u64 = match &root.storage {
-            Storage::Static(off) => u64::from(STATIC_BASE + off) * 8,
+            Storage::Static(off) => u64::from(self.static_base + off) * 8,
             Storage::Auto(off) => {
                 let a = self.act_of(act, root.block)?;
                 u64::from(self.acts[a].frame + off) * 8
@@ -1267,7 +1328,7 @@ impl Machine {
                             ));
                         }
                         let prev = self.word_at(g)?;
-                        self.write(STATIC_BASE + anchor, &prev.to_be_bytes())?;
+                        self.write(self.static_base + anchor, &prev.to_be_bytes())?;
                     }
                 }
                 Ok(())
@@ -1653,10 +1714,9 @@ impl Machine {
         })
     }
 
-    /// CALL of an external entry: a procedure of another module in the
-    /// load libraries.
-    /// Calls a procedure of another module through the linker: the
-    /// arguments are copied out and, for references, back.
+    /// CALL of an external entry: a COBOL program of the run unit, or a
+    /// procedure of another PL/I module (through the linker, with the run
+    /// unit's storage lent to it). Arguments are passed by reference.
     fn call_external(
         &mut self,
         name: &str,
@@ -1664,20 +1724,13 @@ impl Machine {
         act: usize,
         rt: Option<&Ty>,
     ) -> R<Option<Value>> {
-        let Some(linker) = self.env.linker.clone() else {
-            return err(format!("external procedure {name} not found"));
-        };
-        let mut xs = Vec::new();
-        let mut back = Vec::new();
+        let mut refs = Vec::new();
         for a in args {
-            match a {
-                Arg::Omitted => {
-                    xs.push(XArg::omitted());
-                    back.push(None);
-                }
+            refs.push(match a {
+                Arg::Omitted => XRef::default(),
                 Arg::Ref(r) => {
                     let (bit, dims) = self.element_or_start(r, act)?;
-                    let data = self.aggregate_bytes(r, act)?;
+                    let len = self.aggregate_bytes(r, act)?.len();
                     let rb = self.refer_base_for_len(r, act)?;
                     let var = &self.module.vars[r.var as usize];
                     let ty = self.resolve_ty(var.ty.as_ref(), r.var, act, rb)?;
@@ -1688,17 +1741,15 @@ impl Machine {
                         .filter(|(_, s)| s.is_none())
                         .map(|(k, _)| (dims[k].0, dims[k].1))
                         .collect();
-                    let len = match ty.as_ref().and_then(Ty::str_len) {
-                        Some(Ext::Const(n)) => Some(n),
-                        _ => None,
-                    };
-                    xs.push(XArg {
-                        data,
-                        omitted: false,
-                        dims: free,
+                    XRef {
+                        addr: Some((bit / 8) as usize),
                         len,
-                    });
-                    back.push(Some((bit / 8) as u32));
+                        dims: free,
+                        strlen: match ty.as_ref().and_then(Ty::str_len) {
+                            Some(Ext::Const(n)) => Some(n),
+                            _ => None,
+                        },
+                    }
                 }
                 Arg::Dummy(e) => {
                     let v = self.eval(e, act)?;
@@ -1717,24 +1768,35 @@ impl Machine {
                         },
                         &v,
                     )?;
-                    let len = match ty.str_len() {
-                        Some(Ext::Const(n)) => Some(n),
-                        _ => None,
-                    };
-                    xs.push(XArg {
-                        data: self.read(tmp, n as usize)?,
-                        omitted: false,
+                    XRef {
+                        addr: Some(tmp as usize),
+                        len: n as usize,
                         dims: Vec::new(),
-                        len,
-                    });
-                    back.push(None);
+                        strlen: match ty.str_len() {
+                            Some(Ext::Const(n)) => Some(n),
+                            _ => None,
+                        },
+                    }
                 }
-            }
+            });
         }
         // the callee may be another PL/I machine on this thread
         let (enabled, line) = (CUR_ENABLED.with(|c| c.get()), CUR_LINE.with(|c| c.get()));
         let _ = self.env.stdout.flush();
-        let r = linker.call(name, &mut xs);
+        // a COBOL program of the run unit, else a PL/I module
+        let mut r = match self.sys().call_program(name, &refs) {
+            Ok(Some(e)) => Some(Ok(e)),
+            Ok(None) => None,
+            Err(m) => Some(Err(m)),
+        };
+        if r.is_none()
+            && let Some(l) = self.env.linker.clone()
+        {
+            let sys = self.sys.take().expect("storage of the run unit");
+            let (back, x) = l.call(name, sys, &refs);
+            self.sys = Some(back);
+            r = x;
+        }
         CUR_ENABLED.with(|c| c.set(enabled));
         CUR_LINE.with(|c| c.set(line));
         let Some(r) = r else {
@@ -1745,11 +1807,6 @@ impl Machine {
             Err(m) if m.starts_with(ABEND) => return Err(Intr::Terminate),
             Err(m) => return err(m),
         };
-        for (x, b) in xs.iter().zip(back) {
-            if let Some(a) = b {
-                self.write(a, &x.data)?;
-            }
-        }
         self.rc = end.rc;
         if end.stop {
             return Err(Intr::Stop);
@@ -1788,8 +1845,9 @@ impl Machine {
     }
 
     /// Runs external procedure (or entry) `name` of this module for a
-    /// caller of another module. None: no such entry.
-    pub fn call_entry(&mut self, name: &str, args: &mut [XArg]) -> Result<Option<XEnd>, String> {
+    /// caller of another module, with the arguments at their addresses in
+    /// the run unit's storage (lent to this module). None: no such entry.
+    pub fn call_entry(&mut self, name: &str, args: &[XRef]) -> Result<Option<XEnd>, String> {
         let m = self.module.clone();
         let name = name.to_ascii_uppercase();
         let found = m.procs.iter().enumerate().find_map(|(i, p)| {
@@ -1821,19 +1879,12 @@ impl Machine {
             .count()
             .max(params.len());
         let mut bindings: Vec<Option<Binding>> = vec![None; nparams];
-        let mut addrs = Vec::new();
         for (i, x) in args.iter().enumerate() {
             let Some(&pv) = params.get(i) else { break };
             let Storage::Param(k) = m.vars[pv as usize].storage else {
                 continue;
             };
-            if x.omitted {
-                addrs.push(None);
-                continue;
-            }
-            let addr = self.heap_alloc(x.data.len() as u32);
-            self.write(addr, &x.data).map_err(|e| self.report(e))?;
-            addrs.push(Some(addr));
+            let Some(addr) = x.addr else { continue };
             let var = &m.vars[pv as usize];
             let star = var
                 .dims
@@ -1842,7 +1893,7 @@ impl Machine {
             let dims = if star && !x.dims.is_empty() {
                 let elem = match &var.ty {
                     Some(t) => {
-                        u64::from(t.with_len(Ext::Const(x.len.unwrap_or(0))).storage(true).0) * 8
+                        u64::from(t.with_len(Ext::Const(x.strlen.unwrap_or(0))).storage(true).0) * 8
                     }
                     None => u64::from(var.size) * 8,
                 };
@@ -1861,23 +1912,18 @@ impl Machine {
                 Vec::new()
             };
             let len = match var.ty.as_ref().and_then(Ty::str_len) {
-                Some(Ext::Star) => {
-                    Some(
-                        x.len
-                            .unwrap_or_else(|| match var.ty.as_ref().map(Ty::varying) {
-                                Some(crate::types::Var::Varying) => {
-                                    (x.data.len() as u32).saturating_sub(2)
-                                }
-                                _ => x.data.len() as u32,
-                            }),
-                    )
-                }
+                Some(Ext::Star) => Some(x.strlen.unwrap_or_else(|| {
+                    match var.ty.as_ref().map(Ty::varying) {
+                        Some(crate::types::Var::Varying) => (x.len as u32).saturating_sub(2),
+                        _ => x.len as u32,
+                    }
+                })),
                 Some(Ext::Const(n)) => Some(n),
                 _ => None,
             };
             if (k as usize) < bindings.len() {
                 bindings[k as usize] = Some(Binding {
-                    bit: u64::from(addr) * 8,
+                    bit: addr as u64 * 8,
                     dims,
                     len,
                 });
@@ -1908,15 +1954,6 @@ impl Machine {
         CUR_LINE.with(|c| c.set(saved.1));
         self.complete_lines();
         let _ = self.env.stdout.flush();
-        for (x, a) in args
-            .iter_mut()
-            .filter(|x| !x.omitted)
-            .zip(addrs.iter().flatten())
-        {
-            if let Ok(b) = self.read(*a, x.data.len()) {
-                x.data = b;
-            }
-        }
         let (v, stop) = match r {
             Ok(v) => (v, false),
             Err(Intr::Stop) => (None, true),
@@ -2303,6 +2340,7 @@ impl Machine {
     fn static_init(&mut self) -> R<()> {
         let m = self.module.clone();
         // static INITIAL is evaluated in an activation of the package
+        let mark = self.sp;
         let frame = self.stack_alloc(8);
         self.acts.push(Act {
             block: 0,
@@ -2311,7 +2349,7 @@ impl Machine {
             params: Vec::new(),
             slots: Vec::new(),
             on: Vec::new(),
-            stack_mark: 0,
+            stack_mark: mark,
             index: Vec::new(),
             subject: None,
             cond: None,
@@ -2326,7 +2364,7 @@ impl Machine {
             }
         }
         self.acts.clear();
-        self.stack.clear();
+        self.sp = mark;
         Ok(())
     }
 

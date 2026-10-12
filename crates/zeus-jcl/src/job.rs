@@ -693,7 +693,7 @@ fn cobol_factory(
     job: &str,
     step: &Step,
     db2: Option<std::rc::Rc<zeus_db2::Db2Host>>,
-) -> zeus_pli::link::CobolFactory {
+) -> Box<dyn Fn() -> zeus_cobol::vm::Machine> {
     let libs = libs.to_vec();
     let mut allocs = Vec::new();
     let mut tiot = Vec::new();
@@ -842,15 +842,17 @@ fn run_pli(
     let mut temps = Vec::new();
     let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
     let env = pli_env(ctx, &mut temps, db2.clone());
-    let linker = zeus_pli::link::ModuleLinker::new(
-        libs.to_vec(),
-        pli_env(ctx, &mut temps, db2.clone()),
-        Some(cobol_factory(ctx, libs, job, step, db2.clone())),
-    );
+    let linker =
+        zeus_pli::link::ModuleLinker::new(libs.to_vec(), pli_env(ctx, &mut temps, db2.clone()));
+    // the run unit: the COBOL programs of the load libraries and the
+    // storage the PL/I modules run in
+    let mut sys = cobol_factory(ctx, libs, job, step, db2.clone())();
+    sys.set_linker(linker.clone());
     let mut env = env();
     env.linker = Some(linker.clone());
-    let end = zeus_pli::run(module, env);
+    let (end, mut sys) = zeus_pli::run_in(module, env, sys);
     linker.finish();
+    sys.finish();
     zeus_mq::end_run(matches!(end, RunEnd::Rc(_)));
     if let Some(h) = &db2 {
         let _ = h.end_uow(matches!(end, RunEnd::Rc(_)));
@@ -910,11 +912,8 @@ pub(crate) fn run_program(
     let mut m = cobol_factory(ctx, libs, job, step, db2.clone())();
     // PL/I procedures (and COBOL programs they call)
     let mut temps = Vec::new();
-    let linker = zeus_pli::link::ModuleLinker::new(
-        libs.to_vec(),
-        pli_env(ctx, &mut temps, db2.clone()),
-        Some(cobol_factory(ctx, libs, job, step, db2.clone())),
-    );
+    let linker =
+        zeus_pli::link::ModuleLinker::new(libs.to_vec(), pli_env(ctx, &mut temps, db2.clone()));
     m.set_linker(linker.clone());
     let batch = ims.is_some();
     if let Some(sched) = ims {

@@ -601,6 +601,20 @@ impl Compiler {
                 }
             }
             if self.resolve_var(&names).is_none() {
+                // the CICS translator's constants
+                if matches!(name.as_str(), "DFHRESP" | "DFHVALUE")
+                    && let [arg] = args.first().map(Vec::as_slice).unwrap_or(&[])
+                    && let ast::Expr::Ref(c) = arg
+                {
+                    let cond = c.parts[0].0.as_str();
+                    let v = if name == "DFHRESP" {
+                        zeus_cobol::front::cics::resp_value(cond)
+                    } else {
+                        zeus_cobol::front::cics::cvda_value(cond)
+                    };
+                    let v = v.ok_or_else(|| self.err(r.pos, format!("{name}({cond}) is not known")))?;
+                    return Ok(mk(Ek::Fixed(i128::from(v), 0), Ty::fixed_bin(31, 0)));
+                }
                 if let Some(b) = crate::builtin::lookup(name) {
                     return self.builtin(b, args.first().map(|v| v.as_slice()), r.pos);
                 }

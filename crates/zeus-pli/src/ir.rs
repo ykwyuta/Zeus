@@ -562,4 +562,22 @@ pub struct ExecStmt {
     /// WHENEVER actions: 0 SQLERROR, 1 SQLWARNING, 2 NOT FOUND, and the
     /// GO TO target.
     pub whenever: Vec<(u8, Expr)>,
+    /// EXEC CICS: the command (its first word) and the options.
+    #[serde(default)]
+    pub command: String,
+    #[serde(default)]
+    pub options: Vec<(String, Option<ExecOperand>)>,
+}
+
+/// The argument of an EXEC CICS option.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExecOperand {
+    /// A data area (a variable): passed as its storage.
+    Ref(Ref),
+    /// A value: an expression.
+    Value(Expr),
+    /// A label (HANDLE CONDITION, HANDLE ABEND, HANDLE AID).
+    Label(LabelId),
+    /// A name that is not a variable.
+    Name(String),
 }

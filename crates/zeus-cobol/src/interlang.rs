@@ -1,37 +1,25 @@
-//! Calls between separately loaded programs of different languages (or
-//! of different PL/I modules).
+//! Calls between programs of different languages (and between PL/I
+//! modules) in one run unit.
 //!
-//! Arguments are passed by reference: the caller copies each argument's
-//! storage into an [`XArg`], the callee's run time places the bytes in
-//! its own storage for the call, and the caller copies them back
-//! afterwards. Data keeps its z/OS representation on both sides.
+//! The run unit has one storage: that of its COBOL machine
+//! ([`crate::vm::Machine`]), which also holds the COBOL programs, their
+//! files and the EXEC interface. A PL/I module keeps its static storage,
+//! heap and stack in it, and runs with the storage lent to it. Arguments
+//! are passed by reference: their addresses in this storage.
 
-/// An argument of a cross-module call.
+use crate::vm::Machine;
+
+/// An argument passed by reference.
 #[derive(Debug, Clone, Default)]
-pub struct XArg {
-    pub data: Vec<u8>,
-    /// OMITTED (a null address).
-    pub omitted: bool,
+pub struct XRef {
+    /// Its address (None: OMITTED).
+    pub addr: Option<usize>,
+    /// Length of its storage.
+    pub len: usize,
     /// PL/I descriptor: bounds of each dimension (empty: none known).
     pub dims: Vec<(i64, i64)>,
     /// PL/I descriptor: string length.
-    pub len: Option<u32>,
-}
-
-impl XArg {
-    pub fn bytes(data: Vec<u8>) -> XArg {
-        XArg {
-            data,
-            ..XArg::default()
-        }
-    }
-
-    pub fn omitted() -> XArg {
-        XArg {
-            omitted: true,
-            ..XArg::default()
-        }
-    }
+    pub strlen: Option<u32>,
 }
 
 /// How the callee ended.
@@ -49,8 +37,11 @@ pub struct XEnd {
 /// abend code (e.g. `U4038`).
 pub const ABEND: &str = "\u{0}abend ";
 
-/// Finds and runs programs that are not in the calling run time.
+/// Finds and runs the programs that are not COBOL programs of the run
+/// unit (PL/I modules).
 pub trait Linker {
-    /// Calls `name`; None when no such program is known.
-    fn call(&self, name: &str, args: &mut [XArg]) -> Option<Result<XEnd, String>>;
+    /// Calls `name` with the run unit's storage `sys` lent to it; gives
+    /// the storage back, and None as the result when no such program is
+    /// known.
+    fn call(&self, name: &str, sys: Machine, args: &[XRef]) -> (Machine, Option<Result<XEnd, String>>);
 }

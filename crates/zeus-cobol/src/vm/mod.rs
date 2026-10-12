@@ -329,7 +329,7 @@ impl Machine {
     pub fn call_program(
         &mut self,
         name: &str,
-        args: &mut [crate::interlang::XArg],
+        args: &[crate::interlang::XRef],
     ) -> Result<Option<crate::interlang::XEnd>, String> {
         if !self.control_blocks {
             self.build_control_blocks();
@@ -341,10 +341,6 @@ impl Machine {
         if self.instances[callee].active {
             return Err(format!("recursive CALL of active program {name}"));
         }
-        let addrs: Vec<Option<usize>> = args
-            .iter()
-            .map(|x| (!x.omitted).then(|| self.alloc(&x.data)))
-            .collect();
         let ci = &mut self.instances[callee];
         if ci.code.initial || !ci.initialized {
             let first = !ci.initialized;
@@ -355,19 +351,13 @@ impl Machine {
         }
         let ci = &mut self.instances[callee];
         for (k, slot) in ci.code.using.clone().iter().enumerate() {
-            ci.linkage[*slot as usize] = addrs.get(k).copied().flatten();
+            ci.linkage[*slot as usize] = args.get(k).and_then(|a| a.addr);
         }
         ci.active = true;
         ci.perform.clear();
         self.return_code = 0;
         let r = self.run_from(callee, true);
         self.instances[callee].active = false;
-        for (x, a) in args.iter_mut().zip(&addrs) {
-            if let Some(a) = a {
-                let n = x.data.len();
-                x.data.copy_from_slice(&self.mem[*a..*a + n]);
-            }
-        }
         let _ = self.stdout.flush();
         let stop = match r {
             Ok(Exit::Returned) => false,
@@ -380,6 +370,27 @@ impl Machine {
             ret: None,
             stop,
         }))
+    }
+
+    /// A machine with no programs and no storage, standing in for one
+    /// that is lent to another run time.
+    pub fn placeholder() -> Machine {
+        Machine::new(Vec::new())
+    }
+
+    /// The interface that runs EXEC statements.
+    pub fn exec_host(&self) -> Option<Rc<dyn exec::ExecHost>> {
+        self.exec_host.clone()
+    }
+
+    /// The linker of the run unit (PL/I modules).
+    pub fn linker(&self) -> Option<Rc<dyn crate::interlang::Linker>> {
+        self.linker.clone()
+    }
+
+    /// Writes the output of the programs (DISPLAY) so far.
+    pub fn flush(&mut self) {
+        let _ = self.stdout.flush();
     }
 
     /// Closes the files of all programs (the end of the run unit).
@@ -549,25 +560,22 @@ impl Machine {
                 return Ok(None);
             }
             if let Some(l) = self.linker.clone() {
-                let sized = self.call_args_sized(cur, args)?;
-                let mut xs: Vec<crate::interlang::XArg> = sized
+                let refs: Vec<crate::interlang::XRef> = self
+                    .call_args_sized(cur, args)?
                     .iter()
-                    .map(|s| match s {
-                        Some((a, n)) => {
-                            crate::interlang::XArg::bytes(self.mem[*a..*a + *n].to_vec())
-                        }
-                        None => crate::interlang::XArg::omitted(),
+                    .map(|s| crate::interlang::XRef {
+                        addr: s.map(|x| x.0),
+                        len: s.map_or(0, |x| x.1),
+                        ..Default::default()
                     })
                     .collect();
-                if let Some(r) = l.call(&name, &mut xs) {
-                    let _ = self.stdout.flush();
+                let _ = self.stdout.flush();
+                // the run unit's storage (this machine) is lent to the callee
+                let me = std::mem::replace(self, Machine::placeholder());
+                let (back, r) = l.call(&name, me, &refs);
+                *self = back;
+                if let Some(r) = r {
                     let end = r.map_err(RunError)?;
-                    for (s, x) in sized.iter().zip(&xs) {
-                        if let Some((a, n)) = s {
-                            let k = (*n).min(x.data.len());
-                            self.mem[*a..*a + k].copy_from_slice(&x.data[..k]);
-                        }
-                    }
                     self.return_code = end.rc;
                     self.store_rc(cur);
                     if end.stop {

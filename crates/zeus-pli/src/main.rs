@@ -123,10 +123,23 @@ fn main() -> ExitCode {
             .map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>)
     };
     let sub_db2 = host(&db2);
-    let cobol_db2 = db2.clone();
     let sub_dds = dds.clone();
-    let cobol_dirs = libs.clone();
-    let cobol_dds = dds.clone();
+    // the run unit: COBOL programs of the load libraries, with the DDs and
+    // Db2; the PL/I modules run in its storage
+    let mut sys = zeus_cobol::vm::Machine::new(libs.clone());
+    for (n, d) in &dds {
+        sys.allocate(
+            n,
+            zeus_ds::dd::Allocation {
+                path: d.path.clone(),
+                format: d.format,
+            },
+        );
+    }
+    sys.set_stdout(Box::new(std::io::stdout()));
+    if let Some(h) = &db2 {
+        sys.set_exec_host(h.clone());
+    }
     let linker = zeus_pli::link::ModuleLinker::new(
         libs,
         Box::new(move || RunEnv {
@@ -139,24 +152,8 @@ fn main() -> ExitCode {
             linker: None,
             exec_host: sub_db2.clone(),
         }),
-        Some(Box::new(move || {
-            let mut m = zeus_cobol::vm::Machine::new(cobol_dirs.clone());
-            for (n, d) in &cobol_dds {
-                m.allocate(
-                    n,
-                    zeus_ds::dd::Allocation {
-                        path: d.path.clone(),
-                        format: d.format,
-                    },
-                );
-            }
-            m.set_stdout(Box::new(std::io::stdout()));
-            if let Some(h) = &cobol_db2 {
-                m.set_exec_host(h.clone());
-            }
-            m
-        })),
     );
+    sys.set_linker(linker.clone());
     let env = RunEnv {
         dds,
         parm,
@@ -167,8 +164,9 @@ fn main() -> ExitCode {
         linker: Some(linker.clone()),
         exec_host: host(&db2),
     };
-    let end = zeus_pli::run(module, env);
+    let (end, mut sys) = zeus_pli::run_in(module, env, sys);
     linker.finish();
+    sys.finish();
     // the unit of work ends with the run: committed, or backed out
     if let Some(h) = &db2 {
         let _ = h.end_uow(matches!(end, RunEnd::Rc(_)));

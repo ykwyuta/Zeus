@@ -45,41 +45,45 @@ fn data_type(ty: &Ty) -> Option<(DataType, bool)> {
 }
 
 impl Machine {
-    pub(super) fn exec_stmt(&mut self, x: &ExecStmt, act: usize) -> R<()> {
-        let Some(h) = self.env.exec_host.clone() else {
-            return err(format!(
-                "EXEC {} needs a Db2 environment (ZEUS_DB2)",
-                x.kind
-            ));
+    /// The scalar host variable or area of `r` in the run unit's storage.
+    pub(super) fn exec_area(&mut self, r: &Ref, act: usize) -> R<(Area, bool)> {
+        let loc = self.locate(r, act)?;
+        let name = &self.module.vars[r.var as usize].name;
+        let Some((ty, vc)) = data_type(&loc.ty) else {
+            return err(format!("{name} cannot be a host variable"));
         };
-        let mut shim = zeus_cobol::vm::Machine::new(Vec::new());
-        // host variables: (address here, area there)
-        let mut places: Vec<(u32, Area)> = Vec::new();
+        if loc.bit % 8 != 0 {
+            return err(format!("{name} is not on a byte boundary"));
+        }
+        Ok((
+            Area {
+                addr: (loc.bit / 8) as usize,
+                len: loc.ty.storage(true).0 as usize,
+                ty,
+            },
+            vc,
+        ))
+    }
+
+    /// The EXEC interface: the run time's (Db2), else the run unit's.
+    pub(super) fn exec_host(&mut self) -> Option<std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>> {
+        self.env.exec_host.clone().or_else(|| self.sys().exec_host())
+    }
+
+    pub(super) fn exec_stmt(&mut self, x: &ExecStmt, act: usize) -> R<()> {
+        if x.kind == "CICS" {
+            return self.exec_cics(x, act);
+        }
+        let Some(h) = self.exec_host() else {
+            return err(format!("EXEC {} needs a Db2 environment (ZEUS_DB2)", x.kind));
+        };
+        // the host variables are in the run unit's storage
         let mut host = Vec::new();
         let mut varchar = Vec::new();
-        let mut area =
-            |me: &mut Machine, shim: &mut zeus_cobol::vm::Machine, r: &Ref| -> R<(Area, bool)> {
-                let loc = me.locate(r, act)?;
-                let name = &me.module.vars[r.var as usize].name;
-                let Some((ty, vc)) = data_type(&loc.ty) else {
-                    return err(format!("{name} cannot be a host variable"));
-                };
-                let n = loc.ty.storage(true).0 as usize;
-                let addr = (loc.bit / 8) as u32;
-                let a = shim.getmain(n, 0);
-                shim.storage_mut()[a..a + n].copy_from_slice(&me.read(addr, n)?);
-                let ar = Area {
-                    addr: a,
-                    len: n,
-                    ty,
-                };
-                places.push((addr, ar.clone()));
-                Ok((ar, vc))
-            };
         for (v, i) in &x.host {
-            let (va, vc) = area(self, &mut shim, v)?;
+            let (va, vc) = self.exec_area(v, act)?;
             let ia = match i {
-                Some(i) => Some(area(self, &mut shim, i)?.0),
+                Some(i) => Some(self.exec_area(i, act)?.0),
                 None => None,
             };
             varchar.push(vc);
@@ -92,16 +96,13 @@ impl Machine {
         let mut ca = None;
         if let Some(r) = &x.sqlca {
             let (bit, _) = self.element_or_start(r, act)?;
-            let addr = (bit / 8) as u32;
-            let a = shim.getmain(136, 0);
-            shim.storage_mut()[a..a + 136].copy_from_slice(&self.read(addr, 136)?);
             let ar = Area {
-                addr: a,
+                addr: (bit / 8) as usize,
                 len: 136,
                 ty: DataType::Group,
             };
             options.push(("SQLCA".to_string(), Some(ExecArg::Area(ar.clone()))));
-            ca = Some((addr, ar));
+            ca = Some(ar.addr as u32);
         }
         let call = ExecCall {
             kind: ExecKind::Sql,
@@ -119,13 +120,9 @@ impl Machine {
             host,
             host_varchar: varchar,
         };
-        h.exec(&mut shim, &call).map_err(|e| Intr::Fatal(e.0))?;
-        for (addr, a) in places.iter().chain(ca.iter()) {
-            let b = shim.storage()[a.addr..a.addr + a.len].to_vec();
-            self.write(*addr, &b)?;
-        }
+        h.exec(self.sys(), &call).map_err(|e| Intr::Fatal(e.0))?;
         // WHENEVER
-        if let Some((addr, _)) = ca
+        if let Some(addr) = ca
             && !x.whenever.is_empty()
         {
             let b = self.read(addr, 136)?;

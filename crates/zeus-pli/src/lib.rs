@@ -173,3 +173,17 @@ pub fn run(module: ir::Module, env: vm::RunEnv) -> vm::RunEnd {
     let mut m = vm::Machine::new(module, env);
     m.run()
 }
+
+/// Runs a module as the main program of the run unit `sys` (a COBOL
+/// machine: its storage, COBOL programs and EXEC interface); gives the
+/// run unit back.
+pub fn run_in(
+    module: ir::Module,
+    env: vm::RunEnv,
+    sys: zeus_cobol::vm::Machine,
+) -> (vm::RunEnd, zeus_cobol::vm::Machine) {
+    zeus_cobol::codepage::set_active(module.ccsid);
+    let mut m = vm::Machine::with_storage(module, env, sys);
+    let end = m.run();
+    (end, m.detach())
+}
