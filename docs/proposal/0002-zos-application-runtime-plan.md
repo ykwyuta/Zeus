@@ -235,8 +235,13 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   作業単位: 回復可能なファイル (VSAM クラスタの LOG(UNDO/ALL)、なければ FILE 定義の
   RECOVERY) への変更は SYNCPOINT ROLLBACK と異常終了で Db2 と一緒に取り消され、SYNCPOINT と
   タスク終了で Db2 と一緒に確定する (ログは領域内のメモリ。領域の障害からの回復はない)。
-  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路と
-  イベント処理 (LGASTAT1)。
+  イベント処理: zcics の `--event-binding` が CICS Explorer のイベントバインディング (.evbind) を読み、
+  EXEC CICS LINK の前後の捕捉仕様 (現在のプログラム・取引・LINK 先のフィルター、COMMAREA か
+  コンテナーのデータ) に合うとイベントを作り、取引開始アダプターの取引をチャネル DFHEP.EVENT
+  (DFHEP.CCECONTEXT、DFHEP.NAME.nnnnn、DFHEP.DATA.nnnnn) で START する (START CHANNEL も実装)。
+  GenApp のバンドル GENAEV01 (CDEF125 の LGST・SSST) で LGASTAT1 が要求ごとの名前付きカウンターを
+  数える (`tools/genapp/events.txt`)。
+  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路。
 
 - 日本語 EBCDIC (2026-10): CCSID 930・939・1390・1399 の変換を、ICU の対応表 (unicode-org/icu-data
   の UCM を `tools/icu-codepages.sh` で取得・変換し、ライセンスとともに同梱) から Zeus 自身のコードで

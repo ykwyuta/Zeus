@@ -63,11 +63,15 @@ setup() {
     done
     # resource definitions: the DFHCSDUP input of CDEF121
     customize cdef121 | sed -n '/^\/\/SYSIN/,/^\/\*/p' | sed '1d;$d' >"$home/GENAPP.CSD"
+    # and those of event processing (CDEF125: LGST, SSST, the bundle)
+    customize cdef125 | sed -n '/^\/\/SYSIN/,/^\/\*/p' | sed '1d;$d' >>"$home/GENAPP.CSD"
 }
 
+# the event binding of bundle GENAEV01: LINKs from the LG programs start
+# LGST (LGASTAT1), which counts the requests in named counters
 zcics() {
     $bin/zcics --home "$home" --csd "$home/GENAPP.CSD" --loadlib "$home/loadlib" \
-        --mapsets "$home/maps" "$@"
+        --mapsets "$home/maps" --event-binding $g/event-bindings/Transaction_Counters.evbind "$@"
 }
 
 case ${1:-} in

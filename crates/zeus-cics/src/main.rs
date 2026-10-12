@@ -18,6 +18,10 @@
 //! Q (repeatable): a trigger message starts the transaction its ApplId
 //! names, which RETRIEVEs the MQTM (ZEUS_MQ names the queue manager).
 //!
+//! `--event-binding FILE` (repeatable) loads an event binding (an .evbind
+//! file): events captured at EXEC CICS LINK start the transaction of its
+//! transaction start adapter with channel DFHEP.EVENT.
+//!
 //! With `--serve`, zcics is a TN3270 server: 3270 emulators connect to the
 //! port (each connection is a terminal).
 //!
@@ -28,6 +32,7 @@
 //!
 //! ```text
 //! tran CC00          clear the screen, type CC00 and press ENTER
+//! counter POOL NAME N   the named counter's next value is N
 //! type 12 43 USER01  type text at line 12, column 43
 //! eof 12 43          erase to the end of the field at line 12, column 43
 //! key PF3            press an attention key (ENTER, CLEAR, PA1-3, PF1-24)
@@ -43,7 +48,7 @@
 //! screen as the script lines up to the next key leave it.
 
 use std::cell::RefCell;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::ExitCode;
 use std::rc::Rc;
 
@@ -81,6 +86,8 @@ struct Script {
     name: String,
     lines: Vec<String>,
     pos: usize,
+    /// The region (for `counter`).
+    region: Option<std::rc::Weak<RefCell<Region>>>,
 }
 
 impl Script {
@@ -159,6 +166,30 @@ impl Script {
                     println!("> wait {secs}");
                     std::thread::sleep(std::time::Duration::from_secs_f64(secs));
                     return Ok(Some(WAITED));
+                }
+                "counter" => {
+                    // counter POOL NAME VALUE: the named counter's next value
+                    let w: Vec<&str> = rest.split_whitespace().collect();
+                    let [pool, name, want] = w[..] else {
+                        return Err(fail("counter POOL NAME VALUE expected".into()));
+                    };
+                    let got = self
+                        .region
+                        .as_ref()
+                        .and_then(std::rc::Weak::upgrade)
+                        .and_then(|r| {
+                            r.borrow()
+                                .counters
+                                .get(&(pool.to_string(), name.to_string()))
+                                .map(|c| c.value.to_string())
+                        });
+                    if got.as_deref() != Some(want) {
+                        return Err(fail(format!(
+                            "counter {pool} {name} is {}, not {want}",
+                            got.unwrap_or_else(|| "not defined".into())
+                        )));
+                    }
+                    println!("> counter {pool} {name} {want}");
                 }
                 "show" => show(&term.borrow()),
                 "fields" => fields(&term.borrow()),
@@ -969,6 +1000,7 @@ fn main() -> ExitCode {
     let mut ims_libs: Vec<String> = Vec::new();
     let mut ims_wal: Option<PathBuf> = None;
     let mut initqs: Vec<String> = Vec::new();
+    let mut bindings: Vec<zeus_cics::events::Binding> = Vec::new();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -994,6 +1026,28 @@ fn main() -> ExitCode {
             "--ims-lib" => ims_libs.push(it.next().unwrap_or_default()),
             "--ims-wal" => ims_wal = it.next().map(PathBuf::from),
             "--mq-initq" => initqs.push(it.next().unwrap_or_default()),
+            "--event-binding" => {
+                let f = it.next().unwrap_or_default();
+                let name = Path::new(&f)
+                    .file_stem()
+                    .map(|s| s.to_string_lossy().into_owned())
+                    .unwrap_or_default();
+                match std::fs::read_to_string(&f)
+                    .map_err(|e| format!("{f}: {e}"))
+                    .and_then(|t| zeus_cics::events::parse(&name, &t))
+                {
+                    Ok((b, notes)) => {
+                        for n in notes {
+                            eprintln!("zcics: {n}");
+                        }
+                        bindings.push(b);
+                    }
+                    Err(e) => {
+                        eprintln!("zcics: {e}");
+                        return ExitCode::from(16);
+                    }
+                }
+            }
             _ => script = Some(a),
         }
     }
@@ -1065,6 +1119,7 @@ fn main() -> ExitCode {
         let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
         region.borrow_mut().ims = ims.clone();
         region.borrow_mut().initqs = initqs.clone();
+        region.borrow_mut().event_bindings = bindings.clone();
         return match server::run(region, &home, ports) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -1086,6 +1141,7 @@ fn main() -> ExitCode {
     let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
     region.borrow_mut().ims = ims.clone();
     region.borrow_mut().initqs = initqs.clone();
+    region.borrow_mut().event_bindings = bindings;
     let term = Rc::new(RefCell::new(Terminal::new("T001")));
     if let Some(n) = model {
         let caps = zeus_cics::tn3270::Capabilities::of_type(&format!("IBM-3279-{n}-E"));
@@ -1095,6 +1151,7 @@ fn main() -> ExitCode {
         name: script,
         lines: text.lines().map(str::to_string).collect(),
         pos: 0,
+        region: Some(Rc::downgrade(&region)),
     }));
     region
         .borrow_mut()

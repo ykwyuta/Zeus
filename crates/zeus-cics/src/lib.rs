@@ -11,6 +11,7 @@
 pub mod bms;
 pub mod csd;
 pub mod dispatch;
+pub mod events;
 pub mod indfile;
 pub mod region;
 pub mod screen;

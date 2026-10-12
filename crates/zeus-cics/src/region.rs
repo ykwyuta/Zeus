@@ -111,6 +111,8 @@ pub struct Region {
     db2_free: Vec<Rc<zeus_db2::Db2Host>>,
     /// MQ initiation queues the trigger monitor (CKTI) reads.
     pub initqs: Vec<String>,
+    /// Event bindings (event processing).
+    pub event_bindings: Vec<crate::events::Binding>,
     last_trigger_poll: Option<std::time::Instant>,
     /// Enqueued resources: the task that has each one, how many times it
     /// enqueued it, and whether until the task ends (else the unit of
@@ -180,6 +182,8 @@ pub struct StartRequest {
     pub data: Option<Vec<u8>>,
     pub reqid: Option<String>,
     pub due: std::time::Instant,
+    /// START CHANNEL: the channel's name and containers.
+    pub channel: Option<(String, BTreeMap<String, Vec<u8>>)>,
 }
 
 /// A named counter: the next value to assign and its range.
@@ -210,6 +214,7 @@ impl Region {
             files: HashMap::new(),
             task_count: 0,
             counters: BTreeMap::new(),
+            event_bindings: Vec::new(),
             starts: Vec::new(),
             terminals: HashMap::new(),
             log: Vec::new(),
@@ -563,6 +568,7 @@ fn poll_triggers(region: &Shared<Region>) {
                 data: Some(m),
                 reqid: None,
                 due: std::time::Instant::now(),
+                channel: None,
             });
         }
     }
@@ -619,7 +625,7 @@ pub fn run_start(region: &Shared<Region>, s: StartRequest) -> (String, Event) {
         // no terminal: the task has no principal facility
         None => Rc::new(RefCell::new(Terminal::new(""))),
     };
-    let e = match crate::task::run_started(region, &term, &s.transid, s.data) {
+    let e = match crate::task::run_started(region, &term, &s.transid, s.data, s.channel) {
         Ok(()) => Event::Ended {
             transid: s.transid.clone(),
         },

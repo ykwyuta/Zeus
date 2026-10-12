@@ -172,8 +172,9 @@ pub fn run_started(
     term: &Shared<Terminal>,
     transid: &str,
     data: Option<Vec<u8>>,
+    channel: Option<(String, channel::Channel)>,
 ) -> Result<(), String> {
-    run_task(region, term, transid, 0, None, Some(data), None, None).result
+    run_task(region, term, transid, 0, None, Some(data), channel, None).result
 }
 
 /// Runs `program` for a client outside the region (a distributed program
@@ -860,10 +861,58 @@ impl Task {
                 if let Some(c) = &chan {
                     self.st.borrow_mut().channels.entry(c.clone()).or_default();
                 }
-                self.run_level(m, &program, ca, chan, false)?;
+                self.link_events(m, true, &program, ca, chan.as_deref());
+                self.run_level(m, &program, ca, chan.clone(), false)?;
                 m.storage_mut()[e + eib::CALEN..e + eib::CALEN + 2].copy_from_slice(&saved);
+                self.link_events(m, false, &program, ca, chan.as_deref());
                 self.finish(m, call, "NORMAL", 0)
             }
+        }
+    }
+
+    /// Event processing: the events the region's event bindings capture
+    /// before or after a LINK, emitted by starting their adapters'
+    /// transactions with channel DFHEP.EVENT.
+    fn link_events(
+        &self,
+        m: &Machine,
+        before: bool,
+        linked: &str,
+        ca: Option<(usize, usize)>,
+        chan: Option<&str>,
+    ) {
+        if self.region.borrow().event_bindings.is_empty() {
+            return;
+        }
+        let st = self.st.borrow();
+        let program = st.programs.last().cloned().unwrap_or_default();
+        let commarea = ca.map(|(a, l)| &m.storage()[a..a + l]);
+        let channel = chan.and_then(|c| st.channels.get(c.trim_end()));
+        let (y, mo, d, h, mi, s, ms, _) = crate::time::split(crate::time::abstime_now());
+        let now = format!(
+            "{y:04}-{mo:02}-{d:02}-{h:02}.{mi:02}.{s:02}.{:06}",
+            ms * 1000
+        );
+        let point = crate::events::LinkPoint {
+            before,
+            transid: &st.transid,
+            program: &program,
+            linked: linked.trim_end(),
+            commarea,
+            channel,
+        };
+        let emitted = crate::events::capture(&self.region.borrow().event_bindings, &point, &now);
+        drop(st);
+        let mut r = self.region.borrow_mut();
+        for e in emitted {
+            r.starts.push(region::StartRequest {
+                transid: e.transid,
+                termid: None,
+                data: None,
+                reqid: None,
+                due: std::time::Instant::now(),
+                channel: Some(("DFHEP.EVENT".to_string(), e.containers)),
+            });
         }
     }
 
@@ -1029,12 +1078,25 @@ impl Task {
                 let data = call.arg("FROM").map(|_| Self::from_data(m, call));
                 let ms = Self::interval_ms(m, call);
                 let reqid = Self::opt_text(m, call, "REQID").map(|r| r.trim_end().to_string());
+                // START CHANNEL: a copy of the channel
+                let channel = Self::opt_text(m, call, "CHANNEL").map(|c| {
+                    let c = c.trim_end().to_string();
+                    let containers = self
+                        .st
+                        .borrow()
+                        .channels
+                        .get(&c)
+                        .cloned()
+                        .unwrap_or_default();
+                    (c, containers)
+                });
                 self.region.borrow_mut().starts.push(region::StartRequest {
                     transid,
                     termid,
                     data,
                     reqid,
                     due: std::time::Instant::now() + std::time::Duration::from_millis(ms),
+                    channel,
                 });
                 self.finish(m, call, "NORMAL", 0)
             }

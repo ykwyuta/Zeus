@@ -13,6 +13,7 @@ rustls.workspace = true
 rustls-pki-types.workspace = true
 serde.workspace = true
 serde_json.workspace = true
+roxmltree = "0.20"
 zeus-bms = { path = "../zeus-bms" }
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-db2 = { path = "../zeus-db2" }

@@ -1,0 +1,34 @@
+# Event processing (bundle GENAEV01): each LINK from an LG program to the
+# business logic emits an event; its adapter starts LGST (LGASTAT1), which
+# gets the named counter of the request type and return code. The capture
+# specification takes any LINK of a program whose name starts with LG: an
+# inquiry counts twice (LGTESTC1 links to LGICUS01, which links to
+# LGICDB01, both with the request in the COMMAREA).
+tran LGSE
+expect 1 HIGH CUSTOMER
+counter GENA GENA01ICUS00 0
+tran SSC1
+type 4 51 0000000001
+type 22 25 1
+key ENTER
+expect 5 Andrew
+key PF3
+expect 1 Transaction ended
+wait 0.1
+counter GENA GENA01ICUS00 2
+tran SSC1
+type 4 51 0000000002
+type 22 25 1
+key ENTER
+key PF3
+wait 0.1
+counter GENA GENA01ICUS00 4
+# a customer that does not exist: return code 01, counted as an error
+tran SSC1
+type 4 51 0000099999
+type 22 25 1
+key ENTER
+expect * No data
+key PF3
+wait 0.1
+counter GENA GENA01ICUS99 2
