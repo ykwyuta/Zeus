@@ -256,6 +256,7 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
 - Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
 - Bank of Z のバッチ部品。
 - **完了条件**: Bank of Z の CICS 経路 (顧客・口座の作成/照会、入出金、振替) のシナリオが合格。
+  - 達成 (2026-10): `tools/bankofz.sh test`。詳細は 0007 の #1。
 
 ### Phase 7: MQ と PostgreSQL バックエンド (8〜10 週)
 - MQI サブセット (MQCONN/MQOPEN/MQPUT/MQGET) とローカルキュー、CICS との作業単位統合。

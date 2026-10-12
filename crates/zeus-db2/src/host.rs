@@ -91,6 +91,16 @@ impl Db2Host {
     /// Runs one SQL statement of a script (DSNTIAD), translated for the
     /// server; Ok(None) when the statement was skipped.
     pub fn run_script_statement(&self, sql: &str) -> Result<Option<SqlCa>, SqlCa> {
+        self.run_script_query(sql, &mut Vec::new())
+    }
+
+    /// As [`Db2Host::run_script_statement`]; the rows of a query are added
+    /// to `rows` as text (DSNTEP2 output).
+    pub fn run_script_query(
+        &self,
+        sql: &str,
+        rows: &mut Vec<Vec<String>>,
+    ) -> Result<Option<SqlCa>, SqlCa> {
         let Some(t) = crate::dialect::translate(sql) else {
             return Ok(None);
         };
@@ -100,7 +110,25 @@ impl Db2Host {
             .unwrap_or("")
             .to_ascii_uppercase();
         let r = if first == "SELECT" || first == "WITH" || first == "VALUES" {
-            self.with_conn(|c| c.query(&t)).map(|r| r.sqlca)
+            self.with_conn(|c| c.query(&t)).map(|r| {
+                for row in &r.rows {
+                    rows.push(
+                        row.iter()
+                            .map(|v| match v {
+                                zeus_drda::sql::Value::Null => "-".to_string(),
+                                zeus_drda::sql::Value::Int(i) => i.to_string(),
+                                zeus_drda::sql::Value::Dec(d) => d.clone(),
+                                zeus_drda::sql::Value::Float(f) => f.to_string(),
+                                zeus_drda::sql::Value::Str(s) => s.clone(),
+                                zeus_drda::sql::Value::Bytes(b) => {
+                                    b.iter().map(|x| format!("{x:02X}")).collect()
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+                r.sqlca
+            })
         } else {
             self.with_conn(|c| c.execute(&t))
         };

@@ -9,7 +9,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 
 | # | 規模 | 項目 | 出典 | 状態 |
 |---|---|---|---|---|
-| 1 | XL | **Bank of Z の CICS 経路**: チャネルとコンテナ (PUT/GET CONTAINER)、非同期 API (RUN TRANSID CHANNEL・FETCH ANY / CHILD)、INQUIRE ASSOCIATION・INQUIRE/SET TERMINAL、Db2 の表 (CUSTOMER・ACCOUNT・PROCTRAN・CONTROL) の作成と初期データ、BMS 画面 (BNK1*) のシナリオ (顧客・口座の作成/照会/更新/削除、入出金、振替) | 0002 Phase 6 | 未着手 |
+| 1 | XL | **Bank of Z の CICS 経路**: チャネルとコンテナ (PUT/GET CONTAINER)、非同期 API (RUN TRANSID CHANNEL・FETCH ANY / CHILD)、INQUIRE ASSOCIATION・INQUIRE/SET TERMINAL、Db2 の表 (CUSTOMER・ACCOUNT・PROCTRAN・CONTROL) の作成と初期データ、BMS 画面 (BNK1*) のシナリオ (顧客・口座の作成/照会/更新/削除、入出金、振替) | 0002 Phase 6 | **済** (`tools/bankofz.sh test`) |
 | 2 | XL | **IMS TM** (メッセージ処理領域): トランザクションの定義と入力メッセージのキュー、I/O PCB の GU/GN/ISRT、MPP として COBOL / PL/I プログラムを実行、端末 (または API) からの入出力。Bank of Z の IMS 経路 (IBLOGIN・IBACSUM・IBGCUDAT・IBSCUDAT・IBLOGOUT) | 0006 | 未着手 |
 | 3 | L | **PL/I の DL/I 呼出し** (PLITDLI と EXEC DLI): PCB ポインタ、引数の数、SYSTEM(IMS) の主手続き。Bank of Z の IBLOGIN が使う (#2 の前提) | 0004・0006 | 未着手 |
 | 4 | L | **z/OS Connect 相当の REST 経路**: HTTP の JSON 要求を COMMAREA / コンテナに写像して CICS / IMS のプログラムを呼ぶ (Bank of Z の API、GenApp の Web サービス経路) | 0002 Phase 5・6 | 未着手 |
@@ -40,3 +40,23 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
   IMS の Java (JMP) プログラム。JVM を必要とするため対象外。
 - z/Architecture CPU エミュレータ (0001、任意トラック)、中国語・韓国語のコードページ (0002 で対象外と決定)。
 - PL/I のマルチスレッド (ATTACH): 対象アプリが使わない。
+
+## 3. 解消の記録
+
+- **#1 Bank of Z の CICS 経路** (2026-10):
+  - `tools/bankofz.sh` が環境を作る。Db2 の表を作り、BANKDATA で顧客・口座を生成し、ABNDFILE と BMS マップ・プログラムを用意する。
+  - `tools/bankofz/customer.txt` と `account.txt` で、メニューから次の取引を確かめる:
+    顧客の照会・作成・更新・削除、口座の一覧・照会・作成・更新・削除、入出金、振替。
+  - 足りなかった機能として次を追加した。
+    - zcics:
+      - チャネルとコンテナ (PUT / GET / DELETE / MOVE、ブラウズ、ASSIGN CHANNEL、LINK・XCTL の CHANNEL)。
+      - 非同期 API (RUN TRANSID CHILD・FETCH CHILD / ANY・FREE CHILD)。子タスクは RUN の時点で最後まで実行する。
+      - INQUIRE ASSOCIATION、INQUIRE / SET TERMINAL UCTRANST、RETURN TRANSID IMMEDIATE。
+    - zcobc: COMP-1 / COMP-2 (IBM 16 進浮動小数点)、FUNCTION RANDOM の系列 (種なしの呼出しが前の値に続く)。
+    - LE の日付・時刻サービス: CEEGMT・CEELOCT・CEEDATM・CEEDATE・CEESECS。
+    - Db2:
+      - z/OS の表オプション (VOLATILE・AUDIT・DATA CAPTURE) を落とす。
+      - DSNTEP2 が問合せの行を出力する。
+      - TSO の RUN が PARM(...) を受け付ける。
+  - 補足: CRECUST は子タスクに 399 バイトのコンテナを渡すが、子 (CRDTAGY1〜5) は 397 バイトの領域で GET するため、
+    CICS の仕様どおり LENGERR になる。信用スコアは 0 のまま、顧客の作成は成功する。

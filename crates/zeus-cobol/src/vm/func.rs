@@ -159,6 +159,23 @@ impl Machine {
                     .collect();
                 numval(&s, func == Func::NumValC)
             }
+            Func::Random => {
+                // a linear congruential generator: RANDOM(seed) starts a
+                // sequence, RANDOM continues it
+                let v = self.nums(cur, args)?;
+                if let Some(seed) = v.first() {
+                    let seed = seed
+                        .rescale(0, zeus_decimal::Rounding::Truncate)
+                        .map_or(0, |d| d.coef) as u64;
+                    self.random = seed ^ 0x0005_DEEC_E66D;
+                }
+                self.random = self
+                    .random
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                let x = (self.random >> 11) as f64 / (1u64 << 53) as f64;
+                Dec::from_f64(x, 18).unwrap_or(Dec::ZERO)
+            }
             Func::Max | Func::Min => {
                 let v = self.nums(cur, args)?;
                 need(&v, 1)?;

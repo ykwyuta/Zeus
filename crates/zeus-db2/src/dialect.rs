@@ -149,6 +149,16 @@ pub fn translate(sql: &str) -> Option<String> {
             "COPY" | "CLOSE" | "ERASE" if ddl && matches!(kw(k + 1), "YES" | "NO") => take(1),
             "BUFFERPOOL" | "PRIQTY" | "SECQTY" | "FREEPAGE" if ddl => take(1),
             "USING" if ddl && kw(k + 1) == "STOGROUP" => take(2),
+            // table options: [NOT] VOLATILE [CARDINALITY], AUDIT x, DATA
+            // CAPTURE x
+            "NOT" if ddl && kw(k + 1) == "VOLATILE" => {
+                take(if kw(k + 2) == "CARDINALITY" { 2 } else { 1 })
+            }
+            "VOLATILE" if ddl && kw(k.wrapping_sub(1)) != "NOT" => {
+                take(usize::from(kw(k + 1) == "CARDINALITY"))
+            }
+            "AUDIT" if ddl && matches!(kw(k + 1), "NONE" | "CHANGES" | "ALL") => take(1),
+            "DATA" if ddl && kw(k + 1) == "CAPTURE" => take(2),
             _ => {}
         }
         k += 1;
@@ -203,6 +213,17 @@ mod tests {
     #[test]
     fn zos_ddl() {
         assert_eq!(translate("CREATE STOGROUP G VOLUMES ('*') VCAT X"), None);
+        assert_eq!(
+            translate(
+                "CREATE TABLE B.C (N CHAR(4) NOT NULL) IN B.C NOT VOLATILE \
+                 CARDINALITY AUDIT NONE DATA CAPTURE NONE"
+            )
+            .unwrap()
+            .split_whitespace()
+            .collect::<Vec<_>>()
+            .join(" "),
+            "CREATE TABLE B.C (N CHAR(4) NOT NULL)"
+        );
         assert_eq!(
             translate("CREATE TABLE GENAPP.CUSTOMER (ID INTEGER) CCSID EBCDIC IN GENAPP.GENATS00")
                 .unwrap()

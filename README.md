@@ -72,6 +72,15 @@ motor, endowment and house policy inquiry, add, update and delete;
 commercial policy inquiry, add and delete) work on Db2 and VSAM, with customer numbers from
 named counters (`tools/genapp.sh test`).
 
+Bank of Z (CICS path): `tools/bankofz.sh setup` creates its Db2 tables,
+generates customers and accounts with its BANKDATA program and compiles the
+programs and maps. The 3270 menu transactions work on Db2
+(`tools/bankofz.sh test`). They cover customers (inquiry, update, deletion,
+and creation with a credit check by child tasks through channels and
+containers) and accounts (list, inquiry, creation, update, deletion, credit
+and debit, transfer). Remaining work, largest first:
+[docs/proposal/0007-remaining-work.md](docs/proposal/0007-remaining-work.md).
+
 Code pages: data stays in EBCDIC; text crosses to the host in the code page
 named by `ZEUS_CCSID` (or `--ccsid` of `zcobc` / `zjob`): 037 by default, or
 the Japanese mixed code pages 930, 939, 1390 and 1399, converted by Zeus's

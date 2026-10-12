@@ -2480,7 +2480,7 @@ impl<'a> Gen<'a> {
                 DataType::Numeric(_) => Category::Numeric,
                 DataType::NumericEdited { .. } => Category::NumericEdited,
                 DataType::AlphanumericEdited { .. } => Category::AlphanumericEdited,
-                DataType::Index | DataType::Pointer => continue,
+                DataType::Index | DataType::Pointer | DataType::Float { .. } => continue,
             };
             let src = if replacing.is_empty() {
                 match cat {

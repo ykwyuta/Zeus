@@ -323,6 +323,8 @@ impl DataModel {
         match it.usage {
             Usage::Index => return DataType::Index,
             Usage::Pointer => return DataType::Pointer,
+            Usage::Float => return DataType::Float { long: false },
+            Usage::Double => return DataType::Float { long: true },
             _ => {}
         }
         let Some(p) = &it.pic else {
@@ -639,6 +641,8 @@ impl DataModel {
                     field,
                 );
             }
+            (lit::Const::Num(d, _), DataType::Float { .. }) => vdata::store_float(field, *d),
+            (lit::Const::Fig(_), DataType::Float { .. }) => field.fill(0),
             (lit::Const::Num(_, text), _) => vdata::move_alnum(text, field, false),
             (lit::Const::Fig(f), DataType::Numeric(t)) if *f == lit::FigByte::Zero => {
                 vdata::store_num(t, field, Dec::ZERO, false);
@@ -661,7 +665,7 @@ fn default_value(ty: &DataType, field: &mut [u8]) {
         DataType::Numeric(t) => {
             vdata::store_num(t, field, Dec::ZERO, false);
         }
-        DataType::Index | DataType::Pointer => field.fill(0),
+        DataType::Index | DataType::Pointer | DataType::Float { .. } => field.fill(0),
         _ => field.fill(ebcdic::SPACE),
     }
 }

@@ -352,11 +352,18 @@ pub enum DataType {
     /// USAGE INDEX / index-name: 4-byte binary occurrence number.
     Index,
     Pointer,
+    /// COMP-1 (short) / COMP-2 (long): IBM hexadecimal floating point.
+    Float {
+        long: bool,
+    },
 }
 
 impl DataType {
     pub fn is_numeric(&self) -> bool {
-        matches!(self, DataType::Numeric(_) | DataType::Index)
+        matches!(
+            self,
+            DataType::Numeric(_) | DataType::Index | DataType::Float { .. }
+        )
     }
 }
 

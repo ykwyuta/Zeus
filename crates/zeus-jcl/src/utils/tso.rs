@@ -96,7 +96,8 @@ pub fn run(
                         if let Some(lib) = operand(&cmd, "LIB") {
                             libs.push(ctx.env.catalog.path(&lib));
                         }
-                        if let Some(parm) = operand(&cmd, "PARMS") {
+                        if let Some(parm) = operand(&cmd, "PARMS").or_else(|| operand(&cmd, "PARM"))
+                        {
                             ctx.parm = parm;
                         }
                         crate::job::run_cobol(ctx, &p, &libs, job, step)
@@ -143,7 +144,14 @@ fn sql_script(ctx: &mut StepCtx, program: &str, rc0: bool) -> ProgramResult {
         } else if up.starts_with("ROLLBACK") {
             db2.end_uow(false).map(Some)
         } else {
-            db2.run_script_statement(&stmt)
+            let mut rows = Vec::new();
+            let r = db2.run_script_query(&stmt, &mut rows);
+            // DSNTEP2 / DSNTEP4 list the rows of a query (DSNTIAD cannot
+            // run one)
+            for row in rows {
+                let _ = writeln!(out, "  | {}", row.join(" | "));
+            }
+            r
         };
         match r {
             Ok(None) => {

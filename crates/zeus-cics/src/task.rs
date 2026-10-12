@@ -22,6 +22,8 @@ use crate::bms::{self, SendMode};
 use crate::region::{self, OpenFile, Region, Shared, Terminal, aid};
 use crate::time;
 
+mod channel;
+
 /// EIB field offsets (the layout of DFHEIBLK).
 mod eib {
     pub const TIME: usize = 0;
@@ -84,6 +86,9 @@ struct Browse {
     started: bool,
 }
 
+/// XCTL: the program, its COMMAREA (address, length) and channel.
+type Xctl = (String, Option<(usize, usize)>, Option<String>);
+
 struct State {
     transid: String,
     taskn: u32,
@@ -93,7 +98,16 @@ struct State {
     programs: Vec<String>,
     commareas: Vec<Option<(usize, usize)>>,
     handlers: HashMap<usize, Handlers>,
-    xctl: Option<(String, Option<(usize, usize)>)>,
+    xctl: Option<Xctl>,
+    /// The current channel of each LINK level (LINK / XCTL / RUN with
+    /// CHANNEL), and the task's channels.
+    channel_stack: Vec<Option<String>>,
+    channels: HashMap<String, channel::Channel>,
+    /// Child tasks started by RUN TRANSID (not yet fetched or freed).
+    children: Vec<channel::Child>,
+    child_count: u32,
+    /// Container browses: the names and the next one.
+    container_browses: Vec<Option<(Vec<String>, usize)>>,
     /// The terminal input that started the task has not been read nor
     /// overwritten by a SEND; otherwise RECEIVE waits for new input.
     input_pending: bool,
@@ -139,7 +153,7 @@ pub fn run(
     aid_byte: u8,
     commarea: Option<Vec<u8>>,
 ) -> Result<(), String> {
-    run_task(region, term, transid, aid_byte, commarea, None)
+    run_task(region, term, transid, aid_byte, commarea, None, None).0
 }
 
 /// Runs a transaction started by START (with its FROM data, for
@@ -150,7 +164,7 @@ pub fn run_started(
     transid: &str,
     data: Option<Vec<u8>>,
 ) -> Result<(), String> {
-    run_task(region, term, transid, 0, None, Some(data))
+    run_task(region, term, transid, 0, None, Some(data), None).0
 }
 
 fn run_task(
@@ -160,7 +174,8 @@ fn run_task(
     aid_byte: u8,
     commarea: Option<Vec<u8>>,
     start: Option<Option<Vec<u8>>>,
-) -> Result<(), String> {
+    channel: Option<(String, channel::Channel)>,
+) -> (Result<(), String>, Option<channel::Channel>) {
     let startcode = match &start {
         None => "TD",
         Some(None) => "S",
@@ -192,6 +207,11 @@ fn run_task(
             commareas: Vec::new(),
             handlers: HashMap::new(),
             xctl: None,
+            channel_stack: Vec::new(),
+            channels: HashMap::new(),
+            children: Vec::new(),
+            child_count: 0,
+            container_browses: Vec::new(),
             input_pending: startcode == "TD",
             startcode,
             start_data,
@@ -220,7 +240,12 @@ fn run_task(
         m.storage_mut()[a..a + c.len()].copy_from_slice(&c);
         (a, c.len())
     });
-    let r = task.run_level(&mut m, &program, ca, true);
+    let chan_name = channel.as_ref().map(|c| c.0.clone());
+    if let Some((n, c)) = channel {
+        task.st.borrow_mut().channels.insert(n, c);
+    }
+    let r = task.run_level(&mut m, &program, ca, chan_name.clone(), true);
+    let chan_back = chan_name.and_then(|n| task.st.borrow_mut().channels.remove(&n));
     {
         let mut t = term.borrow_mut();
         t.screen.locked = false;
@@ -240,7 +265,7 @@ fn run_task(
             .log
             .push(format!("CEEOUT {transid} {}", line.trim_end()));
     }
-    match r {
+    let r = match r {
         Ok(()) => Ok(()),
         Err(e) => {
             let code = match e.0.strip_prefix(ABEND) {
@@ -259,7 +284,8 @@ fn run_task(
                 .push(format!("task {taskn} {transid} abended {code}"));
             Err(code)
         }
-    }
+    };
+    (r, chan_back)
 }
 
 /// The run-time environment of a PL/I program in a task: no files, its
@@ -347,6 +373,7 @@ impl Task {
         m: &mut Machine,
         program: &str,
         mut ca: Option<(usize, usize)>,
+        mut chan: Option<String>,
         top: bool,
     ) -> RResult<()> {
         let mut program = program.to_string();
@@ -359,6 +386,7 @@ impl Task {
                 let mut st = self.st.borrow_mut();
                 st.programs.push(program.clone());
                 st.commareas.push(ca);
+                st.channel_stack.push(chan.clone());
                 st.programs.len()
             };
             let r = match self.run_pli(m, &program, ca, level) {
@@ -369,6 +397,7 @@ impl Task {
                 let mut st = self.st.borrow_mut();
                 st.programs.pop();
                 st.commareas.pop();
+                st.channel_stack.pop();
             }
             match r? {
                 None => {
@@ -381,9 +410,10 @@ impl Task {
                 Some(ProgramEnd::StopRun(_)) | Some(ProgramEnd::Returned) => {}
             }
             match self.st.borrow_mut().xctl.take() {
-                Some((p, c)) => {
+                Some((p, c, ch)) => {
                     program = p;
                     ca = c;
+                    chan = ch;
                 }
                 None => return Ok(()),
             }
@@ -663,6 +693,7 @@ impl Task {
                     let transid = Self::opt_text(m, call, "TRANSID");
                     let data = ca.map(|(a, l)| m.storage()[a..a + l].to_vec());
                     let mut t = self.term.borrow_mut();
+                    t.immediate = transid.is_some() && call.has("IMMEDIATE");
                     t.next = transid.map(|t| (t, data));
                 }
                 self.st.borrow_mut().handlers.remove(&call.instance);
@@ -681,7 +712,8 @@ impl Task {
                 });
                 let mut st = self.st.borrow_mut();
                 st.handlers.remove(&call.instance);
-                st.xctl = Some((program, ca));
+                let chan = Self::opt_text(m, call, "CHANNEL");
+                st.xctl = Some((program, ca, chan));
                 Ok(ExecOutcome::Return)
             }
             _ => {
@@ -691,7 +723,11 @@ impl Task {
                 }
                 let e = self.st.borrow().eib;
                 let saved = m.storage()[e + eib::CALEN..e + eib::CALEN + 2].to_vec();
-                self.run_level(m, &program, ca, false)?;
+                let chan = Self::opt_text(m, call, "CHANNEL");
+                if let Some(c) = &chan {
+                    self.st.borrow_mut().channels.entry(c.clone()).or_default();
+                }
+                self.run_level(m, &program, ca, chan, false)?;
                 m.storage_mut()[e + eib::CALEN..e + eib::CALEN + 2].copy_from_slice(&saved);
                 self.finish(m, call, "NORMAL", 0)
             }
@@ -1559,6 +1595,12 @@ impl Task {
             String::new()
         };
         let abcode = st.abcode.clone();
+        let channel = st
+            .channel_stack
+            .last()
+            .cloned()
+            .flatten()
+            .unwrap_or_default();
         drop(st);
         let mut cond = "NORMAL";
         for (name, arg) in &call.options {
@@ -1568,6 +1610,7 @@ impl Task {
             let text = match name.as_str() {
                 "APPLID" => applid.clone(),
                 "SYSID" => sysid.clone(),
+                "CHANNEL" => channel.clone(),
                 "USERID" | "USERNAME" => userid.clone(),
                 "PROGRAM" => program.clone(),
                 "INVOKINGPROG" => invoking.clone(),
@@ -1766,6 +1809,19 @@ impl ExecHost for Task {
         }
         match call.command.as_str() {
             "HANDLE" => self.handle(m, call),
+            "PUT" | "GET" | "DELETE" | "MOVE" if call.has("CONTAINER") => self.container(m, call),
+            "STARTBROWSE" | "GETNEXT" | "ENDBROWSE"
+                if call.has("CONTAINER") || call.has("BROWSETOKEN") =>
+            {
+                self.container_browse(m, call)
+            }
+            "RUN" => self.run_child(m, call),
+            "FETCH" => self.fetch_child(m, call),
+            "FREE" if call.has("CHILD") => self.free_child(m, call),
+            "INQUIRE" if call.has("ASSOCIATION") => self.inquire_association(m, call),
+            "INQUIRE" | "SET" if call.has("TERMINAL") || call.has("NETNAME") => {
+                self.terminal_setting(m, call)
+            }
             "IGNORE" => self.ignore(m, call),
             "PUSH" | "POP" => self.finish(m, call, "NORMAL", 0),
             "RETURN" | "XCTL" | "LINK" => self.program_control(m, call),

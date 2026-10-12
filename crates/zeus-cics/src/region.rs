@@ -248,6 +248,10 @@ pub struct Terminal {
     /// A file transfer (IND$FILE) is in progress: only structured fields
     /// go to the terminal.
     pub transfer: bool,
+    /// Input is translated to upper case (SET TERMINAL UCTRANST).
+    pub uctran: bool,
+    /// The next transaction (RETURN TRANSID IMMEDIATE) starts at once.
+    pub immediate: bool,
 }
 
 impl Terminal {
@@ -359,6 +363,8 @@ impl Terminal {
             printed: Vec::new(),
             busy: false,
             transfer: false,
+            uctran: false,
+            immediate: false,
         }
     }
 }
@@ -429,17 +435,43 @@ pub fn attention(region: &Shared<Region>, term: &Shared<Terminal>, aid: u8) -> E
         t.screen.write(0, &ebcdic::encode(&msg));
         return Event::Idle;
     }
-    match crate::task::run(region, term, &transid, aid, commarea) {
-        Ok(()) => Event::Ended { transid },
-        Err(code) => {
-            let mut t = term.borrow_mut();
-            t.screen.erase();
-            t.next = None;
-            let msg = format!("DFHAC2206 Transaction {transid} failed with abend {code}.");
-            t.screen.write(0, &ebcdic::encode(&msg));
-            Event::Abended { transid, code }
+    let (mut transid, mut commarea) = (transid, commarea);
+    loop {
+        match crate::task::run(region, term, &transid, aid, commarea) {
+            Ok(()) => {
+                // RETURN TRANSID IMMEDIATE: the next transaction starts
+                // without waiting for input
+                let next = {
+                    let mut t = term.borrow_mut();
+                    if std::mem::take(&mut t.immediate) {
+                        t.next.take()
+                    } else {
+                        None
+                    }
+                };
+                match next {
+                    Some((n, c)) if region.borrow().csd.transactions.contains_key(&n) => {
+                        transid = n;
+                        commarea = c;
+                        continue;
+                    }
+                    _ => return Event::Ended { transid },
+                }
+            }
+            Err(code) => return abended(term, transid, code),
         }
     }
+}
+
+/// A transaction ended abnormally: its message on the terminal.
+fn abended(term: &Shared<Terminal>, transid: String, code: String) -> Event {
+    let mut t = term.borrow_mut();
+    t.screen.erase();
+    t.next = None;
+    t.immediate = false;
+    let msg = format!("DFHAC2206 Transaction {transid} failed with abend {code}.");
+    t.screen.write(0, &ebcdic::encode(&msg));
+    Event::Abended { transid, code }
 }
 
 /// Runs the started transactions that are due and whose terminal (if any)

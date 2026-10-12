@@ -71,6 +71,8 @@ struct Frame {
 
 pub struct Machine {
     mem: Vec<u8>,
+    /// State of FUNCTION RANDOM.
+    random: u64,
     instances: Vec<Instance>,
     file_states: Vec<FileState>,
     /// EXTERNAL data areas by name.
@@ -164,6 +166,7 @@ impl Machine {
             switches.insert(format!("UPSI-{i}"), on);
         }
         Machine {
+            random: 0x2545_F491_4F6C_DD1D,
             mem: vec![0; PSA_SIZE],
             instances: Vec::new(),
             file_states: Vec::new(),
@@ -547,7 +550,10 @@ impl Machine {
             .trim()
             .to_ascii_uppercase();
         self.call_exception = false;
-        if matches!(name.as_str(), "CEE3ABD" | "CEEDAYS") {
+        if matches!(
+            name.as_str(),
+            "CEE3ABD" | "CEEDAYS" | "CEEGMT" | "CEELOCT" | "CEEDATM" | "CEEDATE" | "CEESECS"
+        ) {
             let addrs = self.call_args(cur, args)?;
             self.le_service(&name, &addrs)?;
             return Ok(None);

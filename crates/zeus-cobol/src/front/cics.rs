@@ -257,6 +257,8 @@ pub fn cvda_value(name: &str) -> Option<u32> {
         ("DISABLED", 21),
         ("OPEN", 22),
         ("CLOSED", 23),
+        ("TERMINAL", 30),
+        ("TASK", 31),
     ];
     CVDA.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
 }
