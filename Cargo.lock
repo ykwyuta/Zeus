@@ -690,6 +690,7 @@ dependencies = [
  "serde_json",
  "tempfile",
  "zeus-cobol",
+ "zeus-db2",
  "zeus-decimal",
  "zeus-ds",
 ]
