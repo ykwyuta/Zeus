@@ -231,6 +231,27 @@ fn sql_include(t: &[Token]) -> Option<String> {
     }
 }
 
+/// The members supplied with the compiler (when not in the include
+/// directories): DFHAID and DFHBMSCA, the CICS constants of the COBOL
+/// system library as CHAR(1) constants.
+fn system_member(member: &str) -> Option<String> {
+    let name = member.to_ascii_uppercase();
+    if name != "DFHAID" && name != "DFHBMSCA" {
+        return None;
+    }
+    let cobol = zeus_cobol::front::syslib::member(&name)?;
+    let mut out = String::new();
+    for line in cobol.lines() {
+        // 02 NAME PIC X VALUE X'hh'.
+        let w: Vec<&str> = line.split_whitespace().collect();
+        if let ["02", n, "PIC", "X", "VALUE", v] = w[..] {
+            let hex = v.trim_start_matches("X'").trim_end_matches("'.");
+            out.push_str(&format!(" DCL {n} CHAR(1) STATIC INIT('{hex}'X);\n"));
+        }
+    }
+    Some(out)
+}
+
 impl Pp<'_> {
     fn err(&self, pos: Pos, m: impl Into<String>) -> Diag {
         Diag::error(pos, m)
@@ -239,8 +260,18 @@ impl Pp<'_> {
     /// Executes tokens from `i` to `end`: % statements and text.
     /// Processes the text of an included member.
     fn include(&mut self, member: &str, once: bool, pos: Pos) -> Result<()> {
-        let path = crate::lexer::find_include(&self.opts.include_dirs, member)
-            .ok_or_else(|| self.err(pos, format!("INCLUDE member {member} not found")))?;
+        let found = crate::lexer::find_include(&self.opts.include_dirs, member);
+        let system = match &found {
+            Some(_) => None,
+            None => system_member(member),
+        };
+        let path = match (&found, &system) {
+            (Some(p), _) => p.clone(),
+            (None, Some(_)) => PathBuf::from(format!("<{}>", member.to_ascii_uppercase())),
+            (None, None) => {
+                return Err(self.err(pos, format!("INCLUDE member {member} not found")));
+            }
+        };
         if once && self.included.contains(&path) {
             return Ok(());
         }
@@ -248,7 +279,12 @@ impl Pp<'_> {
         if self.depth > 20 {
             return Err(self.err(pos, "%INCLUDE nested too deeply"));
         }
-        let mut toks = crate::lexer::tokenize(&path, self.opts, self.files)?;
+        let mut toks = match &system {
+            Some(text) => {
+                crate::lexer::tokenize_text(text, &path.to_string_lossy(), self.opts, self.files)?
+            }
+            None => crate::lexer::tokenize(&path, self.opts, self.files)?,
+        };
         toks.pop(); // end of file
         let n = toks.len();
         self.depth += 1;

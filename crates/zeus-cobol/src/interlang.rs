@@ -43,5 +43,10 @@ pub trait Linker {
     /// Calls `name` with the run unit's storage `sys` lent to it; gives
     /// the storage back, and None as the result when no such program is
     /// known.
-    fn call(&self, name: &str, sys: Machine, args: &[XRef]) -> (Machine, Option<Result<XEnd, String>>);
+    fn call(
+        &self,
+        name: &str,
+        sys: Machine,
+        args: &[XRef],
+    ) -> (Machine, Option<Result<XEnd, String>>);
 }

@@ -69,7 +69,11 @@ impl ModuleLinker {
             }
         }
         for d in &self.dirs {
-            for f in [name.to_string(), format!("{name}.zo"), name.to_ascii_lowercase()] {
+            for f in [
+                name.to_string(),
+                format!("{name}.zo"),
+                name.to_ascii_lowercase(),
+            ] {
                 let path = d.join(&f);
                 if path.is_file()
                     && let Some(m) = self.pli_module(&path)

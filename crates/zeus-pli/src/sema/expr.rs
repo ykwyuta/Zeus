@@ -612,7 +612,8 @@ impl Compiler {
                     } else {
                         zeus_cobol::front::cics::cvda_value(cond)
                     };
-                    let v = v.ok_or_else(|| self.err(r.pos, format!("{name}({cond}) is not known")))?;
+                    let v =
+                        v.ok_or_else(|| self.err(r.pos, format!("{name}({cond}) is not known")))?;
                     return Ok(mk(Ek::Fixed(i128::from(v), 0), Ty::fixed_bin(31, 0)));
                 }
                 if let Some(b) = crate::builtin::lookup(name) {

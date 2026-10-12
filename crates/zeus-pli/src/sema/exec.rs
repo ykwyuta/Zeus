@@ -224,13 +224,18 @@ impl Compiler {
         };
         let command = word(&toks[0]).ok_or_else(|| self.err(pos, "EXEC CICS command expected"))?;
         let mut options = Vec::new();
+        let mut map = None;
         let mut i = 1;
         while !matches!(toks[i].tok, crate::lexer::Tok::Eof) {
             let name = word(&toks[i]).ok_or_else(|| {
-                self.err(toks[i].pos, format!("EXEC CICS option expected, found {}", toks[i].tok))
+                self.err(
+                    toks[i].pos,
+                    format!("EXEC CICS option expected, found {}", toks[i].tok),
+                )
             })?;
             i += 1;
             let mut arg = None;
+            let mut arg_len = 0;
             if matches!(toks[i].tok, crate::lexer::Tok::Op("(")) {
                 let mut depth = 0;
                 let start = i + 1;
@@ -248,16 +253,47 @@ impl Compiler {
                         _ => {}
                     }
                 }
-                let end = end.ok_or_else(|| self.err(pos, "unbalanced parentheses in EXEC CICS"))?;
+                let end =
+                    end.ok_or_else(|| self.err(pos, "unbalanced parentheses in EXEC CICS"))?;
                 let mut a = toks[start..end].to_vec();
                 a.push(crate::lexer::Token {
                     tok: crate::lexer::Tok::Eof,
                     pos,
                 });
                 arg = Some(self.cics_operand(a, pos)?);
+                arg_len = end + 1 - i;
                 i = end + 1;
             }
+            if name == "MAP"
+                && arg_len > 0
+                && let [t] = &toks[i + 1 - arg_len..i - 1]
+                && let crate::lexer::Tok::Str { text, .. } = &t.tok
+            {
+                map = Some(text.trim().to_ascii_uppercase());
+            }
             options.push((name, arg));
+        }
+        // BMS: SEND MAP without FROM and RECEIVE MAP without INTO / SET use
+        // the symbolic map named after the map (mapO / mapI)
+        let has = |n: &str| options.iter().any(|o| o.0 == n);
+        let default = match command.as_str() {
+            "SEND" if !has("FROM") && !has("MAPONLY") => Some(("FROM", 'O')),
+            "RECEIVE" if !has("INTO") && !has("SET") => Some(("INTO", 'I')),
+            _ => None,
+        };
+        if let (Some(map), Some((opt, suffix))) = (map, default) {
+            let names = vec![format!("{map}{suffix}")];
+            if self.resolve_var(&names).is_some() {
+                let r = ast::Ref {
+                    parts: vec![(names[0].clone(), Vec::new())],
+                    locator: None,
+                    pos,
+                };
+                options.push((
+                    opt.to_string(),
+                    Some(ExecOperand::Ref(self.reference(&r, true)?)),
+                ));
+            }
         }
         Ok(Stmt::Exec(Box::new(ExecStmt {
             kind: "CICS".into(),
@@ -288,7 +324,9 @@ impl Compiler {
                     _ => {}
                 }
             }
-            if self.resolve_var(&names).is_some() && matches!(self.sym(&names[0]), Some(Sym::Var(_)) | None) {
+            if self.resolve_var(&names).is_some()
+                && matches!(self.sym(&names[0]), Some(Sym::Var(_)) | None)
+            {
                 return Ok(ExecOperand::Ref(self.reference(r, true)?));
             }
         }

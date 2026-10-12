@@ -93,8 +93,11 @@ in z/OS formats (EBCDIC, packed decimal, hexadecimal floating point). The
 language rules follow the IBM Enterprise PL/I Language Reference (RULES(IBM),
 LIMITS(FIXEDDEC(15) FIXEDBIN(31))). `zpli source.pli` compiles and runs a
 program; in a job, `IBMZPLI` compiles SYSIN, `IEWL` binds and `EXEC PGM=`
-runs it with its DD statements. Scope and limits:
-[docs/proposal/0004-pli-compiler.md](docs/proposal/0004-pli-compiler.md).
+runs it with its DD statements. PL/I and COBOL share one run-unit storage:
+calls between them pass addresses. PL/I programs run as CICS programs in
+`zcics`, with EXEC CICS, the EIB (DFHEIBLK), the COMMAREA, and BMS symbolic
+maps from `zbms --pli`. They LINK to and from COBOL programs. Scope and
+limits: [docs/proposal/0004-pli-compiler.md](docs/proposal/0004-pli-compiler.md).
 
 IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,
 MQOPEN, MQPUT, MQPUT1, MQGET, MQINQ, MQCMIT, MQBACK, MQCLOSE, MQDISC) on an
@@ -138,7 +141,7 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
 | `crates/zeus-ims` | `zims`: IMS DB (DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I, GSAM, TM queues) and the CBLTDLI / EXEC DLI / DFSRRC00 run-time glue |
 | `crates/zeus-mq` | MQI calls of COBOL programs on IBM MQ through the IBM MQ C client library; z/OS structure conversion |
-| `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL symbolic maps |
+| `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL and PL/I symbolic maps |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |

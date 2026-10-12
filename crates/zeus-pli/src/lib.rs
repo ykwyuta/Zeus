@@ -99,7 +99,11 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
             );
         }
     };
-    let stmts = match parser::Parser::new(toks).program() {
+    let cics = toks.windows(2).any(|w| {
+        matches!(&w[0].tok, lexer::Tok::Ident(e) if e == "EXEC")
+            && matches!(&w[1].tok, lexer::Tok::Ident(c) if c == "CICS")
+    });
+    let mut stmts = match parser::Parser::new(toks).program() {
         Ok(s) => s,
         Err(d) => {
             let mut all = pp_diags;
@@ -113,6 +117,9 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
             );
         }
     };
+    if cics {
+        add_eib(&mut stmts);
+    }
     let ccsid = zeus_cobol::codepage::active().ccsid;
     let (module, sema_diags) = sema::compile(&stmts, ccsid, files.names.clone());
     let mut diags = pp_diags;
@@ -132,6 +139,41 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
             messages: msgs,
         },
     )
+}
+
+/// The EXEC interface block of a CICS program: `DFHEIPTR` addresses it
+/// (set when the task starts); the layout is that of the COBOL DFHEIBLK.
+const DFHEIBLK: &str = "DCL DFHEIPTR POINTER STATIC; \
+DCL 1 DFHEIBLK BASED(DFHEIPTR) UNALIGNED, 2 EIBTIME FIXED DEC(7), \
+2 EIBDATE FIXED DEC(7), 2 EIBTRNID CHAR(4), 2 EIBTASKN FIXED DEC(7), \
+2 EIBTRMID CHAR(4), 2 DFHEIGDI FIXED BIN(15), 2 EIBCPOSN FIXED BIN(15), \
+2 EIBCALEN FIXED BIN(15), 2 EIBAID CHAR(1), 2 EIBFN CHAR(2), \
+2 EIBRCODE CHAR(6), 2 EIBDS CHAR(8), 2 EIBREQID CHAR(8), 2 EIBRSRCE CHAR(8), \
+2 EIBSYNC CHAR(1), 2 EIBFREE CHAR(1), 2 EIBRECV CHAR(1), 2 EIBFIL01 CHAR(1), \
+2 EIBATT CHAR(1), 2 EIBEOC CHAR(1), 2 EIBFMH CHAR(1), 2 EIBCOMPL CHAR(1), \
+2 EIBSIG CHAR(1), 2 EIBCONF CHAR(1), 2 EIBERR CHAR(1), 2 EIBERRCD CHAR(4), \
+2 EIBSYNRB CHAR(1), 2 EIBNODAT CHAR(1), 2 EIBRESP FIXED BIN(31), \
+2 EIBRESP2 FIXED BIN(31), 2 EIBRLDBK CHAR(1);";
+
+/// Declares the EXEC interface block in the first external procedure.
+fn add_eib(stmts: &mut [ast::Stmt]) {
+    let Some(p) = stmts.iter_mut().find_map(|s| match &mut s.kind {
+        ast::StmtKind::Procedure(p) => Some(p),
+        _ => None,
+    }) else {
+        return;
+    };
+    let pos = p.pos;
+    let Ok(mut toks) = lexer::tokenize_raw(DFHEIBLK, pos) else {
+        return;
+    };
+    toks.push(lexer::Token {
+        tok: lexer::Tok::Eof,
+        pos,
+    });
+    if let Ok(dcls) = parser::Parser::new(toks).program() {
+        p.body.splice(0..0, dcls);
+    }
 }
 
 /// The serialised form of a module.

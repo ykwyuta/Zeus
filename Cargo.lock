@@ -624,6 +624,7 @@ dependencies = [
  "zeus-ims",
  "zeus-jcl",
  "zeus-mq",
+ "zeus-pli",
 ]
 
 [[package]]

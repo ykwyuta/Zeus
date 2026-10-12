@@ -2,9 +2,9 @@
 //! conditions.
 
 mod bif;
+mod cics;
 mod conv;
 mod record;
-mod cics;
 mod sql;
 mod stream;
 pub mod value;
@@ -76,6 +76,8 @@ pub enum Intr {
     /// The program ends abnormally after ERROR.
     Terminate,
     Fatal(String),
+    /// EXEC CICS RETURN (or XCTL): the program ends.
+    CicsReturn,
 }
 
 pub type R<T> = std::result::Result<T, Intr>;
@@ -146,6 +148,9 @@ pub struct Machine {
     rc: i32,
     random: u64,
     depth: usize,
+    /// The program's instance for the CICS host (its HANDLE CONDITION
+    /// labels), set by the task that runs it.
+    pub cics_instance: usize,
 }
 
 fn err<T>(m: impl Into<String>) -> R<T> {
@@ -186,6 +191,7 @@ impl Machine {
             rc: 0,
             random: 0x2545_F491_4F6C_DD1D,
             depth: 0,
+            cics_instance: 0,
         }
     }
 
@@ -207,12 +213,16 @@ impl Machine {
     pub fn detach(&mut self) -> zeus_cobol::vm::Machine {
         // the stack segments stay allocated in the run unit for the next
         // call
-        self.sys.take().unwrap_or_else(zeus_cobol::vm::Machine::placeholder)
+        self.sys
+            .take()
+            .unwrap_or_else(zeus_cobol::vm::Machine::placeholder)
     }
 
     /// The run unit (its COBOL machine).
     pub fn sys(&mut self) -> &mut zeus_cobol::vm::Machine {
-        self.sys.as_mut().expect("a PL/I module runs with the storage of its run unit")
+        self.sys
+            .as_mut()
+            .expect("a PL/I module runs with the storage of its run unit")
     }
 
     fn storage(&self) -> &[u8] {
@@ -220,7 +230,7 @@ impl Machine {
     }
 
     fn mem(&self, addr: u32, len: usize) -> R<&[u8]> {
-        if addr < NULL_PAGE || addr >= NULL {
+        if !(NULL_PAGE..NULL).contains(&addr) {
             return err(format!("address {addr:08X} is not valid (null pointer?)"));
         }
         let a = addr as usize;
@@ -230,7 +240,7 @@ impl Machine {
     }
 
     fn mem_mut(&mut self, addr: u32, len: usize) -> R<&mut [u8]> {
-        if addr < NULL_PAGE || addr >= NULL {
+        if !(NULL_PAGE..NULL).contains(&addr) {
             return err(format!("address {addr:08X} is not valid (null pointer?)"));
         }
         let a = addr as usize;
@@ -1893,7 +1903,11 @@ impl Machine {
             let dims = if star && !x.dims.is_empty() {
                 let elem = match &var.ty {
                     Some(t) => {
-                        u64::from(t.with_len(Ext::Const(x.strlen.unwrap_or(0))).storage(true).0) * 8
+                        u64::from(
+                            t.with_len(Ext::Const(x.strlen.unwrap_or(0)))
+                                .storage(true)
+                                .0,
+                        ) * 8
                     }
                     None => u64::from(var.size) * 8,
                 };
@@ -1912,12 +1926,17 @@ impl Machine {
                 Vec::new()
             };
             let len = match var.ty.as_ref().and_then(Ty::str_len) {
-                Some(Ext::Star) => Some(x.strlen.unwrap_or_else(|| {
-                    match var.ty.as_ref().map(Ty::varying) {
-                        Some(crate::types::Var::Varying) => (x.len as u32).saturating_sub(2),
-                        _ => x.len as u32,
-                    }
-                })),
+                Some(Ext::Star) => {
+                    Some(
+                        x.strlen
+                            .unwrap_or_else(|| match var.ty.as_ref().map(Ty::varying) {
+                                Some(crate::types::Var::Varying) => {
+                                    (x.len as u32).saturating_sub(2)
+                                }
+                                _ => x.len as u32,
+                            }),
+                    )
+                }
                 Some(Ext::Const(n)) => Some(n),
                 _ => None,
             };

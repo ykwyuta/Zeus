@@ -20,6 +20,7 @@ zeus-ims = { path = "../zeus-ims" }
 zeus-decimal = { path = "../zeus-decimal" }
 zeus-ds = { path = "../zeus-ds" }
 zeus-jcl = { path = "../zeus-jcl" }
+zeus-pli = { path = "../zeus-pli" }
 
 [dev-dependencies]
 tempfile.workspace = true

@@ -1,0 +1,6 @@
+ /* CALLed from COBOL: the length of a name without trailing blanks. */
+ PLLEN: PROC(S, N);
+   DCL S CHAR(10);
+   DCL N FIXED BIN(31);
+   N = LENGTH(TRIM(S));
+ END PLLEN;

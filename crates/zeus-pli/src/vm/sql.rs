@@ -67,7 +67,10 @@ impl Machine {
 
     /// The EXEC interface: the run time's (Db2), else the run unit's.
     pub(super) fn exec_host(&mut self) -> Option<std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>> {
-        self.env.exec_host.clone().or_else(|| self.sys().exec_host())
+        self.env
+            .exec_host
+            .clone()
+            .or_else(|| self.sys().exec_host())
     }
 
     pub(super) fn exec_stmt(&mut self, x: &ExecStmt, act: usize) -> R<()> {
@@ -75,7 +78,10 @@ impl Machine {
             return self.exec_cics(x, act);
         }
         let Some(h) = self.exec_host() else {
-            return err(format!("EXEC {} needs a Db2 environment (ZEUS_DB2)", x.kind));
+            return err(format!(
+                "EXEC {} needs a Db2 environment (ZEUS_DB2)",
+                x.kind
+            ));
         };
         // the host variables are in the run unit's storage
         let mut host = Vec::new();

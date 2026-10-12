@@ -1,5 +1,6 @@
 //! A CICS task: runs a transaction's programs on the zcobc VM and executes
-//! their EXEC CICS commands.
+//! their EXEC CICS commands. PL/I programs run on the zplic VM in the
+//! task's storage (the COBOL machine's), with the same EXEC interface.
 //!
 //! Conditions: with RESP the response goes to the program; with NOHANDLE
 //! or an IGNORE CONDITION it is ignored; with a HANDLE CONDITION label
@@ -88,8 +89,9 @@ struct State {
     taskn: u32,
     aid: u8,
     eib: usize,
-    /// Programs in LINK order.
+    /// Programs in LINK order, with their COMMAREAs.
     programs: Vec<String>,
+    commareas: Vec<Option<(usize, usize)>>,
     handlers: HashMap<usize, Handlers>,
     xctl: Option<(String, Option<(usize, usize)>)>,
     /// The terminal input that started the task has not been read nor
@@ -117,7 +119,16 @@ pub struct Task {
     db2: std::cell::RefCell<Option<Rc<zeus_db2::Db2Host>>>,
     /// The PSB the task scheduled (EXEC DLI SCHD).
     dli: std::cell::RefCell<Option<Rc<zeus_ims::runtime::TaskDli>>>,
+    /// Where PL/I programs PUT and write messages (the region log).
+    out: Capture,
 }
+
+/// Program instances of PL/I programs (for HANDLE CONDITION): this plus
+/// the LINK level.
+const PLI_INSTANCE: usize = 1 << 30;
+
+/// The PL/I NULL pointer value.
+const PLI_NULL: i64 = 0xFF00_0000;
 
 /// Runs transaction `transid` for an attention key at a terminal; the
 /// error is the abend code.
@@ -164,7 +175,7 @@ fn run_task(
         r.task_count += 1;
         r.task_count
     };
-    let mut m = Machine::new(loadlibs);
+    let mut m = Machine::new(loadlibs.clone());
     // DISPLAY output of the programs goes to the region log (CEEOUT)
     let out = Capture::default();
     m.set_stdout(Box::new(out.clone()));
@@ -178,6 +189,7 @@ fn run_task(
             aid: aid_byte,
             eib: eib_addr,
             programs: Vec::new(),
+            commareas: Vec::new(),
             handlers: HashMap::new(),
             xctl: None,
             input_pending: startcode == "TD",
@@ -190,8 +202,15 @@ fn run_task(
         }),
         db2: std::cell::RefCell::new(None),
         dli: std::cell::RefCell::new(None),
+        out: out.clone(),
     });
     m.set_exec_host(task.clone());
+    // COBOL programs CALL PL/I procedures of the load libraries
+    let pli_out = out.clone();
+    m.set_linker(zeus_pli::link::ModuleLinker::new(
+        loadlibs.clone(),
+        Box::new(move || pli_env(&pli_out)),
+    ));
     // the MQI: calls with the default connection use the region's
     // connection to the queue manager (as through the CICS adapter)
     zeus_mq::register(&mut m);
@@ -241,6 +260,37 @@ fn run_task(
             Err(code)
         }
     }
+}
+
+/// The run-time environment of a PL/I program in a task: no files, its
+/// output to the region log, EXEC CICS (and SQL) through the task.
+fn pli_env(out: &Capture) -> zeus_pli::vm::RunEnv {
+    zeus_pli::vm::RunEnv {
+        dds: HashMap::new(),
+        parm: String::new(),
+        stdout: Box::new(out.clone()),
+        msgout: Box::new(out.clone()),
+        stdin: Some(Vec::new()),
+        stdin_reader: None,
+        linker: None,
+        exec_host: None,
+    }
+}
+
+/// The PL/I module of program `name` in the load libraries, if it is one.
+fn pli_module(loadlibs: &[std::path::PathBuf], name: &str) -> Option<zeus_pli::ir::Module> {
+    for d in loadlibs {
+        for path in [d.join(format!("{name}.zo")), d.join(name)] {
+            if let Ok(data) = std::fs::read(&path) {
+                return if zeus_pli::is_module(&data) {
+                    zeus_pli::load_module_bytes(&data).ok()
+                } else {
+                    None
+                };
+            }
+        }
+    }
+    None
 }
 
 /// Collects what programs DISPLAY.
@@ -305,9 +355,21 @@ impl Task {
             let calen = ca.map_or(0, |c| c.1) as u16;
             m.storage_mut()[eib_addr + eib::CALEN..eib_addr + eib::CALEN + 2]
                 .copy_from_slice(&calen.to_be_bytes());
-            self.st.borrow_mut().programs.push(program.clone());
-            let r = m.run_program(&program, &[Some(eib_addr), ca.map(|c| c.0)]);
-            self.st.borrow_mut().programs.pop();
+            let level = {
+                let mut st = self.st.borrow_mut();
+                st.programs.push(program.clone());
+                st.commareas.push(ca);
+                st.programs.len()
+            };
+            let r = match self.run_pli(m, &program, ca, level) {
+                Some(r) => r.map(|()| Some(ProgramEnd::Returned)),
+                None => m.run_program(&program, &[Some(eib_addr), ca.map(|c| c.0)]),
+            };
+            {
+                let mut st = self.st.borrow_mut();
+                st.programs.pop();
+                st.commareas.pop();
+            }
             match r? {
                 None => {
                     return Err(if top {
@@ -326,6 +388,31 @@ impl Task {
                 None => return Ok(()),
             }
         }
+    }
+
+    /// Runs `program` if it is a PL/I program: in the task's storage, lent
+    /// to it while it runs. None: it is not one.
+    fn run_pli(
+        &self,
+        m: &mut Machine,
+        program: &str,
+        ca: Option<(usize, usize)>,
+        level: usize,
+    ) -> Option<RResult<()>> {
+        let loadlibs = self.region.borrow().loadlibs.clone();
+        let module = pli_module(&loadlibs, program)?;
+        let eib_addr = self.st.borrow().eib;
+        let mut env = pli_env(&self.out);
+        env.linker = m.linker();
+        let sys = std::mem::replace(m, Machine::placeholder());
+        let mut pm = zeus_pli::vm::Machine::with_storage(module, env, sys);
+        let instance = PLI_INSTANCE + level;
+        pm.cics_instance = instance;
+        let r = pm.run_cics(eib_addr, ca.map(|c| c.0));
+        let r = pm.cics_end(r);
+        *m = pm.detach();
+        self.st.borrow_mut().handlers.remove(&instance);
+        Some(r.map_err(RunError))
     }
 
     // ---- operands -------------------------------------------------------
@@ -609,6 +696,37 @@ impl Task {
                 self.finish(m, call, "NORMAL", 0)
             }
         }
+    }
+
+    /// ADDRESS EIB(ptr) COMMAREA(ptr): the addresses of the EXEC interface
+    /// block and of the program's COMMAREA (null without one).
+    fn address(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        let (eib_addr, ca) = {
+            let st = self.st.borrow();
+            (st.eib, st.commareas.last().copied().flatten())
+        };
+        let null = if call.instance >= PLI_INSTANCE {
+            PLI_NULL
+        } else {
+            0
+        };
+        for (name, addr) in [("EIB", Some(eib_addr)), ("COMMAREA", ca.map(|c| c.0))] {
+            match call.arg(name) {
+                Some(ExecArg::Area(a)) => {
+                    Self::store_num(m, a, addr.map_or(null, |a| a as i64));
+                }
+                Some(ExecArg::Pointer {
+                    linkage: Some(slot),
+                    ..
+                }) => {
+                    if let Some(a) = addr {
+                        m.set_linkage(call.instance, *slot, a)?;
+                    }
+                }
+                _ => {}
+            }
+        }
+        self.finish(m, call, "NORMAL", 0)
     }
 
     fn program_exists(&self, name: &str) -> bool {
@@ -1671,6 +1789,7 @@ impl ExecHost for Task {
             | "READPREV" | "ENDBR" | "RESETBR" => self.file_control(m, call),
             "WRITEQ" | "READQ" | "DELETEQ" => self.queues(m, call),
             "ASSIGN" => self.assign(m, call),
+            "ADDRESS" => self.address(m, call),
             "ASKTIME" => self.asktime(m, call),
             "FORMATTIME" => self.formattime(m, call),
             "BIF" if call.has("DEEDIT") => self.deedit(m, call),
