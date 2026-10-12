@@ -29,6 +29,9 @@ impl Ref {
     }
 }
 
+/// An item of ALLOCATE: variable, SET, string length, IN area.
+pub type AllocItem = (Ref, Option<Expr>, Option<Expr>, Option<Expr>);
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     /// Decimal or binary numeric constant as written.
@@ -49,12 +52,18 @@ pub enum Expr {
     Binary(&'static str, Box<Expr>, Box<Expr>, Pos),
     /// `*` as an argument (cross sections, extents).
     Star(Pos),
+    /// `iSUB` in the base of a DEFINED array: subscript i of the
+    /// reference to it.
+    ISub(u8, Pos),
 }
 
 impl Expr {
     pub fn pos(&self) -> Pos {
         match self {
-            Expr::Num { pos, .. } | Expr::Str { pos, .. } | Expr::Star(pos) => *pos,
+            Expr::Num { pos, .. }
+            | Expr::Str { pos, .. }
+            | Expr::Star(pos)
+            | Expr::ISub(_, pos) => *pos,
             Expr::Ref(r) => r.pos,
             Expr::Unary(_, _, p) | Expr::Binary(_, _, _, p) => *p,
         }
@@ -75,6 +84,33 @@ pub enum Extent {
 pub struct Bound {
     pub lower: Option<Extent>,
     pub upper: Extent,
+}
+
+/// A rule of a DEFAULT statement: the names it applies to (empty: all)
+/// and the attributes it adds, and the VALUE attribute lists.
+#[derive(Debug, Clone, PartialEq)]
+pub struct DefaultRule {
+    pub ranges: Vec<DefaultRange>,
+    pub attrs: Vec<Attr>,
+    pub values: Vec<Vec<Attr>>,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum DefaultRange {
+    All,
+    /// Names starting with a letter from .. to.
+    Letters(char, char),
+    /// Names starting with the text.
+    Prefix(String),
+}
+
+/// An alternative of a GENERIC declaration.
+#[derive(Debug, Clone, PartialEq)]
+pub struct GenericAlt {
+    pub entry: String,
+    /// The attribute words of each argument's descriptor; None for
+    /// OTHERWISE.
+    pub when: Option<Vec<Vec<String>>>,
 }
 
 /// Data and other attributes of a declaration.
@@ -99,13 +135,21 @@ pub enum Attr {
     Nonvarying,
     Picture(String),
     Pointer,
-    Offset,
-    Handle,
+    /// OFFSET (with the name of its area).
+    Offset(Option<String>),
+    /// HANDLE of a structure type.
+    Handle(Option<String>),
+    /// DEFINE STRUCTURE: the level-1 item of a structure type.
+    StructDef,
+    /// DEFINE ALIAS: a name for these attributes.
+    AliasDef(Vec<Attr>),
     Area(Option<Extent>),
     Label,
     Format,
     Entry(Vec<Vec<Attr>>),
     Returns(Vec<Attr>),
+    /// VARIABLE: an ENTRY (or FILE, LABEL) variable rather than a constant.
+    Variable,
     File,
     Stream,
     Record,
@@ -138,7 +182,14 @@ pub enum Attr {
     Value(Expr),
     Options(Vec<String>),
     Parameter,
-    Generic,
+    /// GENERIC: the alternatives (entry, and the descriptors that select
+    /// it; None: OTHERWISE).
+    Generic(Vec<GenericAlt>),
+    /// DEFINE ORDINAL: the members and their VALUEs (as a declaration of
+    /// the type's name).
+    OrdinalDef(Vec<(String, Option<Expr>)>),
+    /// The rules of a DEFAULT statement (as a declaration).
+    DefaultRules(Vec<DefaultRule>),
     Abnormal,
     Normal,
     Assignable,
@@ -195,6 +246,8 @@ pub enum DoSpec {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct DoItem {
+    /// UPTHRU (true) / DOWNTHRU (false): `to` is the last value.
+    pub thru: Option<bool>,
     pub start: Expr,
     pub to: Option<Expr>,
     pub by: Option<Expr>,
@@ -341,8 +394,13 @@ pub enum StmtKind {
     Locate(Ref, RecordOpts),
     /// Variable (with bounds for a CONTROLLED array), SET, and a string
     /// length (`CHAR(n)` / `BIT(n)`).
-    Allocate(Vec<(Ref, Option<Expr>, Option<Expr>)>),
+    /// ... and the AREA it is allocated IN.
+    Allocate(Vec<AllocItem>),
     Free(Vec<Ref>),
+    /// FETCH entry [TITLE(name)] [SET(pointer)], ...
+    Fetch(Vec<(String, Option<Expr>)>),
+    /// RELEASE entry, ... (empty: RELEASE *)
+    Release(Vec<String>),
     Display {
         value: Expr,
         reply: Option<Expr>,

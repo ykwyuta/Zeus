@@ -78,6 +78,7 @@ impl Machine {
         Ok(match b {
             Abs => match &v[0] {
                 Value::Fixed { m, q, dec } => Value::fixed(m.abs(), *q, *dec),
+                Value::Cplx(c) => Value::Float(c.0.as_f64().hypot(c.1.as_f64())),
                 x => Value::Float(x.as_f64().abs()),
             },
             Sign => {
@@ -406,9 +407,44 @@ impl Machine {
                 if b == High { 0xFF } else { 0x00 };
                 int(0).unwrap_or(0).max(0) as usize
             ]),
+            Real | Imag | Conjg if matches!(v.first(), Some(Value::Cplx(_))) => {
+                let Some(Value::Cplx(c)) = v.into_iter().next() else {
+                    unreachable!()
+                };
+                let (re, im) = *c;
+                match b {
+                    Real => re,
+                    Imag => im,
+                    Conjg => Value::cplx(
+                        re,
+                        match im {
+                            Value::Fixed { m, q, dec } => Value::fixed(-m, q, dec),
+                            Value::Float(f) => Value::Float(-f),
+                            v => v,
+                        },
+                    ),
+                    _ => unreachable!(),
+                }
+            }
+            Complex => {
+                let mut it = v.into_iter();
+                let re = it.next().unwrap_or(Value::int(0));
+                let im = it.next().unwrap_or(Value::int(0));
+                Value::cplx(re, im)
+            }
             Hex => {
                 let bytes = match (&v[0], &args[0].ty) {
-                    (Value::Char(c), Ty::Char { .. }) => c.clone(),
+                    (Value::Char(c), Ty::Char { .. } | Ty::Wchar { .. }) => c.clone(),
+                    (Value::Bit(bits), _) => bits
+                        .chunks(8)
+                        .map(|c| {
+                            let mut x = 0u8;
+                            for (k, &on) in c.iter().enumerate() {
+                                x |= u8::from(on) << (7 - k);
+                            }
+                            x
+                        })
+                        .collect(),
                     (x, t) => {
                         let (n, _) = t.storage(true);
                         let mut b = vec![0u8; n as usize];
@@ -516,6 +552,39 @@ impl Machine {
             }
             PliRetV => Value::int(i64::from(self.rc)),
             Null => Value::Ptr(value::NULL),
+            // ORDINAL members: the table the compiler gives (value, name)
+            OrdinalName | OrdinalSucc | OrdinalPred => {
+                let x = v[0].as_i64();
+                let Value::Char(t) = &v[1] else {
+                    return Err(Intr::Fatal("ordinal table".into()));
+                };
+                let mut members = Vec::new();
+                let mut at = 0;
+                while at + 9 <= t.len() {
+                    let val = i64::from_be_bytes(t[at..at + 8].try_into().unwrap());
+                    let n = t[at + 8] as usize;
+                    let name =
+                        std::string::String::from_utf8_lossy(&t[at + 9..(at + 9 + n).min(t.len())])
+                            .into_owned();
+                    members.push((val, name));
+                    at += 9 + n;
+                }
+                let k = members.iter().position(|m| m.0 == x);
+                match b {
+                    OrdinalName => Value::Char(zeus_cobol::ebcdic::encode(
+                        &k.map(|k| members[k].1.clone()).unwrap_or_default(),
+                    )),
+                    OrdinalSucc => {
+                        Value::int(k.and_then(|k| members.get(k + 1)).map_or(x + 1, |m| m.0))
+                    }
+                    _ => Value::int(
+                        k.and_then(|k| k.checked_sub(1))
+                            .map_or(x - 1, |k| members[k].0),
+                    ),
+                }
+            }
+            // an empty area
+            Empty => Value::Char(vec![0u8; crate::types::AREA_HEADER as usize]),
             SysNull => Value::Ptr(0),
             PointerAdd => match (&v[0], int(1)) {
                 (Value::Ptr(p), Some(n)) => Value::Ptr((i64::from(*p) + n) as u32),
@@ -562,9 +631,27 @@ impl Machine {
             None => 1,
         };
         Ok(match b {
+            New => {
+                let size = self.var_size(r.var, act, None)?;
+                Value::Ptr(self.heap_alloc(size as u32))
+            }
             Addr => {
                 let (bit, _) = self.element_or_start(r, act)?;
                 Value::Ptr((bit / 8) as u32)
+            }
+            PointerOf | OffsetOf => {
+                let base = self.area_base(r.var, act)?;
+                let Value::Ptr(x) = self.eval(&args[0], act)? else {
+                    return Err(Intr::Fatal(format!("{b:?}: not a locator")));
+                };
+                // offset 0 is the first allocation; pointer 0 is SYSNULL
+                Value::Ptr(if x == value::NULL || (b == OffsetOf && x == 0) {
+                    value::NULL
+                } else if b == PointerOf {
+                    base.wrapping_add(x)
+                } else {
+                    x.wrapping_sub(base)
+                })
             }
             Dim | Lbound | Hbound => {
                 let (_, dims) = self.base_of(r, act)?;
@@ -602,7 +689,7 @@ impl Machine {
                 }
                 Value::int(n)
             }
-            Allocation => Value::int(self.allocation(r.var)?),
+            Allocation => Value::int(self.allocation(r.var, act)?),
             Present => Value::bit1(true),
             Omitted => Value::bit1(false),
             String => {

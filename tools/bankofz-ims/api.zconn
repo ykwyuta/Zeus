@@ -1,0 +1,17 @@
+# The Bank of Z REST API on its IMS transactions (zconn script), after
+# session.txt (customer 2 changed)
+call GET /api/ims/customers/000000003
+status 200
+expect "lastName":"Elton"
+call GET /api/ims/customers/000000002
+expect "lastName":"Smith"
+call GET /api/ims/customers/000000001/accounts
+expect "accountId":"101"
+expect "accountType":"SAVINGS"
+call GET /api/ims/accounts/000000001/balances
+expect 8830
+call PUT /api/ims/customers/000000003 {"firstName":"Oscar","lastName":"Elton","address":{"addressLine1":"9 Elm St","city":"CAINSVILLE","postalCode":"64632"},"phoneNumber":"914-642-0000"}
+status 200
+expect "addressLine1":"9 Elm St"
+call GET /api/ims/customers/000000003
+expect "phoneNumber":"914-642-0000"

@@ -11,7 +11,7 @@
 
 pub mod cond;
 pub mod expand;
-mod ims;
+pub mod ims;
 pub mod job;
 pub mod native;
 pub mod parse;

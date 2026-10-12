@@ -12,21 +12,100 @@ use std::collections::HashMap;
 use zeus_cobol::ebcdic;
 use zeus_cobol::vm::exec::{Area, ExecArg, ExecCall, ExecHost, ExecOutcome};
 use zeus_cobol::vm::{Machine, RResult, RunError, data};
-use zeus_cobol::zir::{DataType, ExecKind};
+use zeus_cobol::zir::{DataType, ExecKind, NumType, NumUsage, SignPos};
 use zeus_decimal::Dec;
-use zeus_drda::sql::{Rows, SqlCa, Value};
-use zeus_drda::{Connection, Params};
+use zeus_drda::sql::{Column, Rows, SqlCa, Value};
+
+/// The database server: Db2 (DRDA) or PostgreSQL.
+#[derive(Clone)]
+pub enum Server {
+    Db2(zeus_drda::Params),
+    Postgres(zeus_pg::Params),
+}
+
+impl Server {
+    /// `db2://user:pw@host:port/DB` or `postgres://user:pw@host:port/db`.
+    pub fn from_url(url: &str) -> Result<Server, String> {
+        if url.starts_with("postgres://") || url.starts_with("postgresql://") {
+            zeus_pg::Params::from_url(url).map(Server::Postgres)
+        } else {
+            zeus_drda::Params::from_url(url)
+                .map(Server::Db2)
+                .map_err(|e| e.0)
+        }
+    }
+}
+
+/// A connection to the server.
+enum Connection {
+    Db2(zeus_drda::Connection),
+    Postgres(crate::pg::Session),
+}
+
+impl Connection {
+    fn connect(s: &Server, schema: Option<&str>) -> Result<Connection, String> {
+        Ok(match s {
+            Server::Db2(p) => {
+                let mut c = zeus_drda::Connection::connect(p).map_err(|e| e.0)?;
+                if let Some(s) = schema {
+                    c.execute(&format!("SET CURRENT SCHEMA = '{s}'"))
+                        .map_err(|e| e.0)?;
+                }
+                Connection::Db2(c)
+            }
+            Server::Postgres(p) => {
+                let mut c = crate::pg::Session::connect(p)?;
+                if let Some(s) = schema {
+                    c.set_schema(s)?;
+                }
+                Connection::Postgres(c)
+            }
+        })
+    }
+
+    fn execute(&mut self, sql: &str) -> Result<SqlCa, String> {
+        match self {
+            Connection::Db2(c) => c.execute(sql).map_err(|e| e.0),
+            Connection::Postgres(c) => c.execute(sql),
+        }
+    }
+
+    fn query(&mut self, sql: &str) -> Result<Rows, String> {
+        match self {
+            Connection::Db2(c) => c.query(sql).map_err(|e| e.0),
+            Connection::Postgres(c) => c.query(sql),
+        }
+    }
+
+    /// Whether positioned updates need cursors of the server.
+    fn server_cursors(&self) -> bool {
+        matches!(self, Connection::Postgres(_))
+    }
+
+    fn end(&mut self, commit: bool) -> Result<SqlCa, String> {
+        match self {
+            Connection::Db2(c) if commit => c.commit().map_err(|e| e.0),
+            Connection::Db2(c) => c.rollback().map_err(|e| e.0),
+            Connection::Postgres(c) => c.end(commit),
+        }
+    }
+}
 
 struct Cursor {
     rows: Vec<Vec<Value>>,
     next: usize,
+    /// The rows come from a cursor of the server, one FETCH at a time
+    /// (a cursor FOR UPDATE on PostgreSQL, for WHERE CURRENT OF).
+    server: bool,
 }
 
 struct State {
-    params: Option<Params>,
+    params: Option<Server>,
     schema: Option<String>,
     conn: Option<Connection>,
     cursors: HashMap<String, Cursor>,
+    /// Prepared statements (PREPARE): their text.
+    prepared: HashMap<String, String>,
 }
 
 /// The Db2 interface of a run unit or a CICS region.
@@ -35,43 +114,41 @@ pub struct Db2Host {
 }
 
 impl Db2Host {
-    /// A host for the server named by ZEUS_DB2 (`db2://user:pw@host:port/DB`)
-    /// with the qualifier ZEUS_DB2_SCHEMA; None when ZEUS_DB2 is not set.
+    /// A host for the server named by ZEUS_DB2 (`db2://user:pw@host:port/DB`,
+    /// or `postgres://user:pw@host:port/db` for PostgreSQL) with the
+    /// qualifier ZEUS_DB2_SCHEMA; None when ZEUS_DB2 is not set.
     pub fn from_env() -> Option<Db2Host> {
         let url = std::env::var("ZEUS_DB2").ok()?;
-        let params = Params::from_url(&url).ok();
+        let params = Server::from_url(&url).ok();
         Some(Db2Host::new(params, std::env::var("ZEUS_DB2_SCHEMA").ok()))
     }
 
-    pub fn new(params: Option<Params>, schema: Option<String>) -> Db2Host {
+    pub fn new(params: Option<Server>, schema: Option<String>) -> Db2Host {
         Db2Host {
             st: RefCell::new(State {
                 params,
                 schema,
                 conn: None,
                 cursors: HashMap::new(),
+                prepared: HashMap::new(),
             }),
         }
     }
 
     fn with_conn<T>(
         &self,
-        f: impl FnOnce(&mut Connection) -> zeus_drda::client::Result<T>,
+        f: impl FnOnce(&mut Connection) -> Result<T, String>,
     ) -> Result<T, SqlCa> {
         let mut st = self.st.borrow_mut();
         if st.conn.is_none() {
             let Some(p) = st.params.clone() else {
                 return Err(comm_error("no Db2 server configured (ZEUS_DB2)"));
             };
-            let mut c = Connection::connect(&p).map_err(|e| comm_error(&e.0))?;
-            if let Some(s) = st.schema.clone() {
-                c.execute(&format!("SET CURRENT SCHEMA = '{s}'"))
-                    .map_err(|e| comm_error(&e.0))?;
-            }
+            let c = Connection::connect(&p, st.schema.as_deref()).map_err(|e| comm_error(&e))?;
             st.conn = Some(c);
         }
         let c = st.conn.as_mut().unwrap();
-        let r = f(c).map_err(|e| comm_error(&e.0));
+        let r = f(c).map_err(|e| comm_error(&e));
         if r.is_err() {
             // the connection is no longer usable
             st.conn = None;
@@ -85,12 +162,22 @@ impl Db2Host {
         if self.st.borrow().conn.is_none() {
             return Ok(SqlCa::ok());
         }
-        self.with_conn(|c| if commit { c.commit() } else { c.rollback() })
+        self.with_conn(|c| c.end(commit))
     }
 
     /// Runs one SQL statement of a script (DSNTIAD), translated for the
     /// server; Ok(None) when the statement was skipped.
     pub fn run_script_statement(&self, sql: &str) -> Result<Option<SqlCa>, SqlCa> {
+        self.run_script_query(sql, &mut Vec::new())
+    }
+
+    /// As [`Db2Host::run_script_statement`]; the rows of a query are added
+    /// to `rows` as text (DSNTEP2 output).
+    pub fn run_script_query(
+        &self,
+        sql: &str,
+        rows: &mut Vec<Vec<String>>,
+    ) -> Result<Option<SqlCa>, SqlCa> {
         let Some(t) = crate::dialect::translate(sql) else {
             return Ok(None);
         };
@@ -100,7 +187,25 @@ impl Db2Host {
             .unwrap_or("")
             .to_ascii_uppercase();
         let r = if first == "SELECT" || first == "WITH" || first == "VALUES" {
-            self.with_conn(|c| c.query(&t)).map(|r| r.sqlca)
+            self.with_conn(|c| c.query(&t)).map(|r| {
+                for row in &r.rows {
+                    rows.push(
+                        row.iter()
+                            .map(|v| match v {
+                                zeus_drda::sql::Value::Null => "-".to_string(),
+                                zeus_drda::sql::Value::Int(i) => i.to_string(),
+                                zeus_drda::sql::Value::Dec(d) => d.clone(),
+                                zeus_drda::sql::Value::Float(f) => f.to_string(),
+                                zeus_drda::sql::Value::Str(s) => s.clone(),
+                                zeus_drda::sql::Value::Bytes(b) => {
+                                    b.iter().map(|x| format!("{x:02X}")).collect()
+                                }
+                            })
+                            .collect(),
+                    );
+                }
+                r.sqlca
+            })
         } else {
             self.with_conn(|c| c.execute(&t))
         };
@@ -147,6 +252,13 @@ fn literal(m: &Machine, area: &Area, varchar: bool, ind: Option<&Area>) -> Strin
     }
     match &area.ty {
         DataType::Numeric(t) => data::num_value(t, b).to_string(),
+        // COMP-1 / COMP-2, PL/I FLOAT: hexadecimal floating point
+        DataType::Float { .. } => format!("{:E}", zeus_decimal::hfp::decode(b)),
+        // bytes (PL/I BIT): a binary string
+        DataType::Group => {
+            let h: String = b.iter().map(|x| format!("{x:02X}")).collect();
+            format!("X'{h}'")
+        }
         DataType::Pointer | DataType::Index => {
             i32::from_be_bytes([b[0], b[1], b[2], b[3]]).to_string()
         }
@@ -199,6 +311,10 @@ fn store(m: &mut Machine, area: &Area, varchar: bool, ind: Option<&Area>, v: &Va
         DataType::Numeric(t) => {
             let d = Dec::parse(text.trim()).unwrap_or(Dec::ZERO);
             data::store_num(t, mem, d, false);
+        }
+        DataType::Float { .. } => {
+            let f: f64 = text.trim().parse().unwrap_or(0.0);
+            zeus_decimal::hfp::encode(f, mem);
         }
         DataType::Dbcs => {
             let e = zeus_cobol::codepage::active().encode_dbcs(&text);
@@ -322,7 +438,322 @@ fn set_sqlca(m: &mut Machine, area: &Area, ca: &SqlCa) {
     m.storage_mut()[area.addr..area.addr + 136].copy_from_slice(&b);
 }
 
+fn num(usage: NumUsage, digits: u32, scale: i32) -> DataType {
+    DataType::Numeric(NumType {
+        usage,
+        digits,
+        scale,
+        signed: true,
+        sign: SignPos::Trailing,
+    })
+}
+
+/// SQLTYPE and SQLLEN of a result column (in an SQLDA).
+fn sqltype(c: &Column) -> (i16, i16) {
+    let (t, l): (i16, i16) = match c.drda_type {
+        0x02 => (496, 4),
+        0x04 => (500, 2),
+        0x16 => (492, 8),
+        0x0E => (484, c.len as i16),
+        0x0A => (480, 8),
+        0x0C => (480, 4),
+        0x20 => (384, 10),
+        0x22 => (388, 8),
+        0x24 => (392, 26),
+        0x30 | 0x3C | 0x26 => (452, c.len as i16),
+        _ => (448, c.len.min(32704) as i16),
+    };
+    (t + i16::from(c.nullable), l)
+}
+
+const SQLDA_HEADER: usize = 16;
+const SQLVAR_LEN: usize = 44;
+
+fn half(b: &[u8], at: usize) -> i16 {
+    i16::from_be_bytes([b[at], b[at + 1]])
+}
+
+fn word(b: &[u8], at: usize) -> u32 {
+    u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
+}
+
+/// The host variables an SQLDA describes: SQLDATA and SQLIND of its first
+/// SQLD entries, typed by SQLTYPE and SQLLEN.
+fn sqlda_vars(m: &Machine, a: &Area) -> (Vec<(Area, Option<Area>)>, Vec<bool>) {
+    let st = m.storage();
+    let base = a.addr;
+    let mut host = Vec::new();
+    let mut vc = Vec::new();
+    if base + SQLDA_HEADER > st.len() {
+        return (host, vc);
+    }
+    let n = half(st, base + 12).max(0) as usize;
+    let d = half(st, base + 14).max(0) as usize;
+    let null = |p: u32| p == 0 || p == 0xFF00_0000;
+    for k in 0..n.min(d) {
+        let v = base + SQLDA_HEADER + SQLVAR_LEN * k;
+        if v + SQLVAR_LEN > st.len() {
+            break;
+        }
+        let ty = half(st, v);
+        let len = half(st, v + 2) as u16 as usize;
+        let (data, ind) = (word(st, v + 4), word(st, v + 8));
+        let (dt, l, varchar) = match ty & !1 {
+            448 => (DataType::Alphanumeric { just: false }, len + 2, true),
+            484 => {
+                let (p, q) = (len >> 8, len & 0xFF);
+                (num(NumUsage::Packed, p as u32, q as i32), p / 2 + 1, false)
+            }
+            496 => (num(NumUsage::Native, 9, 0), 4, false),
+            500 => (num(NumUsage::Native, 4, 0), 2, false),
+            492 => (num(NumUsage::Native, 18, 0), 8, false),
+            480 => (DataType::Float { long: len == 8 }, len, false),
+            468 => (DataType::Dbcs, 2 * len, false),
+            _ => (DataType::Alphanumeric { just: false }, len, false),
+        };
+        let area = if null(data) {
+            Area {
+                addr: 0,
+                len: 0,
+                ty: dt,
+            }
+        } else {
+            Area {
+                addr: data as usize,
+                len: l,
+                ty: dt,
+            }
+        };
+        let ind = (ty & 1 == 1 && !null(ind)).then(|| Area {
+            addr: ind as usize,
+            len: 2,
+            ty: num(NumUsage::Native, 4, 0),
+        });
+        host.push((area, ind));
+        vc.push(varchar);
+    }
+    (host, vc)
+}
+
+/// Describes result columns in an SQLDA (DESCRIBE, PREPARE INTO): SQLD
+/// and, when SQLN is large enough, the SQLTYPE, SQLLEN and SQLNAME of each.
+fn write_sqlda(m: &mut Machine, a: &Area, cols: &[Column]) -> SqlCa {
+    let mem = m.storage_mut();
+    let base = a.addr;
+    if base + SQLDA_HEADER > mem.len() {
+        return SqlCa::ok();
+    }
+    let n = half(mem, base + 12).max(0) as usize;
+    mem[base..base + 8].copy_from_slice(&ebcdic::encode("SQLDA   "));
+    mem[base + 8..base + 12]
+        .copy_from_slice(&((SQLDA_HEADER + SQLVAR_LEN * n) as i32).to_be_bytes());
+    mem[base + 14..base + 16].copy_from_slice(&(cols.len() as i16).to_be_bytes());
+    if n < cols.len() {
+        // SQLN too small: only SQLD is set
+        return SqlCa {
+            sqlcode: 236,
+            sqlstate: "01005".into(),
+            ..SqlCa::default()
+        };
+    }
+    for (k, c) in cols.iter().enumerate() {
+        let v = base + SQLDA_HEADER + SQLVAR_LEN * k;
+        if v + SQLVAR_LEN > mem.len() {
+            break;
+        }
+        let (t, l) = sqltype(c);
+        mem[v..v + 2].copy_from_slice(&t.to_be_bytes());
+        mem[v + 2..v + 4].copy_from_slice(&l.to_be_bytes());
+        let mut name = ebcdic::encode(&c.name);
+        name.truncate(30);
+        mem[v + 12..v + 14].copy_from_slice(&(name.len() as i16).to_be_bytes());
+        name.resize(30, ebcdic::SPACE);
+        mem[v + 14..v + 44].copy_from_slice(&name);
+    }
+    SqlCa::ok()
+}
+
+/// The text of a host variable (a statement string).
+fn host_text(m: &Machine, a: &Area, varchar: bool) -> String {
+    let b = &m.storage()[a.addr..a.addr + a.len];
+    if varchar && b.len() >= 2 {
+        let n = (u16::from_be_bytes([b[0], b[1]]) as usize).min(b.len() - 2);
+        return text_of(&b[2..2 + n]);
+    }
+    text_of(b).trim_end().to_string()
+}
+
 impl Db2Host {
+    /// The statement string after keyword `kw` (FROM of PREPARE, IMMEDIATE
+    /// of EXECUTE IMMEDIATE): a host variable or a string constant.
+    fn source_text(m: &Machine, call: &ExecCall, sql: &str, kw: &str) -> Option<String> {
+        let at = find_kw(sql, kw, 0)?;
+        let rest = sql[at + kw.len()..].trim();
+        if rest.starts_with('?') {
+            let k = count_markers(&sql[..at]);
+            let (a, _) = call.host.get(k)?;
+            let vc = call.host_varchar.get(k).copied().unwrap_or(false);
+            return Some(host_text(m, a, vc));
+        }
+        let t = rest.strip_prefix('\'')?.strip_suffix('\'')?;
+        Some(t.replace("''", "'"))
+    }
+
+    /// Runs a statement text with these host variables (EXECUTE).
+    fn run_text(
+        &self,
+        m: &mut Machine,
+        call: &ExecCall,
+        text: String,
+        host: (Vec<(Area, Option<Area>)>, Vec<bool>),
+    ) -> SqlCa {
+        let mut c = call.clone();
+        c.command = text
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        c.sql = Some(text);
+        c.host = host.0;
+        c.host_varchar = host.1;
+        self.statement(m, &c).unwrap_or_else(SqlCa::ok)
+    }
+
+    /// The columns of a query's result.
+    fn describe(&self, text: &str) -> Result<Vec<Column>, SqlCa> {
+        // parameter markers: NULL
+        let r = self.query(&bind(text, &[]))?;
+        if r.sqlca.sqlcode < 0 {
+            return Err(r.sqlca);
+        }
+        Ok(r.columns)
+    }
+
+    fn not_prepared(name: &str) -> SqlCa {
+        SqlCa {
+            sqlcode: -514,
+            sqlstate: "26501".into(),
+            tokens: vec![name.to_string()],
+            ..SqlCa::default()
+        }
+    }
+
+    /// Dynamic SQL: PREPARE, EXECUTE (IMMEDIATE), DESCRIBE, and OPEN /
+    /// FETCH of a prepared query or with an SQLDA (USING DESCRIPTOR).
+    fn dynamic(&self, m: &mut Machine, call: &ExecCall, sql: &str) -> Option<SqlCa> {
+        let words: Vec<String> = sql
+            .split_whitespace()
+            .map(|w| w.to_ascii_uppercase())
+            .collect();
+        let w = |k: usize| words.get(k).map(String::as_str).unwrap_or("");
+        let descriptor = find_kw(sql, "DESCRIPTOR", 0);
+        let sqlda = || {
+            let k = count_markers(&sql[..descriptor.unwrap_or(0)]);
+            call.host.get(k).map(|(a, _)| sqlda_vars(m, a))
+        };
+        Some(match w(0) {
+            "PREPARE" => {
+                let Some(text) = Self::source_text(m, call, sql, "FROM") else {
+                    return Some(SqlCa {
+                        sqlcode: -104,
+                        sqlstate: "42601".into(),
+                        ..SqlCa::default()
+                    });
+                };
+                let name = w(1).to_string();
+                self.st
+                    .borrow_mut()
+                    .prepared
+                    .insert(name, text.trim().to_string());
+                // PREPARE ... INTO :sqlda: also described
+                if find_kw(sql, "INTO", 0).is_some()
+                    && let Some((a, _)) = call.host.first()
+                {
+                    let a = a.clone();
+                    return Some(match self.describe(text.trim()) {
+                        Ok(cols) => write_sqlda(m, &a, &cols),
+                        Err(ca) => ca,
+                    });
+                }
+                SqlCa::ok()
+            }
+            "EXECUTE" if w(1) == "IMMEDIATE" => {
+                match Self::source_text(m, call, sql, "IMMEDIATE") {
+                    Some(text) => self.run_text(m, call, text, (Vec::new(), Vec::new())),
+                    None => SqlCa {
+                        sqlcode: -104,
+                        sqlstate: "42601".into(),
+                        ..SqlCa::default()
+                    },
+                }
+            }
+            "EXECUTE" => {
+                let name = w(1);
+                let Some(text) = self.st.borrow().prepared.get(name).cloned() else {
+                    return Some(Self::not_prepared(name));
+                };
+                let host = if descriptor.is_some() {
+                    sqlda().unwrap_or_default()
+                } else {
+                    (call.host.clone(), call.host_varchar.clone())
+                };
+                self.run_text(m, call, text, host)
+            }
+            "DESCRIBE" => {
+                let name = if w(1) == "OUTPUT" { w(2) } else { w(1) };
+                let Some(text) = self.st.borrow().prepared.get(name).cloned() else {
+                    return Some(Self::not_prepared(name));
+                };
+                let Some((a, _)) = call.host.last() else {
+                    return Some(SqlCa::ok());
+                };
+                let a = a.clone();
+                match self.describe(&text) {
+                    Ok(cols) => write_sqlda(m, &a, &cols),
+                    Err(ca) => ca,
+                }
+            }
+            "OPEN" => {
+                // a cursor for a prepared statement: its text, the USING
+                // values (or the SQLDA's)
+                let query = match call.arg("QUERY") {
+                    Some(ExecArg::Name(q)) => q.trim().to_ascii_uppercase(),
+                    _ => return None,
+                };
+                let prepared = self.st.borrow().prepared.get(&query).cloned();
+                if prepared.is_none() && descriptor.is_none() {
+                    return None;
+                }
+                let mut c = call.clone();
+                if let Some(text) = prepared {
+                    c.options.retain(|(n, _)| n != "QUERY");
+                    c.options
+                        .push(("QUERY".to_string(), Some(ExecArg::Name(text))));
+                } else if !query.contains(' ') {
+                    return Some(Self::not_prepared(&query));
+                }
+                if descriptor.is_some() {
+                    let (h, v) = sqlda().unwrap_or_default();
+                    c.host = h;
+                    c.host_varchar = v;
+                }
+                let words = sql.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+                c.sql = Some(words);
+                self.statement(m, &c)?
+            }
+            "FETCH" if descriptor.is_some() => {
+                let (h, v) = sqlda().unwrap_or_default();
+                let mut c = call.clone();
+                c.host = h;
+                c.host_varchar = v;
+                let at = find_kw(sql, "USING", 0).unwrap_or(sql.len());
+                c.sql = Some(sql[..at].to_string());
+                self.statement(m, &c)?
+            }
+            _ => return None,
+        })
+    }
+
     fn inputs(m: &Machine, call: &ExecCall, range: std::ops::Range<usize>) -> Vec<String> {
         range
             .filter_map(|k| {
@@ -403,6 +834,9 @@ impl Db2Host {
             .collect();
         let w = |k: usize| words.get(k).map(String::as_str).unwrap_or("");
         let n = call.host.len();
+        if let Some(ca) = self.dynamic(m, call, &sql) {
+            return Some(ca);
+        }
         Some(match w(0) {
             // declarations and precompiler directives
             "DECLARE" | "INCLUDE" | "WHENEVER" | "BEGIN" | "END" => return None,
@@ -419,6 +853,41 @@ impl Db2Host {
                     }
                 };
                 let q = bind(&query, &Self::inputs(m, call, 0..n));
+                // a cursor FOR UPDATE stays on the server where positioned
+                // updates need it
+                let server = find_kw(&q, "FOR", 0).is_some_and(|at| {
+                    q[at..].to_ascii_uppercase().split_whitespace().nth(1) == Some("UPDATE")
+                }) && self.with_conn(|c| Ok(c.server_cursors())).unwrap_or(false);
+                if server {
+                    if self
+                        .st
+                        .borrow_mut()
+                        .cursors
+                        .remove(&name)
+                        .is_some_and(|c| c.server)
+                    {
+                        let _ = self.with_conn(|c| c.execute(&format!("CLOSE {name}")));
+                    }
+                    let t = crate::dialect::translate(&q).unwrap_or(q);
+                    return Some(
+                        match self
+                            .with_conn(|c| c.execute(&format!("DECLARE {name} CURSOR FOR {t}")))
+                        {
+                            Ok(ca) if ca.sqlcode >= 0 => {
+                                self.st.borrow_mut().cursors.insert(
+                                    name,
+                                    Cursor {
+                                        rows: Vec::new(),
+                                        next: 0,
+                                        server: true,
+                                    },
+                                );
+                                SqlCa::ok()
+                            }
+                            Ok(ca) | Err(ca) => ca,
+                        },
+                    );
+                }
                 match self.query(&q) {
                     Ok(r) if r.sqlca.sqlcode >= 0 => {
                         self.st.borrow_mut().cursors.insert(
@@ -426,6 +895,7 @@ impl Db2Host {
                             Cursor {
                                 rows: r.rows,
                                 next: 0,
+                                server: false,
                             },
                         );
                         r.sqlca
@@ -440,15 +910,25 @@ impl Db2Host {
                     .find(|x| !matches!(x.as_str(), "NEXT" | "FROM"))
                     .cloned()
                     .unwrap_or_default();
-                let row = {
-                    let mut st = self.st.borrow_mut();
-                    let Some(c) = st.cursors.get_mut(&name) else {
+                let server = match self.st.borrow().cursors.get(&name) {
+                    None => {
                         return Some(SqlCa {
                             sqlcode: -501,
                             sqlstate: "24501".into(),
                             ..SqlCa::default()
                         });
-                    };
+                    }
+                    Some(c) => c.server,
+                };
+                let row = if server {
+                    match self.with_conn(|c| c.query(&format!("FETCH NEXT FROM {name}"))) {
+                        Ok(r) if r.sqlca.sqlcode < 0 => return Some(r.sqlca),
+                        Ok(r) => r.rows.into_iter().next(),
+                        Err(ca) => return Some(ca),
+                    }
+                } else {
+                    let mut st = self.st.borrow_mut();
+                    let c = st.cursors.get_mut(&name).unwrap();
                     let r = c.rows.get(c.next).cloned();
                     c.next += 1;
                     r
@@ -463,7 +943,11 @@ impl Db2Host {
                 }
             }
             "CLOSE" => {
-                if self.st.borrow_mut().cursors.remove(w(1)).is_some() {
+                let closed = self.st.borrow_mut().cursors.remove(w(1));
+                if let Some(c) = closed {
+                    if c.server {
+                        let _ = self.with_conn(|cn| cn.execute(&format!("CLOSE {}", w(1))));
+                    }
                     SqlCa::ok()
                 } else {
                     SqlCa {
@@ -525,7 +1009,26 @@ impl ExecHost for Db2Host {
                 call.line
             )));
         }
-        if let Some(ca) = self.statement(m, call)
+        let ca = self.statement(m, call);
+        // ZEUS_DB2_TRACE: each statement and its result on standard error
+        if std::env::var_os("ZEUS_DB2_TRACE").is_some()
+            && let Some(ca) = &ca
+        {
+            eprintln!(
+                "ZEUS DB2: {} line {}: {} -> SQLCODE {} {}",
+                call.program,
+                call.line,
+                call.sql
+                    .as_deref()
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                ca.sqlcode,
+                ca.tokens.join(" ")
+            );
+        }
+        if let Some(ca) = ca
             && let Some(ExecArg::Area(a)) = call.arg("SQLCA")
         {
             set_sqlca(m, a, &ca);

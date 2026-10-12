@@ -235,22 +235,33 @@ impl Connection {
             let mut row = Vec::with_capacity(rows.columns.len());
             for c in &rows.columns {
                 if c.nullable {
-                    let ind = *data.get(i).ok_or_else(|| Error("row truncated".into()))?;
+                    // a row continued in the next query block
+                    let Some(&ind) = data.get(i) else {
+                        return Ok((false, SqlCa::ok()));
+                    };
                     i += 1;
                     if ind != 0 {
                         row.push(Value::Null);
                         continue;
                     }
                 }
-                let (v, n) = decode_value(c, &data[i..], le)?;
-                row.push(v);
-                i += n;
+                match decode_value(c, data.get(i..).unwrap_or(&[]), le) {
+                    Ok((v, n)) => {
+                        row.push(v);
+                        i += n;
+                    }
+                    Err(e) if e.0 == TRUNCATED => return Ok((false, SqlCa::ok())),
+                    Err(e) => return Err(e),
+                }
             }
             rows.rows.push(row);
         }
         Ok((false, SqlCa::ok()))
     }
 }
+
+/// The error of a row whose data continues in the next query block.
+const TRUNCATED: &str = "row data truncated";
 
 /// Query block size requested (bytes).
 const QRYBLKSZ: u32 = 32767;
@@ -263,6 +274,8 @@ pub struct Column {
     pub nullable: bool,
     /// Length; for DECIMAL precision (high byte) and scale (low byte).
     pub len: u16,
+    /// The column name, when the server describes it (else empty).
+    pub name: String,
 }
 
 /// A column value.
@@ -302,6 +315,7 @@ fn parse_qrydsc(d: &[u8]) -> Result<Vec<Column>> {
                     drda_type: t & 0xFE,
                     nullable: t & 1 == 1,
                     len: u16::from_be_bytes([d[k + 1], d[k + 2]]),
+                    name: String::new(),
                 });
                 k += 3;
             }
@@ -342,7 +356,7 @@ fn packed_text(b: &[u8], scale: usize) -> String {
 fn decode_value(c: &Column, d: &[u8], le: bool) -> Result<(Value, usize)> {
     let need = |n: usize| -> Result<()> {
         if d.len() < n {
-            Err(Error("row data truncated".into()))
+            Err(Error(TRUNCATED.into()))
         } else {
             Ok(())
         }
@@ -459,7 +473,8 @@ mod tests {
             Column {
                 drda_type: 0x0E,
                 nullable: true,
-                len: 0x0902
+                len: 0x0902,
+                name: String::new(),
             }
         );
     }

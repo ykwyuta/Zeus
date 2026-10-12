@@ -6,6 +6,13 @@ use serde::{Deserialize, Serialize};
 use crate::types::Ty;
 
 pub type VarId = u32;
+
+/// An item of ALLOCATE: variable, SET target, extents, IN area.
+pub type AllocItem = (VarId, Option<Target>, Vec<Option<Expr>>, Option<Ref>);
+
+/// The anchor of a CONTROLLED parameter: this flag and the parameter's
+/// position (its argument is the anchor of the caller's variable).
+pub const CTL_PARAM: u32 = 0x8000_0000;
 pub type BlockId = u32;
 pub type ProcId = u32;
 pub type LabelId = u32;
@@ -377,6 +384,9 @@ pub enum Ek {
     /// The k-th index of the element being processed by an aggregate
     /// assignment (or a repetitive specification).
     Index(u8),
+    /// iSUB: subscript i (from 1) of the reference to the DEFINED array
+    /// whose base is being located.
+    ISub(u8),
     /// The value of the SELECT subject.
     Subject,
 }
@@ -533,8 +543,13 @@ pub enum Stmt {
     Delete(RecordIo),
     /// Variable, SET target, and extents given on the statement (for a
     /// CONTROLLED variable: by generation slot).
-    Allocate(Vec<(VarId, Option<Target>, Vec<Option<Expr>>)>),
+    /// ... and the AREA to allocate in.
+    Allocate(Vec<AllocItem>),
     Free(Vec<(VarId, Option<Expr>)>),
+    /// FETCH: the entry names and the load module titles (character).
+    Fetch(Vec<(String, Option<Expr>)>),
+    /// RELEASE (empty: every fetched module).
+    Release(Vec<String>),
     Display(Expr, Option<(Target, Ty)>),
     Delay(Expr),
     /// EXEC SQL / CICS / DLI.

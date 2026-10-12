@@ -60,12 +60,28 @@ pub fn value_of(ty: &DataType, bytes: &[u8]) -> Dec {
     match ty {
         DataType::Numeric(t) => num_value(t, bytes),
         DataType::Index | DataType::Pointer => Dec::new(binary::read(bytes, true), 0),
+        DataType::Float { .. } => float_dec(zeus_decimal::hfp::decode(bytes)),
         DataType::NumericEdited {
             edit, scale, point, ..
         } => deedit(edit, *scale, *point, bytes),
         // Alphanumeric data used as a number: an unsigned integer.
         _ => alnum_as_number(bytes),
     }
+}
+
+/// The decimal closest to a floating-point value (17 significant digits).
+pub fn float_dec(f: f64) -> Dec {
+    if f == 0.0 || !f.is_finite() {
+        return Dec::ZERO;
+    }
+    let int_digits = f.abs().log10().floor() as i32 + 1;
+    let scale = (17 - int_digits).clamp(0, 30) as u32;
+    Dec::from_f64(f, scale).unwrap_or(Dec::ZERO).normalize()
+}
+
+/// Stores a value in a COMP-1 / COMP-2 field.
+pub fn store_float(field: &mut [u8], v: Dec) {
+    zeus_decimal::hfp::encode(v.to_f64(), field);
 }
 
 /// An alphanumeric field treated as an unsigned numeric integer.

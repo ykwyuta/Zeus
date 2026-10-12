@@ -7,7 +7,10 @@ use std::cell::RefCell;
 use zeus_cobol::ebcdic;
 
 use crate::ffi::{Cr, Library};
-use crate::layout::{GMO, Layout, MD, OD, PMO, be, ne, set_ne};
+use crate::layout::{
+    CHARV, CMHO, DMHO, DMPO, GMO, IMPO, Layout, MD, NATIVE_CCSID, Native, OD, PD, PMO, SD, SMPO,
+    SRO, be, ne, set_ne,
+};
 
 pub const MQCC_FAILED: i32 = 2;
 pub const MQRC_ENVIRONMENT_ERROR: i32 = 2012;
@@ -17,8 +20,25 @@ pub const MQRC_MD_ERROR: i32 = 2026;
 pub const MQRC_PMO_ERROR: i32 = 2173;
 pub const MQRC_GMO_ERROR: i32 = 2186;
 pub const MQRC_BUFFER_LENGTH_ERROR: i32 = 2005;
+pub const MQRC_NO_MSG_AVAILABLE: i32 = 2033;
+pub const MQRC_SD_ERROR: i32 = 2424;
+pub const MQRC_SRO_ERROR: i32 = 2438;
+pub const MQRC_CBD_ERROR: i32 = 2444;
+pub const MQRC_CMHO_ERROR: i32 = 2461;
+pub const MQRC_DMHO_ERROR: i32 = 2462;
+pub const MQRC_SMPO_ERROR: i32 = 2463;
+pub const MQRC_IMPO_ERROR: i32 = 2464;
+pub const MQRC_PROPERTY_VALUE_TOO_BIG: i32 = 2469;
+pub const MQRC_DMPO_ERROR: i32 = 2481;
+pub const MQRC_PD_ERROR: i32 = 2482;
+pub const MQRC_CALLBACK_TYPE_ERROR: i32 = 2483;
+pub const MQRC_CALLBACK_LINK_ERROR: i32 = 2487;
+pub const MQRC_OPERATION_ERROR: i32 = 2488;
 /// MQCCSI_Q_MGR: the queue manager's CCSID (here: the program's code page).
 const MQCCSI_Q_MGR: i32 = 0;
+/// Offsets of Options and WaitInterval in MQGMO.
+const GMO_OPTIONS: usize = 8;
+const GMO_WAIT_INTERVAL: usize = 12;
 /// Offset of CodedCharSetId in MQMD.
 const MD_CCSID: usize = 28;
 
@@ -34,10 +54,28 @@ struct State {
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
+    static WAIT_HOOK: std::cell::Cell<Option<fn(std::time::Duration)>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Sets how MQGET waits for a message on this thread (MQGMO_WAIT): the
+/// call polls the queue and calls `f` with the time to wait before the
+/// next look, so that a CICS region runs other tasks meanwhile. Without
+/// it, the client library waits.
+pub fn set_wait_hook(f: fn(std::time::Duration)) {
+    WAIT_HOOK.set(Some(f));
+}
+
+/// Waits (MQGMO_WAIT, MQCTL): through the wait hook, else sleeping.
+pub(crate) fn wait(d: std::time::Duration) {
+    match WAIT_HOOK.get() {
+        Some(f) => f(d),
+        None => std::thread::sleep(d),
+    }
 }
 
 /// Runs `f` with the client library (loaded on first use).
-fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Result<T, String> {
+pub(crate) fn with_lib<T>(f: impl FnOnce(&Library) -> T) -> Result<T, String> {
     STATE.with(|s| {
         let mut s = s.borrow_mut();
         let lib = s.lib.get_or_insert_with(|| {
@@ -134,7 +172,7 @@ fn connect(qmgr: &str) -> (i32, Cr) {
 
 /// The native connection of a program's handle: 0 (MQHC_DEF_HCONN) is
 /// the default connection, made on first use.
-fn hconn(h: i32) -> Result<i32, Cr> {
+pub(crate) fn hconn(h: i32) -> Result<i32, Cr> {
     match h {
         0 => {
             if let Some(d) = STATE.with(|s| s.borrow().default) {
@@ -238,21 +276,38 @@ impl Args<'_> {
         Ok(0)
     }
 
-    /// A structure argument in native form (None: not this structure).
-    fn structure(&self, i: usize, l: &Layout) -> Result<Option<(Vec<u8>, usize)>, String> {
+    /// A structure argument in native form and its version (None: not
+    /// this structure).
+    fn structure(&self, i: usize, l: &Layout) -> Result<Option<(Native, usize)>, String> {
         let head = self.bytes(i, 8)?;
         if !l.is(head) {
             return Ok(None);
         }
         let v = l.version(head);
-        let zos = self.bytes(i, l.len(v))?;
-        Ok(Some((l.to_native(zos, v), v)))
+        let a = self.addr(i, l.len(v))?;
+        Ok(Some((l.to_native(self.mem, a, v), v)))
     }
 
-    fn put_back(&mut self, i: usize, l: &Layout, native: &[u8]) -> Result<(), String> {
-        let n = native.len();
-        let zos = self.bytes_mut(i, n)?;
-        l.to_zos(native, zos);
+    fn put_back(&mut self, i: usize, l: &Layout, n: &(Native, usize)) -> Result<(), String> {
+        let a = self.addr(i, l.len(n.1))?;
+        l.to_zos(&n.0, self.mem, a, n.1);
+        Ok(())
+    }
+
+    /// An MQCHARV argument in native form.
+    fn charv(&self, i: usize) -> Result<(Native, usize), String> {
+        let a = self.addr(i, 20)?;
+        Ok((CHARV.to_native(self.mem, a, 1), 1))
+    }
+
+    /// A message handle (MQHMSG, 8 bytes).
+    fn hmsg(&self, i: usize) -> Result<i64, String> {
+        let b = self.bytes(i, 8)?;
+        Ok(i64::from_be_bytes(b.try_into().unwrap()))
+    }
+
+    fn set_hmsg(&mut self, i: usize, v: i64) -> Result<(), String> {
+        self.bytes_mut(i, 8)?.copy_from_slice(&v.to_be_bytes());
         Ok(())
     }
 }
@@ -264,7 +319,7 @@ fn name48(a: &Args, i: usize) -> Result<String, String> {
 
 /// MQCCSI_Q_MGR in a message descriptor stands for the code page of the
 /// program's data.
-fn own_ccsid(md: &mut [u8]) {
+pub(crate) fn own_ccsid(md: &mut [u8]) {
     if ne(md, MD_CCSID) == MQCCSI_Q_MGR {
         set_ne(md, MD_CCSID, zeus_cobol::codepage::active().ccsid as i32);
     }
@@ -316,11 +371,11 @@ pub fn mqdisc(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
 pub fn mqopen(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     let mut a = Args { mem, addrs };
     let h = try_cr!(a, 4, hconn(a.int(0)?));
-    let Some((mut od, _)) = a.structure(1, &OD)? else {
+    let Some(mut od) = a.structure(1, &OD)? else {
         return a.done(4, (MQCC_FAILED, MQRC_OD_ERROR));
     };
     let options = a.int(2)?;
-    let (o, cr) = with_lib(|l| l.open(h, &mut od, options))
+    let (o, cr) = with_lib(|l| l.open(h, &mut od.0.bytes, options))
         .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
     a.put_back(1, &OD, &od)?;
     a.set_int(3, o)?;
@@ -344,19 +399,19 @@ pub fn mqput(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     let mut a = Args { mem, addrs };
     let h = try_cr!(a, 6, hconn(a.int(0)?));
     let o = a.int(1)?;
-    let Some((mut md, _)) = a.structure(2, &MD)? else {
+    let Some(mut md) = a.structure(2, &MD)? else {
         return a.done(6, (MQCC_FAILED, MQRC_MD_ERROR));
     };
-    let Some((mut pmo, _)) = a.structure(3, &PMO)? else {
+    let Some(mut pmo) = a.structure(3, &PMO)? else {
         return a.done(6, (MQCC_FAILED, MQRC_PMO_ERROR));
     };
     let n = a.int(4)?;
     if n < 0 {
         return a.done(6, (MQCC_FAILED, MQRC_BUFFER_LENGTH_ERROR));
     }
-    own_ccsid(&mut md);
+    own_ccsid(&mut md.0.bytes);
     let data = a.bytes(5, n as usize)?.to_vec();
-    let cr = with_lib(|l| l.put(h, o, &mut md, &mut pmo, &data))
+    let cr = with_lib(|l| l.put(h, o, &mut md.0.bytes, &mut pmo.0.bytes, &data))
         .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
     a.put_back(2, &MD, &md)?;
     a.put_back(3, &PMO, &pmo)?;
@@ -368,22 +423,22 @@ pub fn mqput(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
 pub fn mqput1(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     let mut a = Args { mem, addrs };
     let h = try_cr!(a, 6, hconn(a.int(0)?));
-    let Some((mut od, _)) = a.structure(1, &OD)? else {
+    let Some(mut od) = a.structure(1, &OD)? else {
         return a.done(6, (MQCC_FAILED, MQRC_OD_ERROR));
     };
-    let Some((mut md, _)) = a.structure(2, &MD)? else {
+    let Some(mut md) = a.structure(2, &MD)? else {
         return a.done(6, (MQCC_FAILED, MQRC_MD_ERROR));
     };
-    let Some((mut pmo, _)) = a.structure(3, &PMO)? else {
+    let Some(mut pmo) = a.structure(3, &PMO)? else {
         return a.done(6, (MQCC_FAILED, MQRC_PMO_ERROR));
     };
     let n = a.int(4)?;
     if n < 0 {
         return a.done(6, (MQCC_FAILED, MQRC_BUFFER_LENGTH_ERROR));
     }
-    own_ccsid(&mut md);
+    own_ccsid(&mut md.0.bytes);
     let data = a.bytes(5, n as usize)?.to_vec();
-    let cr = with_lib(|l| l.put1(h, &mut od, &mut md, &mut pmo, &data))
+    let cr = with_lib(|l| l.put1(h, &mut od.0.bytes, &mut md.0.bytes, &mut pmo.0.bytes, &data))
         .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
     a.put_back(1, &OD, &od)?;
     a.put_back(2, &MD, &md)?;
@@ -397,10 +452,10 @@ pub fn mqget(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     let mut a = Args { mem, addrs };
     let h = try_cr!(a, 7, hconn(a.int(0)?));
     let o = a.int(1)?;
-    let Some((mut md, _)) = a.structure(2, &MD)? else {
+    let Some(mut mdn) = a.structure(2, &MD)? else {
         return a.done(7, (MQCC_FAILED, MQRC_MD_ERROR));
     };
-    let Some((mut gmo, _)) = a.structure(3, &GMO)? else {
+    let Some(mut gmon) = a.structure(3, &GMO)? else {
         return a.done(7, (MQCC_FAILED, MQRC_GMO_ERROR));
     };
     let n = a.int(4)?;
@@ -408,14 +463,46 @@ pub fn mqget(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
         return a.done(7, (MQCC_FAILED, MQRC_BUFFER_LENGTH_ERROR));
     }
     // MQGMO_CONVERT converts to the code page of the program's data
-    own_ccsid(&mut md);
+    own_ccsid(&mut mdn.0.bytes);
+    let (md, gmo) = (&mut mdn.0.bytes, &mut gmon.0.bytes);
     let mut buf = vec![0u8; n as usize];
-    let (len, cr) = with_lib(|l| l.get(h, o, &mut md, &mut gmo, &mut buf))
-        .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
+    let get = |md: &mut Vec<u8>, gmo: &mut Vec<u8>, buf: &mut Vec<u8>| {
+        with_lib(|l| l.get(h, o, md, gmo, buf))
+            .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)))
+    };
+    const MQGMO_WAIT: i32 = 1;
+    const MQWI_UNLIMITED: i32 = -1;
+    let options = ne(gmo, GMO_OPTIONS);
+    let (len, cr) = match WAIT_HOOK.get() {
+        Some(wait) if options & MQGMO_WAIT != 0 => {
+            // look at the queue now and then until the wait interval ends
+            let interval = ne(gmo, GMO_WAIT_INTERVAL);
+            let md0 = md.clone();
+            let start = std::time::Instant::now();
+            set_ne(gmo, GMO_OPTIONS, options & !MQGMO_WAIT);
+            let r = loop {
+                let r = get(md, gmo, &mut buf);
+                let waited = start.elapsed().as_millis() as i64;
+                let left = if interval == MQWI_UNLIMITED {
+                    i64::MAX
+                } else {
+                    interval as i64 - waited
+                };
+                if r.1 != (MQCC_FAILED, MQRC_NO_MSG_AVAILABLE) || left <= 0 {
+                    break r;
+                }
+                md.copy_from_slice(&md0);
+                wait(std::time::Duration::from_millis(left.min(100) as u64));
+            };
+            set_ne(gmo, GMO_OPTIONS, options);
+            r
+        }
+        _ => get(md, gmo, &mut buf),
+    };
     let k = (len.max(0) as usize).min(buf.len());
     a.bytes_mut(5, n as usize)?[..k].copy_from_slice(&buf[..k]);
-    a.put_back(2, &MD, &md)?;
-    a.put_back(3, &GMO, &gmo)?;
+    a.put_back(2, &MD, &mdn)?;
+    a.put_back(3, &GMO, &gmon)?;
     a.set_int(6, len)?;
     a.done(7, cr)
 }
@@ -468,6 +555,257 @@ pub fn mqinq(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     a.done(8, cr)
 }
 
+/// MQSET(Hconn, Hobj, SelectorCount, Selectors, IntAttrCount, IntAttrs,
+/// CharAttrLength, CharAttrs, CompCode, Reason)
+pub fn mqset(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 8, hconn(a.int(0)?));
+    let o = a.int(1)?;
+    let (ns, ni, nc) = (
+        a.int(2)?.max(0) as usize,
+        a.int(4)?.max(0) as usize,
+        a.int(6)?.max(0) as usize,
+    );
+    let sel = a.bytes(3, ns * 4)?;
+    let selectors: Vec<i32> = (0..ns).map(|k| be(sel, k * 4)).collect();
+    let ints: Vec<i32> = if ni > 0 {
+        let b = a.bytes(5, ni * 4)?;
+        (0..ni).map(|k| be(b, k * 4)).collect()
+    } else {
+        Vec::new()
+    };
+    let chars: Vec<u8> = if nc > 0 {
+        a.bytes(7, nc)?
+            .iter()
+            .map(|&c| ebcdic::to_latin1(c))
+            .collect()
+    } else {
+        Vec::new()
+    };
+    let cr = with_lib(|l| l.set(h, o, &selectors, &ints, &chars))
+        .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
+    a.done(8, cr)
+}
+
+/// MQSUB(Hconn, SubDesc, Hobj, Hsub, CompCode, Reason)
+pub fn mqsub(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 4, hconn(a.int(0)?));
+    let Some(mut sd) = a.structure(1, &SD)? else {
+        return a.done(4, (MQCC_FAILED, MQRC_SD_ERROR));
+    };
+    let mut hobj = a.int(2)?;
+    let (hsub, cr) = with_lib(|l| l.sub(h, &mut sd.0.bytes, &mut hobj))
+        .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
+    a.put_back(1, &SD, &sd)?;
+    a.set_int(2, hobj)?;
+    a.set_int(3, hsub)?;
+    a.done(4, cr)
+}
+
+/// MQSUBRQ(Hconn, Hsub, Action, SubRqOpts, CompCode, Reason)
+pub fn mqsubrq(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 4, hconn(a.int(0)?));
+    let (hsub, action) = (a.int(1)?, a.int(2)?);
+    let Some(mut sro) = a.structure(3, &SRO)? else {
+        return a.done(4, (MQCC_FAILED, MQRC_SRO_ERROR));
+    };
+    let cr = with_lib(|l| l.subrq(h, hsub, action, &mut sro.0.bytes))
+        .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
+    a.put_back(3, &SRO, &sro)?;
+    a.done(4, cr)
+}
+
+/// MQCRTMH(Hconn, CrtMsgHOpts, Hmsg, CompCode, Reason)
+pub fn mqcrtmh(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 3, hconn(a.int(0)?));
+    let Some(mut o) = a.structure(1, &CMHO)? else {
+        return a.done(3, (MQCC_FAILED, MQRC_CMHO_ERROR));
+    };
+    let (m, cr) = with_lib(|l| l.crtmh(h, &mut o.0.bytes))
+        .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
+    a.set_hmsg(2, m)?;
+    a.done(3, cr)
+}
+
+/// MQDLTMH(Hconn, Hmsg, DltMsgHOpts, CompCode, Reason)
+pub fn mqdltmh(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 3, hconn(a.int(0)?));
+    let mut m = a.hmsg(1)?;
+    let Some(mut o) = a.structure(2, &DMHO)? else {
+        return a.done(3, (MQCC_FAILED, MQRC_DMHO_ERROR));
+    };
+    let cr = with_lib(|l| l.dltmh(h, &mut m, &mut o.0.bytes))
+        .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
+    a.set_hmsg(1, m)?;
+    a.done(3, cr)
+}
+
+/// Property types (MQTYPE_*).
+const MQTYPE_BOOLEAN: i32 = 4;
+const MQTYPE_INT16: i32 = 32;
+const MQTYPE_INT32: i32 = 64;
+const MQTYPE_INT64: i32 = 128;
+const MQTYPE_FLOAT32: i32 = 256;
+const MQTYPE_FLOAT64: i32 = 512;
+const MQTYPE_STRING: i32 = 1024;
+/// MQENC_NATIVE of this host.
+const NATIVE_ENCODING: i32 = if cfg!(target_endian = "little") {
+    546
+} else {
+    273
+};
+/// MQIMPO_CONVERT_VALUE.
+const MQIMPO_CONVERT_VALUE: i32 = 32;
+
+/// A property value of the program (big-endian integers, hexadecimal
+/// floating point, EBCDIC strings) in native form.
+fn value_to_native(ty: i32, v: &[u8]) -> Vec<u8> {
+    match ty {
+        MQTYPE_STRING => ebcdic::decode(v).into_bytes(),
+        MQTYPE_BOOLEAN | MQTYPE_INT16 | MQTYPE_INT32 | MQTYPE_INT64 => {
+            let mut b = v.to_vec();
+            if cfg!(target_endian = "little") {
+                b.reverse();
+            }
+            b
+        }
+        MQTYPE_FLOAT32 if v.len() == 4 => {
+            (zeus_decimal::hfp::decode(v) as f32).to_ne_bytes().to_vec()
+        }
+        MQTYPE_FLOAT64 if v.len() == 8 => zeus_decimal::hfp::decode(v).to_ne_bytes().to_vec(),
+        _ => v.to_vec(),
+    }
+}
+
+/// A native property value in the program's form.
+fn value_to_zos(ty: i32, v: &[u8]) -> Vec<u8> {
+    match ty {
+        MQTYPE_STRING => ebcdic::encode(&String::from_utf8_lossy(v)),
+        MQTYPE_BOOLEAN | MQTYPE_INT16 | MQTYPE_INT32 | MQTYPE_INT64 => {
+            let mut b = v.to_vec();
+            if cfg!(target_endian = "little") {
+                b.reverse();
+            }
+            b
+        }
+        MQTYPE_FLOAT32 if v.len() == 4 => {
+            let mut b = [0u8; 4];
+            zeus_decimal::hfp::encode(f64::from(f32::from_ne_bytes(v.try_into().unwrap())), &mut b);
+            b.to_vec()
+        }
+        MQTYPE_FLOAT64 if v.len() == 8 => {
+            let mut b = [0u8; 8];
+            zeus_decimal::hfp::encode(f64::from_ne_bytes(v.try_into().unwrap()), &mut b);
+            b.to_vec()
+        }
+        _ => v.to_vec(),
+    }
+}
+
+/// MQSETMP(Hconn, Hmsg, SetPropOpts, Name, PropDesc, Type, ValueLength,
+/// Value, CompCode, Reason)
+pub fn mqsetmp(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 8, hconn(a.int(0)?));
+    let m = a.hmsg(1)?;
+    let Some(mut smpo) = a.structure(2, &SMPO)? else {
+        return a.done(8, (MQCC_FAILED, MQRC_SMPO_ERROR));
+    };
+    let mut name = a.charv(3)?;
+    let Some(mut pd) = a.structure(4, &PD)? else {
+        return a.done(8, (MQCC_FAILED, MQRC_PD_ERROR));
+    };
+    let ty = a.int(5)?;
+    let n = a.int(6)?.max(0) as usize;
+    let value = value_to_native(ty, a.bytes(7, n)?);
+    // the value in this host's encoding (strings in UTF-8)
+    set_ne(&mut smpo.0.bytes, 12, NATIVE_ENCODING);
+    set_ne(&mut smpo.0.bytes, 16, NATIVE_CCSID);
+    let cr = with_lib(|l| {
+        l.setmp(
+            h,
+            m,
+            &mut smpo.0.bytes,
+            &mut name.0.bytes,
+            &mut pd.0.bytes,
+            ty,
+            &value,
+        )
+    })
+    .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
+    a.put_back(4, &PD, &pd)?;
+    a.done(8, cr)
+}
+
+/// MQINQMP(Hconn, Hmsg, InqPropOpts, Name, PropDesc, Type, ValueLength,
+/// Value, DataLength, CompCode, Reason)
+pub fn mqinqmp(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 9, hconn(a.int(0)?));
+    let m = a.hmsg(1)?;
+    let Some(mut impo) = a.structure(2, &IMPO)? else {
+        return a.done(9, (MQCC_FAILED, MQRC_IMPO_ERROR));
+    };
+    let mut name = a.charv(3)?;
+    let Some(mut pd) = a.structure(4, &PD)? else {
+        return a.done(9, (MQCC_FAILED, MQRC_PD_ERROR));
+    };
+    let mut ty = a.int(5)?;
+    let n = a.int(6)?.max(0) as usize;
+    // the value in this host's encoding, converted for the program after
+    let options = ne(&impo.0.bytes, 8);
+    set_ne(&mut impo.0.bytes, 8, options | MQIMPO_CONVERT_VALUE);
+    set_ne(&mut impo.0.bytes, 12, NATIVE_ENCODING);
+    set_ne(&mut impo.0.bytes, 16, NATIVE_CCSID);
+    let mut buf = vec![0u8; n * 4 + 16];
+    let (len, mut cr) = with_lib(|l| {
+        l.inqmp(
+            h,
+            m,
+            &mut impo.0.bytes,
+            &mut name.0.bytes,
+            &mut pd.0.bytes,
+            &mut ty,
+            &mut buf,
+        )
+    })
+    .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
+    set_ne(&mut impo.0.bytes, 8, options);
+    let mut data_len = len;
+    if cr.0 != MQCC_FAILED {
+        let v = value_to_zos(ty, &buf[..(len.max(0) as usize).min(buf.len())]);
+        data_len = v.len() as i32;
+        let k = v.len().min(n);
+        a.bytes_mut(7, n)?[..k].copy_from_slice(&v[..k]);
+        if v.len() > n {
+            cr = (MQCC_FAILED, MQRC_PROPERTY_VALUE_TOO_BIG);
+        }
+    }
+    a.put_back(2, &IMPO, &impo)?;
+    a.put_back(4, &PD, &pd)?;
+    a.set_int(5, ty)?;
+    a.set_int(8, data_len)?;
+    a.done(9, cr)
+}
+
+/// MQDLTMP(Hconn, Hmsg, DltPropOpts, Name, CompCode, Reason)
+pub fn mqdltmp(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
+    let mut a = Args { mem, addrs };
+    let h = try_cr!(a, 4, hconn(a.int(0)?));
+    let m = a.hmsg(1)?;
+    let Some(mut o) = a.structure(2, &DMPO)? else {
+        return a.done(4, (MQCC_FAILED, MQRC_DMPO_ERROR));
+    };
+    let mut name = a.charv(3)?;
+    let cr = with_lib(|l| l.dltmp(h, m, &mut o.0.bytes, &mut name.0.bytes))
+        .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
+    a.done(4, cr)
+}
+
 /// The MQI calls by name.
 pub const CALLS: &[(&str, zeus_cobol::vm::NativeFn)] = &[
     ("MQCONN", mqconn),
@@ -481,6 +819,14 @@ pub const CALLS: &[(&str, zeus_cobol::vm::NativeFn)] = &[
     ("MQCMIT", mqcmit),
     ("MQBACK", mqback),
     ("MQINQ", mqinq),
+    ("MQSET", mqset),
+    ("MQSUB", mqsub),
+    ("MQSUBRQ", mqsubrq),
+    ("MQCRTMH", mqcrtmh),
+    ("MQDLTMH", mqdltmh),
+    ("MQSETMP", mqsetmp),
+    ("MQINQMP", mqinqmp),
+    ("MQDLTMP", mqdltmp),
 ];
 
 #[cfg(test)]

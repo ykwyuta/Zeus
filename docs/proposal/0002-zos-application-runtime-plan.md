@@ -198,12 +198,13 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   ASSIGN SCRNHT/ALTSCRNHT/COLOR など)、構造化フィールド (SEND STRFIELD を Write Structured
   Field で送り、AID X'88' の応答を RECEIVE に渡す)、RECEIVE BUFFER、ERASEAUP、
   START (TERMID・FROM・INTERVAL/AFTER/AT/TIME・REQID) / RETRIEVE / CANCEL と開始コード、
-  を実装した。会話型タスクが入力を待つ間は、他の端末の入力をその待ちの中で処理し (入れ子に
-  タスクを実行し、待っている端末宛ての入力は保留する)、各タスクは自分の Db2 接続を使う。
-  `tools/tn3270-test.sh` が s3270 (3279 モデル 5、TN3270E) と pr3287 (ASSOCIATE) でこれらを
-  確認し、GenApp の TN3270 試験は 2 端末の同時操作も確認する (いずれも CI)。
-  未着手: 端末からの入力待ちでない処理の並行実行 (計算の長いタスクは他を待たせる)、
-  SNA 応答 (RESPONSES は合意するが要求しない)、プリンタの BIND 以外の SNA 制御。
+  を実装した。タスクはコルーチンとして動き (CICS の QR TCB と同じく 1 スレッドで切り替える)、
+  端末の入力・DELAY・ENQ の資源・READ UPDATE のレコードを待つ間や、タイムスライス (50 ms) を
+  使い切ったときに他のタスクに譲る。動いているタスクの端末宛ての入力は保留する。各タスクは自分の
+  Db2 接続を使う。`tools/tn3270-test.sh` が s3270 (3279 モデル 5、TN3270E) と pr3287 (ASSOCIATE)
+  でこれらと、長いタスクの間に他の端末の取引が応答することを確認し、GenApp の TN3270 試験は
+  2 端末の同時操作も確認する (いずれも CI)。
+  未着手:   SNA 応答 (RESPONSES は合意するが要求しない)、プリンタの BIND 以外の SNA 制御。
 
 ### Phase 5: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C6
 - EXEC SQL のコンパイラ統合、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。
@@ -216,7 +217,8 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   SECCHK/ACCRDB による接続、NULLID.SYSSH200 パッケージでの動的 SQL 実行・問い合わせ・コミット) と
   EXEC SQL 実行時 `zeus-db2` (ホスト変数を EBCDIC から変換してリテラルとして束縛、VARCHAR の
   level-49 対、標識変数、SELECT INTO・SET・カーソル、プログラムの SQLCA への SQLCODE/SQLSTATE 書き
-  込み、Db2 for z/OS の DDL のうち LUW にない句・文の除去) を作成。`zjob` は IKJEFT01 の
+  込み、Db2 for z/OS の DDL のうち LUW にない句・文の除去、動的 SQL (EXECUTE IMMEDIATE・PREPARE・EXECUTE・
+  DESCRIBE と SQLDA・USING DESCRIPTOR)、COMP-1/COMP-2 のホスト変数) を作成。`zjob` は IKJEFT01 の
   DSN RUN PROGRAM を実行し、DSNTIAD/DSNTEP2/DSNTEP4 を SQL スクリプトの実行として扱う。`zcics` は
   タスクに Db2 接続を与え、SYNCPOINT とタスク終了でコミットする。CardDemo の取引種別管理モジュール
   (表の作成 CREADB21、一括保守 MNTTRDB2、一覧・更新・削除・追加画面) が `tools/carddemo-db2.sh test`
@@ -233,8 +235,13 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   作業単位: 回復可能なファイル (VSAM クラスタの LOG(UNDO/ALL)、なければ FILE 定義の
   RECOVERY) への変更は SYNCPOINT ROLLBACK と異常終了で Db2 と一緒に取り消され、SYNCPOINT と
   タスク終了で Db2 と一緒に確定する (ログは領域内のメモリ。領域の障害からの回復はない)。
-  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路と
-  イベント処理 (LGASTAT1)。
+  イベント処理: zcics の `--event-binding` が CICS Explorer のイベントバインディング (.evbind) を読み、
+  EXEC CICS LINK の前後の捕捉仕様 (現在のプログラム・取引・LINK 先のフィルター、COMMAREA か
+  コンテナーのデータ) に合うとイベントを作り、取引開始アダプターの取引をチャネル DFHEP.EVENT
+  (DFHEP.CCECONTEXT、DFHEP.NAME.nnnnn、DFHEP.DATA.nnnnn) で START する (START CHANNEL も実装)。
+  GenApp のバンドル GENAEV01 (CDEF125 の LGST・SSST) で LGASTAT1 が要求ごとの名前付きカウンターを
+  数える (`tools/genapp/events.txt`)。
+  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路。
 
 - 日本語 EBCDIC (2026-10): CCSID 930・939・1390・1399 の変換を、ICU の対応表 (unicode-org/icu-data
   の UCM を `tools/icu-codepages.sh` で取得・変換し、ライセンスとともに同梱) から Zeus 自身のコードで
@@ -256,13 +263,16 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
 - Phase 3 の一覧表で判明した追加 CICS API (チャネル/コンテナ、名前付きカウンタ等) の実装。
 - Bank of Z のバッチ部品。
 - **完了条件**: Bank of Z の CICS 経路 (顧客・口座の作成/照会、入出金、振替) のシナリオが合格。
+  - 達成 (2026-10): `tools/bankofz.sh test`。詳細は 0007 の #1。
 
 ### Phase 7: MQ と PostgreSQL バックエンド (8〜10 週)
 - MQI サブセット (MQCONN/MQOPEN/MQPUT/MQGET) とローカルキュー、CICS との作業単位統合。
   - 実装済み (0005): ローカルキューを自作せず、IBM MQ の C クライアントライブラリ経由で実際のキューマネージャーに TCP で接続する
     (MQCONN/MQCONNX/MQDISC/MQOPEN/MQCLOSE/MQPUT/MQPUT1/MQGET/MQINQ/MQCMIT/MQBACK)。CICS の SYNCPOINT・タスク終了、
-    バッチのステップ終了で作業単位を確定する。トリガーモニター (CKTI) は未実装。
+    バッチのステップ終了で作業単位を確定する。トリガーモニター (CKTI) は zcics の `--mq-initq`。
 - PostgreSQL バックエンド (Db2 方言変換、SQLCODE 対応表)。Db2 CE で全シナリオを流した結果をオラクルとして比較。
+  - 実装済み (0007 #8): `ZEUS_DB2=postgres://...` で zeus-pg (PostgreSQL のプロトコルのクライアント) を使う。
+    CardDemo の Db2 モジュール・GenApp・Bank of Z の Db2 シナリオが PostgreSQL でも Db2 CE と同じ期待値で合格する (CI)。
 - **完了条件**: CardDemo の口座抽出モジュール (VSAM+MQ) が合格。GenApp・Bank of Z・CardDemo の Db2 シナリオが
   PostgreSQL バックエンドでも Db2 CE と同じ結果になる。
 

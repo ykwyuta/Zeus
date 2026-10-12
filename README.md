@@ -44,8 +44,10 @@ capabilities (Read Partition Query) and sends colour and highlighting only to
 those that have them. Programs get the alternate screen size (ERASE
 ALTERNATE), structured fields (SEND STRFIELD, replies with AID X'88'),
 RECEIVE BUFFER, and START / RETRIEVE, also to printers (SCS print data to
-pr3287, or a file in script mode). While a conversational task waits for its
-terminal, the other terminals' transactions run, each task with its own Db2
+pr3287, or a file in script mode). Tasks run as coroutines, as on the
+quasi-reentrant TCB of CICS: while one waits for its terminal, a DELAY, an
+enqueued resource or a record read for update, or has used its time slice
+(50 ms), the other terminals' transactions run, each task with its own Db2
 connection (`tools/tn3270-test.sh` checks this with s3270 and pr3287). The CardDemo online transactions
 (sign-on, menus, account view and update, card list, view and update,
 transaction list, view and add, bill payment, report submission through the
@@ -60,6 +62,11 @@ IKJEFT01 `DSN RUN PROGRAM` (with DSNTIAD / DSNTEP2 / DSNTEP4 as SQL script
 runners) and `zcics` gives transactions a Db2 connection committed at
 SYNCPOINT and task end, together with the recoverable files (VSAM
 LOG(UNDO), FILE RECOVERY), whose changes ROLLBACK and abends back out.
+PostgreSQL can stand in for Db2: with `ZEUS_DB2=postgres://user:pw@host:port/db`
+(`tools/pg.sh start`), `zeus-pg` (a client of the PostgreSQL protocol) runs
+the statements translated to PostgreSQL's dialect, each unit of work in a
+transaction block with a savepoint per statement, and the SQLCODE of each
+SQLSTATE; the three applications' Db2 scenarios pass on it too.
 CardDemo's optional Db2 module (transaction types) works: table creation, the MNTTRDB2 batch maintenance job and the list,
 update, delete and add screens (`tools/carddemo-db2.sh test`, with
 `ZEUS_DB2` naming the server started by `tools/db2ce.sh start`).
@@ -71,6 +78,25 @@ Its conversational menu transactions (customer inquiry, add and update;
 motor, endowment and house policy inquiry, add, update and delete;
 commercial policy inquiry, add and delete) work on Db2 and VSAM, with customer numbers from
 named counters (`tools/genapp.sh test`).
+
+Bank of Z (CICS path): `tools/bankofz.sh setup` creates its Db2 tables,
+generates customers and accounts with its BANKDATA program and compiles the
+programs and maps. The 3270 menu transactions work on Db2
+(`tools/bankofz.sh test`). They cover customers (inquiry, update, deletion,
+and creation with a credit check by child tasks through channels and
+containers) and accounts (list, inquiry, creation, update, deletion, credit
+and debit, transfer). Its IMS path runs too (`tools/bankofz-ims.sh test`). IMS DB is loaded by
+the application's own load programs. The transactions, including the PL/I
+IBLOGIN with CALL PLITDLI, run as messages through a message processing
+region: `zjob ims send`, then `EXEC PGM=DFSRRC00,PARM='MSG'`, then
+`zjob ims receive`. The Bank of Z REST API runs on `zconn`
+(zeus-zconnect). It reads the z/OS Connect project as it is: the OpenAPI
+paths, the request and response mappings with their JSONata expressions,
+and the data layouts of the z/OS assets. It calls the CICS programs with a
+COMMAREA and the IMS transactions with a message (`tools/bankofz.sh api`;
+details in [docs/proposal/0008-zconnect.md](docs/proposal/0008-zconnect.md)).
+Remaining work, largest first:
+[docs/proposal/0007-remaining-work.md](docs/proposal/0007-remaining-work.md).
 
 Code pages: data stays in EBCDIC; text crosses to the host in the code page
 named by `ZEUS_CCSID` (or `--ccsid` of `zcobc` / `zjob`): 037 by default, or
@@ -108,7 +134,9 @@ page; the queue manager converts messages for other platforms), and the
 COPY members CMQV, CMQODV, CMQMDV, CMQPMOV, CMQGMOV and CMQTML are supplied.
 `tools/mq.sh client` downloads the client and `tools/mq.sh start` starts a
 queue manager in a container; ZEUS_MQ names it
-(`mq://user:password@host:port/QMGR/CHANNEL`). Details:
+(`mq://user:password@host:port/QMGR/CHANNEL`). `zcics --mq-initq Q` is the
+trigger monitor (CKTI) of a region, and `zmq put/get` puts and gets text
+messages (`tools/carddemo-mq.sh test`). Details:
 [docs/proposal/0005-ibm-mq.md](docs/proposal/0005-ibm-mq.md).
 
 IMS DB: `zeus-ims` keeps IMS databases defined by their DBD and PSB
@@ -137,8 +165,10 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
 | `crates/zeus-jcl` | `zjob`: JCL interpreter in Rust: parsing, PROC / INCLUDE expansion, COND and IF/THEN/ELSE/ENDIF, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT / IKJEFT01, compile and bind steps (IGYCRCTL, IBMZPLI, IEWL) |
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
+| `crates/zeus-zconnect` | `zconn`: REST gateway of z/OS Connect API projects to CICS programs and IMS transactions |
 | `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
-| `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
+| `crates/zeus-db2` | EXEC SQL runtime on Db2 or PostgreSQL: host variables, cursors, SQLCA, z/OS SQL dialect |
+| `crates/zeus-pg` | PostgreSQL client (startup, SCRAM-SHA-256, simple query protocol) |
 | `crates/zeus-ims` | `zims`: IMS DB (DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I, GSAM, TM queues) and the CBLTDLI / EXEC DLI / DFSRRC00 run-time glue |
 | `crates/zeus-mq` | MQI calls of COBOL programs on IBM MQ through the IBM MQ C client library; z/OS structure conversion |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL and PL/I symbolic maps |

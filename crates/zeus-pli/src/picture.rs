@@ -46,6 +46,17 @@ pub struct Picture {
     pub f: i16,
     /// index range of the drifting string in `items`, if any
     pub drift: Option<(usize, usize)>,
+    /// A floating-point picture: its mantissa and exponent pictures and
+    /// whether the exponent is marked by E (stored) or K (not stored).
+    #[serde(default)]
+    pub float: Option<Box<FloatPic>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct FloatPic {
+    pub mant: Picture,
+    pub exp: Picture,
+    pub e: bool,
 }
 
 impl Picture {
@@ -108,6 +119,44 @@ impl Picture {
             raw.push(chars[i]);
             i += 1;
         }
+        // a floating-point picture: mantissa E|K exponent
+        let mut depth = 0;
+        let mut split = None;
+        for (k, &c) in raw.iter().enumerate() {
+            match c.to_ascii_uppercase() {
+                '<' => depth += 1,
+                '>' => depth -= 1,
+                'E' | 'K' if depth == 0 => {
+                    split = Some(k);
+                    break;
+                }
+                _ => {}
+            }
+        }
+        if let Some(k) = split {
+            let ms: String = raw[..k].iter().collect();
+            let es: String = raw[k + 1..].iter().collect();
+            let mant = Picture::parse(&ms)?;
+            let exp = Picture::parse(&es)?;
+            if !mant.numeric || !exp.numeric || mant.float.is_some() || exp.float.is_some() {
+                return Err("invalid floating-point picture".into());
+            }
+            if exp.q != 0 {
+                return Err("the exponent of a floating-point picture has no V".into());
+            }
+            let e = raw[k].eq_ignore_ascii_case(&'E');
+            return Ok(Picture {
+                spec: spec.to_string(),
+                items: mant.items.clone(),
+                numeric: true,
+                len: mant.len + usize::from(e) + exp.len,
+                p: mant.p,
+                q: mant.q,
+                f: 0,
+                drift: mant.drift,
+                float: Some(Box::new(FloatPic { mant, exp, e })),
+            });
+        }
         let character = raw
             .iter()
             .any(|c| matches!(c.to_ascii_uppercase(), 'A' | 'X'));
@@ -129,6 +178,7 @@ impl Picture {
                 q: 0,
                 f: 0,
                 drift: None,
+                float: None,
             });
         }
         let mut items = Vec::new();
@@ -170,7 +220,6 @@ impl Picture {
                     items.push(PicChar::Credit(s));
                     continue;
                 }
-                'E' | 'K' => return Err("floating-point pictures are not supported".into()),
                 _ => return Err(format!("invalid character '{c}' in a numeric picture")),
             };
             items.push(it);
@@ -245,12 +294,71 @@ impl Picture {
             q: after_v as i16 - f,
             f,
             drift,
+            float: None,
         })
     }
 
     /// The implied arithmetic attributes.
     pub fn arith(&self) -> crate::types::Ty {
+        if self.float.is_some() {
+            return crate::types::Ty::Float {
+                dec: true,
+                p: self.p,
+            };
+        }
         crate::types::Ty::fixed_dec(self.p, self.q)
+    }
+
+    /// Edits a floating-point value into the image of a floating-point
+    /// picture: the mantissa with its first digit position nonzero.
+    pub fn edit_float(&self, v: f64) -> (String, bool) {
+        let Some(fp) = &self.float else {
+            return (" ".repeat(self.len), true);
+        };
+        let p = i32::from(fp.mant.p);
+        let q = i32::from(fp.mant.q);
+        let int_digits = p - q;
+        let (mut coef, mut exp) = (0i128, 0i32);
+        if v != 0.0 && v.is_finite() {
+            let a = v.abs();
+            let mut e10 = a.log10().floor() as i32;
+            // the leading digit at the first integer position
+            loop {
+                exp = e10 - (int_digits - 1);
+                let scaled = a / 10f64.powi(exp - q);
+                let c = (scaled + 1e-9 * scaled).trunc() as i128;
+                if c >= pow10(p as u32) {
+                    e10 += 1;
+                    continue;
+                }
+                if c < pow10((p - 1).max(0) as u32) && e10 > -400 {
+                    e10 -= 1;
+                    continue;
+                }
+                coef = c;
+                break;
+            }
+            if v < 0.0 {
+                coef = -coef;
+            }
+        }
+        let (m, lost_m) = fp.mant.edit(Dec::new(coef, q.max(0) as u32));
+        let (e, lost_e) = fp.exp.edit(Dec::new(i128::from(exp), 0));
+        let mark = if fp.e { "E" } else { "" };
+        (format!("{m}{mark}{e}"), lost_m || lost_e)
+    }
+
+    /// The value of the image of a floating-point picture.
+    pub fn value_float(&self, text: &str) -> Option<f64> {
+        let fp = self.float.as_ref()?;
+        let chars: Vec<char> = text.chars().collect();
+        let m: String = chars.get(..fp.mant.len)?.iter().collect();
+        let start = fp.mant.len + usize::from(fp.e);
+        let e: String = chars.get(start..start + fp.exp.len)?.iter().collect();
+        let m = fp.mant.value(&m)?;
+        let e = fp.exp.value(&e)?;
+        let mf = m.coef as f64 / 10f64.powi(m.scale as i32);
+        Some(mf * 10f64.powi(e.coef as i32))
     }
 
     /// Edits an arithmetic value (FIXED DEC at the picture's scale) into
@@ -619,5 +727,12 @@ mod tests {
         assert_eq!(p.arith(), crate::types::Ty::fixed_dec(5, 2));
         assert_eq!(p.value("-12345"), Some(Dec::new(-12345, 2)));
         assert_eq!(Picture::parse("$$$9V.99").unwrap().len, 7);
+        let f = Picture::parse("S9V.999ES99").unwrap();
+        assert_eq!(f.len, 10);
+        assert_eq!(f.edit_float(1234.5).0, "+1.234E+03");
+        assert_eq!(f.edit_float(-0.05).0, "-5.000E-02");
+        assert_eq!(f.value_float("+1.234E+03"), Some(1234.0));
+        let k = Picture::parse("99V99KS9").unwrap();
+        assert_eq!(k.edit_float(12.5).0, "1250+0");
     }
 }

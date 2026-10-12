@@ -389,6 +389,7 @@ impl Machine {
                 );
             }
             DataType::Index => binary::write(field, d::to_raw(v, 0, rounded)),
+            DataType::Float { .. } => d::store_float(field, v),
             _ => {
                 let mut out = field.to_vec();
                 move_into(&Val::Num(v), &ty, &mut out);
@@ -456,6 +457,7 @@ impl Machine {
             DataType::Numeric(t) => {
                 d::store_num(t, field, v, false);
             }
+            DataType::Float { .. } => d::store_float(field, v),
             _ => {
                 let mut out = field.to_vec();
                 move_into(&Val::Num(v), &ty, &mut out);
@@ -921,7 +923,9 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
     }
     // Numeric value of the source, when the source is numeric.
     let numeric_src: Option<Dec> = match v {
-        Val::Item(DataType::Numeric(_) | DataType::Index, _) => Some(numeric_val(v)),
+        Val::Item(DataType::Numeric(_) | DataType::Index | DataType::Float { .. }, _) => {
+            Some(numeric_val(v))
+        }
         Val::Item(DataType::NumericEdited { .. }, _) => {
             if matches!(ty, DataType::Numeric(_) | DataType::NumericEdited { .. }) {
                 Some(numeric_val(v))
@@ -940,6 +944,10 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         DataType::Index | DataType::Pointer => {
             let val = numeric_src.unwrap_or_else(|| numeric_val(v));
             binary::write(out, d::to_raw(val, 0, false));
+        }
+        DataType::Float { .. } => {
+            let val = numeric_src.unwrap_or_else(|| numeric_val(v));
+            d::store_float(out, val);
         }
         DataType::NumericEdited {
             edit,

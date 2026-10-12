@@ -1,0 +1,37 @@
+ AREAT: PROC OPTIONS(MAIN);
+   DCL A AREA(1000);
+   DCL O OFFSET(A);
+   DCL P POINTER;
+   DCL 1 NODE BASED(P),
+         2 VAL FIXED BIN(31),
+         2 NEXT OFFSET(A);
+   DCL (HEAD, Q) OFFSET(A) INIT(NULL());
+   DCL K FIXED BIN(31);
+   DCL B AREA(1000);
+   DO K = 1 TO 3;
+     ALLOCATE NODE IN(A) SET(O);
+     P = POINTER(O, A);
+     VAL = K * 10;
+     NEXT = HEAD;
+     HEAD = O;
+   END;
+   Q = HEAD;
+   DO WHILE(Q ^= NULL());
+     P = POINTER(Q, A);
+     PUT SKIP LIST(VAL);
+     Q = NEXT;
+   END;
+   B = A;
+   P = POINTER(HEAD, B);
+   PUT SKIP LIST('COPY', VAL);
+   PUT SKIP LIST('EMPTY', EMPTY() = EMPTY());
+   A = EMPTY();
+   DCL SMALL AREA(16);
+   DCL N FIXED BIN(31);
+   ON AREA BEGIN; PUT SKIP LIST('AREA FULL', N); GO TO FULL; END;
+   DO N = 1 TO 10;
+     ALLOCATE NODE IN(SMALL) SET(P);
+   END;
+ FULL:
+   PUT SKIP LIST('END');
+ END AREAT;

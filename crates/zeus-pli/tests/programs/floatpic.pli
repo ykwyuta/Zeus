@@ -1,0 +1,12 @@
+ FPIC: PROC OPTIONS(MAIN);
+   DCL F PIC'S9V.999ES99';
+   DCL G PIC'99V99KS9';
+   DCL X FLOAT DEC(6);
+   F = 1234.5;
+   G = 12.5;
+   X = F * 2;
+   PUT SKIP LIST(F, G, STG(F));
+   PUT SKIP LIST(X);
+   F = -0.05;
+   PUT SKIP EDIT(F, X)(A, X(1), P'S9V.99ES99');
+ END FPIC;

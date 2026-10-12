@@ -139,6 +139,7 @@ impl Compiler {
                     ty.ok_or_else(|| self.err(var.pos, "DO control variable must be a scalar"))?;
                 let mut out = Vec::new();
                 for s in specs {
+                    let s = &self.thru_spec(var, s);
                     let start = self.expr(&s.start)?;
                     let start = self.conv(start, &ty);
                     let arith = |c: &mut Compiler, e: &Option<ast::Expr>| -> Result<Option<Expr>> {
@@ -276,6 +277,7 @@ impl Compiler {
                                         r.parts.iter().map(|p| p.0.clone()).collect();
                                     matches!(self.sym(&names[0]), Some(Sym::Var(_)) | None)
                                         && self.resolve_var(&names).is_some()
+                                        && !self.entry_invocation(r)
                                 } =>
                             {
                                 let rr = self.reference(r, true)?;
@@ -593,7 +595,11 @@ impl Compiler {
                 if aggregate {
                     return self.aggregate_assign(ts, &value, *by_name, pos);
                 }
-                let x = self.expr(&value)?;
+                let x = if matches!(tys[0], Some(Ty::Entry)) {
+                    self.entry_expr(&value)?
+                } else {
+                    self.expr(&value)?
+                };
                 let ty = tys[0].clone().unwrap_or(char_any());
                 if ts.len() == 1 {
                     Stmt::Assign(ts, self.conv(x, &ty))
@@ -772,7 +778,7 @@ impl Compiler {
             StmtKind::Locate(..) => return Err(self.err(pos, "LOCATE is not supported")),
             StmtKind::Allocate(items) => {
                 let mut v = Vec::new();
-                for (r, set, len) in items {
+                for (r, set, len, area) in items {
                     let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
                     let var = self.resolve_var(&names).ok_or_else(|| {
                         self.err(pos, format!("{} is not declared", names.join(".")))
@@ -833,10 +839,49 @@ impl Compiler {
                         Some(e) => Some(self.target(e)?.0),
                         None => None,
                     };
-                    v.push((var, set, given));
+                    let area = match area {
+                        Some(ast::Expr::Ref(a)) => {
+                            let ar = self.reference(a, true)?;
+                            if !matches!(self.m.vars[ar.var as usize].ty, Some(Ty::Area(_))) {
+                                return Err(self.err(pos, "ALLOCATE IN: not an AREA"));
+                            }
+                            Some(ar)
+                        }
+                        Some(_) => return Err(self.err(pos, "ALLOCATE IN: not an AREA")),
+                        None => None,
+                    };
+                    v.push((var, set, given, area));
                 }
                 Stmt::Allocate(v)
             }
+            StmtKind::Fetch(items) => {
+                let mut v = Vec::new();
+                for (name, title) in items {
+                    let t = match title {
+                        Some(e) => {
+                            let x = self.expr(e)?;
+                            Some(self.to_char(x))
+                        }
+                        None => None,
+                    };
+                    // the external name of the entry
+                    let ext = match self.sym(name) {
+                        Some(Sym::EntryDecl(d)) => d.name.clone(),
+                        _ => name.clone(),
+                    };
+                    v.push((ext, t));
+                }
+                Stmt::Fetch(v)
+            }
+            StmtKind::Release(names) => Stmt::Release(
+                names
+                    .iter()
+                    .map(|n| match self.sym(n) {
+                        Some(Sym::EntryDecl(d)) => d.name.clone(),
+                        _ => n.clone(),
+                    })
+                    .collect(),
+            ),
             StmtKind::Free(refs) => {
                 let mut v = Vec::new();
                 for r in refs {
@@ -900,4 +945,51 @@ fn member_ref(parent: &Ref, member: VarId, m: &Module) -> Ref {
 #[allow(dead_code)]
 fn unused() -> (Ty, Ty) {
     (bit_any(), char_any())
+}
+
+impl Compiler {
+    /// UPTHRU / DOWNTHRU: for an ORDINAL control variable, through the
+    /// members (REPEAT ORDINALSUCC / ORDINALPRED, UNTIL the last); else
+    /// TO with BY 1 / -1.
+    fn thru_spec(&self, var: &ast::Ref, s: &ast::DoItem) -> ast::DoItem {
+        let Some(up) = s.thru else { return s.clone() };
+        let pos = var.pos;
+        let mut out = s.clone();
+        out.thru = None;
+        let v = ast::Expr::Ref(var.clone());
+        if self.ordinal_of(&v).is_some()
+            && let Some(last) = s.to.clone()
+        {
+            let step = ast::Ref {
+                locator: None,
+                parts: vec![(
+                    if up { "ORDINALSUCC" } else { "ORDINALPRED" }.to_string(),
+                    vec![vec![v.clone()]],
+                )],
+                pos,
+            };
+            out.to = None;
+            out.by = None;
+            out.repeat = Some(ast::Expr::Ref(step));
+            let at_last = ast::Expr::Binary("=", Box::new(v), Box::new(last), pos);
+            out.until = Some(match s.until.clone() {
+                Some(u) => ast::Expr::Binary("|", Box::new(u), Box::new(at_last), pos),
+                None => at_last,
+            });
+            return out;
+        }
+        if out.by.is_none() {
+            let one = ast::Expr::Num {
+                text: "1".into(),
+                binary: false,
+                pos,
+            };
+            out.by = Some(if up {
+                one
+            } else {
+                ast::Expr::Unary("-", Box::new(one), pos)
+            });
+        }
+        out
+    }
 }

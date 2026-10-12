@@ -4,6 +4,7 @@
 //!   decimal scale) used for COBOL arithmetic.
 //! * [`packed`], [`zoned`], [`binary`] - the storage formats of numeric data
 //!   (USAGE PACKED-DECIMAL / DISPLAY / BINARY) with EBCDIC zones.
+//! * [`hfp`] - IBM hexadecimal floating point (COMP-1 / COMP-2, FLOAT).
 //! * [`insn`] - the semantics of the z/Architecture decimal instructions
 //!   (AP, SP, ZAP, CP, MP, DP, SRP, MVO, PACK, UNPK), verified against
 //!   Hercules (`zeus-hercdiff`).
@@ -13,6 +14,7 @@
 
 pub mod binary;
 mod dec;
+pub mod hfp;
 pub mod insn;
 pub mod packed;
 pub mod zoned;

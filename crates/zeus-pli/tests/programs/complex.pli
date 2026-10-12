@@ -1,0 +1,18 @@
+ CPLX: PROC OPTIONS(MAIN);
+   DCL (A, B, C) COMPLEX FLOAT DEC(6);
+   DCL Z COMPLEX FIXED DEC(5,1);
+   DCL R FLOAT DEC(6);
+   A = 1 + 2I;
+   B = COMPLEX(3, -1);
+   C = A * B;
+   PUT SKIP LIST(C);
+   PUT SKIP LIST(REAL(C), IMAG(C), ABS(3+4I));
+   C = A / B;
+   PUT SKIP LIST(C, CONJG(A));
+   Z = A + 2.5;
+   PUT SKIP LIST(Z, STG(Z), STG(A));
+   R = A;
+   PUT SKIP LIST(R, A = 1+2I, A = B);
+   Z = -Z;
+   PUT SKIP LIST(Z);
+ END CPLX;

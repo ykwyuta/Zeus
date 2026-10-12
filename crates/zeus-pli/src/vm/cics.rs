@@ -50,7 +50,7 @@ impl Machine {
                 };
                 num(NumUsage::Native, digits, 0)
             }
-            Ty::Pointer | Ty::Offset => DataType::Pointer,
+            Ty::Pointer | Ty::Offset(_) => DataType::Pointer,
             Ty::Char {
                 var: Varying::Varying,
                 ..
@@ -125,6 +125,32 @@ impl Machine {
     /// the EXEC interface block, `commarea` that of the COMMAREA.
     pub fn run_cics(&mut self, eib: usize, commarea: Option<usize>) -> R<()> {
         let m = self.module.clone();
+        let eiptr = m.vars.iter().position(|v| v.name == "DFHEIPTR");
+        self.run_with_pointers(&[commarea], |me, a| {
+            if let Some(v) = eiptr {
+                let r = Ref {
+                    var: v as VarId,
+                    subs: Vec::new(),
+                    locator: None,
+                };
+                let loc = me.locate(&r, a)?;
+                me.write((loc.bit / 8) as u32, &(eib as u32).to_be_bytes())?;
+            }
+            Ok(())
+        })
+    }
+
+    /// Runs the main procedure with storage addresses for its parameters
+    /// (an IMS program's PCBs, a CICS program's COMMAREA): a POINTER
+    /// parameter gets the address (NULL for None), another is the storage
+    /// at the address. `init` runs in the main procedure's activation
+    /// before its body.
+    pub fn run_with_pointers(
+        &mut self,
+        addrs: &[Option<usize>],
+        init: impl FnOnce(&mut Machine, usize) -> R<()>,
+    ) -> R<()> {
+        let m = self.module.clone();
         let Some(main) = m.main.or(if m.procs.is_empty() { None } else { Some(0) }) else {
             return err("the program has no procedure");
         };
@@ -134,12 +160,19 @@ impl Machine {
         }
         let proc = &m.procs[main as usize];
         let mut bindings = Vec::new();
-        if !proc.params.is_empty() {
-            let cell = self.heap_alloc(4);
-            let p = commarea.map_or(NULL, |a| a as u32);
-            self.write(cell, &p.to_be_bytes())?;
+        for (k, &pv) in proc.params.iter().enumerate() {
+            let addr = addrs.get(k).copied().flatten();
+            let pointer = matches!(m.vars[pv as usize].ty, Some(Ty::Pointer));
+            let bit = if pointer || addr.is_none() {
+                let cell = self.heap_alloc(4);
+                let p = addr.map_or(NULL, |a| a as u32);
+                self.write(cell, &p.to_be_bytes())?;
+                u64::from(cell) * 8
+            } else {
+                addr.unwrap_or(0) as u64 * 8
+            };
             bindings.push(Some(Binding {
-                bit: u64::from(cell) * 8,
+                bit,
                 dims: Vec::new(),
                 len: None,
             }));
@@ -148,15 +181,7 @@ impl Machine {
         CUR_ENABLED.with(|c| c.set(cond::DEFAULT));
         let a = self.activate(proc.block, None, bindings, proc.returns.clone())?;
         let r = (|| -> R<()> {
-            if let Some(v) = m.vars.iter().position(|v| v.name == "DFHEIPTR") {
-                let r = Ref {
-                    var: v as VarId,
-                    subs: Vec::new(),
-                    locator: None,
-                };
-                let loc = self.locate(&r, a)?;
-                self.write((loc.bit / 8) as u32, &(eib as u32).to_be_bytes())?;
-            }
+            init(self, a)?;
             let body = m.blocks[proc.block as usize].body.clone();
             match self.run_list(&body, a) {
                 Ok(()) | Err(Intr::Return(_)) | Err(Intr::CicsReturn) | Err(Intr::Stop) => Ok(()),

@@ -22,6 +22,8 @@ use crate::bms::{self, SendMode};
 use crate::region::{self, OpenFile, Region, Shared, Terminal, aid};
 use crate::time;
 
+mod channel;
+
 /// EIB field offsets (the layout of DFHEIBLK).
 mod eib {
     pub const TIME: usize = 0;
@@ -37,6 +39,15 @@ mod eib {
     pub const RESP: usize = 76;
     pub const RESP2: usize = 80;
     pub const LEN: usize = 85;
+}
+
+/// The enqueue name of the lock of a record (data set, primary key).
+fn record_lock(dataset: &str, primary: &[u8]) -> Vec<u8> {
+    let mut n = b"\0record ".to_vec();
+    n.extend_from_slice(dataset.as_bytes());
+    n.push(0);
+    n.extend_from_slice(primary);
+    n
 }
 
 /// Prefix of the VM error that abends a task.
@@ -84,6 +95,9 @@ struct Browse {
     started: bool,
 }
 
+/// XCTL: the program, its COMMAREA (address, length) and channel.
+type Xctl = (String, Option<(usize, usize)>, Option<String>);
+
 struct State {
     transid: String,
     taskn: u32,
@@ -93,7 +107,16 @@ struct State {
     programs: Vec<String>,
     commareas: Vec<Option<(usize, usize)>>,
     handlers: HashMap<usize, Handlers>,
-    xctl: Option<(String, Option<(usize, usize)>)>,
+    xctl: Option<Xctl>,
+    /// The current channel of each LINK level (LINK / XCTL / RUN with
+    /// CHANNEL), and the task's channels.
+    channel_stack: Vec<Option<String>>,
+    channels: HashMap<String, channel::Channel>,
+    /// Child tasks started by RUN TRANSID (not yet fetched or freed).
+    children: Vec<channel::Child>,
+    child_count: u32,
+    /// Container browses: the names and the next one.
+    container_browses: Vec<Option<(Vec<String>, usize)>>,
     /// The terminal input that started the task has not been read nor
     /// overwritten by a SEND; otherwise RECEIVE waits for new input.
     input_pending: bool,
@@ -139,7 +162,7 @@ pub fn run(
     aid_byte: u8,
     commarea: Option<Vec<u8>>,
 ) -> Result<(), String> {
-    run_task(region, term, transid, aid_byte, commarea, None)
+    run_task(region, term, transid, aid_byte, commarea, None, None, None).result
 }
 
 /// Runs a transaction started by START (with its FROM data, for
@@ -149,10 +172,44 @@ pub fn run_started(
     term: &Shared<Terminal>,
     transid: &str,
     data: Option<Vec<u8>>,
+    channel: Option<(String, channel::Channel)>,
 ) -> Result<(), String> {
-    run_task(region, term, transid, 0, None, Some(data))
+    run_task(region, term, transid, 0, None, Some(data), channel, None).result
 }
 
+/// Runs `program` for a client outside the region (a distributed program
+/// link, as through IPIC): a task without a terminal under `transid` (the
+/// EIBTRNID); returns the COMMAREA as the program left it, or the abend
+/// code.
+pub fn link(
+    region: &Shared<Region>,
+    transid: &str,
+    program: &str,
+    commarea: Vec<u8>,
+) -> Result<Vec<u8>, String> {
+    let term = Rc::new(std::cell::RefCell::new(Terminal::new("")));
+    let end = run_task(
+        region,
+        &term,
+        transid,
+        0,
+        Some(commarea),
+        Some(None),
+        None,
+        Some(program),
+    );
+    end.result.map(|()| end.commarea.unwrap_or_default())
+}
+
+/// How a task ended: its result, the channel it was started with (as it
+/// left it) and its COMMAREA.
+struct TaskEnd {
+    result: Result<(), String>,
+    channel: Option<channel::Channel>,
+    commarea: Option<Vec<u8>>,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_task(
     region: &Shared<Region>,
     term: &Shared<Terminal>,
@@ -160,7 +217,9 @@ fn run_task(
     aid_byte: u8,
     commarea: Option<Vec<u8>>,
     start: Option<Option<Vec<u8>>>,
-) -> Result<(), String> {
+    channel: Option<(String, channel::Channel)>,
+    program: Option<&str>,
+) -> TaskEnd {
     let startcode = match &start {
         None => "TD",
         Some(None) => "S",
@@ -168,7 +227,10 @@ fn run_task(
     };
     let start_data = start.flatten();
     term.borrow_mut().busy = true;
-    let program = region.borrow().csd.transactions[transid].clone();
+    let program = match program {
+        Some(p) => p.to_string(),
+        None => region.borrow().csd.transactions[transid].clone(),
+    };
     let loadlibs = region.borrow().loadlibs.clone();
     let taskn = {
         let mut r = region.borrow_mut();
@@ -192,6 +254,11 @@ fn run_task(
             commareas: Vec::new(),
             handlers: HashMap::new(),
             xctl: None,
+            channel_stack: Vec::new(),
+            channels: HashMap::new(),
+            children: Vec::new(),
+            child_count: 0,
+            container_browses: Vec::new(),
             input_pending: startcode == "TD",
             startcode,
             start_data,
@@ -205,6 +272,8 @@ fn run_task(
         out: out.clone(),
     });
     m.set_exec_host(task.clone());
+    // long running programs give other tasks the processor
+    m.set_tick(crate::dispatch::time_slice);
     // COBOL programs CALL PL/I procedures of the load libraries
     let pli_out = out.clone();
     m.set_linker(zeus_pli::link::ModuleLinker::new(
@@ -220,7 +289,13 @@ fn run_task(
         m.storage_mut()[a..a + c.len()].copy_from_slice(&c);
         (a, c.len())
     });
-    let r = task.run_level(&mut m, &program, ca, true);
+    let chan_name = channel.as_ref().map(|c| c.0.clone());
+    if let Some((n, c)) = channel {
+        task.st.borrow_mut().channels.insert(n, c);
+    }
+    let r = task.run_level(&mut m, &program, ca, chan_name.clone(), true);
+    let commarea_back = ca.map(|(a, l)| m.storage()[a..a + l].to_vec());
+    let chan_back = chan_name.and_then(|n| task.st.borrow_mut().channels.remove(&n));
     {
         let mut t = term.borrow_mut();
         t.screen.locked = false;
@@ -231,6 +306,7 @@ fn run_task(
         Ok(()) => r,
         Err(e) => r.and(Err(e)),
     };
+    region.borrow_mut().dequeue_task(taskn, true);
     if let Some(h) = task.db2.borrow_mut().take() {
         region.borrow_mut().db2_release(h);
     }
@@ -240,7 +316,7 @@ fn run_task(
             .log
             .push(format!("CEEOUT {transid} {}", line.trim_end()));
     }
-    match r {
+    let r = match r {
         Ok(()) => Ok(()),
         Err(e) => {
             let code = match e.0.strip_prefix(ABEND) {
@@ -259,6 +335,11 @@ fn run_task(
                 .push(format!("task {taskn} {transid} abended {code}"));
             Err(code)
         }
+    };
+    TaskEnd {
+        result: r,
+        channel: chan_back,
+        commarea: commarea_back,
     }
 }
 
@@ -347,6 +428,7 @@ impl Task {
         m: &mut Machine,
         program: &str,
         mut ca: Option<(usize, usize)>,
+        mut chan: Option<String>,
         top: bool,
     ) -> RResult<()> {
         let mut program = program.to_string();
@@ -359,6 +441,7 @@ impl Task {
                 let mut st = self.st.borrow_mut();
                 st.programs.push(program.clone());
                 st.commareas.push(ca);
+                st.channel_stack.push(chan.clone());
                 st.programs.len()
             };
             let r = match self.run_pli(m, &program, ca, level) {
@@ -369,6 +452,7 @@ impl Task {
                 let mut st = self.st.borrow_mut();
                 st.programs.pop();
                 st.commareas.pop();
+                st.channel_stack.pop();
             }
             match r? {
                 None => {
@@ -381,9 +465,10 @@ impl Task {
                 Some(ProgramEnd::StopRun(_)) | Some(ProgramEnd::Returned) => {}
             }
             match self.st.borrow_mut().xctl.take() {
-                Some((p, c)) => {
+                Some((p, c, ch)) => {
                     program = p;
                     ca = c;
+                    chan = ch;
                 }
                 None => return Ok(()),
             }
@@ -413,6 +498,81 @@ impl Task {
         *m = pm.detach();
         self.st.borrow_mut().handlers.remove(&instance);
         Some(r.map_err(RunError))
+    }
+
+    /// The time of START or DELAY from now, in milliseconds:
+    /// INTERVAL(hhmmss), AFTER / FOR HOURS MINUTES SECONDS (MILLISECS),
+    /// TIME(hhmmss), AT / UNTIL HOURS MINUTES SECONDS.
+    fn interval_ms(m: &Machine, call: &ExecCall) -> u64 {
+        let hms = |v: i64| (v / 10000) * 3600 + (v / 100 % 100) * 60 + v % 100;
+        let parts = || {
+            (Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
+                + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
+                + Self::opt_num(m, call, "SECONDS").unwrap_or(0))
+                * 1000
+                + Self::opt_num(m, call, "MILLISECS").unwrap_or(0)
+        };
+        let since_midnight = || {
+            let (_, _, _, _, h, mi, sec, ms) = time::split(time::abstime_now());
+            (h * 3600 + mi * 60 + sec) * 1000 + ms
+        };
+        let ms = if let Some(v) = Self::opt_num(m, call, "INTERVAL") {
+            hms(v) * 1000
+        } else if call.has("AFTER") || call.has("FOR") {
+            parts()
+        } else if let Some(v) = Self::opt_num(m, call, "TIME") {
+            hms(v) * 1000 - since_midnight()
+        } else if call.has("AT") || call.has("UNTIL") {
+            parts() - since_midnight()
+        } else {
+            0
+        };
+        ms.max(0) as u64
+    }
+
+    /// ENQ: the resource for the task (waiting while another task has it,
+    /// unless NOSUSPEND: ENQBUSY); DEQ gives it back.
+    fn enq(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        // the resource: LENGTH bytes of the data area, else its address
+        let name = match (call.arg("RESOURCE"), Self::opt_num(m, call, "LENGTH")) {
+            (Some(ExecArg::Area(a)), None) => {
+                let mut n = b"@".to_vec();
+                n.extend((a.addr as u32).to_be_bytes());
+                n
+            }
+            (Some(a), len) => {
+                let mut b = Self::bytes(m, a);
+                if let Some(l) = len {
+                    b.resize(l.max(0) as usize, 0);
+                }
+                b
+            }
+            (None, _) => return self.finish(m, call, "INVREQ", 0),
+        };
+        let taskn = self.st.borrow().taskn;
+        if call.command == "DEQ" {
+            self.region.borrow_mut().dequeue(&name, taskn);
+            return self.finish(m, call, "NORMAL", 0);
+        }
+        let for_task = call.has("TASK") || call.has("MAXLIFETIME");
+        loop {
+            if self.region.borrow_mut().enqueue(&name, taskn, for_task) {
+                return self.finish(m, call, "NORMAL", 0);
+            }
+            // NOSUSPEND, or HANDLE CONDITION ENQBUSY: the condition
+            let handled = self
+                .st
+                .borrow()
+                .handlers
+                .get(&call.instance)
+                .is_some_and(|h| h.cond.contains_key("ENQBUSY"));
+            if call.has("NOSUSPEND")
+                || handled
+                || crate::dispatch::suspend(crate::dispatch::Wait::Dispatch).is_none()
+            {
+                return self.finish(m, call, "ENQBUSY", 0);
+            }
+        }
     }
 
     // ---- operands -------------------------------------------------------
@@ -575,6 +735,10 @@ impl Task {
             }
         }
         drop(st);
+        // ENQBUSY is ignored by default
+        if cond == "ENQBUSY" {
+            return Ok(ExecOutcome::Continue);
+        }
         self.raise_abend(call, &abend_code(cond))
     }
 
@@ -663,6 +827,7 @@ impl Task {
                     let transid = Self::opt_text(m, call, "TRANSID");
                     let data = ca.map(|(a, l)| m.storage()[a..a + l].to_vec());
                     let mut t = self.term.borrow_mut();
+                    t.immediate = transid.is_some() && call.has("IMMEDIATE");
                     t.next = transid.map(|t| (t, data));
                 }
                 self.st.borrow_mut().handlers.remove(&call.instance);
@@ -681,7 +846,8 @@ impl Task {
                 });
                 let mut st = self.st.borrow_mut();
                 st.handlers.remove(&call.instance);
-                st.xctl = Some((program, ca));
+                let chan = Self::opt_text(m, call, "CHANNEL");
+                st.xctl = Some((program, ca, chan));
                 Ok(ExecOutcome::Return)
             }
             _ => {
@@ -691,10 +857,62 @@ impl Task {
                 }
                 let e = self.st.borrow().eib;
                 let saved = m.storage()[e + eib::CALEN..e + eib::CALEN + 2].to_vec();
-                self.run_level(m, &program, ca, false)?;
+                let chan = Self::opt_text(m, call, "CHANNEL");
+                if let Some(c) = &chan {
+                    self.st.borrow_mut().channels.entry(c.clone()).or_default();
+                }
+                self.link_events(m, true, &program, ca, chan.as_deref());
+                self.run_level(m, &program, ca, chan.clone(), false)?;
                 m.storage_mut()[e + eib::CALEN..e + eib::CALEN + 2].copy_from_slice(&saved);
+                self.link_events(m, false, &program, ca, chan.as_deref());
                 self.finish(m, call, "NORMAL", 0)
             }
+        }
+    }
+
+    /// Event processing: the events the region's event bindings capture
+    /// before or after a LINK, emitted by starting their adapters'
+    /// transactions with channel DFHEP.EVENT.
+    fn link_events(
+        &self,
+        m: &Machine,
+        before: bool,
+        linked: &str,
+        ca: Option<(usize, usize)>,
+        chan: Option<&str>,
+    ) {
+        if self.region.borrow().event_bindings.is_empty() {
+            return;
+        }
+        let st = self.st.borrow();
+        let program = st.programs.last().cloned().unwrap_or_default();
+        let commarea = ca.map(|(a, l)| &m.storage()[a..a + l]);
+        let channel = chan.and_then(|c| st.channels.get(c.trim_end()));
+        let (y, mo, d, h, mi, s, ms, _) = crate::time::split(crate::time::abstime_now());
+        let now = format!(
+            "{y:04}-{mo:02}-{d:02}-{h:02}.{mi:02}.{s:02}.{:06}",
+            ms * 1000
+        );
+        let point = crate::events::LinkPoint {
+            before,
+            transid: &st.transid,
+            program: &program,
+            linked: linked.trim_end(),
+            commarea,
+            channel,
+        };
+        let emitted = crate::events::capture(&self.region.borrow().event_bindings, &point, &now);
+        drop(st);
+        let mut r = self.region.borrow_mut();
+        for e in emitted {
+            r.starts.push(region::StartRequest {
+                transid: e.transid,
+                termid: None,
+                data: None,
+                reqid: None,
+                due: std::time::Instant::now(),
+                channel: Some(("DFHEP.EVENT".to_string(), e.containers)),
+            });
         }
     }
 
@@ -858,33 +1076,27 @@ impl Task {
                     }
                 }
                 let data = call.arg("FROM").map(|_| Self::from_data(m, call));
-                let hms = |v: i64| (v / 10000) * 3600 + (v / 100 % 100) * 60 + v % 100;
-                let secs = if let Some(v) = Self::opt_num(m, call, "INTERVAL") {
-                    hms(v)
-                } else if call.has("AFTER") {
-                    Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
-                        + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
-                        + Self::opt_num(m, call, "SECONDS").unwrap_or(0)
-                } else if let Some(v) = Self::opt_num(m, call, "TIME") {
-                    let (_, _, _, _, h, mi, sec, _) = time::split(time::abstime_now());
-                    (hms(v) - (h * 3600 + mi * 60 + sec)).max(0)
-                } else if call.has("AT") {
-                    let (_, _, _, _, h, mi, sec, _) = time::split(time::abstime_now());
-                    let at = Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
-                        + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
-                        + Self::opt_num(m, call, "SECONDS").unwrap_or(0);
-                    (at - (h * 3600 + mi * 60 + sec)).max(0)
-                } else {
-                    0
-                };
+                let ms = Self::interval_ms(m, call);
                 let reqid = Self::opt_text(m, call, "REQID").map(|r| r.trim_end().to_string());
+                // START CHANNEL: a copy of the channel
+                let channel = Self::opt_text(m, call, "CHANNEL").map(|c| {
+                    let c = c.trim_end().to_string();
+                    let containers = self
+                        .st
+                        .borrow()
+                        .channels
+                        .get(&c)
+                        .cloned()
+                        .unwrap_or_default();
+                    (c, containers)
+                });
                 self.region.borrow_mut().starts.push(region::StartRequest {
                     transid,
                     termid,
                     data,
                     reqid,
-                    due: std::time::Instant::now()
-                        + std::time::Duration::from_secs(secs.max(0) as u64),
+                    due: std::time::Instant::now() + std::time::Duration::from_millis(ms),
+                    channel,
                 });
                 self.finish(m, call, "NORMAL", 0)
             }
@@ -1114,6 +1326,9 @@ impl Task {
     /// Ends the unit of work: Db2 commits or rolls back with it, and on
     /// rollback the changes to recoverable files are backed out.
     fn end_uow(&self, commit: bool) -> RResult<()> {
+        // enqueues for the unit of work end with it
+        let taskn = self.st.borrow().taskn;
+        self.region.borrow_mut().dequeue_task(taskn, false);
         let db2 = self.db2.borrow().clone();
         if let Some(h) = db2 {
             let _ = h.end_uow(commit);
@@ -1173,6 +1388,18 @@ impl Task {
     }
 
     // ---- file control ---------------------------------------------------
+
+    /// The end of an update of a record: the lock of a recoverable file's
+    /// record lasts until the unit of work ends, of another file's until
+    /// now.
+    fn unlock_record(&self, fname: &str, key: &str, primary: &[u8]) {
+        if !self.recoverable(fname) {
+            let taskn = self.st.borrow().taskn;
+            self.region
+                .borrow_mut()
+                .dequeue(&record_lock(key, primary), taskn);
+        }
+    }
 
     /// The open data set of a FILE / DATASET option; None: FILENOTFOUND.
     fn open_file(&self, m: &Machine, call: &ExecCall) -> Option<(String, usize)> {
@@ -1246,12 +1473,27 @@ impl Task {
                 } else {
                     zeus_ds::Rel::Eq
                 };
-                let found = {
-                    let r = self.region.borrow();
-                    r.files[&key].dataset.position(which, &k, rel)
-                };
-                let Some(f) = found else {
-                    return self.finish(m, call, "NOTFND", 0);
+                let taskn = self.st.borrow().taskn;
+                let f = loop {
+                    let found = {
+                        let r = self.region.borrow();
+                        r.files[&key].dataset.position(which, &k, rel)
+                    };
+                    let Some(f) = found else {
+                        return self.finish(m, call, "NOTFND", 0);
+                    };
+                    // READ UPDATE locks the record: the task waits while
+                    // another task has it
+                    if !call.has("UPDATE")
+                        || self.region.borrow_mut().enqueue(
+                            &record_lock(&key, &f.primary),
+                            taskn,
+                            false,
+                        )
+                        || crate::dispatch::suspend(crate::dispatch::Wait::Dispatch).is_none()
+                    {
+                        break f;
+                    }
                 };
                 if let Some(a) = Self::area(call, "RIDFLD") {
                     Self::store_bytes(m, &a, &f.position.key);
@@ -1298,10 +1540,11 @@ impl Task {
                 }
             }
             "REWRITE" => {
-                if self.st.borrow_mut().updates.remove(&fname).is_none() {
+                let Some(locked) = self.st.borrow_mut().updates.remove(&fname) else {
                     // REWRITE needs a READ UPDATE first
                     return self.finish(m, call, "INVREQ", 0);
-                }
+                };
+                self.unlock_record(&fname, &key, &locked);
                 let rec = Self::from_data(m, call);
                 let (r, pk, before) = {
                     let mut r = self.region.borrow_mut();
@@ -1330,8 +1573,12 @@ impl Task {
                         .position(which, &k, zeus_ds::Rel::Eq)
                         .map(|f| f.primary)
                 } else {
-                    match self.st.borrow_mut().updates.remove(&fname) {
-                        Some(p) => Some(p),
+                    let locked = self.st.borrow_mut().updates.remove(&fname);
+                    match locked {
+                        Some(p) => {
+                            self.unlock_record(&fname, &key, &p);
+                            Some(p)
+                        }
                         None => return self.finish(m, call, "INVREQ", 0),
                     }
                 };
@@ -1349,7 +1596,10 @@ impl Task {
                 self.finish(m, call, "NORMAL", 0)
             }
             "UNLOCK" => {
-                self.st.borrow_mut().updates.remove(&fname);
+                let locked = self.st.borrow_mut().updates.remove(&fname);
+                if let Some(p) = locked {
+                    self.unlock_record(&fname, &key, &p);
+                }
                 self.finish(m, call, "NORMAL", 0)
             }
             "STARTBR" | "RESETBR" => {
@@ -1559,6 +1809,12 @@ impl Task {
             String::new()
         };
         let abcode = st.abcode.clone();
+        let channel = st
+            .channel_stack
+            .last()
+            .cloned()
+            .flatten()
+            .unwrap_or_default();
         drop(st);
         let mut cond = "NORMAL";
         for (name, arg) in &call.options {
@@ -1568,6 +1824,7 @@ impl Task {
             let text = match name.as_str() {
                 "APPLID" => applid.clone(),
                 "SYSID" => sysid.clone(),
+                "CHANNEL" => channel.clone(),
                 "USERID" | "USERNAME" => userid.clone(),
                 "PROGRAM" => program.clone(),
                 "INVOKINGPROG" => invoking.clone(),
@@ -1766,6 +2023,19 @@ impl ExecHost for Task {
         }
         match call.command.as_str() {
             "HANDLE" => self.handle(m, call),
+            "PUT" | "GET" | "DELETE" | "MOVE" if call.has("CONTAINER") => self.container(m, call),
+            "STARTBROWSE" | "GETNEXT" | "ENDBROWSE"
+                if call.has("CONTAINER") || call.has("BROWSETOKEN") =>
+            {
+                self.container_browse(m, call)
+            }
+            "RUN" => self.run_child(m, call),
+            "FETCH" => self.fetch_child(m, call),
+            "FREE" if call.has("CHILD") => self.free_child(m, call),
+            "INQUIRE" if call.has("ASSOCIATION") => self.inquire_association(m, call),
+            "INQUIRE" | "SET" if call.has("TERMINAL") || call.has("NETNAME") => {
+                self.terminal_setting(m, call)
+            }
             "IGNORE" => self.ignore(m, call),
             "PUSH" | "POP" => self.finish(m, call, "NORMAL", 0),
             "RETURN" | "XCTL" | "LINK" => self.program_control(m, call),
@@ -1807,7 +2077,18 @@ impl ExecHost for Task {
                 self.end_uow(!call.has("ROLLBACK"))?;
                 self.finish(m, call, "NORMAL", 0)
             }
-            "ENQ" | "DEQ" | "DELAY" | "SUSPEND" => self.finish(m, call, "NORMAL", 0),
+            "ENQ" | "DEQ" => self.enq(m, call),
+            "DELAY" => {
+                let ms = Self::interval_ms(m, call);
+                crate::dispatch::delay_until(
+                    std::time::Instant::now() + std::time::Duration::from_millis(ms),
+                );
+                self.finish(m, call, "NORMAL", 0)
+            }
+            "SUSPEND" => {
+                crate::dispatch::suspend(crate::dispatch::Wait::Dispatch);
+                self.finish(m, call, "NORMAL", 0)
+            }
             other => Err(RunError(format!(
                 "{}: EXEC CICS {other} is not supported yet (line {})",
                 call.program, call.line

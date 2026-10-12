@@ -387,6 +387,11 @@ impl Lexer {
         if binary {
             self.i += 1;
         }
+        // an imaginary constant: suffix I
+        if matches!(self.peek(0), Some('I' | 'i')) && !self.peek(1).is_some_and(ident_char) {
+            self.i += 1;
+            text.push('I');
+        }
         self.push(Tok::Num { text, binary }, pos);
     }
 

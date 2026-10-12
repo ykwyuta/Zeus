@@ -7,6 +7,8 @@
 //! zjob [options] catalog define-pds <dsn> [--recfm FB --lrecl 80]
 //! zjob [options] catalog put <dsn(member)> <file>
 //! zjob [options] catalog print <dsn>
+//! zjob [options] ims send <transaction> <text> [--lterm L] [--hex]
+//! zjob [options] ims receive <lterm>
 //!
 //! options: --home DIR (default $ZEUS_HOME or ./zeus): catalog in
 //!          DIR/catalog, job output in DIR/spool
@@ -19,6 +21,12 @@
 //! text lines converted to EBCDIC records); `put` stores a
 //! member: host text converted to EBCDIC 80-byte records for RECFM F/FB
 //! libraries, the file unchanged for RECFM U (load modules).
+//!
+//! `ims send` queues an input message for an IMS transaction (the text in
+//! the code page, or hexadecimal with `--hex`) from LTERM `L` (default
+//! ZEUSTERM); a message processing region (DFSRRC00 PARM='MSG') runs it.
+//! `ims receive` prints and removes the output messages queued for an
+//! LTERM: each segment in hexadecimal and as text.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -34,6 +42,9 @@ fn usage() -> ExitCode {
     );
     eprintln!("       zjob [--home DIR] catalog define-pds <dsn> [--recfm R --lrecl N]");
     eprintln!("       zjob [--home DIR] catalog put <dsn(member)> <file> | print <dsn>");
+    eprintln!(
+        "       zjob [--home DIR] ims send <tran> <text> [--lterm L] [--hex] | receive <lterm>"
+    );
     ExitCode::from(2)
 }
 
@@ -44,6 +55,8 @@ struct Opts {
     recfm: Option<Recfm>,
     lrecl: Option<u32>,
     text: bool,
+    hex: bool,
+    lterm: String,
     args: Vec<String>,
 }
 
@@ -57,6 +70,8 @@ fn parse_opts(args: Vec<String>) -> Option<Opts> {
         recfm: None,
         lrecl: None,
         text: false,
+        hex: false,
+        lterm: "ZEUSTERM".into(),
         args: Vec::new(),
     };
     let mut it = args.into_iter();
@@ -68,6 +83,8 @@ fn parse_opts(args: Vec<String>) -> Option<Opts> {
             "--recfm" => o.recfm = Some(Recfm::parse(&it.next()?)?),
             "--lrecl" => o.lrecl = Some(it.next()?.parse().ok()?),
             "--text" => o.text = true,
+            "--hex" => o.hex = true,
+            "--lterm" => o.lterm = it.next()?.to_ascii_uppercase(),
             "--ccsid" => {
                 if !zeus_cobol::codepage::set_active(it.next()?.parse().ok()?) {
                     return None;
@@ -188,6 +205,70 @@ fn catalog_cmd(o: &Opts, cat: &mut Catalog) -> ExitCode {
     }
 }
 
+/// `ims send` / `ims receive`.
+fn ims_cmd(o: &Opts, cat: &Catalog) -> ExitCode {
+    use zeus_jcl::ims::{message_queue, name8};
+    let queue = match message_queue(cat.root()) {
+        Ok(q) => q,
+        Err(e) => return fail(e),
+    };
+    let a: Vec<&str> = o.args.iter().map(String::as_str).collect();
+    match a.as_slice() {
+        ["ims", "send", tran, text] => {
+            let data = if o.hex {
+                match (0..text.len())
+                    .step_by(2)
+                    .map(|i| {
+                        text.get(i..i + 2)
+                            .and_then(|h| u8::from_str_radix(h, 16).ok())
+                    })
+                    .collect::<Option<Vec<u8>>>()
+                {
+                    Some(d) => d,
+                    None => return fail("--hex: the text is not hexadecimal"),
+                }
+            } else {
+                ebcdic::encode(text)
+            };
+            let m = zeus_ims::runtime::TmMessage::input(tran, &o.lterm, &data);
+            match queue.enqueue(name8(tran), name8(&o.lterm), &m.data()) {
+                Ok(_) => ExitCode::SUCCESS,
+                Err(e) => fail(e),
+            }
+        }
+        ["ims", "receive", lterm] => {
+            let owner = zeus_ims::tm::process_owner();
+            loop {
+                let m = match queue.get(name8(lterm), owner) {
+                    Ok(Some(m)) => m,
+                    Ok(None) => return ExitCode::SUCCESS,
+                    Err(e) => return fail(e),
+                };
+                println!("message to {}", lterm.to_ascii_uppercase());
+                for seg in zeus_ims::runtime::TmMessage::split(&m.data) {
+                    let hex: String = seg.iter().map(|b| format!("{b:02X}")).collect();
+                    let text: String = ebcdic::decode_latin1(&seg[4.min(seg.len())..])
+                        .iter()
+                        .map(|&c| {
+                            if c.is_ascii_graphic() || c == b' ' {
+                                c as char
+                            } else {
+                                '.'
+                            }
+                        })
+                        .collect();
+                    println!("  hex  {hex}");
+                    println!("  text {text}");
+                }
+                if let Err(e) = queue.complete(owner, &[m.id], &[]) {
+                    return fail(e);
+                }
+            }
+        }
+        _ => usage(),
+    }
+}
+
 fn main() -> ExitCode {
     let Some(o) = parse_opts(std::env::args().skip(1).collect()) else {
         return usage();
@@ -198,6 +279,7 @@ fn main() -> ExitCode {
     };
     match o.args.first().map(String::as_str) {
         Some("catalog") => catalog_cmd(&o, &mut catalog),
+        Some("ims") => ims_cmd(&o, &catalog),
         Some("submit") if o.args.len() > 1 => {
             let mut env = Env {
                 catalog,

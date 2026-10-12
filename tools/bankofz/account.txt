@@ -1,0 +1,68 @@
+# Bank of Z accounts: the accounts of a customer, inquiry, credit, transfer,
+# creation, update and deletion
+tran OMEN
+type 5 17 A
+key ENTER
+type 5 18 0000000003
+key ENTER
+expect * accounts found
+tran OMEN
+type 5 17 2
+key ENTER
+type 5 18 00000001
+key ENTER
+expect 1 Display Account
+expect 7 0000000001
+expect 17 +0000324323.13
+# credit 100.50
+tran OMEN
+type 5 17 6
+key ENTER
+type 8 18 00000001
+type 8 36 +
+type 8 38 0000000100.50
+key ENTER
+expect * Amount successfully applied to the account
+expect * +0000324423.63
+# transfer 50.25 from account 1 to account 2
+tran OMEN
+type 5 17 7
+key ENTER
+type 8 24 00000001
+type 8 53 00000002
+type 9 24 0000000050.25
+key ENTER
+expect * Transfer successfully applied
+expect * +0000324373.38
+expect * +0000085080.47
+# a new account
+tran OMEN
+type 5 17 4
+key ENTER
+type 6 24 0000000001
+type 7 24 SAVING
+type 8 24 0001.50
+type 9 24 00000100
+key ENTER
+expect * The Account has been successfully created
+expect * 00000498
+# change its interest rate
+tran OMEN
+type 5 17 5
+key ENTER
+type 5 18 00000498
+key ENTER
+expect 23 Please amend fields and hit <pf5> to apply changes
+eof 11 21
+type 11 21 0002.25
+key PF5
+expect * Account update successfully applied
+expect 11 0002.25
+# and delete it
+tran OMEN
+type 5 17 2
+key ENTER
+type 5 18 00000498
+key ENTER
+key PF5
+expect * Account 00000498 was successfully deleted

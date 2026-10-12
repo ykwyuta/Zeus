@@ -1,0 +1,50 @@
+# Bank of Z customers: inquiry, creation (with the credit agency child
+# tasks of the asynchronous API), update and deletion
+tran OMEN
+expect 1 CICS Banking Sample Application - Main Menu
+type 5 17 1
+key ENTER
+expect 1 Display Customer
+type 5 18 0000000001
+key ENTER
+expect 11 Lloyd
+expect 14 Crewe
+expect 23 Customer lookup successful
+# update: PF10 opens the fields, ENTER applies the change
+key PF10
+expect 23 Amend data then press <ENTER>
+eof 14 19
+type 14 19 Keswick
+key ENTER
+expect 23 Customer 0000000001 was updated successfully
+type 5 18 0000000001
+key ENTER
+expect 14 Keswick
+key PF3
+# a new customer
+tran OMEN
+type 5 17 3
+key ENTER
+expect 1 Create Customer
+type 7 19 Mrs
+type 7 47 Ada
+type 8 36 Lovelace
+type 10 19 1 Analytical Way
+type 12 19 London
+type 13 19 EC1 1AA
+type 14 19 United Kingdom
+type 15 19 10
+type 15 24 12
+type 15 29 1985
+key ENTER
+expect 23 The Customer record has been successfully created
+expect 18 0000000201
+# and its deletion
+tran OMEN
+type 5 17 1
+key ENTER
+type 5 18 0000000201
+key ENTER
+expect 11 Lovelace
+key PF5
+expect 23 Customer 0000000201 and associated accounts were successfully deleted

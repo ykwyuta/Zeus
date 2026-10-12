@@ -1,0 +1,26 @@
+[package]
+name = "zeus-zconnect"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-cics = { path = "../zeus-cics" }
+zeus-ds = { path = "../zeus-ds" }
+zeus-ims = { path = "../zeus-ims" }
+zeus-jcl = { path = "../zeus-jcl" }
+zeus-cobol = { path = "../zeus-cobol" }
+zeus-decimal = { path = "../zeus-decimal" }
+regex = "1"
+roxmltree = "0.20"
+serde_json.workspace = true
+yaml-rust2 = "0.10"
+
+[lints]
+workspace = true
+
+[[bin]]
+name = "zconn"
+path = "src/main.rs"

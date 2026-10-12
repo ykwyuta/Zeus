@@ -9,6 +9,7 @@ repository.workspace = true
 
 [dependencies]
 zeus-cobol = { path = "../zeus-cobol" }
+zeus-decimal = { path = "../zeus-decimal" }
 libloading = "0.8"
 
 # The FFI module needs unsafe code; everything else denies it.
@@ -17,3 +18,7 @@ unsafe_code = "deny"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+
+[[bin]]
+name = "zmq"
+path = "src/zmq.rs"

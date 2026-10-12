@@ -1,4 +1,15 @@
-//! `EXEC PGM=DFSRRC00`: IMS batch regions.
+//! `EXEC PGM=DFSRRC00`: IMS batch and message processing regions, and the
+//! transaction definitions of `EXEC PGM=CSLUSPOC`.
+//!
+//! PARM='MSG': a message processing region. Each input message queued for
+//! a defined transaction (CSLUSPOC `CREATE TRAN NAME(t) SET(PGM(p))`; the
+//! PSB is the program's name) runs its program with the I/O PCB first;
+//! the program gets the message with GU and inserts its output to the
+//! source LTERM, whose queue `zjob ims receive` reads. The region ends when
+//! no message is left (WFI=N). A program that ends abnormally leaves its
+//! input message queued and stops its transaction for the rest of the
+//! region (return code 8). The message queue is `ims/tmq` next to the
+//! catalog.
 //!
 //! PARM='DLI|DBB|BMP,program,psb': the program runs with the PSB
 //! scheduled and gets its PCB masks (the I/O PCB first for BMP regions and
@@ -63,6 +74,15 @@ pub(crate) fn run(ctx: &mut StepCtx, libs: &[PathBuf], job: &str, step: &Step) -
     };
     match region.as_str() {
         "DLI" | "DBB" | "BMP" => {}
+        // the prereorganization utility: the Zeus store needs no control
+        // data set
+        "ULU" if program == "DFSURPR0" => {
+            if let Ok(mut f) = ctx.sysout("SYSPRINT") {
+                let _ = writeln!(f, "ZEUS IMS: DFSURPR0 has nothing to do");
+            }
+            return Ok(0);
+        }
+        "MSG" => return message_region(ctx, libs, job, step, &ims),
         "ULR" if program == "DFSURGL0" => {
             let Some(input) = ctx.dd("DFSUINPT").map(|d| d.path.clone()) else {
                 return fail(ctx, "DFSURGL0 needs DD DFSUINPT", "U0428");
@@ -97,4 +117,195 @@ pub(crate) fn run(ctx: &mut StepCtx, libs: &[PathBuf], job: &str, step: &Step) -
         Err(e) => return fail(ctx, &e, "U0456"),
     };
     crate::job::run_program(ctx, &program, libs, job, step, Some(sched))
+}
+
+// ---- message processing ---------------------------------------------------
+
+/// The file of the transaction definitions (transaction, program).
+fn definitions_path(root: &std::path::Path) -> PathBuf {
+    root.join("ims").join("transactions")
+}
+
+/// The IMS message queue next to the catalog.
+pub fn message_queue(root: &std::path::Path) -> Result<zeus_ims::tm::Queue, String> {
+    zeus_ims::tm::Queue::open(root.join("ims").join("tmq"))
+}
+
+/// The defined transactions: code -> program.
+pub fn transactions(root: &std::path::Path) -> Vec<(String, String)> {
+    std::fs::read_to_string(definitions_path(root))
+        .unwrap_or_default()
+        .lines()
+        .filter_map(|l| {
+            let mut w = l.split_whitespace();
+            Some((w.next()?.to_string(), w.next()?.to_string()))
+        })
+        .collect()
+}
+
+/// An 8-byte EBCDIC name.
+pub fn name8(s: &str) -> [u8; 8] {
+    let mut b = [zeus_cobol::ebcdic::SPACE; 8];
+    for (d, c) in b.iter_mut().zip(s.to_ascii_uppercase().bytes()) {
+        *d = zeus_cobol::ebcdic::from_latin1(c);
+    }
+    b
+}
+
+fn text8(b: &[u8; 8]) -> String {
+    zeus_cobol::ebcdic::decode_latin1(b)
+        .iter()
+        .map(|&c| c as char)
+        .collect::<String>()
+        .trim()
+        .to_string()
+}
+
+/// `EXEC PGM=CSLUSPOC`: the type-2 commands of SYSIN. CREATE TRAN defines
+/// a transaction (kept next to the catalog); the other commands (CREATE
+/// DB / PGM, START) have nothing to do.
+pub(crate) fn spoc(ctx: &mut StepCtx) -> ProgramResult {
+    let input = ctx.read_text("SYSIN").unwrap_or_default();
+    let mut out = ctx
+        .sysout("SYSPRINT")
+        .map_err(|e| Outcome::JclError(e.to_string()))?;
+    // commands: '+' or '-' at the end continues on the next line
+    let mut cmds = Vec::new();
+    let mut cur = String::new();
+    for l in &input {
+        let t: String = l.chars().take(72).collect();
+        let t = t.trim();
+        if let Some(rest) = t.strip_suffix('+').or_else(|| t.strip_suffix('-')) {
+            cur.push_str(rest);
+            cur.push(' ');
+        } else {
+            cur.push_str(t);
+            if !cur.trim().is_empty() {
+                cmds.push(cur.trim().to_string());
+            }
+            cur.clear();
+        }
+    }
+    let root = ctx.env.catalog.root().to_path_buf();
+    let mut defs = transactions(&root);
+    let value = |cmd: &str, key: &str| -> Option<String> {
+        let up = cmd.to_ascii_uppercase();
+        let i = up.find(&format!("{key}("))? + key.len() + 1;
+        let j = up[i..].find(')')? + i;
+        Some(up[i..j].trim().to_string())
+    };
+    for cmd in cmds {
+        let up = cmd.to_ascii_uppercase();
+        let words: Vec<&str> = up.split_whitespace().collect();
+        if words.len() >= 2 && words[0] == "CREATE" && words[1] == "TRAN" {
+            let (Some(t), Some(p)) = (value(&cmd, "NAME"), value(&cmd, "PGM")) else {
+                let _ = writeln!(out, "{cmd}\n  ZEUS: NAME and PGM are needed");
+                continue;
+            };
+            defs.retain(|d| d.0 != t);
+            defs.push((t.clone(), p.clone()));
+            let _ = writeln!(out, "{cmd}\n  ZEUS: transaction {t} runs program {p}");
+        } else {
+            let _ = writeln!(out, "{cmd}\n  ZEUS: nothing to do");
+        }
+    }
+    let path = definitions_path(&root);
+    if let Some(d) = path.parent() {
+        let _ = std::fs::create_dir_all(d);
+    }
+    let text: String = defs.iter().map(|(t, p)| format!("{t} {p}\n")).collect();
+    std::fs::write(&path, text).map_err(|e| Outcome::JclError(e.to_string()))?;
+    Ok(0)
+}
+
+/// A message processing region (PARM='MSG'): runs the queued input
+/// messages of the defined transactions.
+fn message_region(
+    ctx: &mut StepCtx,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+    ims: &zeus_ims::runtime::Ims,
+) -> ProgramResult {
+    let root = ctx.env.catalog.root().to_path_buf();
+    let queue = match message_queue(&root) {
+        Ok(q) => q,
+        Err(e) => return fail(ctx, &format!("message queue: {e}"), "U0428"),
+    };
+    let owner = zeus_ims::tm::process_owner();
+    let dds: HashMap<String, PathBuf> = ctx
+        .dds
+        .iter()
+        .map(|d| (d.name.clone(), d.path.clone()))
+        .collect();
+    let mut rc = 0;
+    let mut count = 0;
+    let mut stopped = std::collections::HashSet::new();
+    loop {
+        let mut ran = false;
+        for (tran, program) in transactions(&root) {
+            if stopped.contains(&tran) {
+                continue;
+            }
+            let Ok(Some(msg)) = queue.get(name8(&tran), owner) else {
+                continue;
+            };
+            ran = true;
+            count += 1;
+            let input = zeus_ims::runtime::TmMessage {
+                destination: tran.clone(),
+                source: text8(&msg.source),
+                segments: zeus_ims::runtime::TmMessage::split(&msg.data),
+            };
+            let mut sched = match zeus_ims::runtime::Schedule::new(ims, &program, true, &dds) {
+                Ok(s) => s,
+                Err(e) => {
+                    let _ = queue.rollback(owner, &[msg.id]);
+                    return fail(ctx, &e, "U0456");
+                }
+            };
+            sched.tm = Some(zeus_ims::runtime::Tm::new(vec![input], "ZEUSUSER"));
+            if let Ok(mut f) = ctx.sysout("SYSPRINT") {
+                let _ = writeln!(f, "ZEUS IMS: transaction {tran} (program {program})");
+            }
+            let r = crate::job::run_program(ctx, &program, libs, job, step, Some(sched));
+            let outputs = zeus_ims::runtime::take_outputs();
+            match r {
+                Ok(c) => {
+                    rc = rc.max(c);
+                    let out: Vec<([u8; 8], [u8; 8], Vec<u8>)> = outputs
+                        .iter()
+                        .map(|m| (name8(&m.destination), name8(&tran), m.data()))
+                        .collect();
+                    if let Err(e) = queue.complete(owner, &[msg.id], &out) {
+                        return fail(ctx, &format!("message queue: {e}"), "U0428");
+                    }
+                }
+                Err(e) => {
+                    // the input message stays queued and the transaction is
+                    // stopped (for this region); the others go on
+                    let _ = queue.rollback(owner, &[msg.id]);
+                    let why = match &e {
+                        Outcome::Abend(c) => format!("abend {c}"),
+                        other => format!("{other:?}"),
+                    };
+                    if let Ok(mut f) = ctx.sysout("SYSPRINT") {
+                        let _ = writeln!(
+                            f,
+                            "ZEUS IMS: transaction {tran} ended abnormally ({why}); it is stopped"
+                        );
+                    }
+                    stopped.insert(tran.clone());
+                    rc = rc.max(8);
+                }
+            }
+        }
+        if !ran {
+            break;
+        }
+    }
+    if let Ok(mut f) = ctx.sysout("SYSPRINT") {
+        let _ = writeln!(f, "ZEUS IMS: {count} messages processed");
+    }
+    Ok(rc)
 }

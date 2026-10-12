@@ -9,6 +9,8 @@ mod le;
 mod report;
 mod text;
 
+pub use eval::{civil_from_days, days_from_civil};
+
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
@@ -71,6 +73,8 @@ struct Frame {
 
 pub struct Machine {
     mem: Vec<u8>,
+    /// State of FUNCTION RANDOM.
+    random: u64,
     instances: Vec<Instance>,
     file_states: Vec<FileState>,
     /// EXTERNAL data areas by name.
@@ -109,6 +113,8 @@ pub struct Machine {
     return_code: i32,
     /// Programs implemented by the host (see [`Machine::add_native`]).
     natives: HashMap<String, NativeFn>,
+    natives_ref: HashMap<String, NativeRefFn>,
+    natives_mach: HashMap<String, NativeMachFn>,
     /// Runs EXEC CICS / SQL / DLI statements.
     exec_host: Option<Rc<dyn exec::ExecHost>>,
     /// Programs of other run times (PL/I).
@@ -117,12 +123,24 @@ pub struct Machine {
     /// Addresses of the main program's USING parameters, when the host
     /// passes them (IMS PCB masks) instead of the PARM.
     main_args: Option<Vec<Option<usize>>>,
+    /// Called every few thousand instructions (the dispatcher of a CICS
+    /// region gives other tasks the processor).
+    tick: Option<fn()>,
+    ticks: u32,
 }
 
 /// A program implemented by the host: it gets the storage and the
 /// addresses of the CALL arguments (None: OMITTED) and returns the
 /// return code or an error that ends the run unit.
 pub type NativeFn = fn(&mut [u8], &[Option<usize>]) -> Result<i32, String>;
+
+/// A host implemented program that needs the machine (to call programs
+/// back, as MQCTL calls message consumers).
+pub type NativeMachFn = fn(&mut Machine, &[Option<usize>]) -> Result<i32, String>;
+
+/// A host implemented program called with the lengths of its arguments
+/// (a PL/I caller's arguments: aggregates and pointers differ).
+pub type NativeRefFn = fn(&mut [u8], &[crate::interlang::XRef]) -> Result<i32, String>;
 
 /// The job step a program runs in (z/OS TIOT contents).
 #[derive(Debug, Clone, Default)]
@@ -164,6 +182,7 @@ impl Machine {
             switches.insert(format!("UPSI-{i}"), on);
         }
         Machine {
+            random: 0x2545_F491_4F6C_DD1D,
             mem: vec![0; PSA_SIZE],
             instances: Vec::new(),
             file_states: Vec::new(),
@@ -178,7 +197,11 @@ impl Machine {
             step: StepInfo::default(),
             opened: Vec::new(),
             natives: HashMap::new(),
+            natives_ref: HashMap::new(),
+            natives_mach: HashMap::new(),
             exec_host: None,
+            tick: None,
+            ticks: 0,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -310,6 +333,38 @@ impl Machine {
         self.natives.insert(name.to_ascii_uppercase(), f);
     }
 
+    /// Makes `name` callable as a host implemented program that gets the
+    /// machine.
+    pub fn add_native_machine(&mut self, name: &str, f: NativeMachFn) {
+        self.natives_mach.insert(name.to_ascii_uppercase(), f);
+    }
+
+    /// Makes `name` callable from other languages (PL/I) as a host
+    /// implemented program that sees its arguments' lengths.
+    pub fn add_native_ref(&mut self, name: &str, f: NativeRefFn) {
+        self.natives_ref.insert(name.to_ascii_uppercase(), f);
+    }
+
+    /// Calls host implemented program `name` for another language's
+    /// program; None when there is no such program.
+    pub fn call_native(
+        &mut self,
+        name: &str,
+        args: &[crate::interlang::XRef],
+    ) -> Option<Result<i32, String>> {
+        let name = name.to_ascii_uppercase();
+        if let Some(f) = self.natives_ref.get(&name).copied() {
+            return Some(f(&mut self.mem, args));
+        }
+        if let Some(f) = self.natives_mach.get(&name).copied() {
+            let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
+            return Some(f(self, &addrs));
+        }
+        let f = self.natives.get(&name).copied()?;
+        let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
+        Some(f(&mut self.mem, &addrs))
+    }
+
     /// Passes `args` (addresses in this machine's storage, see
     /// [`Machine::getmain`]) to the USING parameters of the main program
     /// in place of the PARM.
@@ -379,6 +434,23 @@ impl Machine {
     }
 
     /// The interface that runs EXEC statements.
+    /// Sets the function called now and then while programs run.
+    pub fn set_tick(&mut self, f: fn()) {
+        self.tick = Some(f);
+    }
+
+    /// Counts an instruction (or a statement of another run time): every
+    /// few thousand, the function of [`Machine::set_tick`] is called.
+    #[inline]
+    pub fn count_tick(&mut self) {
+        if let Some(f) = self.tick {
+            self.ticks = self.ticks.wrapping_add(1);
+            if self.ticks.is_multiple_of(4096) {
+                f();
+            }
+        }
+    }
+
     pub fn exec_host(&self) -> Option<Rc<dyn exec::ExecHost>> {
         self.exec_host.clone()
     }
@@ -547,12 +619,22 @@ impl Machine {
             .trim()
             .to_ascii_uppercase();
         self.call_exception = false;
-        if matches!(name.as_str(), "CEE3ABD" | "CEEDAYS") {
+        if matches!(
+            name.as_str(),
+            "CEE3ABD" | "CEEDAYS" | "CEEGMT" | "CEELOCT" | "CEEDATM" | "CEEDATE" | "CEESECS"
+        ) {
             let addrs = self.call_args(cur, args)?;
             self.le_service(&name, &addrs)?;
             return Ok(None);
         }
         let Some(callee) = self.resolve_program(cur, &name) else {
+            if let Some(f) = self.natives_mach.get(&name).copied() {
+                let addrs = self.call_args(cur, args)?;
+                let rc = f(self, &addrs).map_err(RunError)?;
+                self.return_code = rc;
+                self.store_rc(cur);
+                return Ok(None);
+            }
             if let Some(f) = self.natives.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
                 self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
@@ -633,6 +715,7 @@ impl Machine {
                 ));
             };
             pc += 1;
+            self.count_tick();
             let ins = match ins {
                 Instr::Exec(n) => match self.exec(cur, &code, *n)? {
                     exec::ExecOutcome::Continue => continue,
@@ -1214,6 +1297,13 @@ impl Machine {
             }
         }
         self.find_program(name)
+    }
+
+    /// Whether program `name` can be called (it is loaded, if need be).
+    pub fn load_program(&mut self, name: &str) -> bool {
+        self.find_program(name).is_some()
+            || self.natives.contains_key(name)
+            || self.natives_ref.contains_key(name)
     }
 
     /// A separately compiled program by name (loaded on first use).

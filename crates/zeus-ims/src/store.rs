@@ -124,6 +124,10 @@ struct State {
     secondary_defs: Vec<SecondaryDef>,
     next_id: u64,
     latest_checkpoint: Option<[u8; 8]>,
+    /// The areas each symbolic checkpoint saved (for XRST).
+    checkpoint_data: HashMap<[u8; 8], Vec<u8>>,
+    /// The end of the WAL frames the state has applied.
+    wal_end: u64,
 }
 impl State {
     fn secondary_entries(
@@ -286,6 +290,9 @@ struct Inner {
     locks: Mutex<HashMap<(String, Vec<u8>), u64>>,
     lock_changed: Condvar,
     next_tx: Mutex<u64>,
+    /// Transactions of this process holding the WAL's exclusive lock (the
+    /// lock is held while there is one).
+    exclusive: Mutex<usize>,
 }
 #[derive(Clone)]
 pub struct Database(Arc<Inner>);
@@ -303,6 +310,10 @@ pub struct Transaction {
     changes: Vec<Change>,
     locks: Vec<(String, Vec<u8>)>,
     checkpoint: Option<[u8; 8]>,
+    /// The areas a symbolic checkpoint saves.
+    checkpoint_data: Option<Vec<u8>>,
+    /// The transaction holds the WAL's exclusive lock (for its updates).
+    exclusive: bool,
 }
 impl Drop for Transaction {
     fn drop(&mut self) {
@@ -334,10 +345,10 @@ impl Transaction {
         complete_key: bool,
     ) -> Result<Option<(Vec<u8>, u64, Record)>, StoreError> {
         if self.changes.is_empty() {
-            let state = self.database.0.state.lock().unwrap();
+            let state = self.database.state();
             return secondary_entry_in_state(&state, index_dbd, search, after, complete_key);
         }
-        let state = self.database.0.state.lock().unwrap();
+        let state = self.database.state();
         secondary_entry_with_changes(
             &state,
             &self.changes,
@@ -355,6 +366,10 @@ impl Transaction {
             }
         }
         self.database.0.lock_changed.notify_all();
+        drop(locks);
+        if std::mem::take(&mut self.exclusive) {
+            self.database.release_exclusive();
+        }
     }
     fn lock_root(
         &mut self,
@@ -373,6 +388,11 @@ impl Transaction {
             ));
         }
         let deadline = Instant::now() + timeout;
+        // an updating transaction excludes other processes' updates
+        if !self.exclusive {
+            self.database.acquire_exclusive(deadline)?;
+            self.exclusive = true;
+        }
         let mut locks = self.database.0.locks.lock().unwrap();
         loop {
             if !locks.contains_key(&key) {
@@ -513,7 +533,7 @@ impl Transaction {
         if unique && self.get(dbd, parent, segment, &key).is_some() {
             return Err(StoreError::Duplicate(format!("{segment}: duplicate key")));
         }
-        let mut state = self.database.0.state.lock().unwrap();
+        let mut state = self.database.state();
         let id = state.next_id.max(1);
         state.next_id = id + 1;
         self.changes.push(Change::Insert(Record {
@@ -562,6 +582,11 @@ impl Transaction {
         let mut payload = Vec::new();
         if let Some(id) = self.checkpoint {
             payload.extend_from_slice(&id);
+            // a symbolic checkpoint: the saved areas
+            if let Some(d) = &self.checkpoint_data {
+                payload.extend_from_slice(&(d.len() as u32).to_le_bytes());
+                payload.extend_from_slice(d);
+            }
         }
         payload.extend_from_slice(&encode_changes(&self.changes));
         let len = u32::try_from(payload.len())
@@ -571,8 +596,19 @@ impl Transaction {
                 "transaction exceeds the 64 MiB WAL frame limit".into(),
             ));
         }
-        let mut state = self.database.0.state.lock().unwrap();
+        if !self.exclusive {
+            self.database
+                .acquire_exclusive(Instant::now() + Duration::from_secs(30))?;
+            self.exclusive = true;
+        }
+        let mut state = self.database.state();
         let mut wal = self.database.0.wal.lock().unwrap();
+        // the frames other processes committed; past them, what a writer
+        // that failed left
+        self.database.catch_up(&mut state, &mut wal)?;
+        if wal.metadata()?.len() > state.wal_end {
+            wal.set_len(state.wal_end)?;
+        }
         let start = wal.seek(SeekFrom::End(0))?;
         let mut inverses = Vec::with_capacity(self.changes.len());
         for change in &self.changes {
@@ -590,11 +626,15 @@ impl Transaction {
             inverses.push(inverse);
         }
         let write_result = (|| -> std::io::Result<()> {
-            wal.write_all(if self.checkpoint.is_some() {
-                b"IMS2"
-            } else {
-                b"IMS1"
-            })?;
+            wal.write_all(
+                if self.checkpoint_data.is_some() && self.checkpoint.is_some() {
+                    b"IMS3"
+                } else if self.checkpoint.is_some() {
+                    b"IMS2"
+                } else {
+                    b"IMS1"
+                },
+            )?;
             wal.write_all(&len.to_le_bytes())?;
             wal.write_all(&checksum(&payload).to_le_bytes())?;
             wal.write_all(&payload)?;
@@ -608,7 +648,11 @@ impl Transaction {
         }
         if let Some(id) = self.checkpoint {
             state.latest_checkpoint = Some(id);
+            if let Some(d) = self.checkpoint_data.take() {
+                state.checkpoint_data.insert(id, d);
+            }
         }
+        state.wal_end = wal.stream_position()?;
         drop(wal);
         drop(state);
         self.release();
@@ -618,6 +662,12 @@ impl Transaction {
 
     pub fn set_checkpoint(&mut self, id: [u8; 8]) {
         self.checkpoint = Some(id);
+    }
+
+    /// A symbolic checkpoint: `id` and the areas it saves.
+    pub fn set_symbolic_checkpoint(&mut self, id: [u8; 8], data: Vec<u8>) {
+        self.checkpoint = Some(id);
+        self.checkpoint_data = Some(data);
     }
 }
 
@@ -839,6 +889,128 @@ fn secondary_definitions(dbds: &HashMap<String, Dbd>) -> Result<Vec<SecondaryDef
     Ok(definitions)
 }
 
+/// Applies the WAL frames past `state.wal_end` (up to the last complete
+/// one) to the state.
+fn replay(
+    definitions: &HashMap<String, Dbd>,
+    state: &mut State,
+    wal: &mut File,
+) -> Result<(), StoreError> {
+    wal.seek(SeekFrom::Start(state.wal_end))?;
+    loop {
+        let mut header = [0u8; 12];
+        let mut got = 0;
+        while got < 12 {
+            let n = wal.read(&mut header[got..])?;
+            if n == 0 {
+                break;
+            }
+            got += n;
+        }
+        if got == 0 {
+            break;
+        }
+        if got < 12 {
+            break;
+        } // Interrupted final write has no commit record.
+        if !matches!(&header[..4], b"IMS1" | b"IMS2" | b"IMS3") {
+            return Err(StoreError::Corrupt("invalid WAL magic".into()));
+        }
+        let len = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
+        if len > 64 * 1024 * 1024 {
+            return Err(StoreError::Corrupt("WAL frame too large".into()));
+        }
+        let expected = u32::from_le_bytes(header[8..12].try_into().unwrap());
+        let mut payload = vec![0; len];
+        if let Err(e) = wal.read_exact(&mut payload) {
+            if e.kind() == std::io::ErrorKind::UnexpectedEof {
+                break;
+            }
+            return Err(e.into());
+        }
+        if checksum(&payload) != expected {
+            return Err(StoreError::Corrupt("WAL checksum mismatch".into()));
+        }
+        let mut changes_at = 0;
+        let checkpoint = if &header[..4] != b"IMS1" {
+            let id: [u8; 8] = payload
+                .get(..8)
+                .ok_or_else(|| StoreError::Corrupt("short checkpoint WAL frame".into()))?
+                .try_into()
+                .unwrap();
+            changes_at = 8;
+            if &header[..4] == b"IMS3" {
+                let n = payload
+                    .get(8..12)
+                    .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize)
+                    .ok_or_else(|| StoreError::Corrupt("short checkpoint WAL frame".into()))?;
+                let data = payload
+                    .get(12..12 + n)
+                    .ok_or_else(|| StoreError::Corrupt("short checkpoint WAL frame".into()))?;
+                state.checkpoint_data.insert(id, data.to_vec());
+                changes_at = 12 + n;
+            }
+            Some(id)
+        } else {
+            None
+        };
+        let changes = decode_changes(&payload[changes_at..])?;
+        for change in changes {
+            let record = match &change {
+                Change::Insert(r)
+                | Change::Delete { record: r }
+                | Change::Replace { record: r, .. } => r,
+            };
+            let def = definitions
+                .get(&record.dbd)
+                .and_then(|d: &Dbd| d.segment(&record.segment))
+                .ok_or_else(|| {
+                    StoreError::Corrupt(format!(
+                        "WAL references unknown {}/{}",
+                        record.dbd, record.segment
+                    ))
+                })?;
+            def.validate_data(&record.data)
+                .map_err(StoreError::Corrupt)?;
+            if def.extract_key(&record.data).map_err(StoreError::Corrupt)? != record.key {
+                return Err(StoreError::Corrupt(
+                    "WAL record key differs from segment data".into(),
+                ));
+            }
+            if matches!(&change, Change::Insert(_)) {
+                match (record.parent, &def.parent) {
+                    (None, None) if record.root_key == record.key => {}
+                    (Some(parent_id), Some(parent_name)) => {
+                        let parent = state
+                            .records
+                            .get(&parent_id)
+                            .ok_or_else(|| StoreError::Corrupt("WAL child has no parent".into()))?;
+                        if &parent.segment != parent_name || parent.root_key != record.root_key {
+                            return Err(StoreError::Corrupt(
+                                "WAL parent or root key mismatch".into(),
+                            ));
+                        }
+                    }
+                    _ => return Err(StoreError::Corrupt("WAL hierarchy mismatch".into())),
+                }
+                if def.key().is_some_and(|field| field.unique)
+                    && state
+                        .get(&record.dbd, record.parent, &record.segment, &record.key)
+                        .is_some()
+                {
+                    return Err(StoreError::Corrupt("duplicate unique key in WAL".into()));
+                }
+            }
+            apply(state, &change, true)?;
+        }
+        if let Some(id) = checkpoint {
+            state.latest_checkpoint = Some(id);
+        }
+        state.wal_end = wal.stream_position()?;
+    }
+    Ok(())
+}
+
 impl Database {
     pub fn open(path: impl AsRef<Path>, dbds: Vec<Dbd>) -> Result<Self, StoreError> {
         let mut definitions = HashMap::new();
@@ -854,121 +1026,17 @@ impl Database {
             .read(true)
             .write(true)
             .open(path)?;
-        wal.try_lock().map_err(|e| {
-            StoreError::Conflict(format!(
-                "database WAL is already open or cannot be locked: {e}"
-            ))
-        })?;
-        wal.seek(SeekFrom::Start(0))?;
         let mut state = State {
             secondary_defs,
             ..State::default()
         };
-        let mut valid_end = 0;
-        loop {
-            let mut header = [0u8; 12];
-            let mut got = 0;
-            while got < 12 {
-                let n = wal.read(&mut header[got..])?;
-                if n == 0 {
-                    break;
-                }
-                got += n;
-            }
-            if got == 0 {
-                break;
-            }
-            if got < 12 {
-                break;
-            } // Interrupted final write has no commit record.
-            if &header[..4] != b"IMS1" && &header[..4] != b"IMS2" {
-                return Err(StoreError::Corrupt("invalid WAL magic".into()));
-            }
-            let len = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
-            if len > 64 * 1024 * 1024 {
-                return Err(StoreError::Corrupt("WAL frame too large".into()));
-            }
-            let expected = u32::from_le_bytes(header[8..12].try_into().unwrap());
-            let mut payload = vec![0; len];
-            if let Err(e) = wal.read_exact(&mut payload) {
-                if e.kind() == std::io::ErrorKind::UnexpectedEof {
-                    break;
-                }
-                return Err(e.into());
-            }
-            if checksum(&payload) != expected {
-                return Err(StoreError::Corrupt("WAL checksum mismatch".into()));
-            }
-            let checkpoint = if &header[..4] == b"IMS2" {
-                let id: [u8; 8] = payload
-                    .get(..8)
-                    .ok_or_else(|| StoreError::Corrupt("short checkpoint WAL frame".into()))?
-                    .try_into()
-                    .unwrap();
-                Some(id)
-            } else {
-                None
-            };
-            let changes = decode_changes(if checkpoint.is_some() {
-                &payload[8..]
-            } else {
-                &payload
-            })?;
-            for change in changes {
-                let record = match &change {
-                    Change::Insert(r)
-                    | Change::Delete { record: r }
-                    | Change::Replace { record: r, .. } => r,
-                };
-                let def = definitions
-                    .get(&record.dbd)
-                    .and_then(|d: &Dbd| d.segment(&record.segment))
-                    .ok_or_else(|| {
-                        StoreError::Corrupt(format!(
-                            "WAL references unknown {}/{}",
-                            record.dbd, record.segment
-                        ))
-                    })?;
-                def.validate_data(&record.data)
-                    .map_err(StoreError::Corrupt)?;
-                if def.extract_key(&record.data).map_err(StoreError::Corrupt)? != record.key {
-                    return Err(StoreError::Corrupt(
-                        "WAL record key differs from segment data".into(),
-                    ));
-                }
-                if matches!(&change, Change::Insert(_)) {
-                    match (record.parent, &def.parent) {
-                        (None, None) if record.root_key == record.key => {}
-                        (Some(parent_id), Some(parent_name)) => {
-                            let parent = state.records.get(&parent_id).ok_or_else(|| {
-                                StoreError::Corrupt("WAL child has no parent".into())
-                            })?;
-                            if &parent.segment != parent_name || parent.root_key != record.root_key
-                            {
-                                return Err(StoreError::Corrupt(
-                                    "WAL parent or root key mismatch".into(),
-                                ));
-                            }
-                        }
-                        _ => return Err(StoreError::Corrupt("WAL hierarchy mismatch".into())),
-                    }
-                    if def.key().is_some_and(|field| field.unique)
-                        && state
-                            .get(&record.dbd, record.parent, &record.segment, &record.key)
-                            .is_some()
-                    {
-                        return Err(StoreError::Corrupt("duplicate unique key in WAL".into()));
-                    }
-                }
-                apply(&mut state, &change, true)?;
-            }
-            if let Some(id) = checkpoint {
-                state.latest_checkpoint = Some(id);
-            }
-            valid_end = wal.stream_position()?;
+        replay(&definitions, &mut state, &mut wal)?;
+        // a frame cut short by a writer that failed is dropped, unless
+        // another process has the WAL open for an update now
+        if wal.try_lock().is_ok() {
+            wal.set_len(state.wal_end)?;
+            wal.unlock()?;
         }
-        wal.set_len(valid_end)?;
-        wal.seek(SeekFrom::End(0))?;
         Ok(Self(Arc::new(Inner {
             dbds: definitions,
             state: Mutex::new(state),
@@ -976,8 +1044,67 @@ impl Database {
             locks: Mutex::new(HashMap::new()),
             lock_changed: Condvar::new(),
             next_tx: Mutex::new(1),
+            exclusive: Mutex::new(0),
         })))
     }
+    /// The WAL's exclusive lock for a transaction of this process (taken
+    /// by the first one, waiting until `deadline` while another process
+    /// has it); the state then has the other processes' commits.
+    fn acquire_exclusive(&self, deadline: Instant) -> Result<(), StoreError> {
+        let mut n = self.0.exclusive.lock().unwrap();
+        if *n == 0 {
+            loop {
+                match self.0.wal.lock().unwrap().try_lock() {
+                    Ok(()) => break,
+                    Err(std::fs::TryLockError::WouldBlock) => {}
+                    Err(std::fs::TryLockError::Error(e)) => return Err(e.into()),
+                }
+                if Instant::now() >= deadline {
+                    return Err(StoreError::Timeout);
+                }
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            let mut state = self.state();
+            let mut wal = self.0.wal.lock().unwrap();
+            if let Err(e) = self.catch_up(&mut state, &mut wal) {
+                let _ = wal.unlock();
+                return Err(e);
+            }
+        }
+        *n += 1;
+        Ok(())
+    }
+
+    fn release_exclusive(&self) {
+        let mut n = self.0.exclusive.lock().unwrap();
+        *n = n.saturating_sub(1);
+        if *n == 0 {
+            let _ = self.0.wal.lock().unwrap().unlock();
+        }
+    }
+
+    /// Applies what other processes committed since the state was last
+    /// brought up to date.
+    fn catch_up(&self, state: &mut State, wal: &mut File) -> Result<(), StoreError> {
+        if wal.metadata()?.len() > state.wal_end {
+            replay(&self.0.dbds, state, wal)?;
+            wal.seek(SeekFrom::End(0))?;
+        }
+        Ok(())
+    }
+
+    /// The state, with other processes' commits.
+    fn state(&self) -> std::sync::MutexGuard<'_, State> {
+        let mut state = self.0.state.lock().unwrap();
+        let mut wal = self.0.wal.lock().unwrap();
+        if let Err(e) = self.catch_up(&mut state, &mut wal) {
+            // the state stays as it was; the next access tries again
+            eprintln!("zeus-ims: WAL: {e}");
+        }
+        drop(wal);
+        state
+    }
+
     pub fn begin(&self) -> Transaction {
         let mut next = self.0.next_tx.lock().unwrap();
         let id = *next;
@@ -988,6 +1115,8 @@ impl Database {
             changes: Vec::new(),
             locks: Vec::new(),
             checkpoint: None,
+            checkpoint_data: None,
+            exclusive: false,
         }
     }
     pub fn segment(&self, dbd: &str, segment: &str) -> Result<&Segment, StoreError> {
@@ -998,41 +1127,32 @@ impl Database {
             .ok_or_else(|| StoreError::Definition(format!("unknown {dbd}/{segment}")))
     }
     pub fn record(&self, id: u64) -> Option<Record> {
-        self.0.state.lock().unwrap().records.get(&id).cloned()
+        self.state().records.get(&id).cloned()
     }
     pub fn get(&self, dbd: &str, parent: Option<u64>, segment: &str, key: &[u8]) -> Option<Record> {
-        self.0
-            .state
-            .lock()
-            .unwrap()
-            .get(dbd, parent, segment, key)
-            .cloned()
+        self.state().get(dbd, parent, segment, key).cloned()
     }
     pub fn children(&self, dbd: &str, parent: Option<u64>, segment: &str) -> Vec<Record> {
-        self.0.state.lock().unwrap().children(dbd, parent, segment)
+        self.state().children(dbd, parent, segment)
     }
     pub fn first_child(&self, dbd: &str, parent: Option<u64>, segment: &str) -> Option<Record> {
-        self.0
-            .state
-            .lock()
-            .unwrap()
-            .first_child(dbd, parent, segment)
+        self.state().first_child(dbd, parent, segment)
     }
     pub fn next_sibling(&self, record: &Record) -> Option<Record> {
-        self.0.state.lock().unwrap().next_sibling(record)
+        self.state().next_sibling(record)
     }
     pub fn definition(&self, name: &str) -> Option<Dbd> {
         self.0.dbds.get(name).cloned()
     }
     pub fn count(&self) -> usize {
-        self.0.state.lock().unwrap().records.len()
+        self.state().records.len()
     }
     pub fn secondary_lookup(
         &self,
         index_dbd: &str,
         key: &[u8],
     ) -> Result<Option<Record>, StoreError> {
-        let state = self.0.state.lock().unwrap();
+        let state = self.state();
         let matching: Vec<_> = state
             .secondary_defs
             .iter()
@@ -1070,7 +1190,7 @@ impl Database {
         index_dbd: &str,
         target_dbd: &str,
     ) -> Result<(String, String, usize), StoreError> {
-        let state = self.0.state.lock().unwrap();
+        let state = self.state();
         let definitions: Vec<_> = state
             .secondary_defs
             .iter()
@@ -1110,7 +1230,7 @@ impl Database {
                 "{index_dbd}: not an index DBD"
             )));
         }
-        let state = self.0.state.lock().unwrap();
+        let state = self.state();
         let definitions: Vec<_> = state
             .secondary_defs
             .iter()
@@ -1148,12 +1268,17 @@ impl Database {
         search: Option<&[u8]>,
         after: Option<(&[u8], u64)>,
     ) -> Result<Option<(Vec<u8>, u64, Record)>, StoreError> {
-        let state = self.0.state.lock().unwrap();
+        let state = self.state();
         secondary_entry_in_state(&state, index_dbd, search, after, false)
     }
 
+    /// The areas symbolic checkpoint `id` saved.
+    pub fn checkpoint_data(&self, id: [u8; 8]) -> Option<Vec<u8>> {
+        self.state().checkpoint_data.get(&id).cloned()
+    }
+
     pub fn latest_checkpoint(&self) -> Option<[u8; 8]> {
-        self.0.state.lock().unwrap().latest_checkpoint
+        self.state().latest_checkpoint
     }
 }
 

@@ -6,7 +6,15 @@
 //! * `CEE3ABD (abcode, timing)`: ends the run unit with user abend
 //!   `abcode`;
 //! * `CEEDAYS (input_char_date, picture_string, output_Lilian_date, fc)`:
-//!   converts a date to its Lilian day number (day 1 = 15 October 1582).
+//!   converts a date to its Lilian day number (day 1 = 15 October 1582);
+//! * `CEEGMT (Lilian, seconds, fc)` and `CEELOCT (Lilian, seconds,
+//!   Gregorian, fc)`: the current date and time (Zeus runs in UTC), as a
+//!   Lilian day number, Lilian seconds (COMP-2, from 00:00 on 14 October
+//!   1582) and `YYYYMMDDHHMISS999`;
+//! * `CEEDATM (seconds, picture, output, fc)` and `CEEDATE (Lilian,
+//!   picture, output, fc)`: Lilian seconds / days as text (80 bytes) in a
+//!   picture (YYYY YY MM DD DDD HH MI SS 9.. MMM Mmm WWW Www);
+//! * `CEESECS (timestamp, picture, seconds, fc)`: text to Lilian seconds.
 //!
 //! Feedback codes are 12 bytes: severity and message number (halfwords),
 //! case/severity/control byte, facility id `CEE` and the instance specific
@@ -43,6 +51,119 @@ fn days_in_month(y: i64, m: i64) -> i64 {
         4 | 6 | 9 | 11 => 30,
         _ => 31,
     }
+}
+
+/// The current time: Lilian day and seconds into the day (UTC).
+fn now_lilian() -> (i64, f64) {
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs_f64())
+        .unwrap_or(0.0);
+    let days = (unix / 86400.0).floor();
+    (lilian(1970, 1, 1) + days as i64, unix - days * 86400.0)
+}
+
+/// Lilian day -> (year, month, day).
+fn civil_of_lilian(l: i64) -> (i64, i64, i64) {
+    super::eval::civil_from_days(l - lilian(1970, 1, 1))
+}
+
+const MONTHS: [&str; 12] = [
+    "JANUARY",
+    "FEBRUARY",
+    "MARCH",
+    "APRIL",
+    "MAY",
+    "JUNE",
+    "JULY",
+    "AUGUST",
+    "SEPTEMBER",
+    "OCTOBER",
+    "NOVEMBER",
+    "DECEMBER",
+];
+const DAYS: [&str; 7] = [
+    "SUNDAY",
+    "MONDAY",
+    "TUESDAY",
+    "WEDNESDAY",
+    "THURSDAY",
+    "FRIDAY",
+    "SATURDAY",
+];
+
+/// Lilian seconds as text in a date/time picture.
+fn format_lilian_seconds(secs: f64, picture: &str) -> String {
+    let day = (secs / 86400.0).floor() as i64;
+    let sod = secs - day as f64 * 86400.0;
+    let (y, m, d) = civil_of_lilian(day);
+    let doy = day - lilian(y, 1, 1) + 1;
+    // 15 October 1582 (Lilian day 1) was a Friday
+    let wd = (day + 4).rem_euclid(7) as usize;
+    let h = (sod / 3600.0) as i64;
+    let mi = ((sod % 3600.0) / 60.0) as i64;
+    let s = (sod % 60.0) as i64;
+    let frac = sod.fract();
+    let p: Vec<char> = picture.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    let starts = |i: usize, t: &str| p[i..].iter().take(t.len()).copied().eq(t.chars());
+    let case = |t: &str, name: &str| -> String {
+        let n: String = name.chars().take(t.len()).collect();
+        if t.chars().nth(1).is_some_and(|c| c.is_ascii_lowercase()) {
+            let mut c = n.chars();
+            c.next()
+                .map(|f| f.to_string() + &c.as_str().to_ascii_lowercase())
+                .unwrap_or_default()
+        } else {
+            n
+        }
+    };
+    while i < p.len() {
+        if starts(i, "YYYY") {
+            out += &format!("{y:04}");
+            i += 4;
+        } else if starts(i, "YY") {
+            out += &format!("{:02}", y % 100);
+            i += 2;
+        } else if starts(i, "MMM") || starts(i, "Mmm") {
+            out += &case(
+                &p[i..i + 3].iter().collect::<String>(),
+                MONTHS[(m - 1) as usize],
+            );
+            i += 3;
+        } else if starts(i, "MM") {
+            out += &format!("{m:02}");
+            i += 2;
+        } else if starts(i, "MI") {
+            out += &format!("{mi:02}");
+            i += 2;
+        } else if starts(i, "DDD") {
+            out += &format!("{doy:03}");
+            i += 3;
+        } else if starts(i, "DD") {
+            out += &format!("{d:02}");
+            i += 2;
+        } else if starts(i, "HH") {
+            out += &format!("{h:02}");
+            i += 2;
+        } else if starts(i, "SS") {
+            out += &format!("{s:02}");
+            i += 2;
+        } else if starts(i, "WWW") || starts(i, "Www") {
+            out += &case(&p[i..i + 3].iter().collect::<String>(), DAYS[wd]);
+            i += 3;
+        } else if p[i] == '9' {
+            let n = p[i..].iter().take_while(|&&c| c == '9').count();
+            let f = format!("{:.*}", n, frac);
+            out += f.get(2..2 + n).unwrap_or("");
+            i += n;
+        } else {
+            out.push(p[i]);
+            i += 1;
+        }
+    }
+    out
 }
 
 /// CEEDAYS condition (message number), None on success.
@@ -176,6 +297,93 @@ impl Machine {
                 }
                 Ok(true)
             }
+            "CEEGMT" | "CEELOCT" => {
+                let (day, sod) = now_lilian();
+                if let Some(Some(a)) = args.first() {
+                    self.mem[*a..*a + 4].copy_from_slice(&(day as i32).to_be_bytes());
+                }
+                let secs = day as f64 * 86400.0 + sod;
+                if let Some(Some(a)) = args.get(1) {
+                    zeus_decimal::hfp::encode(secs, &mut self.mem[*a..*a + 8]);
+                }
+                let fc = if name == "CEELOCT" {
+                    if let Some(Some(a)) = args.get(2) {
+                        let t = format_lilian_seconds(secs, "YYYYMMDDHHMISS999");
+                        self.mem[*a..*a + 17].copy_from_slice(&ebcdic::encode(&t));
+                    }
+                    args.get(3).copied().flatten()
+                } else {
+                    args.get(2).copied().flatten()
+                };
+                self.feedback(fc, None);
+                Ok(true)
+            }
+            "CEEDATM" | "CEEDATE" => {
+                let (Some(Some(v)), Some(Some(pic)), Some(Some(out))) =
+                    (args.first(), args.get(1), args.get(2))
+                else {
+                    return super::err(format!("{name}: missing arguments"));
+                };
+                let secs = if name == "CEEDATM" {
+                    zeus_decimal::hfp::decode(&self.mem[*v..*v + 8])
+                } else {
+                    fullword(self, Some(*v)) as f64 * 86400.0
+                };
+                let pic = self.read_vstring(*pic);
+                let fc = args.get(3).copied().flatten();
+                if secs < 86400.0 {
+                    self.feedback(fc, Some(if name == "CEEDATM" { 2517 } else { 2512 }));
+                    self.mem[*out..*out + 80].fill(ebcdic::SPACE);
+                    return Ok(true);
+                }
+                let mut t = ebcdic::encode(&format_lilian_seconds(secs, pic.trim_end()));
+                t.resize(80, ebcdic::SPACE);
+                self.mem[*out..*out + 80].copy_from_slice(&t);
+                self.feedback(fc, None);
+                Ok(true)
+            }
+            "CEESECS" => {
+                let (Some(Some(ts)), Some(Some(pic)), Some(Some(out))) =
+                    (args.first(), args.get(1), args.get(2))
+                else {
+                    return super::err("CEESECS: missing arguments");
+                };
+                let ts = self.read_vstring(*ts);
+                let pic = self.read_vstring(*pic);
+                // the date part as for CEEDAYS, then HH MI SS
+                let date_pic: String = pic
+                    .chars()
+                    .map(|c| if "YMD".contains(c) { c } else { ' ' })
+                    .collect();
+                let fc = args.get(3).copied().flatten();
+                let field = |tok: &str| -> i64 {
+                    pic.find(tok)
+                        .and_then(|i| ts.get(i..i + tok.len()))
+                        .and_then(|v| v.trim().parse().ok())
+                        .unwrap_or(0)
+                };
+                let date: String = ts
+                    .chars()
+                    .zip(date_pic.chars())
+                    .map(|(c, p)| if p == ' ' { ' ' } else { c })
+                    .collect();
+                match ceedays(&date.replace(' ', ""), &date_pic.replace(' ', "")) {
+                    Ok(day) => {
+                        let secs = day as f64 * 86400.0
+                            + (field("HH") * 3600 + field("MI") * 60 + field("SS")) as f64;
+                        zeus_decimal::hfp::encode(secs, &mut self.mem[*out..*out + 8]);
+                        self.feedback(fc, None);
+                    }
+                    Err(e) => {
+                        self.mem[*out..*out + 8].fill(0);
+                        self.feedback(fc, Some(e));
+                        if fc.is_none() {
+                            return Err(RunError(format!("{ABEND}U4038")));
+                        }
+                    }
+                }
+                Ok(true)
+            }
             _ => Ok(false),
         }
     }
@@ -192,6 +400,23 @@ mod tests {
         // days since 15 October 1582, counted independently
         assert_eq!(lilian(1993, 5, 14), 149_962);
         assert_eq!(lilian(2000, 3, 1) - lilian(2000, 2, 28), 2);
+    }
+
+    #[test]
+    fn lilian_seconds_text() {
+        let secs = lilian(2026, 10, 12) as f64 * 86400.0 + 13.0 * 3600.0 + 5.0 * 60.0 + 7.25;
+        assert_eq!(
+            format_lilian_seconds(secs, "YYYY-MM-DD HH:MI:SS.99"),
+            "2026-10-12 13:05:07.25"
+        );
+        assert_eq!(
+            format_lilian_seconds(secs, "Www DD Mmm YY"),
+            "Mon 12 Oct 26"
+        );
+        assert_eq!(
+            format_lilian_seconds(86400.0, "YYYYMMDD DDD WWW"),
+            "15821015 288 FRI"
+        );
     }
 
     #[test]

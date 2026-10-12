@@ -1,0 +1,37 @@
+ HND: PROC OPTIONS(MAIN);
+   DEFINE STRUCTURE
+     1 POINT,
+       2 X FIXED BIN(31),
+       2 Y FIXED BIN(31);
+   DEFINE STRUCTURE
+     1 NODE,
+       2 VAL CHAR(4),
+       2 AT TYPE POINT,
+       2 NEXT HANDLE NODE;
+   DEFINE ALIAS MONEY FIXED DEC(9,2);
+   DCL P TYPE POINT;
+   DCL M TYPE MONEY INIT(12.5);
+   DCL (H, FIRST, LAST) HANDLE NODE;
+   DCL HP HANDLE(POINT);
+   DCL I FIXED BIN(31);
+   P.X = 3; P.Y = 4;
+   HP = HANDLE(P);
+   HP => X = HP => X + 10;
+   PUT SKIP LIST(P.X, P.Y, STG(P), M);
+   FIRST = SYSNULL();
+   DO I = 1 TO 3;
+     H = NEW(:NODE:);
+     H => VAL = 'N' || TRIM(CHAR(I));
+     H => AT.X = I * 10;
+     H => NEXT = SYSNULL();
+     IF FIRST = SYSNULL() THEN FIRST = H;
+     ELSE LAST => NEXT = H;
+     LAST = H;
+   END;
+   H = FIRST;
+   DO WHILE(H ^= SYSNULL());
+     PUT SKIP LIST(H => VAL, H => AT.X);
+     H = H => NEXT;
+   END;
+   CALL PLIFREE(FIRST);
+ END HND;

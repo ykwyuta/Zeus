@@ -866,6 +866,77 @@ fn run_pli(
     }
 }
 
+/// Runs a PL/I program with a PSB scheduled (an IMS region): its main
+/// procedure's parameters get the PCBs (POINTER parameters their
+/// addresses), and PLITDLI works on them.
+fn run_pli_ims(
+    ctx: &mut StepCtx,
+    module: zeus_pli::ir::Module,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+    sched: zeus_ims::runtime::Schedule,
+) -> ProgramResult {
+    zeus_cobol::codepage::set_active(module.ccsid);
+    let mut temps = Vec::new();
+    let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
+    let env = pli_env(ctx, &mut temps, db2.clone());
+    let linker =
+        zeus_pli::link::ModuleLinker::new(libs.to_vec(), pli_env(ctx, &mut temps, db2.clone()));
+    let mut sys = cobol_factory(ctx, libs, job, step, db2.clone())();
+    sys.set_linker(linker.clone());
+    zeus_ims::runtime::register(&mut sys);
+    let mut addrs = Vec::new();
+    for k in 0..sched.pcbs.len() {
+        let mask = sched.mask(k);
+        let a = sys.getmain(mask.len(), 0);
+        sys.storage_mut()[a..a + mask.len()].copy_from_slice(&mask);
+        addrs.push(a);
+    }
+    zeus_ims::runtime::start_batch(sched, addrs.clone());
+    let mut env = env();
+    env.linker = Some(linker.clone());
+    let mut pm = zeus_pli::vm::Machine::with_storage(module, env, sys);
+    let args: Vec<Option<usize>> = addrs.iter().map(|&a| Some(a)).collect();
+    let r = pm.run_with_pointers(&args, |_, _| Ok(()));
+    let r = pm.cics_end(r);
+    let rc = pm.return_code();
+    pm.finish();
+    let mut sys = pm.detach();
+    linker.finish();
+    sys.finish();
+    // the unit of work: committed at the normal end, else backed out
+    let r = match r {
+        Ok(()) => zeus_ims::runtime::end_batch(true).map_err(|e| format!("IMS commit failed: {e}")),
+        Err(e) => {
+            let _ = zeus_ims::runtime::end_batch(false);
+            Err(e)
+        }
+    };
+    zeus_mq::end_run(r.is_ok());
+    if let Some(h) = &db2 {
+        let _ = h.end_uow(r.is_ok());
+    }
+    for t in temps {
+        let _ = std::fs::remove_file(t);
+    }
+    match r {
+        Ok(()) => Ok(rc),
+        Err(e) => {
+            let code = match e.strip_prefix(zeus_cobol::interlang::ABEND) {
+                Some(c) => c.to_string(),
+                None => {
+                    if let Ok(mut f) = ctx.sysout("SYSOUT") {
+                        let _ = writeln!(f, "ZEUS PL/I: {e}");
+                    }
+                    "U4038".to_string()
+                }
+            };
+            Err(Outcome::Abend(code))
+        }
+    }
+}
+
 /// Runs a COBOL program compiled by zcobc.
 pub(crate) fn run_cobol(
     ctx: &mut StepCtx,
@@ -898,11 +969,8 @@ pub(crate) fn run_program(
     {
         let module =
             zeus_pli::load_module_bytes(&data).map_err(|_| Outcome::Abend("S806".into()))?;
-        if ims.is_some() {
-            if let Ok(mut f) = ctx.sysout("SYSOUT") {
-                let _ = writeln!(f, "ZEUS IMS: {program}: PL/I programs cannot use DL/I yet");
-            }
-            return Err(Outcome::Abend("U0476".into()));
+        if let Some(sched) = ims {
+            return run_pli_ims(ctx, module, libs, job, step, sched);
         }
         return run_pli(ctx, module, libs, job, step);
     }
@@ -1142,6 +1210,7 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
                 crate::utils::tso::run(&program, &mut ctx, &libs, &job_name, step)
             }
             None if program == "DFSRRC00" => crate::ims::run(&mut ctx, &libs, &job_name, step),
+            None if program == "CSLUSPOC" => crate::ims::spoc(&mut ctx),
             None => run_cobol(&mut ctx, &program, &libs, &job_name, step),
         };
         let dds = ctx.dds;
