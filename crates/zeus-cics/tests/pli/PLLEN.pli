@@ -1,6 +1,12 @@
  /* CALLed from COBOL: the length of a name without trailing blanks. */
+ /* Its HANDLE CONDITION is its own, not the calling program's.      */
  PLLEN: PROC(S, N);
    DCL S CHAR(10);
    DCL N FIXED BIN(31);
+   EXEC CICS HANDLE CONDITION PGMIDERR(NOPGM);
+   EXEC CICS LINK PROGRAM('NOSUCH');
+   N = 0;
+   RETURN;
+ NOPGM:
    N = LENGTH(TRIM(S));
  END PLLEN;

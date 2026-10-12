@@ -27,7 +27,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 16 | M | Db2 のユーティリティ (DSNTIAUL・LOAD)、EBCDIC 照合のデータベース | 0002 Phase 5 | **済** (EBCDIC 照合は PostgreSQL だけ。Db2 CE は非対応) |
 | 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | **済** |
 | 18 | S | PL/I からの MQI 呼出し | 0005 | **済** |
-| 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | 未着手 |
+| 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | **済** |
 | 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | 未着手 |
 | 21 | S | IMS のアンロード (DFSURGU0) | 0006 | 未着手 |
 | 22 | S | BMS: JUSTIFY=RIGHT の入力フィールドの右寄せの確認、DBCS の利用者語 | 0002 | 未着手 |
@@ -146,3 +146,8 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
   - MQCB の CallbackName が COBOL のプログラムでなければ、実行単位のリンカーで PL/I のモジュールを探して呼ぶ。
   - 合わせて直したもの: 仮引数の INITIAL (LIKE で写したもの) を手続きの入口で実行していた。仮引数には初期値を設定しない。
   - `crates/zeus-jcl/tests/jobs.rs` の `mq_calls_from_pli`。
+- **#19 COBOL から CALL された PL/I 手続きの EXEC CICS** (2026-10):
+  - 外部手続きの呼出しごとに CICS のプログラムのインスタンスを分け、HANDLE CONDITION のラベルを呼んだプログラムのものと区別する。
+  - その中の RETURN / XCTL は呼出し元に STOP RUN と同じ終わり方を返し、呼んだ COBOL のプログラムも終える
+    (CALL は論理レベルを作らないので、LINK のレベルが終わる)。
+  - `crates/zeus-cics/tests/pli.rs` (CBGREET が PLLEN と PLRET を CALL する)。
