@@ -168,6 +168,10 @@ fn preprocessor() {
     let (out, msg, end) = run("macros", HashMap::new(), "");
     assert_eq!(end, RunEnd::Rc(0), "{msg}");
     assert_eq!(out, expected("macros"));
+    // %GO TO, GO TO in a procedure, the STATEMENT form, keyword arguments
+    let (out, msg, end) = run("macros2", HashMap::new(), "");
+    assert_eq!(end, RunEnd::Rc(0), "{msg}");
+    assert_eq!(out, expected("macros2"));
 }
 
 #[test]

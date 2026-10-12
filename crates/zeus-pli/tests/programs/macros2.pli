@@ -1,0 +1,37 @@
+ /* %GO TO, preprocessor GO TO, the STATEMENT form and keyword args */
+ %DCL (I, N) FIXED;
+ %DCL S CHAR;
+ %I = 0;
+ %S = '';
+ %LOOP: ;
+ %I = I + 1;
+ %S = S || 'X';
+ %IF I < 3 %THEN %GO TO LOOP;
+ %GO TO SKIPPED;
+ %S = 'NOT REACHED';
+ %SKIPPED: N = I * 10;
+ %DCL L FIXED;
+ %L = LENGTH(S);
+ %DCL (SHOW, FIRST) ENTRY;
+ %SHOW: PROC(NAME, VAL, SUFFIX) STATEMENT RETURNS(CHAR);
+   DCL (NAME, VAL, SUFFIX) CHAR;
+   IF SUFFIX = '' THEN SUFFIX = '-';
+   RETURN('PUT SKIP LIST(''' || NAME || ''', ' || VAL || ', '''
+     || SUFFIX || ''');');
+ %END SHOW;
+ %FIRST: PROC(A) RETURNS(FIXED);
+   DCL A FIXED;
+   DCL K FIXED;
+   K = 0;
+ AGAIN:
+   K = K + 1;
+   IF K * K < A THEN GO TO AGAIN;
+   RETURN(K);
+ %END FIRST;
+ %ACTIVATE SHOW, FIRST;
+ M: PROC OPTIONS(MAIN);
+   SHOW VAL(N) NAME(N);
+   SHOW(LOOPS) SUFFIX(END) VAL(I);
+   SHOW(LENGTH, L);
+   SHOW(ROOT, FIRST(50));
+ END M;

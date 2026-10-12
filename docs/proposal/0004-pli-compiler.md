@@ -79,7 +79,7 @@ COBOL と PL/I は一つの実行単位の記憶域 (アドレス空間) を共�
 | ピクチャ | 9 Z * Y V , . / B $ S + - CR DB T I R F(n)、浮動記号・ゼロ抑制、文字ピクチャ (A X 9)、浮動小数点ピクチャ (仮数部 E/K 指数部。仮数の先頭の桁位置が 0 でないように正規化) |
 | 型の追加 | COMPLEX (FIXED・FLOAT、虚数定数 `2I`、四則演算と `**`、= と ^= の比較、REAL・IMAG・CONJG・COMPLEX/CPLX・ABS、実数への変換は実部、文字への変換は `実部+虚部I`)。GRAPHIC (DBCS。1 バイト文字 c は X'42c'、空白は X'4040') と WIDECHAR (UTF-16BE): 記憶域にはそのまま置き、式の中では CHARACTER に変換する (同じ種類どうしの代入は変換しない。1 バイトの EBCDIC にない文字は X'3F')、HEX はバイトを示す、GRAPHIC()・WIDECHAR() 組込み関数。ORDINAL (DEFINE ORDINAL、VALUE、TYPE、ORDINALNAME・ORDINALSUCC・ORDINALPRED・FIRST・LAST、DO の UPTHRU/DOWNTHRU)。DEFAULT 文 (RANGE(文字:文字)・RANGE(接頭辞)・RANGE(*)、属性と VALUE による精度・長さの既定)。GENERIC (WHEN の属性で引数の型から選ぶ、OTHERWISE)。DEFINE STRUCTURE と TYPE (構造体の型。メンバーにも TYPE)、DEFINE ALIAS、HANDLE (`h => メンバー`、NEW(:型:)、HANDLE(x)、PLIFREE) |
 | 組込み関数 | 算術 (ABS、MOD、REM、ROUND、TRUNC、CEIL、FLOOR、MAX、MIN、SIGN、ADD/SUBTRACT/MULTIPLY/DIVIDE、PRECISION、BINARY、DECIMAL、FIXED、FLOAT など)、数学関数、文字列 (SUBSTR、INDEX、SEARCH、VERIFY、TALLY、LENGTH、MAXLENGTH、TRIM、LEFT、RIGHT、CENTER、COPY、REPEAT、REVERSE、TRANSLATE、UPPERCASE、LOWERCASE、HIGH、LOW、COLLATE、HEX、BOOL、UNSPEC、STRING、CHAR、BIT)、配列 (DIM、LBOUND、HBOUND、SUM、PROD、ALL、ANY)、記憶域 (ADDR、NULL、SYSNULL、SIZE、CURRENTSIZE、ALLOCATION、POINTERADD)、日付 (DATE、TIME、DATETIME、DAYS、DAYSTODATE、WEEKDAY)、PLIRETC/PLIRETV |
-| プリプロセッサ | %DECLARE (FIXED・CHARACTER・BIT)、% 代入、%IF/%THEN/%ELSE、%DO (グループ・反復・WHILE/UNTIL・SKIP)、%SELECT、%LEAVE/%ITERATE、%ACTIVATE/%DEACTIVATE (RESCAN・NORESCAN)、%REPLACE、%NOTE、%INCLUDE/%XINCLUDE、プリプロセッサ手続き (引数、RETURNS、ソース中の呼出し) と主な組込み関数、置換後の再走査 |
+| プリプロセッサ | %DECLARE (FIXED・CHARACTER・BIT)、% 代入、%IF/%THEN/%ELSE、%DO (グループ・反復・WHILE/UNTIL・SKIP)、%SELECT、%LEAVE/%ITERATE、%ACTIVATE/%DEACTIVATE (RESCAN・NORESCAN)、%REPLACE、%NOTE、%INCLUDE/%XINCLUDE、%GO TO (同じテキストのラベル付きの % 文へ。前にも後ろにも、%DO の外へも)、プリプロセッサ手続き (引数、RETURNS、ソース中の呼出し、手続きの中の GO TO、STATEMENT 形式 `名前(位置引数) 仮引数名(引数) ...;` とキーワード引数。省略した引数は空文字列) と主な組込み関数、置換後の再走査 |
 | 外部呼出し | 別モジュールの外部手続き (PL/I モジュールをロードライブラリから読込み、関数の戻り値、`*` の範囲・長さの記述子)、COBOL プログラムの呼出しと COBOL からの PL/I 手続きの呼出し (戻りコードは RETURN-CODE と PLIRETV で受け渡し)。引数は実行単位の記憶域のアドレスで渡す (2.1 節) |
 | AREA・OFFSET | AREA(n) (16 バイトの見出しと割当て域)、OFFSET(領域)、ALLOCATE ... IN(領域) SET(オフセットかポインタ)、POINTER(o, a)・OFFSET(p, a)・EMPTY()、オフセットとポインタの代入による変換、オフセットを位置指定子とする BASED、領域の代入 (オフセットは領域の中の相対位置なので写した先でも使える)、満杯で AREA 条件 |
 | 定義・REFER・CONTROLLED | iSUB 定義 (`DEFINED A(1SUB,1SUB)` など。要素ごとにも配列全体の組込み関数にも)。構造体の途中のメンバーの REFER (後のメンバーの位置と構造体の大きさが REFER の値で決まる)。CONTROLLED の仮引数 (呼出し側の世代を ALLOCATE / FREE する) |
@@ -91,7 +91,7 @@ COBOL と PL/I は一つの実行単位の記憶域 (アドレス空間) を共�
 
 ## 5. 未対応 (今後)
 
-- プリプロセッサ: %GO TO、キーワード引数・STATEMENT 形式の手続き呼出し、MACRO 以外のプリプロセッサ (SQL・CICS の前処理は 5 章の EXEC を参照)
+- プリプロセッサ: MACRO 以外のプリプロセッサ (SQL・CICS の前処理は 5 章の EXEC を参照)
 - AREA の中の FREE (領域は EMPTY の代入で空になるまで再利用しない)、配列の要素の構造体の中の REFER
 - UCHAR (UTF-8)、GRAPHIC・WIDECHAR の定数 (`'...'G`・`'...'W`)、GRAPHIC・WIDECHAR の 1 バイトの EBCDIC にない文字を式の中で扱うこと、COMPLEX の数学関数と PUT EDIT の C 書式、DEFINE STRUCTURE の型を引数の型とする手続き、PLIFREE による記憶域の再利用
 - FETCH の SET オプション (受け付けるが、ポインタは設定しない)

@@ -28,7 +28,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | **済** |
 | 18 | S | PL/I からの MQI 呼出し | 0005 | **済** |
 | 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | **済** |
-| 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | 未着手 |
+| 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | **済** |
 | 21 | S | IMS のアンロード (DFSURGU0) | 0006 | 未着手 |
 | 22 | S | BMS: JUSTIFY=RIGHT の入力フィールドの右寄せの確認、DBCS の利用者語 | 0002 | 未着手 |
 
@@ -151,3 +151,9 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
   - その中の RETURN / XCTL は呼出し元に STOP RUN と同じ終わり方を返し、呼んだ COBOL のプログラムも終える
     (CALL は論理レベルを作らないので、LINK のレベルが終わる)。
   - `crates/zeus-cics/tests/pli.rs` (CBGREET が PLLEN と PLRET を CALL する)。
+- **#20 PL/I のプリプロセッサ** (2026-10):
+  - %GO TO: 実行中のテキスト (%DO・%IF の中なら外側のテキストへ順にたどる) からラベル付きの % 文を探して続ける。
+    ラベルだけの文 (`%L: ;`) も書ける。プリプロセッサ手続きの中の GO TO は手続きの文のラベルへ。
+  - STATEMENT 形式: STATEMENT オプションの手続きは `名前(位置引数) 仮引数名(引数) ...;` で呼べ、`;` まで置き換える。
+  - 合わせて直したもの: 手続きの CHARACTER の局所変数への代入が FIXED に変換されていた。
+  - `crates/zeus-pli/tests/programs/macros2.pli`。
