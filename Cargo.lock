@@ -769,6 +769,7 @@ name = "zeus-cics"
 version = "0.1.0"
 dependencies = [
  "corosensei",
+ "roxmltree",
  "rustls",
  "rustls-pki-types",
  "serde",
@@ -871,6 +872,7 @@ version = "0.1.0"
 dependencies = [
  "libloading",
  "zeus-cobol",
+ "zeus-decimal",
 ]
 
 [[package]]
