@@ -30,7 +30,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | **済** |
 | 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | **済** |
 | 21 | S | IMS のアンロード (DFSURGU0) | 0006 | **済** |
-| 22 | S | BMS: JUSTIFY=RIGHT の入力フィールドの右寄せの確認、DBCS の利用者語 | 0002 | 未着手 |
+| 22 | S | BMS: JUSTIFY=RIGHT の入力フィールドの右寄せの確認、DBCS の利用者語 | 0002 | **済** |
 
 ## 2. この一覧の対象外
 
@@ -162,3 +162,9 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
     1 階層の子に限らず、複数階層を親子の順で戻せるようにした。
   - CardDemo の DBPAUTP0 では、セグメントのレコードが付属のアンロードと同じ内容・順序になる。
   - `crates/zeus-ims/src/unload.rs` の往復のテストと `tools/carddemo-ims.sh test`。
+- **#22 BMS の JUSTIFY=RIGHT と DBCS の利用者語** (2026-10):
+  - JUSTIFY=RIGHT: 入力の後続ブランクを除いてから右寄せする。IBM の文書は「右寄せ」とだけ書いているが、GenApp
+    (自動車保険の更新) は X(8) に左詰めで入れた CC を FSET で受け取り、右寄せ・ゼロ詰めで 9(4) に戻すことを前提にしている。
+    JUSTIFY を書かない NUM のフィールドは文書どおり RIGHT・ZERO。
+  - DBCS の利用者語: COBOL の字句解析が ASCII 以外の英字・数字 (漢字・かな・全角) を語の文字として受け付ける。
+  - `tools/genapp/motor.txt` (更新後の CC) と `crates/zeus-cobol/tests/japanese.cbl`。

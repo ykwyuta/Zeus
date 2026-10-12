@@ -98,7 +98,14 @@ struct Lexer<'a> {
 }
 
 fn is_word_char(c: char) -> bool {
-    c.is_ascii_alphanumeric() || c == '-' || c == '_'
+    c.is_ascii_alphanumeric() || c == '-' || c == '_' || is_dbcs_word_char(c)
+}
+
+/// A character of a DBCS user-defined word (Japanese data names and
+/// paragraph names): any letter outside ASCII, such as kanji, kana and
+/// full-width letters and digits.
+fn is_dbcs_word_char(c: char) -> bool {
+    !c.is_ascii() && c.is_alphanumeric()
 }
 
 fn is_space(c: char) -> bool {
@@ -399,7 +406,7 @@ impl Lexer<'_> {
             self.push(Tok::Num(n), pos);
             return Ok(());
         }
-        if c.is_ascii_alphanumeric() {
+        if c.is_ascii_alphanumeric() || is_dbcs_word_char(c) {
             if let Some(()) = self.exec_block()? {
                 return Ok(());
             }
