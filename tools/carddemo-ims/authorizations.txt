@@ -1,0 +1,30 @@
+# Pending authorizations (IMS DB, EXEC DLI under CICS): the summary of
+# account 1 (SCHD, GU with WHERE), the list of its details (GNP) with
+# paging, and the detail screen (GNP with WHERE, F8 to the next one).
+tran CC00
+type 19 44 USER0001
+type 20 44 PASSWORD
+key ENTER
+expect 4 Main Menu
+type 20 42 11
+key ENTER
+expect 3 View Authorizations
+type 5 20 00000000001
+key ENTER
+expect 6 Immanuel M Kessler
+expect 9 Approval # :  006   Decline #:  000
+expect 11 Appr Amt:       9.44
+expect 16 960b9b5480d045a    10/27/23   04:12:52   0100     A    P           1.24
+expect 20 a0bd7e4b348b469    10/27/23   03:09:08   0100     A    P           1.99
+key PF8
+expect 16 1dce59eb5e014ad    10/26/23   20:26:03   0100     A    P           0.99
+key PF7
+expect 16 960b9b5480d045a
+type 16 4 S
+key ENTER
+expect 4 View Authorization Details
+expect 7 Card #:  9680294154603697
+expect 15 Tran Id:  960b9b5480d045a    Match Status:  P
+expect 19 Name:  Amazon.com
+key PF8
+expect 15 Tran Id:  735c258a680d415

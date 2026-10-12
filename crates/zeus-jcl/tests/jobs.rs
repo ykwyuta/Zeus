@@ -364,17 +364,31 @@ fn calls_between_languages() {
         std::fs::read_dir(dir.path().join("spool/MIXJOB"))
             .unwrap()
             .flatten()
-            .filter(|e| e.file_name().to_string_lossy().contains(&format!("{step}.{dd}")))
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .contains(&format!("{step}.{dd}"))
+            })
             .map(|e| std::fs::read_to_string(e.path()).unwrap_or_default())
             .collect::<String>()
     };
-    let rcs: Vec<(String, Outcome)> = outcomes(&r).into_iter().filter(|(n, _)| n.starts_with('R')).collect();
+    let rcs: Vec<(String, Outcome)> = outcomes(&r)
+        .into_iter()
+        .filter(|(n, _)| n.starts_with('R'))
+        .collect();
     assert_eq!(
         rcs,
-        [("RCMAIN".into(), Outcome::Rc(2)), ("RPMAIN".into(), Outcome::Rc(0))],
+        [
+            ("RCMAIN".into(), Outcome::Rc(2)),
+            ("RPMAIN".into(), Outcome::Rc(0))
+        ],
         "{log}"
     );
-    let lines = |s: String| s.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>();
+    let lines = |s: String| {
+        s.lines()
+            .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+            .collect::<Vec<_>>()
+    };
     assert_eq!(lines(spool("RCMAIN", "SYSPRINT")), ["PSUB 7 HELLO"]);
     assert_eq!(
         lines(spool("RCMAIN", "SYSOUT")),
@@ -384,7 +398,10 @@ fn calls_between_languages() {
         lines(spool("RPMAIN", "SYSPRINT")),
         ["PSUB 1 PLI", "PSUB 103 COBOL", "409 COBOL 2", "509 COBOL 3"]
     );
-    assert_eq!(lines(spool("RPMAIN", "SYSOUT")), ["CSUB 001 PLI", "CSUB 002 COBOL", "CSUB 003 COBOL"]);
+    assert_eq!(
+        lines(spool("RPMAIN", "SYSOUT")),
+        ["CSUB 001 PLI", "CSUB 002 COBOL", "CSUB 003 COBOL"]
+    );
 }
 
 const MQPROG: &str = "       IDENTIFICATION DIVISION.
@@ -479,7 +496,11 @@ fn mq_calls() {
         .filter(|e| e.file_name().to_string_lossy().contains("RUN.SYSOUT"))
         .map(|e| std::fs::read_to_string(e.path()).unwrap_or_default())
         .collect();
-    assert_eq!(outcomes(&r).last(), Some(&("RUN".into(), Outcome::Rc(0))), "{log}\n{out}");
+    assert_eq!(
+        outcomes(&r).last(),
+        Some(&("RUN".into(), Outcome::Rc(0))),
+        "{log}\n{out}"
+    );
     let lines: Vec<&str> = out.lines().map(str::trim_end).collect();
     assert_eq!(
         lines,
@@ -493,4 +514,263 @@ fn mq_calls() {
         ],
         "{out}"
     );
+}
+
+const SHOPDBD: &str = "         DBD   NAME=SHOPDB,ACCESS=(HDAM,OSAM),RMNAME=(DFSHDC40,5,10)
+         DATASET DD1=SHOPDD
+         SEGM  NAME=CUSTOMER,PARENT=0,BYTES=30
+         FIELD NAME=(CUSTNO,SEQ,U),BYTES=5,START=1,TYPE=C
+         SEGM  NAME=ORDERS,PARENT=CUSTOMER,BYTES=20
+         FIELD NAME=(ORDNO,SEQ,U),BYTES=4,START=1,TYPE=C
+         DBDGEN
+         FINISH
+         END
+";
+
+const SHOPPSB: &str = "         PCB   TYPE=DB,DBDNAME=SHOPDB,PROCOPT=A,KEYLEN=9
+         SENSEG NAME=CUSTOMER,PARENT=0
+         SENSEG NAME=ORDERS,PARENT=CUSTOMER
+         PSBGEN LANG=COBOL,PSBNAME=SHOPPSB,CMPAT=YES
+         END
+";
+
+/// Data division items of the IMS test programs.
+const SHOPDATA: &str = "       01 CUST-REC.
+          05 CUST-NO    PIC X(5).
+          05 CUST-NAME  PIC X(25).
+       01 ORD-REC.
+          05 ORD-NO     PIC X(4).
+          05 ORD-ITEM   PIC X(16).
+       01 SSA-CUST.
+          05 FILLER     PIC X(9) VALUE 'CUSTOMER('.
+          05 FILLER     PIC X(10) VALUE 'CUSTNO  = '.
+          05 SSA-KEY    PIC X(5).
+          05 FILLER     PIC X VALUE ')'.
+       01 SSA-CUST-U    PIC X(9) VALUE 'CUSTOMER '.
+       01 SSA-ORD-U     PIC X(9) VALUE 'ORDERS   '.
+       01 F-ISRT        PIC X(4) VALUE 'ISRT'.
+       01 F-GU          PIC X(4) VALUE 'GU  '.
+       01 F-GHU         PIC X(4) VALUE 'GHU '.
+       01 F-GN          PIC X(4) VALUE 'GN  '.
+       01 F-REPL        PIC X(4) VALUE 'REPL'.
+       01 F-DLET        PIC X(4) VALUE 'DLET'.
+       LINKAGE SECTION.
+       01 IOPCB         PIC X(48).
+       01 DBPCB.
+          05 PCB-DBD    PIC X(8).
+          05 PCB-LEVEL  PIC X(2).
+          05 PCB-STATUS PIC X(2).
+          05 PCB-PROCOPT PIC X(4).
+          05 FILLER     PIC S9(5) COMP.
+          05 PCB-SEGM   PIC X(8).
+          05 PCB-KFBL   PIC S9(5) COMP.
+          05 PCB-NSENS  PIC S9(5) COMP.
+          05 PCB-KFB    PIC X(9).
+";
+
+/// DL/I calls: inserts (with a duplicate), qualified GU, GHU and REPL,
+/// a missing key, DLET of a customer with its orders, and GN through
+/// the database.
+fn shopload() -> String {
+    format!(
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SHOPLOAD.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+{SHOPDATA}       PROCEDURE DIVISION USING IOPCB DBPCB.
+           DISPLAY 'DBD ' PCB-DBD ' PROCOPT ' PCB-PROCOPT
+           MOVE 'C0001ALICE' TO CUST-REC
+           CALL 'CBLTDLI' USING F-ISRT DBPCB CUST-REC SSA-CUST-U
+           MOVE 'C0001' TO SSA-KEY
+           MOVE '0001BOOK' TO ORD-REC
+           CALL 'CBLTDLI' USING F-ISRT DBPCB ORD-REC SSA-CUST SSA-ORD-U
+           MOVE '0002PEN' TO ORD-REC
+           CALL 'CBLTDLI' USING F-ISRT DBPCB ORD-REC SSA-CUST SSA-ORD-U
+           MOVE 'C0002BOB' TO CUST-REC
+           CALL 'CBLTDLI' USING F-ISRT DBPCB CUST-REC SSA-CUST-U
+           MOVE 'C0002' TO SSA-KEY
+           MOVE '0001LAMP' TO ORD-REC
+           CALL 'CBLTDLI' USING F-ISRT DBPCB ORD-REC SSA-CUST SSA-ORD-U
+           MOVE 'C0003CAROL' TO CUST-REC
+           CALL 'CBLTDLI' USING F-ISRT DBPCB CUST-REC SSA-CUST-U
+           MOVE 'C0001DUPLICATE' TO CUST-REC
+           CALL 'CBLTDLI' USING F-ISRT DBPCB CUST-REC SSA-CUST-U
+           DISPLAY 'ISRT DUPLICATE ' PCB-STATUS
+           MOVE 'C0002' TO SSA-KEY
+           CALL 'CBLTDLI' USING F-GHU DBPCB CUST-REC SSA-CUST
+           DISPLAY 'GHU ' PCB-STATUS ' ' CUST-NAME ' ' PCB-SEGM
+                   ' ' PCB-LEVEL ' ' PCB-KFBL ' ' PCB-KFB(1:5)
+           MOVE 'ROBERT' TO CUST-NAME
+           CALL 'CBLTDLI' USING F-REPL DBPCB CUST-REC
+           DISPLAY 'REPL ' PCB-STATUS
+           MOVE 'C0009' TO SSA-KEY
+           CALL 'CBLTDLI' USING F-GU DBPCB CUST-REC SSA-CUST
+           DISPLAY 'GU C0009 ' PCB-STATUS
+           MOVE 'C0003' TO SSA-KEY
+           CALL 'CBLTDLI' USING F-GHU DBPCB CUST-REC SSA-CUST
+           CALL 'CBLTDLI' USING F-DLET DBPCB CUST-REC
+           DISPLAY 'DLET ' PCB-STATUS
+           MOVE 'C0001' TO SSA-KEY
+           CALL 'CBLTDLI' USING F-GU DBPCB CUST-REC SSA-CUST
+      *    GA: a segment of a higher level (the next customer)
+           PERFORM UNTIL PCB-STATUS NOT = SPACES AND NOT = 'GA'
+               DISPLAY 'GN ' PCB-STATUS ' ' PCB-SEGM ' ' PCB-LEVEL ' '
+                       PCB-KFB(1:PCB-KFBL)
+               MOVE SPACES TO ORD-REC
+               CALL 'CBLTDLI' USING F-GN DBPCB ORD-REC
+           END-PERFORM
+           DISPLAY 'END ' PCB-STATUS
+           GOBACK.
+"
+    )
+}
+
+/// EXEC DLI in a BMP: GU with WHERE, GNP, then an insert that the abend
+/// backs out.
+fn shopread() -> String {
+    format!(
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SHOPREAD.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 WS-KEY        PIC X(5) VALUE 'C0002'.
+       01 ABCODE        PIC S9(9) BINARY VALUE 123.
+       01 TIMING        PIC S9(9) BINARY VALUE 0.
+{SHOPDATA}       PROCEDURE DIVISION USING IOPCB DBPCB.
+           EXEC DLI GU USING PCB(2) SEGMENT(CUSTOMER)
+                WHERE (CUSTNO = WS-KEY) INTO(CUST-REC)
+           END-EXEC
+           DISPLAY 'GU ' DIBSTAT ' ' CUST-REC ' ' DIBSEGM ' ' DIBSEGLV
+           EXEC DLI GNP USING PCB(2) SEGMENT(ORDERS) INTO(ORD-REC)
+           END-EXEC
+           DISPLAY 'GNP ' DIBSTAT ' ' ORD-REC ' ' DIBSEGLV
+           EXEC DLI GNP USING PCB(2) SEGMENT(ORDERS) INTO(ORD-REC)
+           END-EXEC
+           DISPLAY 'GNP ' DIBSTAT
+           MOVE 'C0007LOST' TO CUST-REC
+           EXEC DLI ISRT USING PCB(2) SEGMENT(CUSTOMER) FROM(CUST-REC)
+           END-EXEC
+           DISPLAY 'ISRT ' DIBSTAT
+           CALL 'CEE3ABD' USING ABCODE TIMING
+           GOBACK.
+"
+    )
+}
+
+/// The insert of the abended step is not in the database.
+fn shopchk() -> String {
+    format!(
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SHOPCHK.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+{SHOPDATA}       PROCEDURE DIVISION USING IOPCB DBPCB.
+           MOVE 'C0007' TO SSA-KEY
+           CALL 'CBLTDLI' USING F-GU DBPCB CUST-REC SSA-CUST
+           DISPLAY 'GU C0007 ' PCB-STATUS
+           MOVE 'C0002' TO SSA-KEY
+           CALL 'CBLTDLI' USING F-GU DBPCB CUST-REC SSA-CUST
+           DISPLAY 'GU C0002 ' PCB-STATUS ' ' CUST-NAME
+           GOBACK.
+"
+    )
+}
+
+/// IMS batch regions (DFSRRC00): DL/I calls and EXEC DLI on a database
+/// defined by DBD and PSB members of the IMS DD libraries, committed at
+/// the end of a step and backed out when it abends.
+#[test]
+fn ims_batch_regions() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    for (lib, member, text) in [
+        ("ZEUS.DBDLIB", "SHOPDB", SHOPDBD),
+        ("ZEUS.PSBLIB", "SHOPPSB", SHOPPSB),
+    ] {
+        env.catalog
+            .define(Entry {
+                name: lib.into(),
+                kind: EntryKind::Partitioned {
+                    recfm: Recfm::Fb,
+                    lrecl: 80,
+                },
+            })
+            .unwrap();
+        let d = env.catalog.path(lib);
+        std::fs::create_dir_all(&d).unwrap();
+        std::fs::write(d.join(member), text).unwrap();
+    }
+    let mut job = String::from("//IMSJOB   JOB (ACCT),'IMS'\n");
+    for (n, src) in [
+        ("SHOPLOAD", shopload()),
+        ("SHOPREAD", shopread()),
+        ("SHOPCHK", shopchk()),
+    ] {
+        job.push_str(&compile_step(n, "IGYCRCTL", &src));
+    }
+    // CHECK runs after the abend of READ (COND=EVEN)
+    for (step, region, pgm, cond) in [
+        ("LOAD", "DLI", "SHOPLOAD", ""),
+        ("READ", "BMP", "SHOPREAD", ""),
+        ("CHECK", "DBB", "SHOPCHK", ",COND=EVEN"),
+    ] {
+        job.push_str(&format!(
+            "//{step:<8} EXEC PGM=DFSRRC00,PARM='{region},{pgm},SHOPPSB'{cond}\n//STEPLIB  DD DSN=ZEUS.LOADLIB,DISP=SHR\n//IMS      DD DSN=ZEUS.PSBLIB,DISP=SHR\n//         DD DSN=ZEUS.DBDLIB,DISP=SHR\n//SYSOUT   DD SYSOUT=*\n"
+        ));
+    }
+    let mut log = Vec::new();
+    let r = run_job(&mut env, &job, &mut log).unwrap();
+    let log = String::from_utf8_lossy(&log);
+    let out = |step: &str| -> Vec<String> {
+        std::fs::read_dir(dir.path().join("spool/IMSJOB"))
+            .unwrap()
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .contains(&format!("{step}.SYSOUT"))
+            })
+            .map(|e| std::fs::read_to_string(e.path()).unwrap_or_default())
+            .collect::<String>()
+            .lines()
+            .map(|l| l.trim_end().to_string())
+            .collect()
+    };
+    let steps: Vec<(String, Outcome)> = outcomes(&r).into_iter().skip(6).collect();
+    assert_eq!(
+        steps,
+        [
+            ("LOAD".into(), Outcome::Rc(0)),
+            ("READ".into(), Outcome::Abend("U0123".into())),
+            ("CHECK".into(), Outcome::Rc(0)),
+        ],
+        "{log}"
+    );
+    assert_eq!(
+        out("LOAD"),
+        [
+            "DBD SHOPDB   PROCOPT A",
+            "ISRT DUPLICATE II",
+            "GHU    BOB                       CUSTOMER 01 0000E C0002",
+            "REPL",
+            "GU C0009 GE",
+            "DLET",
+            "GN    CUSTOMER 01 C0001",
+            "GN    ORDERS   02 C00010001",
+            "GN    ORDERS   02 C00010002",
+            "GN GA CUSTOMER 01 C0002",
+            "GN    ORDERS   02 C00020001",
+            "END GB",
+        ]
+    );
+    assert_eq!(
+        out("READ"),
+        [
+            "GU    C0002ROBERT                    CUSTOMER 01",
+            "GNP    0001LAMP             02",
+            "GNP GE",
+            "ISRT",
+        ]
+    );
+    assert_eq!(out("CHECK"), ["GU C0007 GE", "GU C0002    ROBERT"]);
 }

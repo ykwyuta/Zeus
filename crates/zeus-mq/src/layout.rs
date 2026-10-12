@@ -137,7 +137,11 @@ impl Layout {
 
     /// Whether a z/OS structure has this structure's identifier.
     pub fn is(&self, zos: &[u8]) -> bool {
-        zos.len() >= 4 && zos[..4].iter().map(|&b| ebcdic::to_latin1(b)).eq(self.id.iter().copied())
+        zos.len() >= 4
+            && zos[..4]
+                .iter()
+                .map(|&b| ebcdic::to_latin1(b))
+                .eq(self.id.iter().copied())
     }
 
     /// The native form of the first `len(version)` bytes of `zos`; the

@@ -1,0 +1,22 @@
+[package]
+name = "zeus-ims"
+description = "Zeus IMS DB: DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I calls, GSAM and IMS TM queues"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-cobol = { path = "../zeus-cobol" }
+zeus-decimal = { path = "../zeus-decimal" }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "zims"
+path = "src/main.rs"
+
+[lints]
+workspace = true

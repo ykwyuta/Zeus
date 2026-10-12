@@ -824,7 +824,9 @@ fn pli_env(
             stdin: stdin.borrow_mut().take(),
             stdin_reader: None,
             linker: None,
-            exec_host: db2.clone().map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>),
+            exec_host: db2
+                .clone()
+                .map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>),
         }
     })
 }
@@ -870,6 +872,19 @@ pub(crate) fn run_cobol(
     job: &str,
     step: &Step,
 ) -> ProgramResult {
+    run_program(ctx, program, libs, job, step, None)
+}
+
+/// Runs a program; `ims`: the PSB scheduled for it (an IMS batch region),
+/// whose PCB masks it receives as its parameters.
+pub(crate) fn run_program(
+    ctx: &mut StepCtx,
+    program: &str,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+    ims: Option<zeus_ims::runtime::Schedule>,
+) -> ProgramResult {
     let path = libs
         .iter()
         .flat_map(|d| [d.join(program), d.join(format!("{program}.zo"))])
@@ -881,6 +896,12 @@ pub(crate) fn run_cobol(
     {
         let module =
             zeus_pli::load_module_bytes(&data).map_err(|_| Outcome::Abend("S806".into()))?;
+        if ims.is_some() {
+            if let Ok(mut f) = ctx.sysout("SYSOUT") {
+                let _ = writeln!(f, "ZEUS IMS: {program}: PL/I programs cannot use DL/I yet");
+            }
+            return Err(Outcome::Abend("U0476".into()));
+        }
         return run_pli(ctx, module, libs, job, step);
     }
     let module = zeus_cobol::load_module(&path).map_err(|_| Outcome::Abend("S806".into()))?;
@@ -895,8 +916,41 @@ pub(crate) fn run_cobol(
         Some(cobol_factory(ctx, libs, job, step, db2.clone())),
     );
     m.set_linker(linker.clone());
+    let batch = ims.is_some();
+    if let Some(sched) = ims {
+        // the program gets the PCB masks of its PSB; EXEC DLI and
+        // CALL 'CBLTDLI' work on them
+        zeus_ims::runtime::register(&mut m);
+        m.set_exec_host(std::rc::Rc::new(zeus_ims::runtime::BatchHost {
+            sql: db2
+                .clone()
+                .map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>),
+        }));
+        let mut addrs = Vec::new();
+        for k in 0..sched.pcbs.len() {
+            let mask = sched.mask(k);
+            let a = m.getmain(mask.len(), 0);
+            m.storage_mut()[a..a + mask.len()].copy_from_slice(&mask);
+            addrs.push(a);
+        }
+        m.set_main_args(addrs.iter().map(|&a| Some(a)).collect());
+        zeus_ims::runtime::start_batch(sched, addrs);
+    }
     let r = m.run_main(module);
     linker.finish();
+    // the IMS unit of work: committed at the normal end of the program
+    let r = match (batch, r) {
+        (true, r) => {
+            let ok = r.is_ok();
+            match zeus_ims::runtime::end_batch(ok) {
+                Ok(()) => r,
+                Err(e) => r.and(Err(zeus_cobol::vm::RunError(format!(
+                    "IMS commit failed: {e}"
+                )))),
+            }
+        }
+        (false, r) => r,
+    };
     // MQ connections end with the step: committed, or backed out when
     // the program failed
     zeus_mq::end_run(r.is_ok());
@@ -1080,7 +1134,7 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
         let mut ctx = StepCtx {
             env: r.env,
             dds,
-            parm: step.exec.get_str("PARM").unwrap_or("").to_string(),
+            parm: step.exec.get("PARM").map(parm_text).unwrap_or_default(),
             spool_prefix: r.dir.join(format!("{seq:02}.{}", step.name)),
         };
         let outcome = match crate::utils::run(&program, &mut ctx) {
@@ -1088,6 +1142,7 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
             None if matches!(program.as_str(), "IKJEFT01" | "IKJEFT1A" | "IKJEFT1B") => {
                 crate::utils::tso::run(&program, &mut ctx, &libs, &job_name, step)
             }
+            None if program == "DFSRRC00" => crate::ims::run(&mut ctx, &libs, &job_name, step),
             None => run_cobol(&mut ctx, &program, &libs, &job_name, step),
         };
         let dds = ctx.dds;
@@ -1158,4 +1213,19 @@ fn open_append(path: &std::path::Path) -> Result<std::fs::File, String> {
         .append(true)
         .open(path)
         .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The text of a PARM: a list `(a,b,c)` is passed as `a,b,c`.
+fn parm_text(v: &crate::parse::Value) -> String {
+    match v {
+        crate::parse::Value::Str(s) => s.clone(),
+        crate::parse::Value::List(ps) => ps
+            .iter()
+            .map(|p| match &p.key {
+                Some(k) => format!("{k}={}", parm_text(&p.value)),
+                None => parm_text(&p.value),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+    }
 }

@@ -302,7 +302,10 @@ impl Lexer {
         while self.peek(0).is_some_and(ident_char) {
             self.i += 1;
         }
-        let kind: String = self.c[start..self.i].iter().collect::<String>().to_ascii_uppercase();
+        let kind: String = self.c[start..self.i]
+            .iter()
+            .collect::<String>()
+            .to_ascii_uppercase();
         if !matches!(kind.as_str(), "SQL" | "CICS" | "DLI") {
             (self.i, self.line) = save;
             return Ok(());
@@ -313,7 +316,10 @@ impl Lexer {
         let mut quote = None;
         loop {
             let Some(c) = self.peek(0) else {
-                return Err(Diag::error(tpos, "';' expected at the end of the EXEC statement"));
+                return Err(Diag::error(
+                    tpos,
+                    "';' expected at the end of the EXEC statement",
+                ));
             };
             self.i += 1;
             match (quote, c) {
@@ -466,7 +472,6 @@ impl Lexer {
             }
         }
     }
-
 }
 
 /// Finds an include member: the name as given, upper and lower case, with

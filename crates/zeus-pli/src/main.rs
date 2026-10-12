@@ -110,12 +110,17 @@ fn main() -> ExitCode {
         m
     };
     if let Some(d) = file.parent() {
-        libs.push(if d.as_os_str().is_empty() { PathBuf::from(".") } else { d.to_path_buf() });
+        libs.push(if d.as_os_str().is_empty() {
+            PathBuf::from(".")
+        } else {
+            d.to_path_buf()
+        });
     }
     // EXEC SQL runs on the Db2 server named by ZEUS_DB2
     let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
     let host = |d: &Option<std::rc::Rc<zeus_db2::Db2Host>>| {
-        d.clone().map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>)
+        d.clone()
+            .map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>)
     };
     let sub_db2 = host(&db2);
     let cobol_db2 = db2.clone();

@@ -114,6 +114,9 @@ pub struct Machine {
     /// Programs of other run times (PL/I).
     linker: Option<Rc<dyn crate::interlang::Linker>>,
     control_blocks: bool,
+    /// Addresses of the main program's USING parameters, when the host
+    /// passes them (IMS PCB masks) instead of the PARM.
+    main_args: Option<Vec<Option<usize>>>,
 }
 
 /// A program implemented by the host: it gets the storage and the
@@ -193,6 +196,7 @@ impl Machine {
             return_code: 0,
             linker: None,
             control_blocks: false,
+            main_args: None,
         }
     }
 
@@ -304,6 +308,13 @@ impl Machine {
     /// found in the search directories take precedence.
     pub fn add_native(&mut self, name: &str, f: NativeFn) {
         self.natives.insert(name.to_ascii_uppercase(), f);
+    }
+
+    /// Passes `args` (addresses in this machine's storage, see
+    /// [`Machine::getmain`]) to the USING parameters of the main program
+    /// in place of the PARM.
+    pub fn set_main_args(&mut self, args: Vec<Option<usize>>) {
+        self.main_args = Some(args);
     }
 
     /// Finds the programs that are not COBOL programs of the search
@@ -443,8 +454,13 @@ impl Machine {
         self.control_blocks = true;
         let module = Rc::new(module);
         let main = self.instantiate(&module, 0);
-        // PARM: the first USING parameter of the main program
-        if let Some(&slot) = self.instances[main].code.using.first() {
+        if let Some(args) = self.main_args.take() {
+            let using = self.instances[main].code.using.clone();
+            for (k, slot) in using.iter().enumerate() {
+                self.instances[main].linkage[*slot as usize] = args.get(k).copied().flatten();
+            }
+        } else if let Some(&slot) = self.instances[main].code.using.first() {
+            // PARM: the first USING parameter of the main program
             let text = ebcdic::encode(&self.step.parm);
             let mut area = (text.len() as u16).to_be_bytes().to_vec();
             area.extend(text);
@@ -537,7 +553,9 @@ impl Machine {
                 let mut xs: Vec<crate::interlang::XArg> = sized
                     .iter()
                     .map(|s| match s {
-                        Some((a, n)) => crate::interlang::XArg::bytes(self.mem[*a..*a + *n].to_vec()),
+                        Some((a, n)) => {
+                            crate::interlang::XArg::bytes(self.mem[*a..*a + *n].to_vec())
+                        }
                         None => crate::interlang::XArg::omitted(),
                     })
                     .collect();

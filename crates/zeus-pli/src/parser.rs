@@ -1636,13 +1636,19 @@ impl Parser {
                 self.semi()?;
                 StmtKind::Display { value, reply }
             }
-            "EXEC" if matches!(self.tok(), Tok::Ident(_)) && matches!(self.tok_at(1), Tok::Str { .. }) => {
+            "EXEC"
+                if matches!(self.tok(), Tok::Ident(_))
+                    && matches!(self.tok_at(1), Tok::Str { .. }) =>
+            {
                 let kind = self.ident()?;
                 let Tok::Str { text, .. } = self.bump() else {
                     unreachable!()
                 };
                 self.semi()?;
-                let words: Vec<String> = text.split_whitespace().map(|w| w.to_ascii_uppercase()).collect();
+                let words: Vec<String> = text
+                    .split_whitespace()
+                    .map(|w| w.to_ascii_uppercase())
+                    .collect();
                 if kind == "SQL" && words == ["INCLUDE", "SQLCA"] {
                     // the SQL communication area
                     let mut toks = crate::lexer::tokenize_raw(SQLCA, pos)?;

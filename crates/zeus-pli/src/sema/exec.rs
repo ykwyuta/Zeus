@@ -99,7 +99,10 @@ impl Compiler {
             pos,
         };
         if self.resolve_var(names).is_none() {
-            return Err(self.err(pos, format!("host variable {} is not declared", names.join("."))));
+            return Err(self.err(
+                pos,
+                format!("host variable {} is not declared", names.join(".")),
+            ));
         }
         self.reference(&r, true)
     }
@@ -121,9 +124,15 @@ impl Compiler {
     /// An EXEC statement.
     pub fn exec_stmt(&mut self, kind: &str, text: &str, pos: Pos) -> Result<Stmt> {
         if kind != "SQL" {
-            return Err(self.err(pos, format!("EXEC {kind} is not supported in PL/I programs")));
+            return Err(self.err(
+                pos,
+                format!("EXEC {kind} is not supported in PL/I programs"),
+            ));
         }
-        let words: Vec<String> = text.split_whitespace().map(|w| w.to_ascii_uppercase()).collect();
+        let words: Vec<String> = text
+            .split_whitespace()
+            .map(|w| w.to_ascii_uppercase())
+            .collect();
         let w = |k: usize| words.get(k).map(String::as_str).unwrap_or("");
         match w(0) {
             "DECLARE" if words.iter().any(|x| x == "CURSOR") => {
@@ -137,7 +146,11 @@ impl Compiler {
                     ("SQLERROR", _) => (0, 2),
                     ("SQLWARNING", _) => (1, 2),
                     ("NOT", "FOUND") => (2, 3),
-                    _ => return Err(self.err(pos, "WHENEVER SQLERROR, SQLWARNING or NOT FOUND expected")),
+                    _ => {
+                        return Err(
+                            self.err(pos, "WHENEVER SQLERROR, SQLWARNING or NOT FOUND expected")
+                        );
+                    }
                 };
                 self.whenever[k] = match (w(rest), w(rest + 1)) {
                     ("CONTINUE", _) => None,
@@ -156,7 +169,10 @@ impl Compiler {
                 return Err(self.err(pos, format!("cursor {} is not declared", w(1))));
             };
             let words: Vec<&str> = q.split_whitespace().collect();
-            let at = words.iter().position(|x| x.eq_ignore_ascii_case("FOR")).unwrap_or(words.len());
+            let at = words
+                .iter()
+                .position(|x| x.eq_ignore_ascii_case("FOR"))
+                .unwrap_or(words.len());
             query = Some(words[(at + 1).min(words.len())..].join(" "));
             host = h;
         }
@@ -194,7 +210,8 @@ mod tests {
 
     #[test]
     fn host_variable_markers() {
-        let (t, h) = host_variables("SELECT A INTO :X.Y :XI FROM T WHERE B = ':Z' AND C = :K INDICATOR :KI");
+        let (t, h) =
+            host_variables("SELECT A INTO :X.Y :XI FROM T WHERE B = ':Z' AND C = :K INDICATOR :KI");
         assert_eq!(t, "SELECT A INTO ? FROM T WHERE B = ':Z' AND C = ?");
         assert_eq!(h.len(), 2);
         assert_eq!(h[0].0, ["X", "Y"]);

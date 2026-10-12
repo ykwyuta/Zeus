@@ -108,6 +108,17 @@ queue manager in a container; ZEUS_MQ names it
 (`mq://user:password@host:port/QMGR/CHANNEL`). Details:
 [docs/proposal/0005-ibm-mq.md](docs/proposal/0005-ibm-mq.md).
 
+IMS DB: `zeus-ims` keeps IMS databases defined by their DBD and PSB
+sources (hierarchical store with a write-ahead log, DL/I positioning and
+updates, units of work, GSAM); its core comes from the `imsdb` crate of
+gnucobol-zosplus. COBOL programs use it through CALL 'CBLTDLI' and EXEC
+DLI: `zjob` runs IMS batch regions (`EXEC PGM=DFSRRC00,PARM='DLI|DBB|BMP,
+program,psb'`, the IMS DD naming the DBD and PSB libraries, commit at the
+end of the step and backout on abend) and `zcics --ims-lib` gives
+transactions EXEC DLI SCHD/TERM. CardDemo's IMS authorization module runs
+from its original JCL and programs (`tools/carddemo-ims.sh test`). Details:
+[docs/proposal/0006-ims-db.md](docs/proposal/0006-ims-db.md).
+
 JCL: `zjob` is the JCL interpreter (in Rust): it parses jobs, expands
 catalogued and in-stream procedures, INCLUDE groups and symbolic
 parameters, selects steps by COND and IF/THEN/ELSE/ENDIF, allocates data
@@ -125,6 +136,7 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
 | `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
 | `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
+| `crates/zeus-ims` | `zims`: IMS DB (DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I, GSAM, TM queues) and the CBLTDLI / EXEC DLI / DFSRRC00 run-time glue |
 | `crates/zeus-mq` | MQI calls of COBOL programs on IBM MQ through the IBM MQ C client library; z/OS structure conversion |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL symbolic maps |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |

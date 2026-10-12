@@ -73,7 +73,7 @@ DB2 9 世代を基準とし、サンプルが実際に使う機能を優先し�
  │            BMS, START/RETRIEVE, SYNCPOINT, HANDLE CONDITION/ABEND, 名前付きカウンタ              │
  │ zeus-3270  TN3270(E) サーバ                                                                    │
  │ zeus-db2   SQLCA/SQLCODE 互換層 + バックエンド (第 1: Db2 CE, 第 2: PostgreSQL)                 │
- │ zeus-ims   (次フェーズ) DL/I, IMS TM メッセージ処理                                             │
+ │ zeus-ims   DL/I (DBD/PSB, 階層ストア, WAL), CBLTDLI/EXEC DLI, DFSRRC00 (0006)。IMS TM は次段階  │
  │ zeus-mq    MQI サブセット (MQCONN/MQOPEN/MQPUT/MQGET), ローカルキュー                           │
  │ zeus-txn   VSAM・TS キュー・Db2・MQ をまたぐ作業単位 (コミット/ロールバック)                      │
  └───────────────────────────────────────────────────────────────────────────────────────────────┘

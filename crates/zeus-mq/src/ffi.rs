@@ -10,10 +10,21 @@ type ConnX = unsafe extern "C" fn(*const u8, *mut u8, *mut Long, *mut Long, *mut
 type Disc = unsafe extern "C" fn(*mut Long, *mut Long, *mut Long);
 type Open = unsafe extern "C" fn(Long, *mut u8, Long, *mut Long, *mut Long, *mut Long);
 type Close = unsafe extern "C" fn(Long, *mut Long, Long, *mut Long, *mut Long);
-type Put = unsafe extern "C" fn(Long, Long, *mut u8, *mut u8, Long, *const u8, *mut Long, *mut Long);
-type Put1 = unsafe extern "C" fn(Long, *mut u8, *mut u8, *mut u8, Long, *const u8, *mut Long, *mut Long);
-type Get =
-    unsafe extern "C" fn(Long, Long, *mut u8, *mut u8, Long, *mut u8, *mut Long, *mut Long, *mut Long);
+type Put =
+    unsafe extern "C" fn(Long, Long, *mut u8, *mut u8, Long, *const u8, *mut Long, *mut Long);
+type Put1 =
+    unsafe extern "C" fn(Long, *mut u8, *mut u8, *mut u8, Long, *const u8, *mut Long, *mut Long);
+type Get = unsafe extern "C" fn(
+    Long,
+    Long,
+    *mut u8,
+    *mut u8,
+    Long,
+    *mut u8,
+    *mut Long,
+    *mut Long,
+    *mut Long,
+);
 type Sync = unsafe extern "C" fn(Long, *mut Long, *mut Long);
 type Inq = unsafe extern "C" fn(
     Long,
@@ -81,7 +92,10 @@ impl Library {
                 Err(e) => errors.push(format!("{}: {e}", c.display())),
             }
         }
-        Err(format!("the IBM MQ client library was not found ({})", errors.join("; ")))
+        Err(format!(
+            "the IBM MQ client library was not found ({})",
+            errors.join("; ")
+        ))
     }
 
     fn bind(lib: libloading::Library) -> Result<Library, libloading::Error> {

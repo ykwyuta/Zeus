@@ -18,10 +18,20 @@ fn data_type(ty: &Ty) -> Option<(DataType, bool)> {
         })
     };
     Some(match ty {
-        Ty::Char { var: Varying::Fixed, .. } => (DataType::Alphanumeric { just: false }, false),
-        Ty::Char { var: Varying::Varying, .. } => (DataType::Alphanumeric { just: false }, true),
-        Ty::Fixed { dec: true, p, q, .. } => (num(NumUsage::Packed, u32::from(*p), i32::from(*q)), false),
-        Ty::Fixed { dec: false, q: 0, .. } => {
+        Ty::Char {
+            var: Varying::Fixed,
+            ..
+        } => (DataType::Alphanumeric { just: false }, false),
+        Ty::Char {
+            var: Varying::Varying,
+            ..
+        } => (DataType::Alphanumeric { just: false }, true),
+        Ty::Fixed {
+            dec: true, p, q, ..
+        } => (num(NumUsage::Packed, u32::from(*p), i32::from(*q)), false),
+        Ty::Fixed {
+            dec: false, q: 0, ..
+        } => {
             let digits = match ty.storage(true).0 {
                 2 => 4,
                 4 => 9,
@@ -37,27 +47,35 @@ fn data_type(ty: &Ty) -> Option<(DataType, bool)> {
 impl Machine {
     pub(super) fn exec_stmt(&mut self, x: &ExecStmt, act: usize) -> R<()> {
         let Some(h) = self.env.exec_host.clone() else {
-            return err(format!("EXEC {} needs a Db2 environment (ZEUS_DB2)", x.kind));
+            return err(format!(
+                "EXEC {} needs a Db2 environment (ZEUS_DB2)",
+                x.kind
+            ));
         };
         let mut shim = zeus_cobol::vm::Machine::new(Vec::new());
         // host variables: (address here, area there)
         let mut places: Vec<(u32, Area)> = Vec::new();
         let mut host = Vec::new();
         let mut varchar = Vec::new();
-        let mut area = |me: &mut Machine, shim: &mut zeus_cobol::vm::Machine, r: &Ref| -> R<(Area, bool)> {
-            let loc = me.locate(r, act)?;
-            let name = &me.module.vars[r.var as usize].name;
-            let Some((ty, vc)) = data_type(&loc.ty) else {
-                return err(format!("{name} cannot be a host variable"));
+        let mut area =
+            |me: &mut Machine, shim: &mut zeus_cobol::vm::Machine, r: &Ref| -> R<(Area, bool)> {
+                let loc = me.locate(r, act)?;
+                let name = &me.module.vars[r.var as usize].name;
+                let Some((ty, vc)) = data_type(&loc.ty) else {
+                    return err(format!("{name} cannot be a host variable"));
+                };
+                let n = loc.ty.storage(true).0 as usize;
+                let addr = (loc.bit / 8) as u32;
+                let a = shim.getmain(n, 0);
+                shim.storage_mut()[a..a + n].copy_from_slice(&me.read(addr, n)?);
+                let ar = Area {
+                    addr: a,
+                    len: n,
+                    ty,
+                };
+                places.push((addr, ar.clone()));
+                Ok((ar, vc))
             };
-            let n = loc.ty.storage(true).0 as usize;
-            let addr = (loc.bit / 8) as u32;
-            let a = shim.getmain(n, 0);
-            shim.storage_mut()[a..a + n].copy_from_slice(&me.read(addr, n)?);
-            let ar = Area { addr: a, len: n, ty };
-            places.push((addr, ar.clone()));
-            Ok((ar, vc))
-        };
         for (v, i) in &x.host {
             let (va, vc) = area(self, &mut shim, v)?;
             let ia = match i {
@@ -87,7 +105,12 @@ impl Machine {
         }
         let call = ExecCall {
             kind: ExecKind::Sql,
-            command: x.text.split_whitespace().next().unwrap_or("").to_ascii_uppercase(),
+            command: x
+                .text
+                .split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_ascii_uppercase(),
             line: CUR_LINE.with(|l| l.get()),
             program: self.module.name.clone(),
             instance: 0,

@@ -59,7 +59,12 @@ const MQMD: &[Item] = &[
     (15, "MQMD-REPLYTOQ", Some("X(48)"), Some("SPACES")),
     (15, "MQMD-REPLYTOQMGR", Some("X(48)"), Some("SPACES")),
     (15, "MQMD-USERIDENTIFIER", Some("X(12)"), Some("SPACES")),
-    (15, "MQMD-ACCOUNTINGTOKEN", Some("X(32)"), Some("LOW-VALUES")),
+    (
+        15,
+        "MQMD-ACCOUNTINGTOKEN",
+        Some("X(32)"),
+        Some("LOW-VALUES"),
+    ),
     (15, "MQMD-APPLIDENTITYDATA", Some("X(32)"), Some("SPACES")),
     (15, "MQMD-PUTAPPLTYPE", L, Some("0")),
     (15, "MQMD-PUTAPPLNAME", Some("X(28)"), Some("SPACES")),
@@ -314,10 +319,14 @@ const CHARS: &[(&str, &str, &str)] = &[
 fn cmqv() -> String {
     let mut s = String::new();
     for (n, v) in INTS {
-        s.push_str(&format!("          10 {n}\n              PIC S9(9) BINARY VALUE {v}.\n"));
+        s.push_str(&format!(
+            "          10 {n}\n              PIC S9(9) BINARY VALUE {v}.\n"
+        ));
     }
     for (n, p, v) in CHARS {
-        s.push_str(&format!("          10 {n}\n              PIC {p} VALUE {v}.\n"));
+        s.push_str(&format!(
+            "          10 {n}\n              PIC {p} VALUE {v}.\n"
+        ));
     }
     s
 }

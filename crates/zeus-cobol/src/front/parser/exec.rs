@@ -71,7 +71,18 @@ impl Parser {
                     }
                 }
                 let end = end.ok_or_else(|| Diag::error(opos, "unbalanced parentheses"))?;
-                arg = Some(self.exec_arg(&toks[start..end]));
+                arg = Some(if kind == ExecKind::Dli && name == "WHERE" {
+                    // DL/I qualification: field, operator and operand
+                    ExecArg::Raw(
+                        toks[start..end]
+                            .iter()
+                            .map(Token::text)
+                            .collect::<Vec<_>>()
+                            .join(" "),
+                    )
+                } else {
+                    self.exec_arg(&toks[start..end])
+                });
                 j = end + 1;
             }
             options.push(ExecOption {

@@ -16,6 +16,7 @@ zeus-bms = { path = "../zeus-bms" }
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-db2 = { path = "../zeus-db2" }
 zeus-mq = { path = "../zeus-mq" }
+zeus-ims = { path = "../zeus-ims" }
 zeus-decimal = { path = "../zeus-decimal" }
 zeus-ds = { path = "../zeus-ds" }
 zeus-jcl = { path = "../zeus-jcl" }

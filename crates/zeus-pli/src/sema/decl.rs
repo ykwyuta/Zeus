@@ -528,7 +528,10 @@ impl Compiler {
                 x.name == name && x.ty.is_some() && x.dims.is_empty()
             });
             let Some(obj) = obj else {
-                return Err(self.err(p, format!("REFER object {name} is not a scalar member of the structure")));
+                return Err(self.err(
+                    p,
+                    format!("REFER object {name} is not a scalar member of the structure"),
+                ));
             };
             self.m.refers[n as usize].object = obj;
         }
@@ -567,9 +570,11 @@ impl Compiler {
             ),
             4 => {
                 let shared = if external {
-                    self.externals.get(&it.name).and_then(|&o| match &self.m.vars[o as usize].storage {
-                        Storage::Controlled(a, _) => Some(*a),
-                        _ => None,
+                    self.externals.get(&it.name).and_then(|&o| {
+                        match &self.m.vars[o as usize].storage {
+                            Storage::Controlled(a, _) => Some(*a),
+                            _ => None,
+                        }
                     })
                 } else {
                     None
@@ -627,14 +632,18 @@ impl Compiler {
         for d in &mut dims {
             for b in [&mut d.lb, &mut d.ub] {
                 match *b {
-                    Bound::Slot(s) => *b = Bound::Slot(slot(Some(moved[s as usize - n_ext0].clone()))),
+                    Bound::Slot(s) => {
+                        *b = Bound::Slot(slot(Some(moved[s as usize - n_ext0].clone())))
+                    }
                     Bound::Star => *b = Bound::Slot(slot(None)),
                     _ => {}
                 }
             }
         }
         let ty = var.ty.as_ref().map(|t| match t.str_len() {
-            Some(Ext::Slot(s)) => t.with_len(Ext::Slot(slot(Some(moved[s as usize - n_ext0].clone())))),
+            Some(Ext::Slot(s)) => {
+                t.with_len(Ext::Slot(slot(Some(moved[s as usize - n_ext0].clone()))))
+            }
             Some(Ext::Star) if !matches!(t, Ty::Pic(_)) => t.with_len(Ext::Slot(slot(None))),
             _ => t.clone(),
         });
@@ -881,11 +890,13 @@ impl Compiler {
                     let root = self.m.vars[v as usize].root;
                     match &self.m.vars[root as usize].storage {
                         Storage::Static(_) => self.m.static_inits.push(init),
-                        Storage::Based(_) | Storage::Controlled(..) => self.m.static_inits.push(Init {
-                            var: v,
-                            values: init.values,
-                            fill: init.fill,
-                        }),
+                        Storage::Based(_) | Storage::Controlled(..) => {
+                            self.m.static_inits.push(Init {
+                                var: v,
+                                values: init.values,
+                                fill: init.fill,
+                            })
+                        }
                         _ => self.m.blocks[self.m.vars[v as usize].block as usize]
                             .inits
                             .push(init),

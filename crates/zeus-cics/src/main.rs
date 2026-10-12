@@ -841,6 +841,8 @@ fn main() -> ExitCode {
     let mut tls_key: Option<String> = None;
     let mut model: Option<u8> = None;
     let mut printers: Vec<String> = Vec::new();
+    let mut ims_libs: Vec<String> = Vec::new();
+    let mut ims_wal: Option<PathBuf> = None;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -863,6 +865,8 @@ fn main() -> ExitCode {
             "--tls-key" => tls_key = it.next(),
             "--model" => model = it.next().and_then(|p| p.parse().ok()),
             "--printer" => printers.push(it.next().unwrap_or_default().to_ascii_uppercase()),
+            "--ims-lib" => ims_libs.push(it.next().unwrap_or_default()),
+            "--ims-wal" => ims_wal = it.next().map(PathBuf::from),
             _ => script = Some(a),
         }
     }
@@ -871,6 +875,33 @@ fn main() -> ExitCode {
         Err(e) => {
             eprintln!("zcics: catalog: {e:?}");
             return ExitCode::from(16);
+        }
+    };
+    // the IMS system (DBCTL): DBD and PSB libraries (cataloged PDSs or
+    // directories) and the database store, as zjob's DFSRRC00 steps use
+    let ims = if ims_libs.is_empty() {
+        None
+    } else {
+        let dirs: Vec<PathBuf> = ims_libs
+            .iter()
+            .map(|l| {
+                let p = PathBuf::from(l);
+                if p.is_dir() {
+                    p
+                } else {
+                    catalog.path(&l.to_ascii_uppercase())
+                }
+            })
+            .collect();
+        let wal = ims_wal.unwrap_or_else(|| catalog.root().join("ims").join("ims.wal"));
+        match zeus_ims::runtime::Library::from_dirs(&dirs)
+            .and_then(|lib| zeus_ims::runtime::Ims::open(&wal, lib))
+        {
+            Ok(i) => Some(i),
+            Err(e) => {
+                eprintln!("zcics: IMS: {e}");
+                return ExitCode::from(16);
+            }
         }
     };
     if serve.is_some() || serve_tls.is_some() {
@@ -905,6 +936,7 @@ fn main() -> ExitCode {
             });
         }
         let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
+        region.borrow_mut().ims = ims.clone();
         return match server::run(region, &home, ports) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -924,6 +956,7 @@ fn main() -> ExitCode {
         }
     };
     let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
+    region.borrow_mut().ims = ims.clone();
     let term = Rc::new(RefCell::new(Terminal::new("T001")));
     if let Some(n) = model {
         let caps = zeus_cics::tn3270::Capabilities::of_type(&format!("IBM-3279-{n}-E"));

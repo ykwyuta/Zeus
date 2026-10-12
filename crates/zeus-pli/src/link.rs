@@ -27,7 +27,11 @@ pub struct ModuleLinker {
 }
 
 impl ModuleLinker {
-    pub fn new(dirs: Vec<PathBuf>, pli_env: EnvFactory, cobol: Option<CobolFactory>) -> Rc<ModuleLinker> {
+    pub fn new(
+        dirs: Vec<PathBuf>,
+        pli_env: EnvFactory,
+        cobol: Option<CobolFactory>,
+    ) -> Rc<ModuleLinker> {
         Rc::new_cyclic(|me| ModuleLinker {
             me: me.clone(),
             dirs,
@@ -52,7 +56,11 @@ impl ModuleLinker {
         }
     }
 
-    fn call_pli(m: &Rc<RefCell<Machine>>, name: &str, args: &mut [XArg]) -> Option<Result<XEnd, String>> {
+    fn call_pli(
+        m: &Rc<RefCell<Machine>>,
+        name: &str,
+        args: &mut [XArg],
+    ) -> Option<Result<XEnd, String>> {
         match m.try_borrow_mut() {
             Ok(mut mm) => mm.call_entry(name, args).transpose(),
             Err(_) => Some(Err(format!("recursive call of {name} in an active module"))),
@@ -81,7 +89,8 @@ impl Linker for ModuleLinker {
     fn call(&self, name: &str, args: &mut [XArg]) -> Option<Result<XEnd, String>> {
         let name = name.to_ascii_uppercase();
         // entries of the modules already loaded
-        let loaded: Vec<Rc<RefCell<Machine>>> = self.plis.borrow().iter().map(|(_, m)| m.clone()).collect();
+        let loaded: Vec<Rc<RefCell<Machine>>> =
+            self.plis.borrow().iter().map(|(_, m)| m.clone()).collect();
         for m in &loaded {
             if m.try_borrow().map(|x| x.has_entry(&name)).unwrap_or(false) {
                 return Self::call_pli(m, &name, args);
@@ -89,7 +98,11 @@ impl Linker for ModuleLinker {
         }
         // a PL/I module named like the entry
         for d in &self.dirs {
-            for f in [name.clone(), format!("{name}.zo"), name.to_ascii_lowercase()] {
+            for f in [
+                name.clone(),
+                format!("{name}.zo"),
+                name.to_ascii_lowercase(),
+            ] {
                 let path = d.join(&f);
                 if path.is_file()
                     && let Some(m) = self.pli_module(&path)
@@ -113,7 +126,9 @@ impl Linker for ModuleLinker {
             })
             .clone();
         let Ok(mut c) = c.try_borrow_mut() else {
-            return Some(Err(format!("{name}: a COBOL program is active (recursive call between languages)")));
+            return Some(Err(format!(
+                "{name}: a COBOL program is active (recursive call between languages)"
+            )));
         };
         c.call_program(&name, args).transpose()
     }

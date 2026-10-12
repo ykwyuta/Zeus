@@ -109,8 +109,14 @@ fn connect(qmgr: &str) -> (i32, Cr) {
     for (d, s) in q.iter_mut().zip(name.bytes()) {
         *d = s;
     }
-    let user = server.as_ref().and_then(|s| s.user.clone()).unwrap_or_default();
-    let password = server.as_ref().and_then(|s| s.password.clone()).unwrap_or_default();
+    let user = server
+        .as_ref()
+        .and_then(|s| s.user.clone())
+        .unwrap_or_default();
+    let password = server
+        .as_ref()
+        .and_then(|s| s.password.clone())
+        .unwrap_or_default();
     let mut cno = [0u8; 200];
     let mut csp = [0u8; 56];
     let creds = (!user.is_empty()).then_some((&mut csp, user.as_bytes(), password.as_bytes()));
@@ -198,7 +204,10 @@ impl Args<'_> {
     fn addr(&self, i: usize, len: usize) -> Result<usize, String> {
         match self.addrs.get(i).copied().flatten() {
             Some(a) if a + len <= self.mem.len() => Ok(a),
-            _ => Err(format!("MQ call: parameter {} missing or out of storage", i + 1)),
+            _ => Err(format!(
+                "MQ call: parameter {} missing or out of storage",
+                i + 1
+            )),
         }
     }
 
@@ -311,7 +320,8 @@ pub fn mqopen(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
         return a.done(4, (MQCC_FAILED, MQRC_OD_ERROR));
     };
     let options = a.int(2)?;
-    let (o, cr) = with_lib(|l| l.open(h, &mut od, options)).unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
+    let (o, cr) = with_lib(|l| l.open(h, &mut od, options))
+        .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
     a.put_back(1, &OD, &od)?;
     a.set_int(3, o)?;
     a.done(4, cr)
@@ -322,7 +332,8 @@ pub fn mqclose(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     let mut a = Args { mem, addrs };
     let h = try_cr!(a, 3, hconn(a.int(0)?));
     let (o, options) = (a.int(1)?, a.int(2)?);
-    let (o, cr) = with_lib(|l| l.close(h, o, options)).unwrap_or((o, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
+    let (o, cr) =
+        with_lib(|l| l.close(h, o, options)).unwrap_or((o, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
     a.set_int(1, o)?;
     a.done(3, cr)
 }
@@ -345,7 +356,8 @@ pub fn mqput(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     }
     own_ccsid(&mut md);
     let data = a.bytes(5, n as usize)?.to_vec();
-    let cr = with_lib(|l| l.put(h, o, &mut md, &mut pmo, &data)).unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
+    let cr = with_lib(|l| l.put(h, o, &mut md, &mut pmo, &data))
+        .unwrap_or((MQCC_FAILED, MQRC_ENVIRONMENT_ERROR));
     a.put_back(2, &MD, &md)?;
     a.put_back(3, &PMO, &pmo)?;
     a.done(6, cr)
@@ -430,7 +442,11 @@ pub fn mqinq(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     let mut a = Args { mem, addrs };
     let h = try_cr!(a, 8, hconn(a.int(0)?));
     let o = a.int(1)?;
-    let (ns, ni, nc) = (a.int(2)?.max(0) as usize, a.int(4)?.max(0) as usize, a.int(6)?.max(0) as usize);
+    let (ns, ni, nc) = (
+        a.int(2)?.max(0) as usize,
+        a.int(4)?.max(0) as usize,
+        a.int(6)?.max(0) as usize,
+    );
     let sel = a.bytes(3, ns * 4)?;
     let selectors: Vec<i32> = (0..ns).map(|k| be(sel, k * 4)).collect();
     let mut ints = vec![0i32; ni];
@@ -483,4 +499,3 @@ mod tests {
         assert!(s.user.is_none());
     }
 }
-

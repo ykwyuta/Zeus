@@ -115,6 +115,8 @@ pub struct Task {
     st: std::cell::RefCell<State>,
     /// The task's Db2 connection, taken at its first SQL statement.
     db2: std::cell::RefCell<Option<Rc<zeus_db2::Db2Host>>>,
+    /// The PSB the task scheduled (EXEC DLI SCHD).
+    dli: std::cell::RefCell<Option<Rc<zeus_ims::runtime::TaskDli>>>,
 }
 
 /// Runs transaction `transid` for an attention key at a terminal; the
@@ -187,6 +189,7 @@ fn run_task(
             abcode: String::new(),
         }),
         db2: std::cell::RefCell::new(None),
+        dli: std::cell::RefCell::new(None),
     });
     m.set_exec_host(task.clone());
     // the MQI: calls with the default connection use the region's
@@ -997,6 +1000,10 @@ impl Task {
         if let Some(h) = db2 {
             let _ = h.end_uow(commit);
         }
+        let dli = self.dli.borrow().clone();
+        if let Some(d) = dli {
+            d.syncpoint(commit, false).map_err(RunError)?;
+        }
         zeus_mq::syncpoint(commit);
         let undo = std::mem::take(&mut self.st.borrow_mut().undo);
         if commit {
@@ -1602,6 +1609,27 @@ impl ExecHost for Task {
                 Some(h) => h.exec(m, call),
                 None => Err(RunError(format!(
                     "{}: EXEC SQL needs a Db2 server (ZEUS_DB2) (line {})",
+                    call.program, call.line
+                ))),
+            };
+        }
+        if call.kind == zeus_cobol::zir::ExecKind::Dli {
+            let dli = {
+                let mut d = self.dli.borrow_mut();
+                if d.is_none() {
+                    *d = self
+                        .region
+                        .borrow()
+                        .ims
+                        .clone()
+                        .map(|i| Rc::new(zeus_ims::runtime::TaskDli::new(i)));
+                }
+                d.clone()
+            };
+            return match dli {
+                Some(d) => d.exec(m, call),
+                None => Err(RunError(format!(
+                    "{}: EXEC DLI needs an IMS system (zcics --ims-lib) (line {})",
                     call.program, call.line
                 ))),
             };

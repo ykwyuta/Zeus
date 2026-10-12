@@ -618,7 +618,8 @@ impl Machine {
         let mut dims = Vec::new();
         let nroot = root.dims.len();
         let dynamic = var.dims.iter().any(|d| {
-            matches!(d.lb, Bound::Slot(_) | Bound::Refer(_)) || matches!(d.ub, Bound::Slot(_) | Bound::Refer(_))
+            matches!(d.lb, Bound::Slot(_) | Bound::Refer(_))
+                || matches!(d.ub, Bound::Slot(_) | Bound::Refer(_))
         });
         let rb = Some(base);
         if dynamic {
@@ -639,7 +640,10 @@ impl Machine {
             let a = self.act_of(act, var.block)?;
             let mut bounds = Vec::new();
             for d in &var.dims {
-                bounds.push((self.bound(d.lb, a, r.var, rb)?, self.bound(d.ub, a, r.var, rb)?));
+                bounds.push((
+                    self.bound(d.lb, a, r.var, rb)?,
+                    self.bound(d.ub, a, r.var, rb)?,
+                ));
             }
             let mut stride = elem;
             let mut strides = vec![0; bounds.len()];
@@ -990,7 +994,8 @@ impl Machine {
         } else {
             let mut n = u64::from(var.size);
             for d in &var.dims[root_dims.min(var.dims.len())..] {
-                n *= (self.bound(d.ub, act, r.var, rb)? - self.bound(d.lb, act, r.var, rb)? + 1).max(0) as u64;
+                n *= (self.bound(d.ub, act, r.var, rb)? - self.bound(d.lb, act, r.var, rb)? + 1)
+                    .max(0) as u64;
             }
             n as usize
         };
@@ -1187,7 +1192,9 @@ impl Machine {
             Stmt::Delete(r) => self.delete_stmt(r, act),
             Stmt::Allocate(items) => {
                 for (v, set, given) in items {
-                    if let Storage::Controlled(anchor, slots) = &self.module.vars[*v as usize].storage {
+                    if let Storage::Controlled(anchor, slots) =
+                        &self.module.vars[*v as usize].storage
+                    {
                         let (anchor, slots) = (*anchor, slots.clone());
                         self.allocate_controlled(*v, anchor, &slots, given, act)?;
                         continue;
@@ -1250,10 +1257,14 @@ impl Machine {
             Stmt::Free(items) => {
                 for (v, _) in items {
                     let root = self.module.vars[*v as usize].root;
-                    if let Storage::Controlled(anchor, _) = self.module.vars[root as usize].storage {
+                    if let Storage::Controlled(anchor, _) = self.module.vars[root as usize].storage
+                    {
                         let g = self.generation(anchor)?;
                         if g == 0 {
-                            return err(format!("FREE of {}, which is not allocated", self.module.vars[root as usize].name));
+                            return err(format!(
+                                "FREE of {}, which is not allocated",
+                                self.module.vars[root as usize].name
+                            ));
                         }
                         let prev = self.word_at(g)?;
                         self.write(STATIC_BASE + anchor, &prev.to_be_bytes())?;
@@ -1490,7 +1501,13 @@ impl Machine {
     // ---- calls -----------------------------------------------------------
 
     /// Binds arguments and runs a procedure; its value (functions).
-    fn call(&mut self, callee: &Callee, args: &[Arg], act: usize, rt: Option<&Ty>) -> R<Option<Value>> {
+    fn call(
+        &mut self,
+        callee: &Callee,
+        args: &[Arg],
+        act: usize,
+        rt: Option<&Ty>,
+    ) -> R<Option<Value>> {
         let (pid, entry) = match callee {
             Callee::Proc(p) => (*p, None),
             Callee::Entry(p, k) => (*p, Some(*k)),
@@ -1640,7 +1657,13 @@ impl Machine {
     /// load libraries.
     /// Calls a procedure of another module through the linker: the
     /// arguments are copied out and, for references, back.
-    fn call_external(&mut self, name: &str, args: &[Arg], act: usize, rt: Option<&Ty>) -> R<Option<Value>> {
+    fn call_external(
+        &mut self,
+        name: &str,
+        args: &[Arg],
+        act: usize,
+        rt: Option<&Ty>,
+    ) -> R<Option<Value>> {
         let Some(linker) = self.env.linker.clone() else {
             return err(format!("external procedure {name} not found"));
         };
@@ -1680,7 +1703,9 @@ impl Machine {
                 Arg::Dummy(e) => {
                     let v = self.eval(e, act)?;
                     let ty = match (&e.ty, &v) {
-                        (t, Value::Char(c)) if !matches!(t.str_len(), Some(Ext::Const(_))) => t.with_len(Ext::Const(c.len() as u32)),
+                        (t, Value::Char(c)) if !matches!(t.str_len(), Some(Ext::Const(_))) => {
+                            t.with_len(Ext::Const(c.len() as u32))
+                        }
                         (t, _) => t.clone(),
                     };
                     let (n, _) = ty.storage(true);
@@ -1735,7 +1760,11 @@ impl Machine {
                     Some(Ext::Const(_)) | None => t.clone(),
                     _ => {
                         let n = bytes.len() as u32;
-                        t.with_len(Ext::Const(if t.varying() == crate::types::Var::Varying { n.saturating_sub(2) } else { n }))
+                        t.with_len(Ext::Const(if t.varying() == crate::types::Var::Varying {
+                            n.saturating_sub(2)
+                        } else {
+                            n
+                        }))
                     }
                 };
                 let tmp = self.heap_alloc(bytes.len() as u32);
@@ -1806,10 +1835,15 @@ impl Machine {
             self.write(addr, &x.data).map_err(|e| self.report(e))?;
             addrs.push(Some(addr));
             let var = &m.vars[pv as usize];
-            let star = var.dims.iter().any(|d| d.lb == Bound::Star || d.ub == Bound::Star);
+            let star = var
+                .dims
+                .iter()
+                .any(|d| d.lb == Bound::Star || d.ub == Bound::Star);
             let dims = if star && !x.dims.is_empty() {
                 let elem = match &var.ty {
-                    Some(t) => u64::from(t.with_len(Ext::Const(x.len.unwrap_or(0))).storage(true).0) * 8,
+                    Some(t) => {
+                        u64::from(t.with_len(Ext::Const(x.len.unwrap_or(0))).storage(true).0) * 8
+                    }
                     None => u64::from(var.size) * 8,
                 };
                 let mut strides = vec![0u64; x.dims.len()];
@@ -1818,15 +1852,26 @@ impl Machine {
                     strides[k] = s;
                     s *= (x.dims[k].1 - x.dims[k].0 + 1).max(0) as u64;
                 }
-                x.dims.iter().zip(strides).map(|(&(l, u), s)| (l, u, s)).collect()
+                x.dims
+                    .iter()
+                    .zip(strides)
+                    .map(|(&(l, u), s)| (l, u, s))
+                    .collect()
             } else {
                 Vec::new()
             };
             let len = match var.ty.as_ref().and_then(Ty::str_len) {
-                Some(Ext::Star) => Some(x.len.unwrap_or_else(|| match var.ty.as_ref().map(Ty::varying) {
-                    Some(crate::types::Var::Varying) => (x.data.len() as u32).saturating_sub(2),
-                    _ => x.data.len() as u32,
-                })),
+                Some(Ext::Star) => {
+                    Some(
+                        x.len
+                            .unwrap_or_else(|| match var.ty.as_ref().map(Ty::varying) {
+                                Some(crate::types::Var::Varying) => {
+                                    (x.data.len() as u32).saturating_sub(2)
+                                }
+                                _ => x.data.len() as u32,
+                            }),
+                    )
+                }
                 Some(Ext::Const(n)) => Some(n),
                 _ => None,
             };
@@ -1863,7 +1908,11 @@ impl Machine {
         CUR_LINE.with(|c| c.set(saved.1));
         self.complete_lines();
         let _ = self.env.stdout.flush();
-        for (x, a) in args.iter_mut().filter(|x| !x.omitted).zip(addrs.iter().flatten()) {
+        for (x, a) in args
+            .iter_mut()
+            .filter(|x| !x.omitted)
+            .zip(addrs.iter().flatten())
+        {
             if let Ok(b) = self.read(*a, x.data.len()) {
                 x.data = b;
             }
@@ -1876,7 +1925,9 @@ impl Machine {
         let ret = match (v, &proc.returns) {
             (Some(v), Some(t)) => {
                 let t = match (&v, t.str_len()) {
-                    (Value::Char(c), Some(e)) if !matches!(e, Ext::Const(_)) => t.with_len(Ext::Const(c.len() as u32)),
+                    (Value::Char(c), Some(e)) if !matches!(e, Ext::Const(_)) => {
+                        t.with_len(Ext::Const(c.len() as u32))
+                    }
                     _ => t.clone(),
                 };
                 let (n, _) = t.storage(true);
@@ -1890,14 +1941,22 @@ impl Machine {
             }
             _ => None,
         };
-        Ok(Some(XEnd { rc: self.rc, ret, stop }))
+        Ok(Some(XEnd {
+            rc: self.rc,
+            ret,
+            stop,
+        }))
     }
 
     /// The error of a call from another module: the message and the
     /// abend.
     fn report(&mut self, e: Intr) -> String {
         if let Intr::Fatal(m) = &e {
-            let _ = writeln!(self.env.msgout, "ZEUS PL/I: {m} (line {})", CUR_LINE.with(|l| l.get()));
+            let _ = writeln!(
+                self.env.msgout,
+                "ZEUS PL/I: {m} (line {})",
+                CUR_LINE.with(|l| l.get())
+            );
         }
         let _ = self.env.msgout.flush();
         format!("{ABEND}U4038")

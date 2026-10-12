@@ -124,7 +124,13 @@ fn keyword(t: &[Token], mut i: usize, end: usize) -> (Option<String>, usize, Vec
         labels.push(word(&t[i]).unwrap().to_string());
         i += 2;
     }
-    (word(&t[i.min(end.saturating_sub(1))]).map(str::to_string).filter(|_| i < end), i, labels)
+    (
+        word(&t[i.min(end.saturating_sub(1))])
+            .map(str::to_string)
+            .filter(|_| i < end),
+        i,
+        labels,
+    )
 }
 
 /// The index after the `%END ...;` that closes the group whose body
@@ -147,20 +153,27 @@ fn group_end(t: &[Token], mut i: usize, end: usize) -> Result<(usize, usize)> {
         }
         i += 1;
     }
-    Err(Diag::error(t.get(i.saturating_sub(1)).map_or(Pos::default(), |x| x.pos), "%END expected"))
+    Err(Diag::error(
+        t.get(i.saturating_sub(1)).map_or(Pos::default(), |x| x.pos),
+        "%END expected",
+    ))
 }
 
 /// The index after the unit (a % statement or group) starting at `i`
 /// (the `%`).
 fn unit_end(t: &[Token], i: usize, end: usize) -> Result<usize> {
     if !is_op(&t[i], "%") {
-        return Err(Diag::error(t[i].pos, "a preprocessor statement must follow %THEN / %ELSE"));
+        return Err(Diag::error(
+            t[i].pos,
+            "a preprocessor statement must follow %THEN / %ELSE",
+        ));
     }
     let (kw, k, _) = keyword(t, i + 1, end);
     match kw.as_deref() {
         Some("DO" | "SELECT") => Ok(group_end(t, stmt_end(t, k, end) + 1, end)?.0),
         Some("IF") => {
-            let then = find_pct(t, k + 1, end, "THEN").ok_or_else(|| Diag::error(t[i].pos, "%THEN expected"))?;
+            let then = find_pct(t, k + 1, end, "THEN")
+                .ok_or_else(|| Diag::error(t[i].pos, "%THEN expected"))?;
             let mut j = unit_end(t, then + 2, end)?;
             if j + 1 < end && is_op(&t[j], "%") && is_word(&t[j + 1], "ELSE") {
                 j = unit_end(t, j + 2, end)?;
@@ -189,12 +202,26 @@ fn find_pct(t: &[Token], mut i: usize, end: usize, w: &str) -> Option<usize> {
 /// The member of `EXEC SQL INCLUDE member;` (not SQLCA or SQLDA).
 fn sql_include(t: &[Token]) -> Option<String> {
     match t {
-        [Token { tok: Tok::Ident(e), .. }, Token { tok: Tok::Ident(k), .. }, Token { tok: Tok::Str { text, .. }, .. }, ..]
-            if e == "EXEC" && k == "SQL" =>
-        {
+        [
+            Token {
+                tok: Tok::Ident(e), ..
+            },
+            Token {
+                tok: Tok::Ident(k), ..
+            },
+            Token {
+                tok: Tok::Str { text, .. },
+                ..
+            },
+            ..,
+        ] if e == "EXEC" && k == "SQL" => {
             let w: Vec<&str> = text.split_whitespace().collect();
             match w.as_slice() {
-                [inc, m] if inc.eq_ignore_ascii_case("INCLUDE") && !m.eq_ignore_ascii_case("SQLCA") && !m.eq_ignore_ascii_case("SQLDA") => {
+                [inc, m]
+                    if inc.eq_ignore_ascii_case("INCLUDE")
+                        && !m.eq_ignore_ascii_case("SQLCA")
+                        && !m.eq_ignore_ascii_case("SQLDA") =>
+                {
                     Some(m.trim_matches('\'').to_string())
                 }
                 _ => None,
@@ -294,7 +321,13 @@ impl Pp<'_> {
             let v = self.call(&proc, args.into_iter().map(Val::Char).collect(), tok.pos)?;
             (v, j)
         } else {
-            (self.vars.get(&name).cloned().unwrap_or(Val::Char(String::new())), i + 1)
+            (
+                self.vars
+                    .get(&name)
+                    .cloned()
+                    .unwrap_or(Val::Char(String::new())),
+                i + 1,
+            )
         };
         let toks = crate::lexer::tokenize_raw(&value.text(), tok.pos)?;
         if scan == Scan::Rescan {
@@ -349,7 +382,10 @@ impl Pp<'_> {
             return Err(self.err(pos, "preprocessor statement expected"));
         };
         // assignment
-        if se > k + 1 && t[k + 1..se].iter().position(|x| is_op(x, "=")).is_some() && !matches!(kw.as_str(), "IF" | "DO" | "SELECT" | "DECLARE" | "DCL") {
+        if se > k + 1
+            && t[k + 1..se].iter().position(|x| is_op(x, "=")).is_some()
+            && !matches!(kw.as_str(), "IF" | "DO" | "SELECT" | "DECLARE" | "DCL")
+        {
             let eq = k + 1 + t[k + 1..se].iter().position(|x| is_op(x, "=")).unwrap();
             if eq == k + 1 {
                 let e = self.parse_expr(&t[eq + 1..se], pos)?;
@@ -391,7 +427,11 @@ impl Pp<'_> {
                 Ok((se + 1, Flow::Next))
             }
             "REPLACE" => {
-                let name = t.get(k + 1).and_then(word).ok_or_else(|| self.err(pos, "%REPLACE needs a name"))?.to_string();
+                let name = t
+                    .get(k + 1)
+                    .and_then(word)
+                    .ok_or_else(|| self.err(pos, "%REPLACE needs a name"))?
+                    .to_string();
                 let v = match t.get(k + 3).map(|x| &x.tok) {
                     Some(Tok::Num { text, .. }) => Val::Fixed(text.parse().unwrap_or(0)),
                     Some(Tok::Str { text, .. }) => Val::Char(text.clone()),
@@ -446,9 +486,29 @@ impl Pp<'_> {
                 let items: Vec<&[Token]> = t[k + 1..se].split(|x| is_op(x, ",")).collect();
                 for it in items {
                     let member = match it {
-                        [Token { tok: Tok::Str { text, .. }, .. }] => text.clone(),
-                        [Token { tok: Tok::Ident(n), .. }] => n.clone(),
-                        [_, Token { tok: Tok::Op("("), .. }, Token { tok: Tok::Ident(n), .. }, Token { tok: Tok::Op(")"), .. }] => n.clone(),
+                        [
+                            Token {
+                                tok: Tok::Str { text, .. },
+                                ..
+                            },
+                        ] => text.clone(),
+                        [
+                            Token {
+                                tok: Tok::Ident(n), ..
+                            },
+                        ] => n.clone(),
+                        [
+                            _,
+                            Token {
+                                tok: Tok::Op("("), ..
+                            },
+                            Token {
+                                tok: Tok::Ident(n), ..
+                            },
+                            Token {
+                                tok: Tok::Op(")"), ..
+                            },
+                        ] => n.clone(),
                         [] => continue,
                         _ => return Err(self.err(pos, "invalid %INCLUDE item")),
                     };
@@ -457,17 +517,19 @@ impl Pp<'_> {
                 Ok((se + 1, Flow::Next))
             }
             "IF" => {
-                let then = find_pct(t, k + 1, end, "THEN").ok_or_else(|| self.err(pos, "%THEN expected"))?;
+                let then = find_pct(t, k + 1, end, "THEN")
+                    .ok_or_else(|| self.err(pos, "%THEN expected"))?;
                 let e = self.parse_expr(&t[k + 1..then], pos)?;
                 let c = self.eval(&e, &mut HashMap::new())?.truth();
                 let u1 = then + 2;
                 let u1e = unit_end(t, u1, end)?;
-                let (u2, u2e) = if u1e + 1 < end && is_op(&t[u1e], "%") && is_word(&t[u1e + 1], "ELSE") {
-                    let u2 = u1e + 2;
-                    (Some(u2), unit_end(t, u2, end)?)
-                } else {
-                    (None, u1e)
-                };
+                let (u2, u2e) =
+                    if u1e + 1 < end && is_op(&t[u1e], "%") && is_word(&t[u1e + 1], "ELSE") {
+                        let u2 = u1e + 2;
+                        (Some(u2), unit_end(t, u2, end)?)
+                    } else {
+                        (None, u1e)
+                    };
                 let flow = if c {
                     self.run(t, u1, u1e)?
                 } else if let Some(u2) = u2 {
@@ -485,7 +547,10 @@ impl Pp<'_> {
                     return Ok((after, Flow::Next));
                 }
                 let mut v = spec_toks.to_vec();
-                v.push(Token { tok: Tok::Op(";"), pos });
+                v.push(Token {
+                    tok: Tok::Op(";"),
+                    pos,
+                });
                 v.push(Token { tok: Tok::Eof, pos });
                 let spec = Parser::new(v).do_spec()?;
                 let flow = self.do_group(&spec, t, body, end_pct, &labels)?;
@@ -553,12 +618,26 @@ impl Pp<'_> {
                 Ok((after, Flow::Next))
             }
             "LEAVE" | "ITERATE" => {
-                let l = t.get(k + 1).and_then(word).filter(|_| k + 1 < se).map(str::to_string);
-                Ok((se + 1, if kw == "LEAVE" { Flow::Leave(l) } else { Flow::Iterate(l) }))
+                let l = t
+                    .get(k + 1)
+                    .and_then(word)
+                    .filter(|_| k + 1 < se)
+                    .map(str::to_string);
+                Ok((
+                    se + 1,
+                    if kw == "LEAVE" {
+                        Flow::Leave(l)
+                    } else {
+                        Flow::Iterate(l)
+                    },
+                ))
             }
             "PROCEDURE" | "PROC" => {
                 let (after, end_pct) = group_end(t, se + 1, end)?;
-                let name = labels.first().cloned().ok_or_else(|| self.err(pos, "a preprocessor procedure needs a name"))?;
+                let name = labels
+                    .first()
+                    .cloned()
+                    .ok_or_else(|| self.err(pos, "a preprocessor procedure needs a name"))?;
                 let mut params = Vec::new();
                 let mut returns_char = false;
                 let mut j = k + 1;
@@ -572,28 +651,54 @@ impl Pp<'_> {
                             j += 1;
                         }
                     } else if is_word(&t[j], "RETURNS") {
-                        returns_char = t.get(j + 2).is_some_and(|x| is_word(x, "CHARACTER") || is_word(x, "CHAR"));
+                        returns_char = t
+                            .get(j + 2)
+                            .is_some_and(|x| is_word(x, "CHARACTER") || is_word(x, "CHAR"));
                         j += 3;
                     }
                     j += 1;
                 }
-                let body: Vec<Token> = t[se + 1..end_pct].iter().filter(|x| !is_op(x, "%")).cloned().collect();
-                self.procs.insert(name, Proc { params, returns_char, body });
+                let body: Vec<Token> = t[se + 1..end_pct]
+                    .iter()
+                    .filter(|x| !is_op(x, "%"))
+                    .cloned()
+                    .collect();
+                self.procs.insert(
+                    name,
+                    Proc {
+                        params,
+                        returns_char,
+                        body,
+                    },
+                );
                 Ok((after, Flow::Next))
             }
             "GO" | "GOTO" => Err(self.err(pos, "%GO TO is not supported")),
             "END" => Err(self.err(pos, "%END without a group")),
-            other => Err(self.err(pos, format!("preprocessor statement %{other} is not supported"))),
+            other => Err(self.err(
+                pos,
+                format!("preprocessor statement %{other} is not supported"),
+            )),
         }
     }
 
-    fn do_group(&mut self, spec: &DoSpec, t: &[Token], body: usize, end: usize, labels: &[String]) -> Result<Flow> {
+    fn do_group(
+        &mut self,
+        spec: &DoSpec,
+        t: &[Token],
+        body: usize,
+        end: usize,
+        labels: &[String],
+    ) -> Result<Flow> {
         let mine = |l: &Option<String>| l.as_ref().is_none_or(|x| labels.contains(x));
         let mut guard = 0u32;
         let mut once = |me: &mut Pp| -> Result<Option<Flow>> {
             guard += 1;
             if guard > 100_000 {
-                return Err(Diag::error(t[body.min(t.len() - 1)].pos, "%DO loop does not end"));
+                return Err(Diag::error(
+                    t[body.min(t.len() - 1)].pos,
+                    "%DO loop does not end",
+                ));
             }
             match me.run(t, body, end)? {
                 Flow::Next => Ok(None),
@@ -741,7 +846,11 @@ impl Pp<'_> {
             i += 1;
             for n in names {
                 if !entry {
-                    let v = init.clone().unwrap_or(if ch { Val::Char(String::new()) } else { Val::Fixed(0) });
+                    let v = init.clone().unwrap_or(if ch {
+                        Val::Char(String::new())
+                    } else {
+                        Val::Fixed(0)
+                    });
                     if ch {
                         self.chars.insert(n.clone());
                     }
@@ -766,7 +875,9 @@ impl Pp<'_> {
             Val::Char(v.text())
         } else {
             match v {
-                Val::Char(s) if !locals.contains_key(name) && !self.vars.contains_key(name) => Val::Char(s),
+                Val::Char(s) if !locals.contains_key(name) && !self.vars.contains_key(name) => {
+                    Val::Char(s)
+                }
                 other => Val::Fixed(other.num()),
             }
         };
@@ -782,7 +893,9 @@ impl Pp<'_> {
 
     fn eval(&mut self, e: &Expr, locals: &mut HashMap<String, Val>) -> Result<Val> {
         Ok(match e {
-            Expr::Num { text, .. } => Val::Fixed(text.split('.').next().unwrap_or("0").parse().unwrap_or(0)),
+            Expr::Num { text, .. } => {
+                Val::Fixed(text.split('.').next().unwrap_or("0").parse().unwrap_or(0))
+            }
             Expr::Str { text, kind, .. } => match kind {
                 StrKind::Bit(_) => Val::Bit(text.contains('1')),
                 _ => Val::Char(text.clone()),
@@ -843,7 +956,10 @@ impl Pp<'_> {
                 if let Some(v) = builtin(&name, &args, self) {
                     return Ok(v);
                 }
-                self.vars.get(&name).cloned().unwrap_or(Val::Char(String::new()))
+                self.vars
+                    .get(&name)
+                    .cloned()
+                    .unwrap_or(Val::Char(String::new()))
             }
         })
     }
@@ -856,7 +972,10 @@ impl Pp<'_> {
         }
         let mut locals: HashMap<String, Val> = HashMap::new();
         for (i, name) in p.params.iter().enumerate() {
-            locals.insert(name.clone(), args.get(i).cloned().unwrap_or(Val::Char(String::new())));
+            locals.insert(
+                name.clone(),
+                args.get(i).cloned().unwrap_or(Val::Char(String::new())),
+            );
         }
         let mut toks = p.body.clone();
         toks.push(Token { tok: Tok::Eof, pos });
@@ -871,7 +990,11 @@ impl Pp<'_> {
             Flow::Return(v) => v,
             _ => Val::Char(String::new()),
         };
-        Ok(if p.returns_char { Val::Char(v.text()) } else { Val::Fixed(v.num()) })
+        Ok(if p.returns_char {
+            Val::Char(v.text())
+        } else {
+            Val::Fixed(v.num())
+        })
     }
 
     /// Executes statements of a preprocessor procedure.
@@ -889,7 +1012,10 @@ impl Pp<'_> {
         match &s.kind {
             StmtKind::Declare(items) => {
                 for it in items {
-                    let ch = it.attrs.iter().any(|a| matches!(a, ast::Attr::Character(_)));
+                    let ch = it
+                        .attrs
+                        .iter()
+                        .any(|a| matches!(a, ast::Attr::Character(_)));
                     // a parameter keeps its argument, converted to the declared type
                     let v = match locals.get(&it.name) {
                         Some(a) if ch => Val::Char(a.text()),
@@ -924,7 +1050,9 @@ impl Pp<'_> {
                 loop {
                     guard += 1;
                     if guard > 100_000 {
-                        return Err(self.err(s.pos, "DO loop in a preprocessor procedure does not end"));
+                        return Err(
+                            self.err(s.pos, "DO loop in a preprocessor procedure does not end")
+                        );
                     }
                     match spec {
                         DoSpec::Group => return self.exec(body, locals),
@@ -964,7 +1092,10 @@ impl Pp<'_> {
                                     None => 1,
                                 };
                                 loop {
-                                    let cur = locals.get(&name).or_else(|| self.vars.get(&name)).map_or(0, Val::num);
+                                    let cur = locals
+                                        .get(&name)
+                                        .or_else(|| self.vars.get(&name))
+                                        .map_or(0, Val::num);
                                     if let Some(to) = to
                                         && ((by >= 0 && cur > to) || (by < 0 && cur < to))
                                     {
@@ -988,7 +1119,10 @@ impl Pp<'_> {
                                     if to.is_none() && sp.by.is_none() {
                                         break;
                                     }
-                                    let cur = locals.get(&name).or_else(|| self.vars.get(&name)).map_or(0, Val::num);
+                                    let cur = locals
+                                        .get(&name)
+                                        .or_else(|| self.vars.get(&name))
+                                        .map_or(0, Val::num);
                                     self.assign(&name, Val::Fixed(cur + by), locals);
                                 }
                             }
@@ -997,7 +1131,11 @@ impl Pp<'_> {
                     }
                 }
             }
-            StmtKind::Select { subject, whens, other } => {
+            StmtKind::Select {
+                subject,
+                whens,
+                other,
+            } => {
                 let subj = match subject {
                     Some(e) => Some(self.eval(e, locals)?),
                     None => None,
@@ -1056,7 +1194,11 @@ fn builtin(name: &str, a: &[Val], pp: &mut Pp) -> Option<Val> {
         "INDEX" => Val::Fixed(s(0).find(&s(1)).map_or(0, |p| p as i64 + 1)),
         "VERIFY" => {
             let set = s(1);
-            Val::Fixed(s(0).chars().position(|c| !set.contains(c)).map_or(0, |p| p as i64 + 1))
+            Val::Fixed(
+                s(0).chars()
+                    .position(|c| !set.contains(c))
+                    .map_or(0, |p| p as i64 + 1),
+            )
         }
         "TRIM" => Val::Char(s(0).trim().to_string()),
         "UPPERCASE" => Val::Char(s(0).to_ascii_uppercase()),
@@ -1064,7 +1206,8 @@ fn builtin(name: &str, a: &[Val], pp: &mut Pp) -> Option<Val> {
         "COPY" => Val::Char(s(0).repeat(n(1).unwrap_or(0).max(0) as usize)),
         "REPEAT" => Val::Char(s(0).repeat(n(1).unwrap_or(0).max(0) as usize + 1)),
         "TRANSLATE" => {
-            let (to, from): (Vec<char>, Vec<char>) = (s(1).chars().collect(), s(2).chars().collect());
+            let (to, from): (Vec<char>, Vec<char>) =
+                (s(1).chars().collect(), s(2).chars().collect());
             Val::Char(
                 s(0).chars()
                     .map(|c| match from.iter().position(|f| *f == c) {
@@ -1092,8 +1235,14 @@ fn builtin(name: &str, a: &[Val], pp: &mut Pp) -> Option<Val> {
 
 /// Runs the preprocessor over a token stream (ending with Eof); returns
 /// the tokens for the parser and the messages.
-pub fn preprocess(toks: Vec<Token>, opts: &LexOptions, files: &mut Files) -> Result<(Vec<Token>, Vec<Diag>)> {
-    if !toks.iter().any(|t| is_op(t, "%")) && !(0..toks.len()).any(|i| sql_include(&toks[i..]).is_some()) {
+pub fn preprocess(
+    toks: Vec<Token>,
+    opts: &LexOptions,
+    files: &mut Files,
+) -> Result<(Vec<Token>, Vec<Diag>)> {
+    if !toks.iter().any(|t| is_op(t, "%"))
+        && !(0..toks.len()).any(|i| sql_include(&toks[i..]).is_some())
+    {
         return Ok((toks, Vec::new()));
     }
     let eof = toks.last().cloned().unwrap_or(Token {
@@ -1116,7 +1265,12 @@ pub fn preprocess(toks: Vec<Token>, opts: &LexOptions, files: &mut Files) -> Res
     };
     match pp.run(&toks, 0, n)? {
         Flow::Next => {}
-        _ => return Err(Diag::error(eof.pos, "%LEAVE / %ITERATE outside a %DO group")),
+        _ => {
+            return Err(Diag::error(
+                eof.pos,
+                "%LEAVE / %ITERATE outside a %DO group",
+            ));
+        }
     }
     let mut out = pp.out;
     out.push(eof);
@@ -1141,15 +1295,25 @@ mod tests {
         assert_eq!(pp(" %DCL N FIXED; %N = 3; X = N;"), "X = 3 ;");
         assert_eq!(pp(" %REPLACE MAXN BY 10; DCL A(MAXN);"), "DCL A ( 10 ) ;");
         assert_eq!(
-            pp(" %DCL T CHAR; %T = 'PROD';\n %IF T = 'PROD' %THEN %DO; A=1; %END;\n %ELSE %DO; A=2; %END;"),
+            pp(
+                " %DCL T CHAR; %T = 'PROD';\n %IF T = 'PROD' %THEN %DO; A=1; %END;\n %ELSE %DO; A=2; %END;"
+            ),
             "A = 1 ;"
         );
-        assert_eq!(pp(" %DCL I FIXED; %DO I = 1 TO 3; X(I)=I; %END;"), "X ( 1 ) = 1 ; X ( 2 ) = 2 ; X ( 3 ) = 3 ;");
         assert_eq!(
-            pp(" %SQ: PROC(V) RETURNS(CHAR); DCL V CHAR;\n RETURN('(' || V || '*' || V || ')'); %END;\n %ACT SQ; Y = SQ(A+1);"),
+            pp(" %DCL I FIXED; %DO I = 1 TO 3; X(I)=I; %END;"),
+            "X ( 1 ) = 1 ; X ( 2 ) = 2 ; X ( 3 ) = 3 ;"
+        );
+        assert_eq!(
+            pp(
+                " %SQ: PROC(V) RETURNS(CHAR); DCL V CHAR;\n RETURN('(' || V || '*' || V || ')'); %END;\n %ACT SQ; Y = SQ(A+1);"
+            ),
             "Y = ( A + 1 * A + 1 ) ;"
         );
         assert_eq!(pp(" %DO SKIP; NOT HERE; %END; Z = 1;"), "Z = 1 ;");
-        assert_eq!(pp(" %DCL A CHAR; %A = 'B'; %DEACTIVATE A; A = 1;"), "A = 1 ;");
+        assert_eq!(
+            pp(" %DCL A CHAR; %A = 'B'; %DEACTIVATE A; A = 1;"),
+            "A = 1 ;"
+        );
     }
 }

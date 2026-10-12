@@ -104,6 +104,8 @@ pub struct Region {
     pub counters: BTreeMap<(String, String), Counter>,
     /// Whether the region is attached to Db2 (ZEUS_DB2), for EXEC SQL.
     pub db2: bool,
+    /// The IMS system of the region (DBCTL): EXEC DLI of the tasks.
+    pub ims: Option<zeus_ims::runtime::Ims>,
     /// Db2 connections not in use by a task (each task has its own unit
     /// of work).
     db2_free: Vec<Rc<zeus_db2::Db2Host>>,
@@ -170,6 +172,7 @@ impl Region {
             terminals: HashMap::new(),
             log: Vec::new(),
             db2: std::env::var_os("ZEUS_DB2").is_some(),
+            ims: None,
             db2_free: Vec::new(),
         }
     }

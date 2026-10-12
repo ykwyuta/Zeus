@@ -455,6 +455,13 @@ impl<'a> Gen<'a> {
         };
         let mut options = Vec::new();
         for o in &e.options {
+            if e.kind == ExecKind::Dli
+                && o.name == "WHERE"
+                && let Some(ExecArg::Raw(t)) = &o.arg
+            {
+                options.extend(self.dli_where(t, e.pos)?);
+                continue;
+            }
             let arg = match &o.arg {
                 None => None,
                 Some(ExecArg::Raw(t)) => Some(zir::ExecVal::Name(t.clone())),
@@ -464,6 +471,22 @@ impl<'a> Gen<'a> {
                 name: o.name.clone(),
                 arg,
             });
+        }
+        // EXEC DLI reports to the DL/I interface block
+        if e.kind == ExecKind::Dli {
+            let dib = DataRef {
+                name: "DLZDIB".into(),
+                qualifiers: Vec::new(),
+                subscripts: Vec::new(),
+                refmod: None,
+                pos: e.pos,
+            };
+            if self.dm.resolve(&dib).is_ok() {
+                options.push(zir::ExecOpt {
+                    name: "DIB".into(),
+                    arg: Some(zir::ExecVal::Area(self.loc(&dib)?)),
+                });
+            }
         }
         // BMS: SEND MAP without FROM and RECEIVE MAP without INTO / SET use
         // the symbolic map named after the map (mapO / mapI).
@@ -556,6 +579,68 @@ impl<'a> Gen<'a> {
             host,
             host_varchar,
         })
+    }
+
+    /// `WHERE (field op operand)` of EXEC DLI: the option WHERE names the
+    /// field and the operator, WHEREVAL is the operand (a data area, or
+    /// the literal text in WHERE).
+    fn dli_where(&mut self, text: &str, pos: Pos) -> Result<Vec<zir::ExecOpt>> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let ops = [
+            "=", "EQ", "^=", "¬=", "NE", ">", "GT", "<", "LT", ">=", "GE", "<=", "LE", "=>", "=<",
+        ];
+        let Some(at) = words
+            .iter()
+            .position(|w| ops.contains(&w.to_ascii_uppercase().as_str()))
+        else {
+            return Err(Diag::error(
+                pos,
+                format!("DL/I qualification expected: {text}"),
+            ));
+        };
+        if words
+            .iter()
+            .any(|w| matches!(w.to_ascii_uppercase().as_str(), "AND" | "OR" | "&" | "|"))
+        {
+            return Err(Diag::error(
+                pos,
+                format!("only one DL/I qualification is supported: {text}"),
+            ));
+        }
+        let field = words[..at].join("");
+        let op = words[at].to_ascii_uppercase();
+        let operand = &words[at + 1..];
+        // a data name, possibly qualified (NAME OF GROUP)
+        let mut parts = operand
+            .split(|w| w.eq_ignore_ascii_case("OF") || w.eq_ignore_ascii_case("IN"))
+            .map(|p| p.join(""));
+        let name = parts.next().unwrap_or_default().to_ascii_uppercase();
+        let r = DataRef {
+            name,
+            qualifiers: parts.map(|q| q.to_ascii_uppercase()).collect(),
+            subscripts: Vec::new(),
+            refmod: None,
+            pos,
+        };
+        let value = if !r.name.is_empty() && self.dm.resolve(&r).is_ok() {
+            Some(zir::ExecVal::Area(self.loc(&r)?))
+        } else {
+            None
+        };
+        let mut out = vec![zir::ExecOpt {
+            name: "WHERE".into(),
+            arg: Some(zir::ExecVal::Name(match &value {
+                Some(_) => format!("{field} {op}"),
+                None => format!("{field} {op} {}", operand.join(" ")),
+            })),
+        }];
+        if let Some(v) = value {
+            out.push(zir::ExecOpt {
+                name: "WHEREVAL".into(),
+                arg: Some(v),
+            });
+        }
+        Ok(out)
     }
 
     /// A VARCHAR host variable: a group of a halfword length and the
