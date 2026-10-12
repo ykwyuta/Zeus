@@ -659,13 +659,51 @@ fn checkpoint_id_and_changes_survive_reopen_atomically() {
 }
 
 #[test]
-fn a_wal_has_only_one_open_owner() {
+fn processes_share_a_wal() {
+    // two handles of the WAL, as two processes (a CICS region and a batch
+    // job) have it: each sees the other's commits, updates exclude each
+    // other
     let wal = path();
-    let owner = Database::open(&wal, vec![dbd()]).unwrap();
-    let second = Database::open(&wal, vec![dbd()]);
-    assert!(matches!(second, Err(StoreError::Conflict(_))));
-    drop(owner);
-    Database::open(&wal, vec![dbd()]).unwrap();
+    let region = Database::open(&wal, vec![dbd()]).unwrap();
+    let batch = Database::open(&wal, vec![dbd()]).unwrap();
+    let wait = Duration::from_secs(1);
+    let mut tx = region.begin();
+    tx.insert("TEST", "ROOT", None, vec![1, 1, 0, 0, 0, 0], wait)
+        .unwrap();
+    tx.commit().unwrap();
+    assert!(batch.first_child("TEST", None, "ROOT").is_some());
+    assert_eq!(batch.count(), 1);
+    let mut updating = region.begin();
+    updating
+        .insert("TEST", "ROOT", None, vec![1, 2, 0, 0, 0, 0], wait)
+        .unwrap();
+    let mut other = batch.begin();
+    assert!(matches!(
+        other.insert(
+            "TEST",
+            "ROOT",
+            None,
+            vec![1, 3, 0, 0, 0, 0],
+            Duration::from_millis(30)
+        ),
+        Err(StoreError::Timeout)
+    ));
+    updating.commit().unwrap();
+    other
+        .insert("TEST", "ROOT", None, vec![1, 3, 0, 0, 0, 0], wait)
+        .unwrap();
+    other.commit().unwrap();
+    // record identifiers stay distinct across the handles
+    assert_eq!(region.count(), 3);
+    let ids: std::collections::BTreeSet<u64> = region
+        .children("TEST", None, "ROOT")
+        .iter()
+        .map(|r| r.id)
+        .collect();
+    assert_eq!(ids.len(), 3);
+    drop(region);
+    drop(batch);
+    assert_eq!(Database::open(&wal, vec![dbd()]).unwrap().count(), 3);
     std::fs::remove_file(wal).unwrap();
 }
 

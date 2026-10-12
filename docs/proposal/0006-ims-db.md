@@ -30,7 +30,7 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
 | 項目 | 内容 |
 |---|---|
 | ライブラリ | DBD と PSB はマクロのソースをメンバーとして持つ PDS (DBDLIB・PSBLIB)。カタログ上の FB 80 の EBCDIC レコードも、ホストのテキストファイルも読める |
-| データベース | 全 DBD を 1 つの WAL に保持する。zjob は `ZEUS_IMS_WAL`、なければカタログの隣の `ims/ims.wal`。zcics は `--ims-wal` (既定は同じ場所)。WAL は OS のファイルロックで排他するので、zcics とバッチジョブは同時には開けない |
+| データベース | 全 DBD を 1 つの WAL に保持する。zjob は `ZEUS_IMS_WAL`、なければカタログの隣の `ims/ims.wal`。zcics は `--ims-wal` (既定は同じ場所)。WAL は複数のプロセス (zcics とバッチジョブ) が同時に開ける。各プロセスは他のプロセスがコミットしたフレームを、データベースを読むたびに追って適用する。更新する作業単位は、最初のルートのロックから終わりまで WAL のファイルロック (排他) を持つので、他のプロセスの更新は待つ (ロックの待ち時間を過ぎると、ルートのロックと同じくタイムアウト)。プロセス内の作業単位どうしは、従来どおりルート単位でロックする |
 | `EXEC PGM=DFSRRC00` | `PARM='DLI\|DBB\|BMP,プログラム,PSB'`。ライブラリは IMS DD の連結。プログラムには PCB マスクを USING で渡す (BMP と CMPAT=YES では I/O PCB が先頭)。正常終了でコミット、異常終了でバックアウト。`PARM=(ULR,DFSURGL0,DBD)` は DD DFSUINPT のアンロード (DFSURGU0 形式) から再ロードする |
 | CALL 'CBLTDLI' | 引数の個数 (省略可)、関数、PCB、入出力域、SSA。DB PCB: GU/GN/GNP と GHU/GHN/GHNP、ISRT/REPL/DLET (可変長セグメントは先頭の長さで書く)。GSAM PCB: OPEN/CLSE/GN/GU/ISRT と RSA。I/O PCB: CHKP (ID)、SYNC、ROLB。バッチでは GU/GN は QC |
 | EXEC DLI | SEGMENT、WHERE (フィールド・比較演算子・COBOL のデータ項目かリテラル)、INTO/FROM、PCB(n)、CHKP ID、SCHD PSB/TERM。結果は DIB (DIBSTAT、DIBSEGM、DIBSEGLV、DIBKFBL、DIBDBDNM、DIBDBORG) に返す。取得コマンドは保持付きの取得として扱う。SEGMENT で現在のパス上の親を指定した DLET/REPL は、キーフィードバックからその親を保持し直してから実行する (子を GNP で読んだ後に親を削除する CardDemo の書き方) |
@@ -59,7 +59,6 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
   - 常駐する領域 (WFI=Y、複数の領域の並行実行)、会話型トランザクション (SPA)、高速機能。
   - プログラム間通信 (代替 PCB で他のトランザクションへ ISRT したメッセージは、キューには入るが、同じ領域の実行が終わってから次の領域で処理される)。
 - **PL/I の EXEC DLI**。
-- **COPAUA0C の起動経路**: MQ のトリガーで起動される承認処理 (CICS のトリガーモニターが必要)。
 - **COPAUS2C の不正マーク (F5)**: Db2 を使う。ZEUS_DB2 の環境で別途確認する。
 - **アンロードユーティリティ DFSURGU0**: 書き出しは未対応。再ロード DFSURGL0 は対応済み。
 - **DL/I の機能の範囲**:
@@ -67,7 +66,6 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
   - 等号以外の比較 (流用元の制約)。
   - パス呼出し (D コマンドコード)。
   - XRST、記号チェックポイント。
-- **WAL の共有**: zcics とバッチの同時アクセス。流用元の提案にある常駐サーバー (imsdbd) が必要。
 
 ## 6. Bank of Z の IMS 経路
 

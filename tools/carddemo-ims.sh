@@ -136,6 +136,21 @@ segments: 224"
             echo "unexpected segment counts" >&2
             exit 1
         fi
+        # a region with the databases open while the batch jobs run again:
+        # they share the WAL, and the region's transactions then see what
+        # the jobs did
+        { echo "wait 3"; cat tools/carddemo-ims/authorizations.txt; } >"$out/ims-shared.txt"
+        zcics "$out/ims-shared.txt" >"$out/ims-shared.log" 2>&1 &
+        region=$!
+        sleep 1
+        batch >"$home/carddemo-ims-shared.log" 2>&1
+        wait $region || { cat "$out/ims-shared.log"; echo "the region failed" >&2; exit 1; }
+        got=$(grep '^segments:' "$home/carddemo-ims-shared.log")
+        if [ "$got" != "$expected" ] || grep -q "RC=[0-9]*[1-9]\|ABEND\|JCL ERROR" "$home/carddemo-ims-shared.log"; then
+            cat "$home/carddemo-ims-shared.log"
+            echo "the batch jobs beside the region failed" >&2
+            exit 1
+        fi
         for s in tools/carddemo-ims/*.txt; do
             echo "=== $s"
             zcics "$s" >"$out/ims-$(basename "$s" .txt).log" ||
