@@ -1375,6 +1375,45 @@ impl TaskDli {
 
 /// Reloads database `dbd` from a DFSURGU0 unload (DFSURGL0): its
 /// segments are inserted in one unit of work. The number of segments.
+/// Unloads database `dbd` (DFSURGU0): its segments in hierarchical order
+/// (roots and twins in key order); the unload and the segment count.
+pub fn unload(ims: &Ims, dbd: &str) -> Result<(Vec<u8>, usize), String> {
+    let def = ims
+        .library
+        .dbd(dbd)
+        .ok_or_else(|| format!("DBD {dbd} is not in the DBD library"))?;
+    let mut out = Vec::new();
+    fn walk(
+        ims: &Ims,
+        def: &crate::Dbd,
+        parent: Option<(u64, usize)>,
+        segment: Option<&str>,
+        out: &mut Vec<crate::unload::UnloadedSegment>,
+    ) {
+        for s in def
+            .segments
+            .iter()
+            .filter(|s| s.parent.as_deref() == segment)
+        {
+            for r in ims
+                .database
+                .children(&def.name, parent.map(|p| p.0), &s.name)
+            {
+                let index = out.len();
+                out.push(crate::unload::UnloadedSegment {
+                    segment: s.name.clone(),
+                    parent_index: parent.map(|p| p.1),
+                    data: r.data.clone(),
+                });
+                walk(ims, def, Some((r.id, index)), Some(&s.name), out);
+            }
+        }
+    }
+    walk(ims, def, None, None, &mut out);
+    let bytes = crate::unload::write_dfsurgu0(&out, def)?;
+    Ok((bytes, out.len()))
+}
+
 pub fn reload(ims: &Ims, dbd: &str, unload: &[u8]) -> Result<usize, String> {
     let def = ims
         .library

@@ -29,7 +29,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 18 | S | PL/I からの MQI 呼出し | 0005 | **済** |
 | 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | **済** |
 | 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | **済** |
-| 21 | S | IMS のアンロード (DFSURGU0) | 0006 | 未着手 |
+| 21 | S | IMS のアンロード (DFSURGU0) | 0006 | **済** |
 | 22 | S | BMS: JUSTIFY=RIGHT の入力フィールドの右寄せの確認、DBCS の利用者語 | 0002 | 未着手 |
 
 ## 2. この一覧の対象外
@@ -157,3 +157,8 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
   - STATEMENT 形式: STATEMENT オプションの手続きは `名前(位置引数) 仮引数名(引数) ...;` で呼べ、`;` まで置き換える。
   - 合わせて直したもの: 手続きの CHARACTER の局所変数への代入が FIXED に変換されていた。
   - `crates/zeus-pli/tests/programs/macros2.pli`。
+- **#21 IMS のアンロード DFSURGU0** (2026-10):
+  - `PARM=(ULU,DFSURGU0,DBD)` がデータベースを DD DFSUROUT に DFSURGU0 の形で書き出す。読み込み (DFSURGL0) も
+    1 階層の子に限らず、複数階層を親子の順で戻せるようにした。
+  - CardDemo の DBPAUTP0 では、セグメントのレコードが付属のアンロードと同じ内容・順序になる。
+  - `crates/zeus-ims/src/unload.rs` の往復のテストと `tools/carddemo-ims.sh test`。

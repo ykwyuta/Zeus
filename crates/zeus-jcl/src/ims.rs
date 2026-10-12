@@ -13,7 +13,8 @@
 //!
 //! PARM='DLI|DBB|BMP,program,psb': the program runs with the PSB
 //! scheduled and gets its PCB masks (the I/O PCB first for BMP regions and
-//! CMPAT=YES PSBs). PARM='ULR,DFSURGL0,dbd' reloads a database from the
+//! CMPAT=YES PSBs). PARM='ULU,DFSURGU0,dbd' unloads a database to DD
+//! DFSUROUT; PARM='ULR,DFSURGL0,dbd' reloads a database from the
 //! unload in DD DFSUINPT. The DBD and PSB sources are the members of the
 //! IMS DD concatenation (DBDLIB and PSBLIB); the databases are in one
 //! store: ZEUS_IMS_WAL, or `ims/ims.wal` next to the catalog.
@@ -81,6 +82,24 @@ pub(crate) fn run(ctx: &mut StepCtx, libs: &[PathBuf], job: &str, step: &Step) -
                 let _ = writeln!(f, "ZEUS IMS: DFSURPR0 has nothing to do");
             }
             return Ok(0);
+        }
+        // the HD reorganization unload: the database to DD DFSUROUT
+        "ULU" if program == "DFSURGU0" => {
+            let Some(out) = ctx.dd("DFSUROUT").map(|d| d.path.clone()) else {
+                return fail(ctx, "DFSURGU0 needs DD DFSUROUT", "U0428");
+            };
+            return match zeus_ims::runtime::unload(&ims, &psb) {
+                Ok((data, n)) => {
+                    if let Err(e) = std::fs::write(&out, data) {
+                        return fail(ctx, &format!("DFSURGU0 {psb}: {e}"), "U0359");
+                    }
+                    if let Ok(mut f) = ctx.sysout("SYSPRINT") {
+                        let _ = writeln!(f, "ZEUS IMS: DFSURGU0 unloaded {n} segments of {psb}");
+                    }
+                    Ok(0)
+                }
+                Err(e) => fail(ctx, &format!("DFSURGU0 {psb}: {e}"), "U0359"),
+            };
         }
         "MSG" => return message_region(ctx, libs, job, step, &ims),
         "ULR" if program == "DFSURGL0" => {

@@ -31,7 +31,7 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
 |---|---|
 | ライブラリ | DBD と PSB はマクロのソースをメンバーとして持つ PDS (DBDLIB・PSBLIB)。カタログ上の FB 80 の EBCDIC レコードも、ホストのテキストファイルも読める |
 | データベース | 全 DBD を 1 つの WAL に保持する。zjob は `ZEUS_IMS_WAL`、なければカタログの隣の `ims/ims.wal`。zcics は `--ims-wal` (既定は同じ場所)。WAL は複数のプロセス (zcics とバッチジョブ) が同時に開ける。各プロセスは他のプロセスがコミットしたフレームを、データベースを読むたびに追って適用する。更新する作業単位は、最初のルートのロックから終わりまで WAL のファイルロック (排他) を持つので、他のプロセスの更新は待つ (ロックの待ち時間を過ぎると、ルートのロックと同じくタイムアウト)。プロセス内の作業単位どうしは、従来どおりルート単位でロックする |
-| `EXEC PGM=DFSRRC00` | `PARM='DLI\|DBB\|BMP,プログラム,PSB'`。ライブラリは IMS DD の連結。プログラムには PCB マスクを USING で渡す (BMP と CMPAT=YES では I/O PCB が先頭)。正常終了でコミット、異常終了でバックアウト。`PARM=(ULR,DFSURGL0,DBD)` は DD DFSUINPT のアンロード (DFSURGU0 形式) から再ロードする |
+| `EXEC PGM=DFSRRC00` | `PARM='DLI\|DBB\|BMP,プログラム,PSB'`。ライブラリは IMS DD の連結。プログラムには PCB マスクを USING で渡す (BMP と CMPAT=YES では I/O PCB が先頭)。正常終了でコミット、異常終了でバックアウト。`PARM=(ULR,DFSURGL0,DBD)` は DD DFSUINPT のアンロード (DFSURGU0 形式) から再ロードする。`PARM=(ULU,DFSURGU0,DBD)` はデータベースを階層順 (ルートと双子はキー順) に DD DFSUROUT へアンロードする。セグメントのレコードは CardDemo のアンロードと同じ形 (接頭部の中の Zeus が知らないフィールドは 0)、ヘッダーとトレーラーは種類と DBD 名だけを入れる。HDAM・HIDAM の複数階層を書き出し、読み込める |
 | SSA | コマンドコード (D: パス呼出しで親のセグメントも入出力域に入れる、F: 親の下の最初から、L: 最後のもの、C: 連結キーで修飾、P: 親子関係をその階層に置く。U・V・Q・N・- は受け付ける)、修飾文を AND (`*`・`&`・`#`) と OR (`+`・`\|`) で結んだブール修飾、比較演算子 EQ・NE・GT・GE・LT・LE (`= `・`¬=`・`>=` などの記号も)。パック 10 進のフィールドは数値で、ほかはバイトで比べる。GU・GN・GNP はどの階層の SSA も受け付け、上位の SSA は親のセグメントの条件になる。親子関係は GU・GN が取り出したセグメントに置く (GNP は変えない) |
 | CALL 'CBLTDLI' | 引数の個数 (省略可)、関数、PCB、入出力域、SSA。DB PCB: GU/GN/GNP と GHU/GHN/GHNP、ISRT/REPL/DLET (可変長セグメントは先頭の長さで書く)。GSAM PCB: OPEN/CLSE/GN/GU/ISRT と RSA。I/O PCB: CHKP (ID。領域の長さと番地を続けると記号チェックポイントで、その領域を保存する)、XRST (I/O 域の ID が空白なら通常の開始、ID か LAST なら記号チェックポイントの領域を戻す)、SYNC、ROLB。バッチでは GU/GN は QC |
 | EXEC DLI | SEGMENT、WHERE (フィールド・比較演算子・COBOL のデータ項目かリテラル)、INTO/FROM、PCB(n)、CHKP ID、SYMCHKP・XRST (ID、AREA1〜7、LENGTH1〜7)、SCHD PSB/TERM。結果は DIB (DIBSTAT、DIBSEGM、DIBSEGLV、DIBKFBL、DIBDBDNM、DIBDBORG) に返す。取得コマンドは保持付きの取得として扱う。SEGMENT で現在のパス上の親を指定した DLET/REPL は、キーフィードバックからその親を保持し直してから実行する (子を GNP で読んだ後に親を削除する CardDemo の書き方) |
@@ -45,6 +45,9 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
 `tools/carddemo-ims.sh test` (`tools/carddemo.sh all` の後) で、元の JCL とプログラムのまま次を確認する。
 
 - **再ロード**: 付属のアンロード (`AWS.M2.CARDDEMO.IMSDATA.DBPAUTP0`) から DFSURGL0 で 224 セグメントを読み込む。
+- **アンロード**: それを DFSURGU0 でアンロードすると、セグメントのレコードは元のアンロードと同じ内容と順序になる
+  (2026-10 に手で比較した)。`tools/carddemo-ims.sh test` はアンロード・別の格納域への再ロード・再アンロードの往復で
+  224 セグメントと同じアンロードになることを確かめる。
 - **UNLDPADB** (PAUDBUNL、CBLTDLI GN/GNP、DLI): 要約 21 件と明細 202 件を順次ファイルに書き出す。キーが空白の要約 1 件は、プログラムが除外する。
 - **UNLDGSAM** (DBUNLDGS、GSAM ISRT): 同じ内容を GSAM の 2 ファイルに書き出す。
 - **CBPAUP0J** (CBPAUP0C、EXEC DLI、BMP、CHKP): 期限切れの承認を削除する。要約 21 件と明細 202 件を削除する。
@@ -61,7 +64,6 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
   - プログラム間通信 (代替 PCB で他のトランザクションへ ISRT したメッセージは、キューには入るが、同じ領域の実行が終わってから次の領域で処理される)。
 - **PL/I の EXEC DLI**。
 - **COPAUS2C の不正マーク (F5)**: Db2 を使う。ZEUS_DB2 の環境で別途確認する。
-- **アンロードユーティリティ DFSURGU0**: 書き出しは未対応。再ロード DFSURGL0 は対応済み。
 - **DL/I の機能の範囲**: ISRT のパス呼出し (D コマンドコードで複数のセグメントを挿入する)。
 
 ## 6. Bank of Z の IMS 経路
