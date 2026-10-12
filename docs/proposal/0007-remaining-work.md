@@ -19,7 +19,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 8 | L | PostgreSQL バックエンド (Db2 方言の変換、SQLCODE の対応表) | 0002 Phase 7 | **済** (`ZEUS_DB2=postgres://...`、CI) |
 | 9 | M | DL/I の機能: コマンドコード、ブール演算子の修飾、等号以外の比較、パス呼出し、XRST・記号チェックポイント | 0006 | **済** (ISRT のパス呼出しを除く) |
 | 10 | M | PL/I: ENTRY 変数による呼出し、FETCH/RELEASE | 0004 | **済** |
-| 11 | M | PL/I: AREA と OFFSET、iSUB 定義、構造体の途中の REFER、CONTROLLED の引数 | 0004 | 未着手 |
+| 11 | M | PL/I: AREA と OFFSET、iSUB 定義、構造体の途中の REFER、CONTROLLED の引数 | 0004 | **済** |
 | 12 | M | PL/I: 型の追加 (COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ、ORDINAL)、DEFAULT 文、GENERIC、HANDLE と DEFINE STRUCTURE | 0004 | 未着手 |
 | 13 | M | PL/I の EXEC SQL: FLOAT・PICTURE・BIT のホスト変数、構造体のホスト変数の展開、動的 SQL と SQLDA | 0004 | 未着手 |
 | 14 | M | MQ: MQSET、パブリッシュ/サブスクライブ、メッセージハンドル、MQCB/MQCTL、MQOD・MQPMO 2 以降のフィールド | 0005 | 未着手 |
@@ -127,3 +127,10 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
     引数の記述子と RETURNS は変数ごとに覚える。手続き名は ENTRY を期待する文脈 (代入先・仮引数・比較の相手) では ENTRY 定数になる。
   - FETCH / RELEASE: リンカーにモジュールの読込みと解放を加えた。TITLE で別名のモジュール、読み込めなければ ERROR。
   - `crates/zeus-pli/tests/programs.rs` の `entry_variables` と `fetch_and_release`。
+- **#11 PL/I の記憶域の機能** (2026-10):
+  - AREA と OFFSET: AREA(n) は見出し (大きさ・使用量) と割当て域。ALLOCATE IN で割り当て、OFFSET は領域内の相対位置。
+    POINTER・OFFSET・EMPTY、ポインタとの変換、オフセットの位置指定子、領域の代入、AREA 条件。
+  - iSUB 定義: 定義された配列の参照の添字を iSUB として基底の添字を求める。
+  - 構造体の途中の REFER: REFER のメンバーが今の値で大きさを変え、後のメンバーの位置と構造体の大きさに反映する。
+  - CONTROLLED の仮引数: 引数として呼出し側の変数の世代の起点を渡し、呼ばれた手続きの ALLOCATE / FREE がそれに作用する。
+  - `crates/zeus-pli/tests/programs.rs` の `areas_isub_refer_and_controlled_parameters`。

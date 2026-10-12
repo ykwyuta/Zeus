@@ -100,6 +100,10 @@ pub enum Bif {
     PointerValue,
     BinaryValue,
     Empty,
+    /// POINTER(offset, area)
+    PointerOf,
+    /// OFFSET(pointer, area)
+    OffsetOf,
     // date and time
     Date,
     Time,
@@ -214,6 +218,8 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "HEX" => Hex,
         "UNSPEC" => Unspec,
         "ADDR" => Addr,
+        "POINTER" | "PTR" => PointerOf,
+        "OFFSET" => OffsetOf,
         "NULL" => Null,
         "SYSNULL" => SysNull,
         "SIZE" | "STORAGE" | "STG" => Size,
@@ -646,7 +652,9 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         },
         Addr | Null | SysNull | PointerAdd | PointerValue => Ty::Pointer,
         BinaryValue => fixed_bin31(),
-        Empty => Ty::Area,
+        Empty => Ty::Area(0),
+        PointerOf => Ty::Pointer,
+        OffsetOf => Ty::Offset(None),
         Date => Ty::char(6),
         Time => Ty::char(9),
         Datetime => Ty::char_var(26),

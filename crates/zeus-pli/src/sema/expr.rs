@@ -171,8 +171,8 @@ impl Compiler {
             let b = self.to_arith(b);
             let rt = arith_result("+", &a.ty, &b.ty);
             (self.to_base(a, &rt), self.to_base(b, &rt))
-        } else if matches!(a.ty, Ty::Pointer | Ty::Offset)
-            || matches!(b.ty, Ty::Pointer | Ty::Offset)
+        } else if matches!(a.ty, Ty::Pointer | Ty::Offset(_))
+            || matches!(b.ty, Ty::Pointer | Ty::Offset(_))
         {
             (self.conv(a, &Ty::Pointer), self.conv(b, &Ty::Pointer))
         } else if a.ty.is_char() || b.ty.is_char() {
@@ -351,6 +351,7 @@ impl Compiler {
             ast::Expr::Str { text, kind, pos } => self.string(text, *kind, *pos)?,
             ast::Expr::Ref(r) => self.ref_expr(r)?,
             ast::Expr::Star(p) => return Err(self.err(*p, "'*' is not valid here")),
+            ast::Expr::ISub(i, _) => mk(Ek::ISub(*i), Ty::fixed_bin(31, 0)),
             ast::Expr::Unary(op, x, _) => {
                 let x = self.expr(x)?;
                 match *op {
@@ -943,6 +944,24 @@ impl Compiler {
         };
         match b {
             Null => return Ok(mk(Ek::Null, Ty::Pointer)),
+            // POINTER(offset, area), OFFSET(pointer, area): the area is a
+            // reference
+            PointerOf | OffsetOf => {
+                let [x, ast::Expr::Ref(area)] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs a locator and an area")));
+                };
+                let ar = self.reference(area, true)?;
+                if !matches!(self.m.vars[ar.var as usize].ty, Some(Ty::Area(_))) {
+                    return Err(self.err(pos, format!("{b:?}: the second argument is not an AREA")));
+                }
+                let x = self.expr(x)?;
+                let rt = if b == PointerOf {
+                    Ty::Pointer
+                } else {
+                    Ty::Offset(Some(ar.var))
+                };
+                return Ok(mk(Ek::RefBuiltin(b, ar, vec![x]), rt));
+            }
             SysNull => return Ok(mk(Ek::SysNull, Ty::Pointer)),
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;

@@ -228,6 +228,14 @@ impl Parser {
         match self.tok().clone() {
             Tok::Num { text, binary } => {
                 self.bump();
+                // iSUB
+                if !binary
+                    && matches!(self.tok(), Tok::Ident(s) if s == "SUB")
+                    && let Ok(i) = text.parse::<u8>()
+                {
+                    self.bump();
+                    return Ok(Expr::ISub(i, pos));
+                }
                 Ok(Expr::Num { text, binary, pos })
             }
             Tok::Str { text, kind } => {
@@ -526,10 +534,12 @@ impl Parser {
                 },
                 "POINTER" | "PTR" => Attr::Pointer,
                 "OFFSET" => {
-                    if self.is_op("(") {
-                        self.paren_text()?;
-                    }
-                    Attr::Offset
+                    let area = if self.is_op("(") {
+                        Some(self.paren_text()?.trim().to_ascii_uppercase())
+                    } else {
+                        None
+                    };
+                    Attr::Offset(area.filter(|a| !a.is_empty()))
                 }
                 "HANDLE" => {
                     if self.is_op("(") {
@@ -1603,16 +1613,18 @@ impl Parser {
                     let r = self.basic_ref()?;
                     let mut set = None;
                     let mut len = None;
+                    let mut area = None;
                     while let Tok::Ident(o) = self.tok().clone() {
                         self.bump();
                         let e = self.paren_expr()?;
                         match o.as_str() {
                             "SET" => set = Some(e),
+                            "IN" => area = Some(e),
                             "CHARACTER" | "CHAR" | "BIT" => len = Some(e),
                             _ => {}
                         }
                     }
-                    out.push((r, set, len));
+                    out.push((r, set, len, area));
                     if self.eat_op(",") {
                         continue;
                     }

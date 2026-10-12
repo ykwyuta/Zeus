@@ -223,3 +223,15 @@ fn fetch_and_release() {
     );
     assert_eq!(end, RunEnd::Rc(0));
 }
+
+/// AREA and OFFSET (ALLOCATE IN, POINTER, OFFSET, EMPTY, area assignment,
+/// the AREA condition), iSUB defining, a REFER member in the middle of a
+/// structure, and CONTROLLED parameters.
+#[test]
+fn areas_isub_refer_and_controlled_parameters() {
+    for name in ["area", "isub", "refer", "ctl"] {
+        let (out, msg, end) = run(name, HashMap::new(), "");
+        assert_eq!(end, RunEnd::Rc(0), "{name}: {msg}");
+        assert_eq!(out, expected(name), "{name}");
+    }
+}

@@ -55,13 +55,19 @@ pub enum Ty {
     /// Numeric or character PICTURE.
     Pic(Box<crate::picture::Picture>),
     Pointer,
-    Offset,
+    /// An offset in the area of the variable (VarId), if it names one.
+    Offset(Option<u32>),
     Entry,
     File,
     Label,
     Format,
-    Area,
+    /// An area of the given size: a 16-byte header (size and bytes used)
+    /// then the allocations.
+    Area(u32),
 }
+
+/// The bytes before the allocations of an area.
+pub const AREA_HEADER: u32 = 16;
 
 impl Ty {
     pub fn fixed_dec(p: u8, q: i16) -> Ty {
@@ -225,7 +231,8 @@ impl Ty {
                 }
             }
             Ty::Pic(p) => (p.len as u32, 1),
-            Ty::Pointer | Ty::Offset | Ty::File | Ty::Area => (4, if aligned { 4 } else { 1 }),
+            Ty::Pointer | Ty::Offset(_) | Ty::File => (4, if aligned { 4 } else { 1 }),
+            Ty::Area(n) => (crate::types::AREA_HEADER + n, if aligned { 8 } else { 1 }),
             Ty::Entry | Ty::Label | Ty::Format => (8, if aligned { 4 } else { 1 }),
         }
     }

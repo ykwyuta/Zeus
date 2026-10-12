@@ -516,6 +516,8 @@ impl Machine {
             }
             PliRetV => Value::int(i64::from(self.rc)),
             Null => Value::Ptr(value::NULL),
+            // an empty area
+            Empty => Value::Char(vec![0u8; crate::types::AREA_HEADER as usize]),
             SysNull => Value::Ptr(0),
             PointerAdd => match (&v[0], int(1)) {
                 (Value::Ptr(p), Some(n)) => Value::Ptr((i64::from(*p) + n) as u32),
@@ -566,6 +568,20 @@ impl Machine {
                 let (bit, _) = self.element_or_start(r, act)?;
                 Value::Ptr((bit / 8) as u32)
             }
+            PointerOf | OffsetOf => {
+                let base = self.area_base(r.var, act)?;
+                let Value::Ptr(x) = self.eval(&args[0], act)? else {
+                    return Err(Intr::Fatal(format!("{b:?}: not a locator")));
+                };
+                // offset 0 is the first allocation; pointer 0 is SYSNULL
+                Value::Ptr(if x == value::NULL || (b == OffsetOf && x == 0) {
+                    value::NULL
+                } else if b == PointerOf {
+                    base.wrapping_add(x)
+                } else {
+                    x.wrapping_sub(base)
+                })
+            }
             Dim | Lbound | Hbound => {
                 let (_, dims) = self.base_of(r, act)?;
                 let free: Vec<(i64, i64, u64)> = if r.subs.iter().all(|s| s.is_none()) {
@@ -602,7 +618,7 @@ impl Machine {
                 }
                 Value::int(n)
             }
-            Allocation => Value::int(self.allocation(r.var)?),
+            Allocation => Value::int(self.allocation(r.var, act)?),
             Present => Value::bit1(true),
             Omitted => Value::bit1(false),
             String => {

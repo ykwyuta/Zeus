@@ -194,10 +194,30 @@ impl Compiler {
                     return Ok(Ty::Pic(Box::new(p)));
                 }
                 Attr::Pointer | Attr::Handle => return Ok(Ty::Pointer),
-                Attr::Offset => return Ok(Ty::Offset),
+                Attr::Offset(area) => {
+                    let v = match area {
+                        Some(a) => {
+                            Some(self.resolve_var(std::slice::from_ref(a)).ok_or_else(|| {
+                                self.err(pos, format!("OFFSET area {a} is not declared before it"))
+                            })?)
+                        }
+                        None => None,
+                    };
+                    return Ok(Ty::Offset(v));
+                }
                 Attr::Label => return Ok(Ty::Label),
                 Attr::Format => return Ok(Ty::Format),
-                Attr::Area(_) => return Ok(Ty::Area),
+                Attr::Area(e) => {
+                    let n = match e {
+                        Some(crate::ast::Extent::Expr(x)) => self.const_int(x).ok_or_else(|| {
+                            self.err(pos, "the size of an AREA must be a constant")
+                        })? as u32,
+                        // AREA(*) parameters: the argument's size
+                        Some(_) => 0,
+                        None => 1000,
+                    };
+                    return Ok(Ty::Area(n));
+                }
                 Attr::Entry(_) => return Ok(Ty::Entry),
                 Attr::File => return Ok(Ty::File),
                 _ => {}
@@ -512,7 +532,10 @@ impl Compiler {
         }
         // a variable (or structure)
         let external = has(attrs, |a| matches!(a, Attr::External(_)));
-        let class = if is_param {
+        let class = if is_param && has(attrs, |a| matches!(a, Attr::Controlled)) {
+            // a CONTROLLED parameter: the caller's generations
+            6
+        } else if is_param {
             0
         } else if has(attrs, |a| matches!(a, Attr::Based(_))) {
             2
@@ -531,7 +554,7 @@ impl Compiler {
         };
         let n_ext0 = self.m.blocks[block as usize].extents.len();
         self.pending_refers.clear();
-        let dyn_ok = (class == 5 || class == 4) && t.children.is_empty();
+        let dyn_ok = (class == 5 || class == 4 || class == 6) && t.children.is_empty();
         let root = self.m.vars.len() as VarId;
         let mut members = Vec::new();
         let unit = self.map_node(
@@ -562,7 +585,7 @@ impl Compiler {
             };
             self.m.refers[n as usize].object = obj;
         }
-        let controlled = if class == 4 {
+        let controlled = if class == 4 || class == 6 {
             Some(self.controlled_extents(root, block, n_ext0, pos)?)
         } else {
             None
@@ -608,6 +631,10 @@ impl Compiler {
                 };
                 let anchor = shared.unwrap_or_else(|| self.alloc_static(4, 4, 0));
                 Storage::Controlled(anchor, controlled.unwrap_or_default())
+            }
+            6 => {
+                let k = params.iter().position(|p| *p == it.name).unwrap_or(0) as u32;
+                Storage::Controlled(crate::ir::CTL_PARAM | k, controlled.unwrap_or_default())
             }
             _ if has_slots => Storage::AutoDyn(self.alloc_auto(block, 4, 4, 0)),
             _ => Storage::Auto(self.alloc_auto(block, size_bytes, align.min(8), residue)),

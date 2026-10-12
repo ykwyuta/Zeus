@@ -29,6 +29,9 @@ impl Ref {
     }
 }
 
+/// An item of ALLOCATE: variable, SET, string length, IN area.
+pub type AllocItem = (Ref, Option<Expr>, Option<Expr>, Option<Expr>);
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
     /// Decimal or binary numeric constant as written.
@@ -49,12 +52,18 @@ pub enum Expr {
     Binary(&'static str, Box<Expr>, Box<Expr>, Pos),
     /// `*` as an argument (cross sections, extents).
     Star(Pos),
+    /// `iSUB` in the base of a DEFINED array: subscript i of the
+    /// reference to it.
+    ISub(u8, Pos),
 }
 
 impl Expr {
     pub fn pos(&self) -> Pos {
         match self {
-            Expr::Num { pos, .. } | Expr::Str { pos, .. } | Expr::Star(pos) => *pos,
+            Expr::Num { pos, .. }
+            | Expr::Str { pos, .. }
+            | Expr::Star(pos)
+            | Expr::ISub(_, pos) => *pos,
             Expr::Ref(r) => r.pos,
             Expr::Unary(_, _, p) | Expr::Binary(_, _, _, p) => *p,
         }
@@ -99,7 +108,8 @@ pub enum Attr {
     Nonvarying,
     Picture(String),
     Pointer,
-    Offset,
+    /// OFFSET (with the name of its area).
+    Offset(Option<String>),
     Handle,
     Area(Option<Extent>),
     Label,
@@ -343,7 +353,8 @@ pub enum StmtKind {
     Locate(Ref, RecordOpts),
     /// Variable (with bounds for a CONTROLLED array), SET, and a string
     /// length (`CHAR(n)` / `BIT(n)`).
-    Allocate(Vec<(Ref, Option<Expr>, Option<Expr>)>),
+    /// ... and the AREA it is allocated IN.
+    Allocate(Vec<AllocItem>),
     Free(Vec<Ref>),
     /// FETCH entry [TITLE(name)] [SET(pointer)], ...
     Fetch(Vec<(String, Option<Expr>)>),

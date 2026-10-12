@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use std::rc::Rc;
 
 use crate::ir::*;
-use crate::types::{Ext, Ty, Var as Varying};
+use crate::types::{AREA_HEADER, Ext, Ty, Var as Varying};
 pub use value::Value;
 use value::{NULL, SPACE};
 use zeus_cobol::interlang::{ABEND, Linker, XEnd, XRef};
@@ -153,6 +153,19 @@ pub struct Machine {
     pub cics_instance: usize,
     /// The load module of each fetched entry (FETCH TITLE).
     titles: std::collections::HashMap<String, String>,
+    /// The subscripts of the references to iSUB-defined arrays being
+    /// located (innermost last).
+    isubs: Vec<Vec<i64>>,
+}
+
+/// Whether an expression uses iSUB.
+fn has_isub(e: &Expr) -> bool {
+    match &*e.k {
+        Ek::ISub(_) => true,
+        Ek::Arith(_, a, b) => has_isub(a) || has_isub(b),
+        Ek::Neg(a) | Ek::Conv(a) => has_isub(a),
+        _ => false,
+    }
 }
 
 fn err<T>(m: impl Into<String>) -> R<T> {
@@ -195,6 +208,7 @@ impl Machine {
             depth: 0,
             cics_instance: 0,
             titles: std::collections::HashMap::new(),
+            isubs: Vec::new(),
         }
     }
 
@@ -263,6 +277,40 @@ impl Machine {
     }
 
     /// Heap storage (ALLOCATE), doubleword aligned and zeroed.
+    /// The address of the first allocation of an AREA variable.
+    pub(crate) fn area_base(&mut self, a: VarId, act: usize) -> R<u32> {
+        let r = Ref {
+            var: a,
+            subs: Vec::new(),
+            locator: None,
+        };
+        let l = self.locate(&r, act)?;
+        Ok((l.bit / 8) as u32 + AREA_HEADER)
+    }
+
+    /// Allocates `size` bytes in an area (ALLOCATE IN); None when it is
+    /// full (after the AREA condition).
+    fn area_alloc(&mut self, area: &Ref, size: u32, act: usize) -> R<Option<u32>> {
+        let l = self.locate(area, act)?;
+        let Ty::Area(cap) = l.ty else {
+            return err("ALLOCATE IN: not an AREA");
+        };
+        let addr = (l.bit / 8) as u32;
+        let h = self.read(addr, 8)?;
+        let used = u32::from_be_bytes([h[4], h[5], h[6], h[7]]);
+        // doubleword boundaries within the area
+        let at = used.div_ceil(8) * 8;
+        if at + size > cap {
+            self.raise(Cond::Area, 360, act)?;
+            return Ok(None);
+        }
+        self.write(addr, &cap.to_be_bytes())?;
+        self.write(addr + 4, &(at + size).to_be_bytes())?;
+        let p = addr + AREA_HEADER + at;
+        self.write(p, &vec![0u8; size as usize])?;
+        Ok(Some(p))
+    }
+
     fn heap_alloc(&mut self, size: u32) -> u32 {
         self.sys().getmain(size.max(1) as usize, 0) as u32
     }
@@ -399,16 +447,15 @@ impl Machine {
     fn var_size(&self, v: VarId, act: usize, rb: Option<u64>) -> R<u64> {
         let var = &self.module.vars[v as usize];
         if var.ty.is_none() && self.has_refers(v) {
-            // a structure with REFER extents: up to the end of the last
-            // member (the REFER member)
-            let mut end = u64::from(var.size);
-            for (k, m) in self.module.vars.iter().enumerate() {
-                if m.root == v && m.ty.is_some() && k as VarId != v {
-                    let n = self.var_size(k as VarId, act, rb)?;
-                    end = end.max(m.bit_offset / 8 + n);
+            // a structure with REFER extents: its mapped size, and what the
+            // REFER members take beyond their mapped sizes
+            let mut size = i64::from(var.size);
+            for k in 0..self.module.vars.len() {
+                if self.module.vars[k].root == v && k as VarId != v {
+                    size += self.refer_delta(k as VarId, act, rb)?;
                 }
             }
-            return Ok(end);
+            return Ok(size.max(0) as u64);
         }
         let ty = self.resolve_ty(var.ty.as_ref(), v, act, rb)?;
         let elem = match &ty {
@@ -424,6 +471,45 @@ impl Machine {
             n *= (ub - lb + 1).max(0) as u64;
         }
         Ok(elem * n)
+    }
+
+    /// The bytes a scalar member with REFER extents takes beyond its
+    /// mapped size (the mapping counts the extents as 1 element and a
+    /// length of 0); 0 for other members.
+    fn refer_delta(&self, w: VarId, act: usize, rb: Option<u64>) -> R<i64> {
+        let var = &self.module.vars[w as usize];
+        let refer_len = matches!(var.ty.as_ref().and_then(Ty::str_len), Some(Ext::Refer(_)));
+        let refer_dim = var
+            .dims
+            .iter()
+            .any(|d| matches!(d.lb, Bound::Refer(_)) || matches!(d.ub, Bound::Refer(_)));
+        if var.ty.is_none() || !(refer_len || refer_dim) {
+            return Ok(0);
+        }
+        let mut mapped = i64::from(var.size);
+        for d in &var.dims {
+            if let (Bound::Const(l), Bound::Const(u)) = (d.lb, d.ub) {
+                mapped *= (u - l + 1).max(0);
+            }
+        }
+        Ok(self.var_size(w, act, rb)? as i64 - mapped)
+    }
+
+    /// The bit offset of a member in its level-1 structure: after the
+    /// members with REFER extents before it, by their sizes now.
+    fn member_bit_offset(&self, v: VarId, act: usize, rb: u64) -> R<u64> {
+        let var = &self.module.vars[v as usize];
+        let root = var.root;
+        if v == root || self.module.refers.is_empty() || !self.has_refers(root) {
+            return Ok(var.bit_offset);
+        }
+        let mut delta = 0i64;
+        for w in (root + 1)..v {
+            if self.module.vars[w as usize].root == root {
+                delta += self.refer_delta(w, act, Some(rb))?;
+            }
+        }
+        Ok((var.bit_offset as i64 + delta * 8).max(0) as u64)
     }
 
     /// Whether a level-1 variable has REFER extents.
@@ -479,7 +565,6 @@ impl Machine {
     fn allocate_controlled(
         &mut self,
         v: VarId,
-        anchor: u32,
         slots: &[Option<Expr>],
         given: &[Option<Expr>],
         act: usize,
@@ -498,6 +583,7 @@ impl Machine {
             };
             vals.push(x);
         }
+        let anchor = self.anchor_addr(self.module.vars[v as usize].root, act)?;
         let prev = self.generation(anchor)?;
         let h = self.heap_alloc(16 + 8 * vals.len() as u32);
         let mut hdr = Vec::new();
@@ -509,7 +595,7 @@ impl Machine {
             hdr.extend(x.to_be_bytes());
         }
         self.write(h, &hdr)?;
-        self.write(self.static_base + anchor, &h.to_be_bytes())?;
+        self.write(anchor, &h.to_be_bytes())?;
         let size = self.var_size(v, act, None)?;
         let p = self.heap_alloc(size as u32);
         self.write(h + 4, &p.to_be_bytes())?;
@@ -522,12 +608,13 @@ impl Machine {
     }
 
     /// The number of generations of a CONTROLLED variable.
-    pub fn allocation(&self, v: VarId) -> R<i64> {
-        let root = &self.module.vars[self.module.vars[v as usize].root as usize];
-        let Storage::Controlled(anchor, _) = &root.storage else {
+    pub fn allocation(&self, v: VarId, act: usize) -> R<i64> {
+        let root_id = self.module.vars[v as usize].root;
+        let root = &self.module.vars[root_id as usize];
+        let Storage::Controlled(..) = &root.storage else {
             return Ok(1);
         };
-        let mut g = self.generation(*anchor)?;
+        let mut g = self.generation(self.anchor_addr(root_id, act)?)?;
         let mut n = 0;
         while g != 0 {
             n += 1;
@@ -536,9 +623,31 @@ impl Machine {
         Ok(n)
     }
 
-    /// The header of the current generation of a CONTROLLED variable.
+    /// The address of the anchor of a CONTROLLED variable (`root`): in
+    /// static storage, or the caller's for a CONTROLLED parameter.
+    fn anchor_addr(&self, root: VarId, act: usize) -> R<u32> {
+        let var = &self.module.vars[root as usize];
+        let Storage::Controlled(a, _) = &var.storage else {
+            return err(format!("{} is not CONTROLLED", var.name));
+        };
+        if a & crate::ir::CTL_PARAM == 0 {
+            return Ok(self.static_base + a);
+        }
+        let k = (a & !crate::ir::CTL_PARAM) as usize;
+        let at = self.act_of(act, var.block)?;
+        let b = self.acts[at]
+            .params
+            .get(k)
+            .cloned()
+            .flatten()
+            .ok_or_else(|| Intr::Fatal(format!("parameter {} has no argument", var.name)))?;
+        Ok((b.bit / 8) as u32)
+    }
+
+    /// The header of the current generation of a CONTROLLED variable
+    /// (from the address of its anchor).
     fn generation(&self, anchor: u32) -> R<u32> {
-        let p = self.read(self.static_base + anchor, 4)?;
+        let p = self.read(anchor, 4)?;
         Ok(u32::from_be_bytes([p[0], p[1], p[2], p[3]]))
     }
 
@@ -550,9 +659,10 @@ impl Machine {
     /// Extent slot `s` of a variable: of its CONTROLLED generation or of
     /// the activation.
     fn slot(&self, v: VarId, s: u32, act: usize) -> R<i64> {
-        let root = &self.module.vars[self.module.vars[v as usize].root as usize];
-        if let Storage::Controlled(anchor, _) = &root.storage {
-            let g = self.generation(*anchor)?;
+        let root_id = self.module.vars[v as usize].root;
+        let root = &self.module.vars[root_id as usize];
+        if let Storage::Controlled(..) = &root.storage {
+            let g = self.generation(self.anchor_addr(root_id, act)?)?;
             if g == 0 {
                 return err(format!("{} is not allocated", root.name));
             }
@@ -657,6 +767,16 @@ impl Machine {
                         return err(format!("{} is BASED without a locator", root.name));
                     }
                 };
+                // an OFFSET locator: in its area
+                let lty = match (&r.locator, loc) {
+                    (Some(l), _) | (None, Some(l)) => l.ty.clone(),
+                    _ => Ty::Pointer,
+                };
+                let p = if matches!(lty, Ty::Offset(Some(_))) {
+                    self.convert(p, &lty, &Ty::Pointer, act)?
+                } else {
+                    p
+                };
                 let Value::Ptr(p) = p else {
                     return err("locator is not a pointer");
                 };
@@ -679,8 +799,8 @@ impl Machine {
                 };
                 bit + (p - 1) * unit
             }
-            Storage::Controlled(anchor, _) => {
-                let g = self.generation(*anchor)?;
+            Storage::Controlled(..) => {
+                let g = self.generation(self.anchor_addr(var.root, act)?)?;
                 if g == 0 {
                     return err(format!("{} is not allocated", root.name));
                 }
@@ -744,12 +864,39 @@ impl Machine {
                 ));
             }
         }
-        Ok((base + var.bit_offset, dims))
+        let off = self.member_bit_offset(r.var, act, base)?;
+        Ok((base + off, dims))
+    }
+
+    /// The base of an array DEFINED with iSUB subscripts.
+    fn isub_base(&self, v: VarId) -> Option<Ref> {
+        let root = &self.module.vars[self.module.vars[v as usize].root as usize];
+        match &root.storage {
+            Storage::Defined(base, _) if base.subs.iter().flatten().any(has_isub) => {
+                Some((**base).clone())
+            }
+            _ => None,
+        }
     }
 
     /// The bit address of a reference's element (free subscripts: the
     /// first element).
     fn element_or_start(&mut self, r: &Ref, act: usize) -> R<(u64, Dims)> {
+        // iSUB defining: the element of the base its subscripts select
+        if let Some(base) = self.isub_base(r.var) {
+            let (_, dims) = self.base_of(r, act)?;
+            let mut subs = Vec::new();
+            for (k, s) in r.subs.iter().enumerate() {
+                subs.push(match s {
+                    Some(e) => self.eval(e, act)?.as_i64(),
+                    None => dims.get(k).map_or(1, |d| d.0),
+                });
+            }
+            self.isubs.push(subs);
+            let at = self.element_or_start(&base, act);
+            self.isubs.pop();
+            return Ok((at?.0, dims));
+        }
         let (mut bit, dims) = self.base_of(r, act)?;
         let enabled = true;
         for (k, s) in r.subs.iter().enumerate() {
@@ -850,9 +997,17 @@ impl Machine {
                 }
             }
             Ty::Pic(p) => Value::Char(self.read(addr, p.len)?),
-            Ty::Pointer | Ty::Offset | Ty::Area => {
+            Ty::Pointer | Ty::Offset(_) => {
                 let b = self.read(addr, 4)?;
                 Value::Ptr(u32::from_be_bytes([b[0], b[1], b[2], b[3]]))
+            }
+            // an area: its header and the bytes in use
+            Ty::Area(cap) => {
+                let h = self.read(addr, AREA_HEADER as usize)?;
+                let used = u32::from_be_bytes([h[4], h[5], h[6], h[7]]).min(*cap);
+                let mut b = h.clone();
+                b.extend(self.read(addr + AREA_HEADER, used as usize)?);
+                Value::Char(b)
             }
             Ty::File => {
                 let b = self.read(addr, 4)?;
@@ -946,8 +1101,23 @@ impl Machine {
                 b.resize(p.len, SPACE);
                 self.write(addr, &b)?;
             }
-            (Ty::Pointer | Ty::Offset | Ty::Area, Value::Ptr(p)) => {
-                self.write(addr, &p.to_be_bytes())?
+            (Ty::Pointer | Ty::Offset(_), Value::Ptr(p)) => self.write(addr, &p.to_be_bytes())?,
+            (Ty::Area(cap), Value::Char(b)) => {
+                let used = b
+                    .get(4..8)
+                    .map_or(0, |h| u32::from_be_bytes([h[0], h[1], h[2], h[3]]));
+                if used > *cap {
+                    return Err(Intr::Fatal(format!(
+                        "AREA: {used} bytes in use do not fit an area of {cap}"
+                    )));
+                }
+                let mut h = vec![0u8; AREA_HEADER as usize];
+                h[..4].copy_from_slice(&cap.to_be_bytes());
+                h[4..8].copy_from_slice(&used.to_be_bytes());
+                self.write(addr, &h)?;
+                let data = b.get(AREA_HEADER as usize..).unwrap_or(&[]);
+                let n = data.len().min(used as usize);
+                self.write(addr + AREA_HEADER, &data[..n])?;
             }
             (Ty::File, Value::File(f)) => self.write(addr, &f.to_be_bytes())?,
             (Ty::Label | Ty::Format, Value::Label(l, a)) => {
@@ -1015,6 +1185,36 @@ impl Machine {
                     };
                     out.extend(self.elements(&mr, act)?);
                 }
+            }
+            return Ok(out);
+        }
+        // iSUB defining: each element located through the base
+        if self.isub_base(r.var).is_some() {
+            let (_, dims) = self.base_of(r, act)?;
+            let free: Vec<usize> = (0..r.subs.len()).filter(|&k| r.subs[k].is_none()).collect();
+            let combos = index_space(
+                &free
+                    .iter()
+                    .map(|&k| (dims[k].0, dims[k].1))
+                    .collect::<Vec<_>>(),
+            );
+            let mut out = Vec::new();
+            for c in combos {
+                let mut subs = r.subs.clone();
+                for (k, i) in free.iter().zip(&c) {
+                    subs[*k] = Some(crate::sema::expr::mk(
+                        Ek::Fixed(i128::from(*i), 0),
+                        Ty::fixed_bin(31, 0),
+                    ));
+                }
+                out.push(self.locate(
+                    &Ref {
+                        var: r.var,
+                        subs,
+                        locator: r.locator.clone(),
+                    },
+                    act,
+                )?);
             }
             return Ok(out);
         }
@@ -1268,12 +1468,10 @@ impl Machine {
             Stmt::Rewrite(r) => self.rewrite_stmt(r, act),
             Stmt::Delete(r) => self.delete_stmt(r, act),
             Stmt::Allocate(items) => {
-                for (v, set, given) in items {
-                    if let Storage::Controlled(anchor, slots) =
-                        &self.module.vars[*v as usize].storage
-                    {
-                        let (anchor, slots) = (*anchor, slots.clone());
-                        self.allocate_controlled(*v, anchor, &slots, given, act)?;
+                for (v, set, given, area) in items {
+                    if let Storage::Controlled(_, slots) = &self.module.vars[*v as usize].storage {
+                        let slots = slots.clone();
+                        self.allocate_controlled(*v, &slots, given, act)?;
                         continue;
                     }
                     // REFER extents: their initial values size the generation
@@ -1290,7 +1488,13 @@ impl Machine {
                     let size = self.var_size(*v, act, None);
                     REFER_OVERRIDE.with(|o| *o.borrow_mut() = None);
                     let size = size?;
-                    let p = self.heap_alloc(size as u32);
+                    let p = match area {
+                        Some(a) => match self.area_alloc(a, size as u32, act)? {
+                            Some(p) => p,
+                            None => continue,
+                        },
+                        None => self.heap_alloc(size as u32),
+                    };
                     for &n in &refers {
                         let obj = &m.vars[m.refers[n].object as usize];
                         let loc = Loc {
@@ -1316,7 +1520,7 @@ impl Machine {
                                 return err("ALLOCATE: the locator is not a variable");
                             };
                             let l = self.locate(r, act)?;
-                            self.store(&l, &ptr)?;
+                            self.assign_loc(&l, ptr, &Ty::Pointer, act)?;
                         }
                     }
                     // INITIAL of the based variable and its members
@@ -1372,8 +1576,8 @@ impl Machine {
             Stmt::Free(items) => {
                 for (v, _) in items {
                     let root = self.module.vars[*v as usize].root;
-                    if let Storage::Controlled(anchor, _) = self.module.vars[root as usize].storage
-                    {
+                    if let Storage::Controlled(..) = self.module.vars[root as usize].storage {
+                        let anchor = self.anchor_addr(root, act)?;
                         let g = self.generation(anchor)?;
                         if g == 0 {
                             return err(format!(
@@ -1382,7 +1586,7 @@ impl Machine {
                             ));
                         }
                         let prev = self.word_at(g)?;
-                        self.write(self.static_base + anchor, &prev.to_be_bytes())?;
+                        self.write(anchor, &prev.to_be_bytes())?;
                     }
                 }
                 Ok(())
@@ -1652,6 +1856,25 @@ impl Machine {
         let mut dummies = Vec::new();
         for (i, a) in args.iter().enumerate() {
             let Some(&pv) = params.get(i) else { break };
+            // a CONTROLLED parameter: the anchor of the argument
+            if let Storage::Controlled(c, _) = m.vars[pv as usize].storage
+                && c & crate::ir::CTL_PARAM != 0
+            {
+                let k = (c & !crate::ir::CTL_PARAM) as usize;
+                let Arg::Ref(r) = a else {
+                    return err("the argument of a CONTROLLED parameter is not a variable");
+                };
+                let root = m.vars[r.var as usize].root;
+                let anchor = self.anchor_addr(root, act)?;
+                if k < bindings.len() {
+                    bindings[k] = Some(Binding {
+                        bit: u64::from(anchor) * 8,
+                        dims: Vec::new(),
+                        len: None,
+                    });
+                }
+                continue;
+            }
             let Storage::Param(k) = m.vars[pv as usize].storage else {
                 continue;
             };
@@ -2612,6 +2835,13 @@ impl Machine {
             Ek::FileConst(f) => Value::File(*f),
             Ek::OnValue(b) => self.on_value(*b, act),
             Ek::Aggregate(r) => Value::Char(self.aggregate_bytes(r, act)?),
+            Ek::ISub(i) => Value::int(
+                self.isubs
+                    .last()
+                    .and_then(|s| s.get(usize::from(*i).saturating_sub(1)))
+                    .copied()
+                    .unwrap_or(1),
+            ),
             Ek::Index(k) => {
                 // the innermost activation with indexes (aggregate
                 // assignment or repetitive specification)

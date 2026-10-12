@@ -936,7 +936,9 @@ impl Pp<'_> {
                 StrKind::Bit(_) => Val::Bit(text.contains('1')),
                 _ => Val::Char(text.clone()),
             },
-            Expr::Star(p) => return Err(self.err(*p, "'*' in a preprocessor expression")),
+            Expr::Star(p) | Expr::ISub(_, p) => {
+                return Err(self.err(*p, "'*' or iSUB in a preprocessor expression"));
+            }
             Expr::Unary(op, x, _) => {
                 let v = self.eval(x, locals)?;
                 match *op {

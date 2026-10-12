@@ -50,7 +50,7 @@ impl Machine {
                 };
                 num(NumUsage::Native, digits, 0)
             }
-            Ty::Pointer | Ty::Offset => DataType::Pointer,
+            Ty::Pointer | Ty::Offset(_) => DataType::Pointer,
             Ty::Char {
                 var: Varying::Varying,
                 ..

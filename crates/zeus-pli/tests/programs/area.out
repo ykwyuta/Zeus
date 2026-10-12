@@ -1,0 +1,7 @@
+            30
+            20
+            10
+COPY                                30
+EMPTY                   '1'B
+AREA FULL                            3
+END

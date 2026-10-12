@@ -777,7 +777,7 @@ impl Compiler {
             StmtKind::Locate(..) => return Err(self.err(pos, "LOCATE is not supported")),
             StmtKind::Allocate(items) => {
                 let mut v = Vec::new();
-                for (r, set, len) in items {
+                for (r, set, len, area) in items {
                     let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
                     let var = self.resolve_var(&names).ok_or_else(|| {
                         self.err(pos, format!("{} is not declared", names.join(".")))
@@ -838,7 +838,18 @@ impl Compiler {
                         Some(e) => Some(self.target(e)?.0),
                         None => None,
                     };
-                    v.push((var, set, given));
+                    let area = match area {
+                        Some(ast::Expr::Ref(a)) => {
+                            let ar = self.reference(a, true)?;
+                            if !matches!(self.m.vars[ar.var as usize].ty, Some(Ty::Area(_))) {
+                                return Err(self.err(pos, "ALLOCATE IN: not an AREA"));
+                            }
+                            Some(ar)
+                        }
+                        Some(_) => return Err(self.err(pos, "ALLOCATE IN: not an AREA")),
+                        None => None,
+                    };
+                    v.push((var, set, given, area));
                 }
                 Stmt::Allocate(v)
             }

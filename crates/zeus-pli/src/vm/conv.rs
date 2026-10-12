@@ -183,7 +183,27 @@ impl Machine {
                 }
                 Ok(Value::Char(ebcdic(&text)))
             }
-            Ty::Pointer | Ty::Offset | Ty::Area => match v {
+            // an offset from or to a pointer: through the base of its area
+            Ty::Offset(Some(a)) if matches!(from, Ty::Pointer) => match v {
+                Value::Ptr(p) if p == NULL || p == 0 => Ok(Value::Ptr(NULL)),
+                Value::Ptr(p) => Ok(Value::Ptr(p.wrapping_sub(self.area_base(*a, act)?))),
+                other => err(format!("cannot convert {other:?} to OFFSET")),
+            },
+            Ty::Pointer if matches!(from, Ty::Offset(Some(_))) => {
+                let Ty::Offset(Some(a)) = from else {
+                    unreachable!()
+                };
+                match v {
+                    Value::Ptr(o) if o == NULL => Ok(Value::Ptr(NULL)),
+                    Value::Ptr(o) => Ok(Value::Ptr(self.area_base(*a, act)?.wrapping_add(o))),
+                    other => err(format!("cannot convert {other:?} to POINTER")),
+                }
+            }
+            Ty::Area(_) => match v {
+                Value::Char(b) => Ok(Value::Char(b)),
+                other => err(format!("cannot convert {other:?} to AREA")),
+            },
+            Ty::Pointer | Ty::Offset(_) => match v {
                 Value::Ptr(p) => Ok(Value::Ptr(p)),
                 Value::Char(s) if s.is_empty() => Ok(Value::Ptr(NULL)),
                 Value::Bit(b) if b.is_empty() => Ok(Value::Ptr(NULL)),
