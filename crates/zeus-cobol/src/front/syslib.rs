@@ -166,7 +166,7 @@ pub fn member(name: &str) -> Option<String> {
         "SQLCA" => SQLCA.to_string(),
         "SQLDA" => SQLDA.to_string(),
         "CEEIGZCT" => CEEIGZCT.to_string(),
-        _ => return None,
+        _ => return super::syslib_mq::member(name),
     })
 }
 

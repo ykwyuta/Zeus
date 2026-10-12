@@ -12,6 +12,7 @@ zeus-ds = { path = "../zeus-ds" }
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-pli = { path = "../zeus-pli" }
 zeus-db2 = { path = "../zeus-db2" }
+zeus-mq = { path = "../zeus-mq" }
 zeus-decimal = { path = "../zeus-decimal" }
 
 [dev-dependencies]

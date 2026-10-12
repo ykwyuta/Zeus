@@ -7,6 +7,7 @@ pub mod lexer;
 pub mod parser;
 pub mod source;
 pub mod syslib;
+mod syslib_mq;
 
 use std::path::{Path, PathBuf};
 

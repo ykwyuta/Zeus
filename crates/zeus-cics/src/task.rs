@@ -189,6 +189,9 @@ fn run_task(
         db2: std::cell::RefCell::new(None),
     });
     m.set_exec_host(task.clone());
+    // the MQI: calls with the default connection use the region's
+    // connection to the queue manager (as through the CICS adapter)
+    zeus_mq::register(&mut m);
     task.init_eib(&mut m);
     let ca = commarea.map(|c| {
         let a = m.getmain(c.len(), 0);
@@ -994,6 +997,7 @@ impl Task {
         if let Some(h) = db2 {
             let _ = h.end_uow(commit);
         }
+        zeus_mq::syncpoint(commit);
         let undo = std::mem::take(&mut self.st.borrow_mut().undo);
         if commit {
             return Ok(());

@@ -849,6 +849,7 @@ fn run_pli(
     env.linker = Some(linker.clone());
     let end = zeus_pli::run(module, env);
     linker.finish();
+    zeus_mq::end_run(matches!(end, RunEnd::Rc(_)));
     if let Some(h) = &db2 {
         let _ = h.end_uow(matches!(end, RunEnd::Rc(_)));
     }
@@ -896,6 +897,9 @@ pub(crate) fn run_cobol(
     m.set_linker(linker.clone());
     let r = m.run_main(module);
     linker.finish();
+    // MQ connections end with the step: committed, or backed out when
+    // the program failed
+    zeus_mq::end_run(r.is_ok());
     for t in temps {
         let _ = std::fs::remove_file(t);
     }

@@ -259,6 +259,9 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
 
 ### Phase 7: MQ と PostgreSQL バックエンド (8〜10 週)
 - MQI サブセット (MQCONN/MQOPEN/MQPUT/MQGET) とローカルキュー、CICS との作業単位統合。
+  - 実装済み (0005): ローカルキューを自作せず、IBM MQ の C クライアントライブラリ経由で実際のキューマネージャーに TCP で接続する
+    (MQCONN/MQCONNX/MQDISC/MQOPEN/MQCLOSE/MQPUT/MQPUT1/MQGET/MQINQ/MQCMIT/MQBACK)。CICS の SYNCPOINT・タスク終了、
+    バッチのステップ終了で作業単位を確定する。トリガーモニター (CKTI) は未実装。
 - PostgreSQL バックエンド (Db2 方言変換、SQLCODE 対応表)。Db2 CE で全シナリオを流した結果をオラクルとして比較。
 - **完了条件**: CardDemo の口座抽出モジュール (VSAM+MQ) が合格。GenApp・Bank of Z・CardDemo の Db2 シナリオが
   PostgreSQL バックエンドでも Db2 CE と同じ結果になる。

@@ -96,6 +96,18 @@ program; in a job, `IBMZPLI` compiles SYSIN, `IEWL` binds and `EXEC PGM=`
 runs it with its DD statements. Scope and limits:
 [docs/proposal/0004-pli-compiler.md](docs/proposal/0004-pli-compiler.md).
 
+IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,
+MQOPEN, MQPUT, MQPUT1, MQGET, MQINQ, MQCMIT, MQBACK, MQCLOSE, MQDISC) on an
+IBM MQ queue manager through IBM's MQ C client library (libmqic_r, loaded at
+run time), which talks to the queue manager over TCP. Programs keep the
+z/OS view (big-endian structures with EBCDIC names, data in their code
+page; the queue manager converts messages for other platforms), and the
+COPY members CMQV, CMQODV, CMQMDV, CMQPMOV, CMQGMOV and CMQTML are supplied.
+`tools/mq.sh client` downloads the client and `tools/mq.sh start` starts a
+queue manager in a container; ZEUS_MQ names it
+(`mq://user:password@host:port/QMGR/CHANNEL`). Details:
+[docs/proposal/0005-ibm-mq.md](docs/proposal/0005-ibm-mq.md).
+
 JCL: `zjob` is the JCL interpreter (in Rust): it parses jobs, expands
 catalogued and in-stream procedures, INCLUDE groups and symbolic
 parameters, selects steps by COND and IF/THEN/ELSE/ENDIF, allocates data
@@ -113,6 +125,7 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
 | `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
 | `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
+| `crates/zeus-mq` | MQI calls of COBOL programs on IBM MQ through the IBM MQ C client library; z/OS structure conversion |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL symbolic maps |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |

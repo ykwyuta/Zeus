@@ -386,3 +386,111 @@ fn calls_between_languages() {
     );
     assert_eq!(lines(spool("RPMAIN", "SYSOUT")), ["CSUB 001 PLI", "CSUB 002 COBOL", "CSUB 003 COBOL"]);
 }
+
+const MQPROG: &str = "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MQPROG.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 QMGR            PIC X(48) VALUE SPACES.
+       01 HCONN           PIC S9(9) BINARY VALUE 0.
+       01 HOBJ            PIC S9(9) BINARY VALUE 0.
+       01 OPTIONS         PIC S9(9) BINARY.
+       01 CC              PIC S9(9) BINARY.
+       01 RC              PIC S9(9) BINARY.
+       01 BUFLEN          PIC S9(9) BINARY.
+       01 DATALEN         PIC S9(9) BINARY.
+       01 BUFFER          PIC X(100).
+       01 I               PIC 9.
+       01 N               PIC 9 VALUE 0.
+       01 OD.
+       COPY CMQODV.
+       01 MD.
+       COPY CMQMDV.
+       01 PMO.
+       COPY CMQPMOV.
+       01 GMO.
+       COPY CMQGMOV.
+       01 MQC.
+       COPY CMQV.
+       PROCEDURE DIVISION.
+           CALL 'MQCONN' USING QMGR HCONN CC RC
+           DISPLAY 'CONN ' RC
+           MOVE 'DEV.QUEUE.3' TO MQOD-OBJECTNAME
+           COMPUTE OPTIONS = MQOO-OUTPUT + MQOO-INPUT-SHARED
+           CALL 'MQOPEN' USING HCONN OD OPTIONS HOBJ CC RC
+           DISPLAY 'OPEN ' RC
+      *    EMPTY THE QUEUE
+           PERFORM GET-ONE UNTIL RC NOT = 0
+           MOVE 0 TO N
+      *    A UNIT OF WORK BACKED OUT, THEN ONE COMMITTED
+           PERFORM PUT-ONE VARYING I FROM 1 BY 1 UNTIL I > 3
+           CALL 'MQBACK' USING HCONN CC RC
+           PERFORM PUT-ONE VARYING I FROM 4 BY 1 UNTIL I > 5
+           CALL 'MQCMIT' USING HCONN CC RC
+           PERFORM GET-ONE UNTIL RC NOT = 0
+           DISPLAY 'LAST ' RC ' COUNT ' N
+           CALL 'MQCLOSE' USING HCONN HOBJ MQCO-NONE CC RC
+           CALL 'MQDISC' USING HCONN CC RC
+           DISPLAY 'DISC ' RC
+           GOBACK.
+       PUT-ONE.
+           MOVE MQMI-NONE TO MQMD-MSGID
+           MOVE MQFMT-STRING TO MQMD-FORMAT
+           MOVE SPACES TO BUFFER
+           STRING 'MESSAGE ' I DELIMITED BY SIZE INTO BUFFER
+           MOVE 9 TO BUFLEN
+           MOVE MQPMO-SYNCPOINT TO MQPMO-OPTIONS
+           CALL 'MQPUT' USING HCONN HOBJ MD PMO BUFLEN BUFFER CC RC.
+       GET-ONE.
+           MOVE MQMI-NONE TO MQMD-MSGID
+           MOVE MQCI-NONE TO MQMD-CORRELID
+           MOVE MQCCSI-Q-MGR TO MQMD-CODEDCHARSETID
+           MOVE MQENC-NATIVE TO MQMD-ENCODING
+           COMPUTE MQGMO-OPTIONS = MQGMO-NO-WAIT + MQGMO-CONVERT
+           MOVE 100 TO BUFLEN
+           CALL 'MQGET' USING HCONN HOBJ MD GMO BUFLEN BUFFER
+                              DATALEN CC RC
+           IF RC = 0
+               ADD 1 TO N
+               DISPLAY 'GOT ' BUFFER(1:DATALEN) ' ' MQMD-FORMAT
+           END-IF.
+";
+
+/// MQI calls on the queue manager of ZEUS_MQ through the IBM MQ client
+/// library (skipped without ZEUS_MQ). The queue DEV.QUEUE.3 is emptied
+/// first.
+#[test]
+fn mq_calls() {
+    if std::env::var_os("ZEUS_MQ").is_none() {
+        eprintln!("ZEUS_MQ is not set: MQ test skipped");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let mut job = String::from("//MQJOB    JOB (ACCT),'MQ'\n");
+    job.push_str(&compile_step("MQPROG", "IGYCRCTL", MQPROG));
+    job.push_str("//RUN      EXEC PGM=MQPROG\n//STEPLIB  DD DSN=ZEUS.LOADLIB,DISP=SHR\n//SYSOUT   DD SYSOUT=*\n");
+    let mut log = Vec::new();
+    let r = run_job(&mut env, &job, &mut log).unwrap();
+    let log = String::from_utf8_lossy(&log);
+    let out: String = std::fs::read_dir(dir.path().join("spool/MQJOB"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains("RUN.SYSOUT"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap_or_default())
+        .collect();
+    assert_eq!(outcomes(&r).last(), Some(&("RUN".into(), Outcome::Rc(0))), "{log}\n{out}");
+    let lines: Vec<&str> = out.lines().map(str::trim_end).collect();
+    assert_eq!(
+        lines,
+        [
+            "CONN 00000000{",
+            "OPEN 00000000{",
+            "GOT MESSAGE 4 MQSTR",
+            "GOT MESSAGE 5 MQSTR",
+            "LAST 00000203C COUNT 2",
+            "DISC 00000000{",
+        ],
+        "{out}"
+    );
+}

@@ -22,6 +22,8 @@ pub fn register(m: &mut Machine) {
     for (name, f) in ROUTINES {
         m.add_native(name, *f);
     }
+    // the MQI (IBM MQ through its C client library)
+    zeus_mq::register(m);
 }
 
 fn arg(args: &[Option<usize>], i: usize, len: usize, mem: &[u8]) -> Result<usize, String> {
