@@ -542,6 +542,12 @@ impl Parser {
                             if self.is_op("*") {
                                 self.bump();
                                 params.push(Vec::new());
+                            } else if self.eat_op("(") {
+                                // an array: passed as it is (no
+                                // conversion to a dummy)
+                                self.bounds()?;
+                                self.attributes()?;
+                                params.push(Vec::new());
                             } else {
                                 params.push(self.attributes()?);
                             }

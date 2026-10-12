@@ -620,10 +620,23 @@ impl Machine {
         cur: usize,
         args: &[CallArgMode],
     ) -> RResult<Vec<Option<usize>>> {
+        Ok(self
+            .call_args_sized(cur, args)?
+            .into_iter()
+            .map(|a| a.map(|(a, _)| a))
+            .collect())
+    }
+
+    /// Addresses and lengths of CALL arguments.
+    pub(super) fn call_args_sized(
+        &mut self,
+        cur: usize,
+        args: &[CallArgMode],
+    ) -> RResult<Vec<Option<(usize, usize)>>> {
         let mut out = Vec::new();
         for a in args {
             out.push(match a {
-                CallArgMode::Reference(loc) => Some(self.addr(cur, loc)?.0),
+                CallArgMode::Reference(loc) => Some(self.addr(cur, loc)?),
                 CallArgMode::Content(src, len) => {
                     let v = self.eval_src(cur, src)?;
                     let mut bytes = vec![ebcdic::SPACE; *len as usize];
@@ -634,13 +647,13 @@ impl Machine {
                             d::move_alnum(&b, &mut bytes, false);
                         }
                     }
-                    Some(self.alloc(&bytes))
+                    Some((self.alloc(&bytes), bytes.len()))
                 }
                 CallArgMode::Value(e) => {
                     let v = self.eval_ex(cur, e)?;
                     let mut b = [0u8; 4];
                     binary::write(&mut b, d::to_raw(v, 0, false));
-                    Some(self.alloc(&b))
+                    Some((self.alloc(&b), 4))
                 }
                 CallArgMode::Omitted => None,
             });

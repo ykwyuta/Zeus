@@ -2,12 +2,14 @@
 //!
 //! ```text
 //! zpli compile [-I dir]... [--margins m,n] [--ccsid N] [-o out.zo] source.pli
-//! zpli run [--parm text] [--dd NAME=path]... module.zo
+//! zpli run [--parm text] [--dd NAME=path]... [-L dir]... module.zo
 //! zpli source.pli            compile and run
 //! ```
 //!
 //! SYSPRINT goes to standard output and SYSIN comes from standard input
-//! unless allocated with `--dd`. Messages go to standard error. The exit
+//! unless allocated with `--dd`. External procedures of other modules
+//! (PL/I modules and COBOL programs) are looked up in the `-L`
+//! directories and the directory of the module. Messages go to standard error. The exit
 //! status is the return code (PLIRETC), or 16 after an ERROR condition.
 
 use std::collections::HashMap;
@@ -18,7 +20,7 @@ use zeus_pli::vm::{DdInfo, RunEnd, RunEnv};
 
 fn usage() -> ExitCode {
     eprintln!("usage: zpli compile [-I dir]... [--margins m,n] [--ccsid N] [-o out] source.pli");
-    eprintln!("       zpli run [--parm text] [--dd NAME=path]... module");
+    eprintln!("       zpli run [--parm text] [--dd NAME=path]... [-L dir]... module");
     eprintln!("       zpli [options] source.pli");
     ExitCode::from(2)
 }
@@ -30,6 +32,7 @@ fn main() -> ExitCode {
     let mut parm = String::new();
     let mut dds: HashMap<String, DdInfo> = HashMap::new();
     let mut files = Vec::new();
+    let mut libs: Vec<PathBuf> = Vec::new();
     let mut cmd = None;
     let mut ccsid = std::env::var("ZEUS_CCSID")
         .ok()
@@ -42,6 +45,7 @@ fn main() -> ExitCode {
                 .include_dirs
                 .push(it.next().map(PathBuf::from).unwrap_or_default()),
             "-o" => out = it.next().map(PathBuf::from),
+            "-L" => libs.push(it.next().map(PathBuf::from).unwrap_or_default()),
             "--parm" => parm = it.next().unwrap_or_default(),
             "--ccsid" => ccsid = it.next().and_then(|c| c.parse().ok()),
             "--margins" => {
@@ -104,6 +108,38 @@ fn main() -> ExitCode {
         }
         m
     };
+    if let Some(d) = file.parent() {
+        libs.push(if d.as_os_str().is_empty() { PathBuf::from(".") } else { d.to_path_buf() });
+    }
+    let sub_dds = dds.clone();
+    let cobol_dirs = libs.clone();
+    let cobol_dds = dds.clone();
+    let linker = zeus_pli::link::ModuleLinker::new(
+        libs,
+        Box::new(move || RunEnv {
+            dds: sub_dds.clone(),
+            parm: String::new(),
+            stdout: Box::new(std::io::stdout()),
+            msgout: Box::new(std::io::stderr()),
+            stdin: Some(Vec::new()),
+            stdin_reader: None,
+            linker: None,
+        }),
+        Some(Box::new(move || {
+            let mut m = zeus_cobol::vm::Machine::new(cobol_dirs.clone());
+            for (n, d) in &cobol_dds {
+                m.allocate(
+                    n,
+                    zeus_ds::dd::Allocation {
+                        path: d.path.clone(),
+                        format: d.format,
+                    },
+                );
+            }
+            m.set_stdout(Box::new(std::io::stdout()));
+            m
+        })),
+    );
     let env = RunEnv {
         dds,
         parm,
@@ -111,8 +147,11 @@ fn main() -> ExitCode {
         msgout: Box::new(std::io::stderr()),
         stdin: None,
         stdin_reader: Some(Box::new(std::io::stdin())),
+        linker: Some(linker.clone()),
     };
-    match zeus_pli::run(module, env) {
+    let end = zeus_pli::run(module, env);
+    linker.finish();
+    match end {
         RunEnd::Rc(rc) => ExitCode::from(rc.clamp(0, 255) as u8),
         RunEnd::Abend(code) => {
             eprintln!("zpli: abnormal end {code}");

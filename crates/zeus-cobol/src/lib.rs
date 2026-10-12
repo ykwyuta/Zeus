@@ -8,6 +8,7 @@ pub mod codepage;
 pub mod diag;
 pub mod ebcdic;
 pub mod front;
+pub mod interlang;
 pub mod inventory;
 pub mod sema;
 pub mod vm;

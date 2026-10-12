@@ -12,6 +12,7 @@ pub mod ast;
 pub mod builtin;
 pub mod ir;
 pub mod lexer;
+pub mod link;
 pub mod parser;
 pub mod picture;
 pub mod preproc;

@@ -60,6 +60,7 @@ z/OS 上の Enterprise PL/I で書かれたバッチプログラムを、ソー�
 | ピクチャ | 9 Z * Y V , . / B $ S + - CR DB T I R F(n)、浮動記号・ゼロ抑制、文字ピクチャ (A X 9) |
 | 組込み関数 | 算術 (ABS、MOD、REM、ROUND、TRUNC、CEIL、FLOOR、MAX、MIN、SIGN、ADD/SUBTRACT/MULTIPLY/DIVIDE、PRECISION、BINARY、DECIMAL、FIXED、FLOAT など)、数学関数、文字列 (SUBSTR、INDEX、SEARCH、VERIFY、TALLY、LENGTH、MAXLENGTH、TRIM、LEFT、RIGHT、CENTER、COPY、REPEAT、REVERSE、TRANSLATE、UPPERCASE、LOWERCASE、HIGH、LOW、COLLATE、HEX、BOOL、UNSPEC、STRING、CHAR、BIT)、配列 (DIM、LBOUND、HBOUND、SUM、PROD、ALL、ANY)、記憶域 (ADDR、NULL、SYSNULL、SIZE、CURRENTSIZE、ALLOCATION、POINTERADD)、日付 (DATE、TIME、DATETIME、DAYS、DAYSTODATE、WEEKDAY)、PLIRETC/PLIRETV |
 | プリプロセッサ | %DECLARE (FIXED・CHARACTER・BIT)、% 代入、%IF/%THEN/%ELSE、%DO (グループ・反復・WHILE/UNTIL・SKIP)、%SELECT、%LEAVE/%ITERATE、%ACTIVATE/%DEACTIVATE (RESCAN・NORESCAN)、%REPLACE、%NOTE、%INCLUDE/%XINCLUDE、プリプロセッサ手続き (引数、RETURNS、ソース中の呼出し) と主な組込み関数、置換後の再走査 |
+| 外部呼出し | 別モジュールの外部手続き (PL/I モジュールをロードライブラリから読込み、関数の戻り値、`*` の範囲・長さの記述子)、COBOL プログラムの呼出しと COBOL からの PL/I 手続きの呼出し (戻りコードは RETURN-CODE と PLIRETV で受け渡し)。引数はコピーして渡し、戻るときに書き戻す |
 | JCL | `IBMZPLI` (SYSIN のソース、SYSLIB の %INCLUDE メンバー) → `IEWL` → `EXEC PGM=` で実行。DD はファイル名 (または TITLE) で対応付け、SYSPRINT・SYSIN・SYSOUT (メッセージ)、PARM、戻りコード、U4038 |
 
 ## 5. 未対応 (今後)
@@ -67,7 +68,8 @@ z/OS 上の Enterprise PL/I で書かれたバッチプログラムを、ソー�
 - プリプロセッサ: %GO TO、キーワード引数・STATEMENT 形式の手続き呼出し、MACRO 以外のプリプロセッサ (SQL・CICS の前処理は 5 章の EXEC を参照)
 - AREA と OFFSET、iSUB 定義、構造体の途中のメンバーの REFER、CONTROLLED の引数
 - COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ (E/K)、DEFAULT 文、GENERIC、ORDINAL、HANDLE と DEFINE STRUCTURE
-- ENTRY 変数による呼出し、FETCH、別ロードモジュールの外部手続きの呼出し、COBOL との相互呼出し
+- ENTRY 変数による呼出し、FETCH/RELEASE
+- 言語間呼出しの制約: 引数はコピー渡しなので、呼ばれた側が保持したポインタは戻った後は無効。呼出し中のモジュールへの再帰的な呼出しはできない。呼ばれた PL/I モジュールは自分の SYSPRINT に書く (行の単位で呼出し側と順序を合わせる)
 - EXEC SQL / EXEC CICS / EXEC DLI、マルチスレッド (ATTACH)
 - LOCATE、REGIONAL・相対データセット
 
@@ -81,6 +83,7 @@ z/OS 上の Enterprise PL/I で書かれたバッチプログラムを、ソー�
   - ピクチャ編集 (仕様書の表の例)
   - 構造体写像 (仕様書の例)
   - 日付 (リリアン日)
+- `crates/zeus-jcl/tests/jobs.rs` (言語間呼出し): COBOL 主プログラム → PL/I 関数 → COBOL サブプログラム、PL/I 主プログラム → PL/I 関数 (STATIC の保持) と COBOL サブプログラム。値・戻りコード・出力順を確かめる。
 - `crates/zeus-jcl/tests/jobs.rs`: 次の流れのジョブで KSDS を更新し、RC 4 で終わることを確かめる。
   1. IDCAMS で KSDS を定義する。
   2. IBMZPLI でコンパイルし、IEWL でバインドする。

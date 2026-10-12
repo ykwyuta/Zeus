@@ -111,6 +111,9 @@ pub struct Machine {
     natives: HashMap<String, NativeFn>,
     /// Runs EXEC CICS / SQL / DLI statements.
     exec_host: Option<Rc<dyn exec::ExecHost>>,
+    /// Programs of other run times (PL/I).
+    linker: Option<Rc<dyn crate::interlang::Linker>>,
+    control_blocks: bool,
 }
 
 /// A program implemented by the host: it gets the storage and the
@@ -188,6 +191,8 @@ impl Machine {
             sort_records: Vec::new(),
             sort_return: None,
             return_code: 0,
+            linker: None,
+            control_blocks: false,
         }
     }
 
@@ -301,6 +306,77 @@ impl Machine {
         self.natives.insert(name.to_ascii_uppercase(), f);
     }
 
+    /// Finds the programs that are not COBOL programs of the search
+    /// directories.
+    pub fn set_linker(&mut self, l: Rc<dyn crate::interlang::Linker>) {
+        self.linker = Some(l);
+    }
+
+    /// Calls a separately compiled program from another run time: the
+    /// arguments are placed in this machine's storage for the call and
+    /// copied back.
+    pub fn call_program(
+        &mut self,
+        name: &str,
+        args: &mut [crate::interlang::XArg],
+    ) -> Result<Option<crate::interlang::XEnd>, String> {
+        if !self.control_blocks {
+            self.build_control_blocks();
+        }
+        let name = name.to_ascii_uppercase();
+        let Some(callee) = self.find_program(&name) else {
+            return Ok(None);
+        };
+        if self.instances[callee].active {
+            return Err(format!("recursive CALL of active program {name}"));
+        }
+        let addrs: Vec<Option<usize>> = args
+            .iter()
+            .map(|x| (!x.omitted).then(|| self.alloc(&x.data)))
+            .collect();
+        let ci = &mut self.instances[callee];
+        if ci.code.initial || !ci.initialized {
+            let first = !ci.initialized;
+            ci.initialized = true;
+            if !first {
+                self.reset(callee);
+            }
+        }
+        let ci = &mut self.instances[callee];
+        for (k, slot) in ci.code.using.clone().iter().enumerate() {
+            ci.linkage[*slot as usize] = addrs.get(k).copied().flatten();
+        }
+        ci.active = true;
+        ci.perform.clear();
+        self.return_code = 0;
+        let r = self.run_from(callee, true);
+        self.instances[callee].active = false;
+        for (x, a) in args.iter_mut().zip(&addrs) {
+            if let Some(a) = a {
+                let n = x.data.len();
+                x.data.copy_from_slice(&self.mem[*a..*a + n]);
+            }
+        }
+        let _ = self.stdout.flush();
+        let stop = match r {
+            Ok(Exit::Returned) => false,
+            Ok(Exit::StopRun(_)) => true,
+            Err(e) if e.0 == STOP_RUN => true,
+            Err(e) => return Err(e.0),
+        };
+        Ok(Some(crate::interlang::XEnd {
+            rc: self.return_code,
+            ret: None,
+            stop,
+        }))
+    }
+
+    /// Closes the files of all programs (the end of the run unit).
+    pub fn finish(&mut self) {
+        self.close_all();
+        let _ = self.stdout.flush();
+    }
+
     /// Sets the job step identification shown to programs (TIOT).
     pub fn set_step(&mut self, step: StepInfo) {
         self.step = step;
@@ -364,6 +440,7 @@ impl Machine {
 
     pub fn run_main(&mut self, module: Module) -> RResult<i32> {
         self.build_control_blocks();
+        self.control_blocks = true;
         let module = Rc::new(module);
         let main = self.instantiate(&module, 0);
         // PARM: the first USING parameter of the main program
@@ -454,6 +531,32 @@ impl Machine {
                 self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
                 self.store_rc(cur);
                 return Ok(None);
+            }
+            if let Some(l) = self.linker.clone() {
+                let sized = self.call_args_sized(cur, args)?;
+                let mut xs: Vec<crate::interlang::XArg> = sized
+                    .iter()
+                    .map(|s| match s {
+                        Some((a, n)) => crate::interlang::XArg::bytes(self.mem[*a..*a + *n].to_vec()),
+                        None => crate::interlang::XArg::omitted(),
+                    })
+                    .collect();
+                if let Some(r) = l.call(&name, &mut xs) {
+                    let _ = self.stdout.flush();
+                    let end = r.map_err(RunError)?;
+                    for (s, x) in sized.iter().zip(&xs) {
+                        if let Some((a, n)) = s {
+                            let k = (*n).min(x.data.len());
+                            self.mem[*a..*a + k].copy_from_slice(&x.data[..k]);
+                        }
+                    }
+                    self.return_code = end.rc;
+                    self.store_rc(cur);
+                    if end.stop {
+                        return err(STOP_RUN);
+                    }
+                    return Ok(None);
+                }
             }
             if !handled {
                 return err(format!("program {name} not found"));

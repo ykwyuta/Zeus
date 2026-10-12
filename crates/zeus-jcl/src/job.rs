@@ -214,16 +214,16 @@ impl StepCtx<'_> {
     /// Appends to the spool file of a SYSOUT DD (or of the job log when
     /// the DD is not allocated).
     pub fn sysout(&self, name: &str) -> Result<std::fs::File, String> {
-        let path = match self.dd(name) {
+        open_append(&self.sysout_path(name))
+    }
+
+    /// The spool file of a SYSOUT DD (or of an unallocated one).
+    pub fn sysout_path(&self, name: &str) -> PathBuf {
+        match self.dd(name) {
             Some(d) if matches!(d.kind, DdKind::Sysout) => d.path.clone(),
             Some(d) if matches!(d.kind, DdKind::Dummy) => PathBuf::from("/dev/null"),
             _ => self.spool_prefix.with_extension(name),
-        };
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| format!("{}: {e}", path.display()))
+        }
     }
 
     /// Gives a data set created by this step without DCB attributes the
@@ -685,11 +685,66 @@ impl Runner<'_> {
 
 /// Runs a PL/I program compiled by zpli (or IBMZPLI in a job): its DD
 /// allocations, PARM, SYSPRINT and SYSIN; messages go to SYSOUT.
-fn run_pli(ctx: &mut StepCtx, module: zeus_pli::ir::Module) -> ProgramResult {
-    use zeus_pli::vm::{DdInfo, RunEnd, RunEnv};
+/// The COBOL run time of a step: DDs, step identification, SYSOUT,
+/// SYSIN, native programs and the Db2 connection.
+fn cobol_factory(
+    ctx: &StepCtx,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+    db2: Option<std::rc::Rc<zeus_db2::Db2Host>>,
+) -> zeus_pli::link::CobolFactory {
+    let libs = libs.to_vec();
+    let mut allocs = Vec::new();
+    let mut tiot = Vec::new();
+    for dd in &ctx.dds {
+        allocs.push((
+            dd.name.clone(),
+            Allocation {
+                path: dd.path.clone(),
+                format: dd.format,
+            },
+        ));
+        tiot.push((dd.name.clone(), !matches!(dd.kind, DdKind::Dummy)));
+    }
+    let info = zeus_cobol::vm::StepInfo {
+        job: job.to_string(),
+        step: step.name.clone(),
+        proc_step: step.proc_step.clone().unwrap_or_default(),
+        dds: Some(tiot),
+        parm: ctx.parm.clone(),
+    };
+    let sysout = ctx.sysout_path("SYSOUT");
+    let stdin = ctx
+        .dd("SYSIN")
+        .is_some()
+        .then(|| ctx.read_text("SYSIN").unwrap_or_default());
+    Box::new(move || {
+        let mut m = zeus_cobol::vm::Machine::new(libs.clone());
+        crate::native::register(&mut m);
+        if let Some(h) = &db2 {
+            m.set_exec_host(h.clone());
+        }
+        for (n, a) in &allocs {
+            m.allocate(n, a.clone());
+        }
+        m.set_step(info.clone());
+        if let Ok(out) = open_append(&sysout) {
+            m.set_stdout(Box::new(out));
+        }
+        if let Some(lines) = &stdin {
+            m.set_stdin(lines.clone());
+        }
+        m
+    })
+}
+
+/// The PL/I run-time environment of a step; the in-stream data sets
+/// written to temporary files are added to `temps`.
+fn pli_env(ctx: &StepCtx, temps: &mut Vec<PathBuf>) -> zeus_pli::link::EnvFactory {
+    use zeus_pli::vm::{DdInfo, RunEnv};
     let mut dds = std::collections::HashMap::new();
     let mut stdin = None;
-    let mut temps = Vec::new();
     for dd in &ctx.dds {
         let info = match &dd.kind {
             DdKind::Dummy => DdInfo {
@@ -745,23 +800,53 @@ fn run_pli(ctx: &mut StepCtx, module: zeus_pli::ir::Module) -> ProgramResult {
         };
         dds.insert(dd.name.clone(), info);
     }
-    let stdout: Box<dyn std::io::Write> = match ctx.sysout("SYSPRINT") {
-        Ok(f) => Box::new(f),
-        Err(_) => Box::new(std::io::sink()),
-    };
-    let msgout: Box<dyn std::io::Write> = match ctx.sysout("SYSOUT") {
-        Ok(f) => Box::new(f),
-        Err(_) => Box::new(std::io::sink()),
-    };
-    let env = RunEnv {
-        dds,
-        parm: ctx.parm.clone(),
-        stdout,
-        msgout,
-        stdin,
-        stdin_reader: None,
-    };
+    let sysprint = ctx.sysout_path("SYSPRINT");
+    let sysout = ctx.sysout_path("SYSOUT");
+    let parm = ctx.parm.clone();
+    // SYSIN goes to the first module that reads it
+    let stdin = std::cell::RefCell::new(stdin);
+    Box::new(move || {
+        let w = |p: &PathBuf| -> Box<dyn std::io::Write> {
+            match open_append(p) {
+                Ok(f) => Box::new(f),
+                Err(_) => Box::new(std::io::sink()),
+            }
+        };
+        RunEnv {
+            dds: dds.clone(),
+            parm: parm.clone(),
+            stdout: w(&sysprint),
+            msgout: w(&sysout),
+            stdin: stdin.borrow_mut().take(),
+            stdin_reader: None,
+            linker: None,
+        }
+    })
+}
+
+fn run_pli(
+    ctx: &mut StepCtx,
+    module: zeus_pli::ir::Module,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+) -> ProgramResult {
+    use zeus_pli::vm::RunEnd;
+    let mut temps = Vec::new();
+    let env = pli_env(ctx, &mut temps);
+    let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
+    let linker = zeus_pli::link::ModuleLinker::new(
+        libs.to_vec(),
+        pli_env(ctx, &mut temps),
+        Some(cobol_factory(ctx, libs, job, step, db2.clone())),
+    );
+    let mut env = env();
+    env.linker = Some(linker.clone());
     let end = zeus_pli::run(module, env);
+    linker.finish();
+    if let Some(h) = &db2 {
+        let _ = h.end_uow(matches!(end, RunEnd::Rc(_)));
+    }
     for t in temps {
         let _ = std::fs::remove_file(t);
     }
@@ -790,41 +875,25 @@ pub(crate) fn run_cobol(
     {
         let module =
             zeus_pli::load_module_bytes(&data).map_err(|_| Outcome::Abend("S806".into()))?;
-        return run_pli(ctx, module);
+        return run_pli(ctx, module, libs, job, step);
     }
     let module = zeus_cobol::load_module(&path).map_err(|_| Outcome::Abend("S806".into()))?;
-    let mut m = zeus_cobol::vm::Machine::new(libs.to_vec());
-    crate::native::register(&mut m);
     // embedded SQL runs on the Db2 server named by ZEUS_DB2
     let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
-    if let Some(h) = &db2 {
-        m.set_exec_host(h.clone());
-    }
-    let mut tiot = Vec::new();
-    for dd in &ctx.dds {
-        m.allocate(
-            &dd.name,
-            Allocation {
-                path: dd.path.clone(),
-                format: dd.format,
-            },
-        );
-        tiot.push((dd.name.clone(), !matches!(dd.kind, DdKind::Dummy)));
-    }
-    m.set_step(zeus_cobol::vm::StepInfo {
-        job: job.to_string(),
-        step: step.name.clone(),
-        proc_step: step.proc_step.clone().unwrap_or_default(),
-        dds: Some(tiot),
-        parm: ctx.parm.clone(),
-    });
-    if let Ok(out) = ctx.sysout("SYSOUT") {
-        m.set_stdout(Box::new(out));
-    }
-    if ctx.dd("SYSIN").is_some() {
-        m.set_stdin(ctx.read_text("SYSIN").unwrap_or_default());
-    }
+    let mut m = cobol_factory(ctx, libs, job, step, db2.clone())();
+    // PL/I procedures (and COBOL programs they call)
+    let mut temps = Vec::new();
+    let linker = zeus_pli::link::ModuleLinker::new(
+        libs.to_vec(),
+        pli_env(ctx, &mut temps),
+        Some(cobol_factory(ctx, libs, job, step, db2.clone())),
+    );
+    m.set_linker(linker.clone());
     let r = m.run_main(module);
+    linker.finish();
+    for t in temps {
+        let _ = std::fs::remove_file(t);
+    }
     // the unit of work ends with the step: committed, or backed out when
     // the program failed
     if let Some(h) = &db2 {
@@ -1071,4 +1140,13 @@ pub fn param_str<'a>(params: &'a [Param], key: &str) -> Option<&'a str> {
 /// Host path helper used by tests and tools.
 pub fn spool_dir(env: &Env, job: &str) -> PathBuf {
     Path::new(&env.spool).join(job)
+}
+
+/// Opens a spool file for appending.
+fn open_append(path: &std::path::Path) -> Result<std::fs::File, String> {
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))
 }

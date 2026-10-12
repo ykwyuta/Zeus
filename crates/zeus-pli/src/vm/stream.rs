@@ -53,6 +53,9 @@ pub struct FileState {
     pub last_key: Vec<u8>,
     pub last_read: Option<usize>,
     pub dirty: bool,
+    /// The current line was written out early (at the return of a call
+    /// from another module); the next line end writes nothing.
+    pub held: bool,
 }
 
 impl FileState {
@@ -70,6 +73,7 @@ impl FileState {
             sink: None,
             line: Vec::new(),
             fresh: true,
+            held: false,
             lineno: 1,
             pageno: 1,
             linesize: 120,
@@ -287,6 +291,18 @@ impl Machine {
         Ok(())
     }
 
+    /// Writes out the current lines of the stream output files (their
+    /// output then precedes that of the caller of another module).
+    pub(crate) fn complete_lines(&mut self) {
+        for f in 0..self.files.len() {
+            let st = &self.files[f];
+            if st.open && st.stream && !st.line.is_empty() {
+                let _ = self.flush_line(f as FileId, false);
+                self.files[f].held = true;
+            }
+        }
+    }
+
     pub(crate) fn close_all(&mut self) {
         for f in 0..self.files.len() {
             let _ = self.close(f as FileId);
@@ -298,6 +314,9 @@ impl Machine {
     /// Writes out the current line.
     fn flush_line(&mut self, f: FileId, at_close: bool) -> R<()> {
         let st = &mut self.files[f as usize];
+        if std::mem::take(&mut st.held) && st.line.is_empty() {
+            return Ok(());
+        }
         if at_close && st.line.is_empty() {
             return Ok(());
         }

@@ -45,6 +45,7 @@ fn run(name: &str, dds: HashMap<String, DdInfo>, stdin: &str) -> (String, String
         msgout: Box::new(msg.clone()),
         stdin: Some(stdin.lines().map(str::to_string).collect()),
         stdin_reader: None,
+        linker: None,
     };
     let end = zeus_pli::run(module, env);
     let o = String::from_utf8(out.0.borrow().clone()).unwrap();

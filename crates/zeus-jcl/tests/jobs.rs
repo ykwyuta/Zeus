@@ -274,3 +274,115 @@ fn pli_compile_and_run() {
         "{out}"
     );
 }
+
+/// Compiles `src` with `compiler` and binds it as `name`.
+fn compile_step(name: &str, compiler: &str, src: &str) -> String {
+    format!(
+        "//C{name:<7} EXEC PGM={compiler}\n//SYSPRINT DD SYSOUT=*\n//SYSLIN   DD DSN=&&O{name},DISP=(MOD,PASS)\n//SYSIN    DD *\n{src}/*\n//L{name:<7} EXEC PGM=IEWL\n//SYSLIN   DD DSN=&&O{name},DISP=(OLD,DELETE)\n//SYSLMOD  DD DSN=ZEUS.LOADLIB({name}),DISP=SHR\n"
+    )
+}
+
+const CSUB: &str = "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. CSUB.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 CNT PIC 9(3) VALUE 0.
+       LINKAGE SECTION.
+       01 N PIC S9(9) COMP.
+       01 T PIC X(10).
+       PROCEDURE DIVISION USING N T.
+           ADD 1 TO CNT.
+           ADD 100 TO N.
+           DISPLAY 'CSUB ' CNT ' ' T.
+           MOVE 'COBOL' TO T.
+           MOVE 3 TO RETURN-CODE.
+           GOBACK.
+";
+
+const PSUB: &str = " PSUB: PROC(N, T) RETURNS(FIXED BIN(31));
+   DCL N FIXED BIN(31), T CHAR(10);
+   DCL CSUB ENTRY OPTIONS(COBOL);
+   DCL CALLS FIXED BIN(31) STATIC INIT(0);
+   CALLS = CALLS + 1;
+   PUT SKIP LIST('PSUB', N, T);
+   N = N * 3;
+   CALL CSUB(N, T);
+   CALL PLIRETC(2);
+   RETURN(CALLS);
+ END PSUB;
+";
+
+const CMAIN: &str = "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. CMAIN.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 N PIC S9(9) COMP VALUE 7.
+       01 T PIC X(10) VALUE 'HELLO'.
+       PROCEDURE DIVISION.
+           CALL 'PSUB' USING N T.
+           DISPLAY 'BACK ' N ' ' T ' RC ' RETURN-CODE.
+           GOBACK.
+";
+
+const PMAIN: &str = " PMAIN: PROC OPTIONS(MAIN);
+   DCL PSUB ENTRY(FIXED BIN(31), CHAR(10)) RETURNS(FIXED BIN(31));
+   DCL CSUB ENTRY OPTIONS(COBOL);
+   DCL N FIXED BIN(31) INIT(1);
+   DCL T CHAR(10) INIT('PLI');
+   DCL K FIXED BIN(31);
+   K = PSUB(N, T);
+   K = PSUB(N, T);
+   PUT SKIP LIST(N, T, K);
+   CALL CSUB(N, T);
+   PUT SKIP LIST(N, T, PLIRETV());
+   CALL PLIRETC(0);
+ END PMAIN;
+";
+
+#[test]
+fn calls_between_languages() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let mut job = String::from("//MIXJOB   JOB (ACCT),'MIXED'\n");
+    for (n, c, s) in [
+        ("CSUB", "IGYCRCTL", CSUB),
+        ("PSUB", "IBMZPLI", PSUB),
+        ("CMAIN", "IGYCRCTL", CMAIN),
+        ("PMAIN", "IBMZPLI", PMAIN),
+    ] {
+        job.push_str(&compile_step(n, c, s));
+    }
+    for p in ["CMAIN", "PMAIN"] {
+        job.push_str(&format!(
+            "//R{p:<7} EXEC PGM={p}\n//STEPLIB  DD DSN=ZEUS.LOADLIB,DISP=SHR\n//SYSPRINT DD SYSOUT=*\n//SYSOUT   DD SYSOUT=*\n"
+        ));
+    }
+    let mut log = Vec::new();
+    let r = run_job(&mut env, &job, &mut log).unwrap();
+    let log = String::from_utf8_lossy(&log);
+    let spool = |step: &str, dd: &str| {
+        std::fs::read_dir(dir.path().join("spool/MIXJOB"))
+            .unwrap()
+            .flatten()
+            .filter(|e| e.file_name().to_string_lossy().contains(&format!("{step}.{dd}")))
+            .map(|e| std::fs::read_to_string(e.path()).unwrap_or_default())
+            .collect::<String>()
+    };
+    let rcs: Vec<(String, Outcome)> = outcomes(&r).into_iter().filter(|(n, _)| n.starts_with('R')).collect();
+    assert_eq!(
+        rcs,
+        [("RCMAIN".into(), Outcome::Rc(2)), ("RPMAIN".into(), Outcome::Rc(0))],
+        "{log}"
+    );
+    let lines = |s: String| s.lines().map(|l| l.split_whitespace().collect::<Vec<_>>().join(" ")).collect::<Vec<_>>();
+    assert_eq!(lines(spool("RCMAIN", "SYSPRINT")), ["PSUB 7 HELLO"]);
+    assert_eq!(
+        lines(spool("RCMAIN", "SYSOUT")),
+        ["CSUB 001 HELLO", "BACK 00000012A COBOL RC 000B"]
+    );
+    assert_eq!(
+        lines(spool("RPMAIN", "SYSPRINT")),
+        ["PSUB 1 PLI", "PSUB 103 COBOL", "409 COBOL 2", "509 COBOL 3"]
+    );
+    assert_eq!(lines(spool("RPMAIN", "SYSOUT")), ["CSUB 001 PLI", "CSUB 002 COBOL", "CSUB 003 COBOL"]);
+}

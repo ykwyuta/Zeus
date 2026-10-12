@@ -16,6 +16,7 @@ use crate::ir::*;
 use crate::types::{Ext, Ty, Var as Varying};
 pub use value::Value;
 use value::{NULL, SPACE};
+use zeus_cobol::interlang::{ABEND, Linker, XArg, XEnd};
 
 /// Base address of static storage; addresses below are invalid.
 const STATIC_BASE: u32 = 0x1000;
@@ -46,6 +47,8 @@ pub struct RunEnv {
     pub stdin: Option<Vec<String>>,
     /// Read for SYSIN when `stdin` is None and SYSIN is not allocated.
     pub stdin_reader: Option<Box<dyn std::io::Read>>,
+    /// Finds external procedures of other modules (PL/I or COBOL).
+    pub linker: Option<Rc<dyn Linker>>,
 }
 
 /// How a run ended.
@@ -119,6 +122,8 @@ pub struct Loc {
 }
 
 pub struct Machine {
+    /// Static storage initialised (by `run` or the first `call_entry`).
+    started: bool,
     module: Rc<Module>,
     low: Vec<u8>,
     stack: Vec<u8>,
@@ -140,6 +145,7 @@ impl Machine {
         low[STATIC_BASE as usize..].copy_from_slice(&module.static_init);
         let files = module.files.iter().map(stream::FileState::new).collect();
         Machine {
+            started: false,
             module: Rc::new(module),
             low,
             stack: Vec::new(),
@@ -1086,7 +1092,7 @@ impl Machine {
                 }
             }
             Stmt::Call(callee, args) => {
-                self.call(callee, args, act)?;
+                self.call(callee, args, act, None)?;
                 Ok(())
             }
             Stmt::CallBuiltin(b, args) => self.call_builtin(*b, args, act),
@@ -1480,11 +1486,11 @@ impl Machine {
     // ---- calls -----------------------------------------------------------
 
     /// Binds arguments and runs a procedure; its value (functions).
-    fn call(&mut self, callee: &Callee, args: &[Arg], act: usize) -> R<Option<Value>> {
+    fn call(&mut self, callee: &Callee, args: &[Arg], act: usize, rt: Option<&Ty>) -> R<Option<Value>> {
         let (pid, entry) = match callee {
             Callee::Proc(p) => (*p, None),
             Callee::Entry(p, k) => (*p, Some(*k)),
-            Callee::External(name) => return self.call_external(name, args, act),
+            Callee::External(name) => return self.call_external(name, args, act, rt),
             Callee::Var(e) => match self.eval(e, act)? {
                 Value::Entry(p, _) => (p, None),
                 _ => return err("call of a non-entry value"),
@@ -1628,9 +1634,276 @@ impl Machine {
 
     /// CALL of an external entry: a procedure of another module in the
     /// load libraries.
-    fn call_external(&mut self, name: &str, args: &[Arg], act: usize) -> R<Option<Value>> {
-        let _ = (args, act);
-        err(format!("external procedure {name} not found"))
+    /// Calls a procedure of another module through the linker: the
+    /// arguments are copied out and, for references, back.
+    fn call_external(&mut self, name: &str, args: &[Arg], act: usize, rt: Option<&Ty>) -> R<Option<Value>> {
+        let Some(linker) = self.env.linker.clone() else {
+            return err(format!("external procedure {name} not found"));
+        };
+        let mut xs = Vec::new();
+        let mut back = Vec::new();
+        for a in args {
+            match a {
+                Arg::Omitted => {
+                    xs.push(XArg::omitted());
+                    back.push(None);
+                }
+                Arg::Ref(r) => {
+                    let (bit, dims) = self.element_or_start(r, act)?;
+                    let data = self.aggregate_bytes(r, act)?;
+                    let rb = self.refer_base_for_len(r, act)?;
+                    let var = &self.module.vars[r.var as usize];
+                    let ty = self.resolve_ty(var.ty.as_ref(), r.var, act, rb)?;
+                    let free = r
+                        .subs
+                        .iter()
+                        .enumerate()
+                        .filter(|(_, s)| s.is_none())
+                        .map(|(k, _)| (dims[k].0, dims[k].1))
+                        .collect();
+                    let len = match ty.as_ref().and_then(Ty::str_len) {
+                        Some(Ext::Const(n)) => Some(n),
+                        _ => None,
+                    };
+                    xs.push(XArg {
+                        data,
+                        omitted: false,
+                        dims: free,
+                        len,
+                    });
+                    back.push(Some((bit / 8) as u32));
+                }
+                Arg::Dummy(e) => {
+                    let v = self.eval(e, act)?;
+                    let ty = match (&e.ty, &v) {
+                        (t, Value::Char(c)) if !matches!(t.str_len(), Some(Ext::Const(_))) => t.with_len(Ext::Const(c.len() as u32)),
+                        (t, _) => t.clone(),
+                    };
+                    let (n, _) = ty.storage(true);
+                    let tmp = self.heap_alloc(n);
+                    self.store(
+                        &Loc {
+                            bit: u64::from(tmp) * 8,
+                            ty: ty.clone(),
+                        },
+                        &v,
+                    )?;
+                    let len = match ty.str_len() {
+                        Some(Ext::Const(n)) => Some(n),
+                        _ => None,
+                    };
+                    xs.push(XArg {
+                        data: self.read(tmp, n as usize)?,
+                        omitted: false,
+                        dims: Vec::new(),
+                        len,
+                    });
+                    back.push(None);
+                }
+            }
+        }
+        // the callee may be another PL/I machine on this thread
+        let (enabled, line) = (CUR_ENABLED.with(|c| c.get()), CUR_LINE.with(|c| c.get()));
+        let _ = self.env.stdout.flush();
+        let r = linker.call(name, &mut xs);
+        CUR_ENABLED.with(|c| c.set(enabled));
+        CUR_LINE.with(|c| c.set(line));
+        let Some(r) = r else {
+            return err(format!("external procedure {name} not found"));
+        };
+        let end = match r {
+            Ok(e) => e,
+            Err(m) if m.starts_with(ABEND) => return Err(Intr::Terminate),
+            Err(m) => return err(m),
+        };
+        for (x, b) in xs.iter().zip(back) {
+            if let Some(a) = b {
+                self.write(a, &x.data)?;
+            }
+        }
+        self.rc = end.rc;
+        if end.stop {
+            return Err(Intr::Stop);
+        }
+        match (rt, end.ret) {
+            (Some(t), Some(bytes)) => {
+                let t = match t.str_len() {
+                    Some(Ext::Const(_)) | None => t.clone(),
+                    _ => {
+                        let n = bytes.len() as u32;
+                        t.with_len(Ext::Const(if t.varying() == crate::types::Var::Varying { n.saturating_sub(2) } else { n }))
+                    }
+                };
+                let tmp = self.heap_alloc(bytes.len() as u32);
+                self.write(tmp, &bytes)?;
+                Ok(Some(self.load(&Loc {
+                    bit: u64::from(tmp) * 8,
+                    ty: t,
+                })?))
+            }
+            (Some(_), None) => err(format!("{name} returned no value")),
+            _ => Ok(None),
+        }
+    }
+
+    /// Whether this module has external procedure (or entry) `name`.
+    pub fn has_entry(&self, name: &str) -> bool {
+        self.module
+            .procs
+            .iter()
+            .any(|p| p.external && (p.name == name || p.entries.iter().any(|e| e.0 == name)))
+    }
+
+    /// Runs external procedure (or entry) `name` of this module for a
+    /// caller of another module. None: no such entry.
+    pub fn call_entry(&mut self, name: &str, args: &mut [XArg]) -> Result<Option<XEnd>, String> {
+        let m = self.module.clone();
+        let name = name.to_ascii_uppercase();
+        let found = m.procs.iter().enumerate().find_map(|(i, p)| {
+            if !p.external {
+                return None;
+            }
+            if p.name == name {
+                return Some((i, p.params.clone(), 0));
+            }
+            p.entries
+                .iter()
+                .find(|e| e.0 == name)
+                .map(|e| (i, e.1.clone(), e.2))
+        });
+        let Some((pid, params, start)) = found else {
+            return Ok(None);
+        };
+        if !self.started {
+            self.started = true;
+            if let Err(e) = self.static_init() {
+                return Err(self.report(e));
+            }
+        }
+        let proc = &m.procs[pid];
+        let nparams = m
+            .vars
+            .iter()
+            .filter(|v| v.block == proc.block && matches!(v.storage, Storage::Param(_)))
+            .count()
+            .max(params.len());
+        let mut bindings: Vec<Option<Binding>> = vec![None; nparams];
+        let mut addrs = Vec::new();
+        for (i, x) in args.iter().enumerate() {
+            let Some(&pv) = params.get(i) else { break };
+            let Storage::Param(k) = m.vars[pv as usize].storage else {
+                continue;
+            };
+            if x.omitted {
+                addrs.push(None);
+                continue;
+            }
+            let addr = self.heap_alloc(x.data.len() as u32);
+            self.write(addr, &x.data).map_err(|e| self.report(e))?;
+            addrs.push(Some(addr));
+            let var = &m.vars[pv as usize];
+            let star = var.dims.iter().any(|d| d.lb == Bound::Star || d.ub == Bound::Star);
+            let dims = if star && !x.dims.is_empty() {
+                let elem = match &var.ty {
+                    Some(t) => u64::from(t.with_len(Ext::Const(x.len.unwrap_or(0))).storage(true).0) * 8,
+                    None => u64::from(var.size) * 8,
+                };
+                let mut strides = vec![0u64; x.dims.len()];
+                let mut s = elem;
+                for k in (0..x.dims.len()).rev() {
+                    strides[k] = s;
+                    s *= (x.dims[k].1 - x.dims[k].0 + 1).max(0) as u64;
+                }
+                x.dims.iter().zip(strides).map(|(&(l, u), s)| (l, u, s)).collect()
+            } else {
+                Vec::new()
+            };
+            let len = match var.ty.as_ref().and_then(Ty::str_len) {
+                Some(Ext::Star) => Some(x.len.unwrap_or_else(|| match var.ty.as_ref().map(Ty::varying) {
+                    Some(crate::types::Var::Varying) => (x.data.len() as u32).saturating_sub(2),
+                    _ => x.data.len() as u32,
+                })),
+                Some(Ext::Const(n)) => Some(n),
+                _ => None,
+            };
+            if (k as usize) < bindings.len() {
+                bindings[k as usize] = Some(Binding {
+                    bit: u64::from(addr) * 8,
+                    dims,
+                    len,
+                });
+            }
+        }
+        let saved = (CUR_ENABLED.with(|c| c.get()), CUR_LINE.with(|c| c.get()));
+        CUR_ENABLED.with(|c| c.set(cond::DEFAULT));
+        let r = (|| -> R<Option<Value>> {
+            let a = self.activate(proc.block, None, bindings, proc.returns.clone())?;
+            let body = &m.blocks[proc.block as usize].body;
+            let r = if start > 0 {
+                let tail = List {
+                    id: body.id,
+                    stmts: body.stmts[start..].to_vec(),
+                };
+                self.run_list(&tail, a)
+            } else {
+                self.run_list(body, a)
+            };
+            self.deactivate(a);
+            match r {
+                Ok(()) => Ok(None),
+                Err(Intr::Return(v)) => Ok(v),
+                Err(e) => Err(e),
+            }
+        })();
+        CUR_ENABLED.with(|c| c.set(saved.0));
+        CUR_LINE.with(|c| c.set(saved.1));
+        self.complete_lines();
+        let _ = self.env.stdout.flush();
+        for (x, a) in args.iter_mut().filter(|x| !x.omitted).zip(addrs.iter().flatten()) {
+            if let Ok(b) = self.read(*a, x.data.len()) {
+                x.data = b;
+            }
+        }
+        let (v, stop) = match r {
+            Ok(v) => (v, false),
+            Err(Intr::Stop) => (None, true),
+            Err(e) => return Err(self.report(e)),
+        };
+        let ret = match (v, &proc.returns) {
+            (Some(v), Some(t)) => {
+                let t = match (&v, t.str_len()) {
+                    (Value::Char(c), Some(e)) if !matches!(e, Ext::Const(_)) => t.with_len(Ext::Const(c.len() as u32)),
+                    _ => t.clone(),
+                };
+                let (n, _) = t.storage(true);
+                let tmp = self.heap_alloc(n);
+                let loc = Loc {
+                    bit: u64::from(tmp) * 8,
+                    ty: t,
+                };
+                self.store(&loc, &v).map_err(|e| self.report(e))?;
+                Some(self.read(tmp, n as usize).map_err(|e| self.report(e))?)
+            }
+            _ => None,
+        };
+        Ok(Some(XEnd { rc: self.rc, ret, stop }))
+    }
+
+    /// The error of a call from another module: the message and the
+    /// abend.
+    fn report(&mut self, e: Intr) -> String {
+        if let Intr::Fatal(m) = &e {
+            let _ = writeln!(self.env.msgout, "ZEUS PL/I: {m} (line {})", CUR_LINE.with(|l| l.get()));
+        }
+        let _ = self.env.msgout.flush();
+        format!("{ABEND}U4038")
+    }
+
+    /// Ends a module used through `call_entry`: closes its files.
+    pub fn finish(&mut self) {
+        self.close_all();
+        let _ = self.env.stdout.flush();
+        let _ = self.env.msgout.flush();
     }
 
     fn call_builtin(&mut self, b: crate::builtin::Bif, args: &[Expr], act: usize) -> R<()> {
@@ -1887,6 +2160,7 @@ impl Machine {
             return RunEnd::Abend("U4038".into());
         };
         // static INITIAL values
+        self.started = true;
         if let Err(e) = self.static_init() {
             return self.end(Err(e));
         }
@@ -2142,7 +2416,7 @@ impl Machine {
                 v => return err(format!("¬ of {v:?}")),
             },
             Ek::Call(callee, args) => self
-                .call(callee, args, act)?
+                .call(callee, args, act, Some(&e.ty))?
                 .ok_or_else(|| Intr::Fatal("function returned no value".into()))?,
             Ek::Builtin(b, args) => self.builtin(*b, args, &e.ty, act)?,
             Ek::RefBuiltin(b, r, args) => self.ref_builtin(*b, r, args, &e.ty, act)?,
