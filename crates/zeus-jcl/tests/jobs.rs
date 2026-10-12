@@ -516,6 +516,182 @@ fn mq_calls() {
     );
 }
 
+/// The MQI from PL/I: the include members CMQP, CMQEPP and the
+/// structures, on DEV.QUEUE.1.
+const MQPLI: &str = " MQPLI: PROC OPTIONS(MAIN);
+   %INCLUDE CMQP;
+   %INCLUDE CMQEPP;
+   %INCLUDE CMQODP;
+   %INCLUDE CMQMDP;
+   %INCLUDE CMQPMOP;
+   %INCLUDE CMQGMOP;
+   %INCLUDE CMQCBDP;
+   %INCLUDE CMQCTLOP;
+   DCL QMGR CHAR(48) INIT('');
+   DCL (HCONN, HOBJ, OPTS, CC, RC, BUFLEN, DATALEN) FIXED BIN(31);
+   DCL CLOSEOPTS FIXED BIN(31) INIT(MQCO_NONE);
+   DCL BUFFER CHAR(100);
+   DCL (I, N) FIXED BIN(31) INIT(0);
+   DCL SELS(1) FIXED BIN(31) INIT(MQIA_CURRENT_Q_DEPTH);
+   DCL INTS(1) FIXED BIN(31);
+   DCL (ONE, ZERO) FIXED BIN(31);
+   DCL CHARS CHAR(1);
+
+   HCONN = 0;
+   CALL MQCONN(QMGR, HCONN, CC, RC);
+   PUT SKIP LIST('CONN', RC);
+   MQOD.OBJECTNAME = 'DEV.QUEUE.1';
+   OPTS = MQOO_OUTPUT + MQOO_INPUT_SHARED + MQOO_INQUIRE;
+   CALL MQOPEN(HCONN, MQOD, OPTS, HOBJ, CC, RC);
+   PUT SKIP LIST('OPEN', RC);
+   /* empty the queue */
+   CALL GETONE;
+   DO WHILE (RC = 0);
+     CALL GETONE;
+   END;
+   N = 0;
+   DO I = 1 TO 3;
+     MQMD.MSGID = MQMI_NONE;
+     MQMD.FORMAT = MQFMT_STRING;
+     BUFFER = 'PLI MESSAGE ' || CHAR(I);
+     BUFLEN = LENGTH(TRIM(BUFFER));
+     MQPMO.OPTIONS = MQPMO_SYNCPOINT;
+     CALL MQPUT(HCONN, HOBJ, MQMD, MQPMO, BUFLEN, BUFFER, CC, RC);
+   END;
+   CALL MQCMIT(HCONN, CC, RC);
+   ONE = 1;
+   ZERO = 0;
+   CALL MQINQ(HCONN, HOBJ, ONE, SELS, ONE, INTS, ZERO, CHARS, CC, RC);
+   PUT SKIP LIST('DEPTH', INTS(1), RC);
+   CALL GETONE;
+   DO WHILE (RC = 0);
+     PUT SKIP LIST(SUBSTR(BUFFER, 1, DATALEN), MQMD.FORMAT);
+     N = N + 1;
+     CALL GETONE;
+   END;
+   PUT SKIP LIST('LAST', RC, 'COUNT', N);
+   /* a message consumer: the PL/I procedure MQPLICB */
+   DO I = 1 TO 2;
+     MQMD.MSGID = MQMI_NONE;
+     MQMD.FORMAT = MQFMT_STRING;
+     BUFFER = 'ASYNC ' || TRIM(CHAR(I));
+     BUFLEN = LENGTH(TRIM(BUFFER));
+     MQPMO.OPTIONS = MQPMO_NO_SYNCPOINT;
+     CALL MQPUT(HCONN, HOBJ, MQMD, MQPMO, BUFLEN, BUFFER, CC, RC);
+   END;
+   MQCBD.CALLBACKNAME = 'MQPLICB';
+   MQCBD.OPTIONS = MQCBDO_STOP_CALL;
+   MQMD.MSGID = MQMI_NONE;
+   MQMD.CORRELID = MQCI_NONE;
+   MQGMO.OPTIONS = MQGMO_WAIT + MQGMO_CONVERT;
+   MQGMO.WAITINTERVAL = 3000;
+   OPTS = MQOP_REGISTER;
+   CALL MQCB(HCONN, OPTS, MQCBD, HOBJ, MQMD, MQGMO, CC, RC);
+   PUT SKIP LIST('CB', RC);
+   OPTS = MQOP_START_WAIT;
+   CALL MQCTL(HCONN, OPTS, MQCTLO, CC, RC);
+   PUT SKIP LIST('CTL', RC);
+   CALL MQCLOSE(HCONN, HOBJ, CLOSEOPTS, CC, RC);
+   CALL MQDISC(HCONN, CC, RC);
+   PUT SKIP LIST('DISC', RC);
+
+ GETONE: PROC;
+   MQMD.MSGID = MQMI_NONE;
+   MQMD.CORRELID = MQCI_NONE;
+   MQMD.CODEDCHARSETID = MQCCSI_Q_MGR;
+   MQMD.ENCODING = MQENC_NATIVE;
+   MQGMO.OPTIONS = MQGMO_NO_WAIT + MQGMO_CONVERT;
+   BUFLEN = 100;
+   BUFFER = '';
+   CALL MQGET(HCONN, HOBJ, MQMD, MQGMO, BUFLEN, BUFFER, DATALEN,
+              CC, RC);
+ END GETONE;
+ END MQPLI;
+";
+
+const MQPLICB: &str = " MQPLICB: PROC(HCONN, MD, GMO, BUF, CBC);
+   %INCLUDE CMQP;
+   %INCLUDE CMQEPP;
+   %INCLUDE CMQMDP;
+   %INCLUDE CMQGMOP;
+   %INCLUDE CMQCBCP;
+   %INCLUDE CMQCTLOP;
+   DCL HCONN FIXED BIN(31);
+   DCL 1 MD LIKE MQMD;
+   DCL 1 GMO LIKE MQGMO;
+   DCL BUF CHAR(100);
+   DCL 1 CBC LIKE MQCBC;
+   DCL (OP, CC, RC) FIXED BIN(31);
+   OP = MQOP_STOP;
+   SELECT (CBC.CALLTYPE);
+     WHEN (MQCBCT_MSG_REMOVED) DO;
+       PUT SKIP LIST('CALLBACK', SUBSTR(BUF, 1, CBC.DATALENGTH),
+         MD.FORMAT);
+       IF SUBSTR(BUF, 1, 7) = 'ASYNC 2' THEN
+         CALL MQCTL(HCONN, OP, MQCTLO, CC, RC);
+     END;
+     WHEN (MQCBCT_STOP_CALL) PUT SKIP LIST('STOPPED');
+     OTHERWISE DO;
+       PUT SKIP LIST('EVENT', CBC.REASON);
+       CALL MQCTL(HCONN, OP, MQCTLO, CC, RC);
+     END;
+   END;
+ END MQPLICB;
+";
+
+/// MQI calls from a PL/I program (skipped without ZEUS_MQ).
+#[test]
+fn mq_calls_from_pli() {
+    if std::env::var_os("ZEUS_MQ").is_none() {
+        eprintln!("ZEUS_MQ is not set: MQ test skipped");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let mut job = String::from("//MQPJOB   JOB (ACCT),'MQ'\n");
+    job.push_str(&compile_step("MQPLI", "IBMZPLI", MQPLI));
+    job.push_str(&compile_step("MQPLICB", "IBMZPLI", MQPLICB));
+    job.push_str("//RUN      EXEC PGM=MQPLI\n//STEPLIB  DD DSN=ZEUS.LOADLIB,DISP=SHR\n//SYSPRINT DD SYSOUT=*\n//SYSOUT   DD SYSOUT=*\n");
+    let mut log = Vec::new();
+    let r = run_job(&mut env, &job, &mut log).unwrap();
+    let log = String::from_utf8_lossy(&log);
+    let out: String = std::fs::read_dir(dir.path().join("spool/MQPJOB"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains("RUN."))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap_or_default())
+        .collect();
+    assert_eq!(
+        outcomes(&r).last(),
+        Some(&("RUN".into(), Outcome::Rc(0))),
+        "{log}\n{out}"
+    );
+    let lines: Vec<String> = out
+        .lines()
+        .map(|l| l.split_whitespace().collect::<Vec<_>>().join(" "))
+        .collect();
+    assert_eq!(
+        lines,
+        [
+            "CONN 0",
+            "OPEN 0",
+            "DEPTH 3 0",
+            "PLI MESSAGE 1 MQSTR",
+            "PLI MESSAGE 2 MQSTR",
+            "PLI MESSAGE 3 MQSTR",
+            "LAST 2033 COUNT 3",
+            // the callee's lines come before the caller's pending line
+            "CALLBACK ASYNC 1 MQSTR",
+            "CALLBACK ASYNC 2 MQSTR",
+            "STOPPED",
+            "CB 0",
+            "CTL 0",
+            "DISC 0",
+        ],
+        "{out}"
+    );
+}
+
 const MQPS: &str = "       IDENTIFICATION DIVISION.
        PROGRAM-ID. MQPS.
        DATA DIVISION.

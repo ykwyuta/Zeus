@@ -237,7 +237,8 @@ fn sql_include(t: &[Token]) -> Option<String> {
 fn system_member(member: &str) -> Option<String> {
     let name = member.to_ascii_uppercase();
     if name != "DFHAID" && name != "DFHBMSCA" {
-        return None;
+        // the MQ interface (CMQP, CMQEPP, CMQMDP, ...)
+        return zeus_cobol::front::syslib::pli_member(&name);
     }
     let cobol = zeus_cobol::front::syslib::member(&name)?;
     let mut out = String::new();

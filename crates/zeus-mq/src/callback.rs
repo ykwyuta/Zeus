@@ -438,7 +438,7 @@ fn deliver(
         });
         at += p.len().div_ceil(8) * 8 + 8;
     }
-    let r = m.call_program(&c.program, &refs)?;
+    let r = m.call_external(&c.program, &refs)?;
     if r.is_none() {
         return Err(format!("MQCTL: callback program {} not found", c.program));
     }

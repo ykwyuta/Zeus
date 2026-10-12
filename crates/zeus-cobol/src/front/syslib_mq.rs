@@ -7,6 +7,11 @@
 //! (MQENC_NATIVE 785). The structures are those of the versions the Zeus
 //! MQ interface converts: MQOD 4, MQMD 2, MQPMO 3, MQGMO 4, MQTM 1 and
 //! version 1 of the others.
+//!
+//! The same definitions in PL/I ([`pli_member`]): %INCLUDE CMQP (the
+//! constants, as named constants with `_` for `-`), CMQEPP (the MQI
+//! entries) and a member per structure (CMQODP, CMQMDP, CMQPMOP, ...)
+//! that declares it as a level-1 structure with its initial values.
 
 /// A data item of a member: name, PICTURE (None: a group; "CHARV": an
 /// MQCHARV; "POINTER": a pointer) and initial value.
@@ -730,6 +735,131 @@ pub fn member(name: &str) -> Option<String> {
     Some(text(items, values))
 }
 
+/// The PL/I form of a COBOL PICTURE and VALUE: the attributes and the
+/// INITIAL value.
+fn pli_attrs(pic: &str, value: Option<&str>) -> (String, Option<String>) {
+    if pic == "S9(9) BINARY" {
+        return ("FIXED BIN(31)".into(), value.map(str::to_string));
+    }
+    if pic == "S9(18) BINARY" {
+        return ("FIXED BIN(63)".into(), value.map(str::to_string));
+    }
+    let n: usize = match pic.strip_prefix("X(") {
+        Some(r) => r.trim_end_matches(')').parse().unwrap_or(1),
+        None => 1,
+    };
+    let init = value.map(|v| match v {
+        "SPACES" | "SPACE" => "''".to_string(),
+        "LOW-VALUES" => format!("(({n})'00'X)"),
+        v => v.to_string(),
+    });
+    (format!("CHAR({n})"), init)
+}
+
+fn pli_line(s: &mut String, text: String) {
+    s.push_str(&format!(" {text}\n"));
+}
+
+/// A structure member in PL/I: `DCL 1 MQMD, 3 STRUCID CHAR(4)
+/// INIT('MD  '), ...;` (the prefix of the COBOL names dropped).
+fn pli_struct(items: &[Item]) -> String {
+    let mut s = String::new();
+    let prefix = format!("{}-", items[0].1);
+    pli_line(&mut s, format!("DCL 1 {},", items[0].1));
+    let n = items.len();
+    for (i, &(_, name, pic, value)) in items.iter().enumerate().skip(1) {
+        let name = name.trim_start_matches(&prefix).replace('-', "");
+        let end = if i + 1 == n { ";" } else { "," };
+        match pic {
+            Some("CHARV") => {
+                pli_line(&mut s, format!("    3 {name},"));
+                pli_line(&mut s, "      5 VSPTR POINTER INIT(SYSNULL()),".into());
+                for f in ["VSOFFSET", "VSBUFSIZE", "VSLENGTH"] {
+                    pli_line(&mut s, format!("      5 {f} FIXED BIN(31) INIT(0),"));
+                }
+                pli_line(
+                    &mut s,
+                    format!("      5 VSCCSID FIXED BIN(31) INIT(-3){end}"),
+                );
+            }
+            Some("POINTER") => {
+                pli_line(&mut s, format!("    3 {name} POINTER INIT(SYSNULL()){end}"));
+            }
+            Some(p) => {
+                let (attrs, init) = pli_attrs(p, value);
+                match init {
+                    Some(v) => {
+                        pli_line(&mut s, format!("    3 {name} {attrs}"));
+                        pli_line(&mut s, format!("        INIT({v}){end}"));
+                    }
+                    None => pli_line(&mut s, format!("    3 {name} {attrs}{end}")),
+                }
+            }
+            None => pli_line(&mut s, format!("    3 {name}{end}")),
+        }
+    }
+    s
+}
+
+/// The MQI calls (CMQEPP).
+const ENTRIES: &[&str] = &[
+    "MQBACK", "MQCB", "MQCLOSE", "MQCMIT", "MQCONN", "MQCONNX", "MQCRTMH", "MQCTL", "MQDISC",
+    "MQDLTMH", "MQDLTMP", "MQGET", "MQINQ", "MQINQMP", "MQOPEN", "MQPUT", "MQPUT1", "MQSET",
+    "MQSETMP", "MQSUB", "MQSUBRQ",
+];
+
+/// Source text of an MQ include member for PL/I.
+pub fn pli_member(name: &str) -> Option<String> {
+    let items = match name {
+        "CMQP" => {
+            let mut s = String::new();
+            for (n, v) in INTS {
+                let n = n.replace('-', "_");
+                pli_line(&mut s, format!("DCL {n}"));
+                pli_line(&mut s, format!("    FIXED BIN(31) VALUE({v});"));
+            }
+            for (n, p, v) in CHARS {
+                let (attrs, init) = pli_attrs(p, Some(v));
+                let n = n.replace('-', "_");
+                pli_line(&mut s, format!("DCL {n}"));
+                pli_line(
+                    &mut s,
+                    format!("    {attrs} VALUE({});", init.unwrap_or_default()),
+                );
+            }
+            return Some(s);
+        }
+        "CMQEPP" => {
+            let mut s = String::new();
+            for e in ENTRIES {
+                pli_line(
+                    &mut s,
+                    format!("DCL {e} ENTRY EXTERNAL OPTIONS(ASM INTER);"),
+                );
+            }
+            return Some(s);
+        }
+        "CMQODP" => MQOD,
+        "CMQMDP" => MQMD,
+        "CMQPMOP" => MQPMO,
+        "CMQGMOP" => MQGMO,
+        "CMQTMP" => MQTM,
+        "CMQSDP" => MQSD,
+        "CMQSROP" => MQSRO,
+        "CMQCMHOP" => MQCMHO,
+        "CMQDMHOP" => MQDMHO,
+        "CMQDMPOP" => MQDMPO,
+        "CMQSMPOP" => MQSMPO,
+        "CMQIMPOP" => MQIMPO,
+        "CMQPDP" => MQPD,
+        "CMQCBDP" => MQCBD,
+        "CMQCBCP" => MQCBC,
+        "CMQCTLOP" => MQCTLO,
+        _ => return None,
+    };
+    Some(pli_struct(items))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -744,6 +874,11 @@ mod tests {
             for l in member(m).unwrap().lines() {
                 assert!(l.len() <= 72, "{m}: {l}");
                 assert!(l.starts_with("          "), "{m}: {l}");
+            }
+        }
+        for m in ["CMQP", "CMQEPP", "CMQODP", "CMQMDP", "CMQSDP", "CMQCBCP"] {
+            for l in pli_member(m).unwrap().lines() {
+                assert!(l.len() <= 72, "{m}: {l}");
             }
         }
     }

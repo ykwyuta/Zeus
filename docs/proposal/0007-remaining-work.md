@@ -26,7 +26,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 15 | M | GenApp のイベント処理 (LGASTAT1) | 0002 Phase 5 | **済** (LINK の捕捉と取引開始アダプター) |
 | 16 | M | Db2 のユーティリティ (DSNTIAUL・LOAD)、EBCDIC 照合のデータベース | 0002 Phase 5 | **済** (EBCDIC 照合は PostgreSQL だけ。Db2 CE は非対応) |
 | 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | **済** |
-| 18 | S | PL/I からの MQI 呼出し | 0005 | 未着手 |
+| 18 | S | PL/I からの MQI 呼出し | 0005 | **済** |
 | 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | 未着手 |
 | 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | 未着手 |
 | 21 | S | IMS のアンロード (DFSURGU0) | 0006 | 未着手 |
@@ -140,3 +140,9 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
     DELETE はダミーにし、順次 READ はダミーを飛ばす。
   - VSAM RRDS (カタログの NUMBERED のクラスター): JCL がその DD を相対データセットとして渡し、1 からの相対レコード番号をキーにする。
   - `crates/zeus-pli/tests/programs.rs` の `locate_and_numbered_records`。
+- **#18 PL/I からの MQI 呼出し** (2026-10):
+  - PL/I のステップは実行単位の COBOL のマシンのネイティブの呼出しを使うので、MQI はそのまま呼べた。足りなかったのは
+    %INCLUDE のメンバーで、COBOL のコピーメンバーと同じ定義から CMQP・CMQEPP・構造体のメンバーを作る。
+  - MQCB の CallbackName が COBOL のプログラムでなければ、実行単位のリンカーで PL/I のモジュールを探して呼ぶ。
+  - 合わせて直したもの: 仮引数の INITIAL (LIKE で写したもの) を手続きの入口で実行していた。仮引数には初期値を設定しない。
+  - `crates/zeus-jcl/tests/jobs.rs` の `mq_calls_from_pli`。
