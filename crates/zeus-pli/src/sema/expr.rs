@@ -34,6 +34,9 @@ fn const_len(t: &Ty) -> Option<u32> {
     }
 }
 
+/// A call through an ENTRY variable: callee, arguments, RETURNS type.
+type EntryCall = (Callee, Vec<Arg>, Option<Ty>);
+
 impl Compiler {
     /// A conversion to `ty` (none when the type is already `ty`).
     pub fn conv(&self, e: Expr, ty: &Ty) -> Expr {
@@ -365,8 +368,31 @@ impl Compiler {
                 }
             }
             ast::Expr::Binary(op, a, b, _) => {
-                let a = self.expr(a)?;
-                let b = self.expr(b)?;
+                // an entry value compared with a procedure name
+                let (ca, cb) = if matches!(*op, "=" | "¬=" | "^=" | "<>") {
+                    (self.entry_constant(a), self.entry_constant(b))
+                } else {
+                    (None, None)
+                };
+                let (a, b) = match (ca, cb) {
+                    (Some(x), None) => {
+                        let y = self.expr(b)?;
+                        if matches!(y.ty, Ty::Entry) {
+                            (x, y)
+                        } else {
+                            (self.expr(a)?, y)
+                        }
+                    }
+                    (None, Some(y)) => {
+                        let x = self.expr(a)?;
+                        if matches!(x.ty, Ty::Entry) {
+                            (x, y)
+                        } else {
+                            (x, self.expr(b)?)
+                        }
+                    }
+                    _ => (self.expr(a)?, self.expr(b)?),
+                };
                 match *op {
                     "+" => self.arith_op(ArOp::Add, a, b),
                     "-" => self.arith_op(ArOp::Sub, a, b),
@@ -560,7 +586,15 @@ impl Compiler {
                 .map(|(_, s)| s)
                 .find(|s| !matches!(s, Sym::Var(_)) || true);
             match sym {
-                Some(Sym::Var(_)) | None => {}
+                Some(Sym::Var(v)) => {
+                    if let Some((callee, a, returns)) = self.entry_var_call(v, r)? {
+                        let returns = returns.ok_or_else(|| {
+                            self.err(r.pos, format!("{name} has no RETURNS attribute"))
+                        })?;
+                        return Ok(mk(Ek::Call(callee, a), returns));
+                    }
+                }
+                None => {}
                 Some(Sym::Const(x)) => return Ok(x),
                 Some(Sym::Label(l)) => return Ok(mk(Ek::Label(l), Ty::Label)),
                 Some(Sym::Format(_)) => {
@@ -642,6 +676,65 @@ impl Compiler {
         self.load(rr, r.pos)
     }
 
+    /// A procedure name used as an entry value (assigned to an ENTRY
+    /// variable, passed for an ENTRY parameter, compared with one).
+    pub fn entry_constant(&self, a: &ast::Expr) -> Option<Expr> {
+        let ast::Expr::Ref(r) = a else { return None };
+        if r.parts.len() != 1 || !r.parts[0].1.is_empty() || r.locator.is_some() {
+            return None;
+        }
+        match self.sym(&r.parts[0].0) {
+            Some(Sym::Proc(p)) => Some(mk(Ek::EntryConst(p), Ty::Entry)),
+            _ => None,
+        }
+    }
+
+    /// Whether `r` invokes an ENTRY variable (has an argument list after
+    /// its subscripts).
+    pub fn entry_invocation(&self, r: &ast::Ref) -> bool {
+        if r.parts.len() != 1 {
+            return false;
+        }
+        match self.sym(&r.parts[0].0) {
+            Some(Sym::Var(v)) => {
+                let var = &self.m.vars[v as usize];
+                matches!(var.ty, Some(Ty::Entry))
+                    && r.parts[0].1.len() > usize::from(!var.dims.is_empty())
+            }
+            _ => false,
+        }
+    }
+
+    /// An expression where an entry value is expected.
+    pub fn entry_expr(&mut self, a: &ast::Expr) -> Result<Expr> {
+        match self.entry_constant(a) {
+            Some(x) => Ok(x),
+            None => self.expr(a),
+        }
+    }
+
+    /// A call through ENTRY variable `v` as `r` references it (an element
+    /// of an array of them takes its subscripts first): the callee, the
+    /// arguments and the RETURNS type; None without an argument list.
+    fn entry_var_call(&mut self, v: VarId, r: &ast::Ref) -> Result<Option<EntryCall>> {
+        if !matches!(self.m.vars[v as usize].ty, Some(Ty::Entry)) || r.parts.len() != 1 {
+            return Ok(None);
+        }
+        let sub = usize::from(!self.m.vars[v as usize].dims.is_empty());
+        let lists = &r.parts[0].1;
+        if lists.len() <= sub {
+            return Ok(None);
+        }
+        let mut target = r.clone();
+        target.parts[0].1.truncate(sub);
+        let rr = self.reference(&target, true)?;
+        let e = self.load(rr, r.pos)?;
+        let sig = self.entry_sigs.get(&v).cloned();
+        let params = sig.as_ref().and_then(|d| d.params.clone());
+        let a = self.args(params.as_deref(), &lists[sub])?;
+        Ok(Some((Callee::Var(e), a, sig.and_then(|d| d.returns))))
+    }
+
     /// The callee for an external name: a procedure of this compilation
     /// or one resolved at run time.
     pub fn external_callee(&self, name: &str) -> Callee {
@@ -682,6 +775,12 @@ impl Compiler {
         let mut out = Vec::new();
         for (i, a) in args.iter().enumerate() {
             let pty = params.and_then(|p| p.get(i).cloned()).flatten();
+            if matches!(pty, Some(Ty::Entry))
+                && let Some(x) = self.entry_constant(a)
+            {
+                out.push(Arg::Dummy(x));
+                continue;
+            }
             if let ast::Expr::Star(_) = a {
                 out.push(Arg::Omitted);
                 continue;
@@ -690,7 +789,8 @@ impl Compiler {
             if let ast::Expr::Ref(r) = a {
                 let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
                 let is_var = matches!(self.sym(&names[0]), Some(Sym::Var(_)) | None)
-                    && self.resolve_var(&names).is_some();
+                    && self.resolve_var(&names).is_some()
+                    && !self.entry_invocation(r);
                 if is_var {
                     let rr = self.reference(r, true)?;
                     let vty = self.m.vars[rr.var as usize].ty.clone();
@@ -783,7 +883,16 @@ impl Compiler {
             }
             Some(Sym::Builtin(b)) => self.call_builtin(b, args, r.pos),
             Some(Sym::Var(v)) if matches!(self.m.vars[v as usize].ty, Some(Ty::Entry)) => {
-                Err(self.err(r.pos, "CALL of an ENTRY variable is not supported"))
+                let mut with_args = r.clone();
+                // CALL E; without arguments
+                let sub = usize::from(!self.m.vars[v as usize].dims.is_empty());
+                if with_args.parts[0].1.len() <= sub {
+                    with_args.parts[0].1.push(Vec::new());
+                }
+                let (callee, a, _) = self
+                    .entry_var_call(v, &with_args)?
+                    .ok_or_else(|| self.err(r.pos, "CALL of an ENTRY variable"))?;
+                Ok(Stmt::Call(callee, a))
             }
             Some(_) => Err(self.err(r.pos, format!("{name} cannot be called"))),
             None => {

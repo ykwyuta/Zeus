@@ -82,6 +82,8 @@ pub struct Compiler {
     pub whenever: [Option<String>; 3],
     /// REFER initial extents, compiled after the block's declarations.
     pub late_refers: Vec<(u32, crate::ast::Expr)>,
+    /// The parameter descriptors and RETURNS of ENTRY variables.
+    pub entry_sigs: HashMap<VarId, EntryDecl>,
     /// Declarations of level-1 variables (for LIKE).
     pub decl_ast: HashMap<VarId, Vec<DeclItem>>,
     /// The outermost procedure block (implicit declarations).
@@ -124,6 +126,7 @@ impl Compiler {
             sql_cursors: HashMap::new(),
             whenever: [None, None, None],
             late_refers: Vec::new(),
+            entry_sigs: HashMap::new(),
             decl_ast: HashMap::new(),
             outer: 0,
             index_rank: 0,

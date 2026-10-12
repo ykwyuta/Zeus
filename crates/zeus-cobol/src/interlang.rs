@@ -49,4 +49,12 @@ pub trait Linker {
         sys: Machine,
         args: &[XRef],
     ) -> (Machine, Option<Result<XEnd, String>>);
+
+    /// Loads program `name` (FETCH); false when no such program is known.
+    fn load(&self, _name: &str) -> bool {
+        false
+    }
+
+    /// Releases program `name` (RELEASE): the next FETCH loads it afresh.
+    fn release(&self, _name: &str) {}
 }

@@ -535,6 +535,10 @@ pub enum Stmt {
     /// CONTROLLED variable: by generation slot).
     Allocate(Vec<(VarId, Option<Target>, Vec<Option<Expr>>)>),
     Free(Vec<(VarId, Option<Expr>)>),
+    /// FETCH: the entry names and the load module titles (character).
+    Fetch(Vec<(String, Option<Expr>)>),
+    /// RELEASE (empty: every fetched module).
+    Release(Vec<String>),
     Display(Expr, Option<(Target, Ty)>),
     Delay(Expr),
     /// EXEC SQL / CICS / DLI.

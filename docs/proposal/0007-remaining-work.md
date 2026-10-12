@@ -18,7 +18,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 7 | L | IMS の WAL の共有 (zcics とバッチの同時アクセス、常駐サーバー) | 0006 | **済** (常駐サーバーなしで共有。`tools/carddemo-ims.sh test`) |
 | 8 | L | PostgreSQL バックエンド (Db2 方言の変換、SQLCODE の対応表) | 0002 Phase 7 | **済** (`ZEUS_DB2=postgres://...`、CI) |
 | 9 | M | DL/I の機能: コマンドコード、ブール演算子の修飾、等号以外の比較、パス呼出し、XRST・記号チェックポイント | 0006 | **済** (ISRT のパス呼出しを除く) |
-| 10 | M | PL/I: ENTRY 変数による呼出し、FETCH/RELEASE | 0004 | 未着手 |
+| 10 | M | PL/I: ENTRY 変数による呼出し、FETCH/RELEASE | 0004 | **済** |
 | 11 | M | PL/I: AREA と OFFSET、iSUB 定義、構造体の途中の REFER、CONTROLLED の引数 | 0004 | 未着手 |
 | 12 | M | PL/I: 型の追加 (COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ、ORDINAL)、DEFAULT 文、GENERIC、HANDLE と DEFINE STRUCTURE | 0004 | 未着手 |
 | 13 | M | PL/I の EXEC SQL: FLOAT・PICTURE・BIT のホスト変数、構造体のホスト変数の展開、動的 SQL と SQLDA | 0004 | 未着手 |
@@ -122,3 +122,8 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
   - 記号チェックポイント (CHKP に領域を続ける、EXEC DLI SYMCHKP) は領域を WAL のチェックポイントのフレームに保存し、
     XRST (CALL と EXEC DLI) が ID か LAST で戻す。
   - `crates/zeus-jcl/tests/jobs.rs` の `ims_batch_regions` と `crates/zeus-ims/tests/core.rs` で確かめる。
+- **#10 PL/I の ENTRY 変数と FETCH/RELEASE** (2026-10):
+  - VARIABLE 属性を構文解析で保持し、ENTRY 変数 (仮引数・配列を含む) に手続きを代入・比較し、関数参照と CALL で呼び出す。
+    引数の記述子と RETURNS は変数ごとに覚える。手続き名は ENTRY を期待する文脈 (代入先・仮引数・比較の相手) では ENTRY 定数になる。
+  - FETCH / RELEASE: リンカーにモジュールの読込みと解放を加えた。TITLE で別名のモジュール、読み込めなければ ERROR。
+  - `crates/zeus-pli/tests/programs.rs` の `entry_variables` と `fetch_and_release`。

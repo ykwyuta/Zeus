@@ -656,6 +656,7 @@ impl Parser {
                 }
                 "LIKE" => Attr::Like(self.reference()?),
                 "BUILTIN" => Attr::Builtin,
+                "VARIABLE" => Attr::Variable,
                 "CONDITION" | "COND" => Attr::Condition,
                 "VALUE" => {
                     self.expect_op("(")?;
@@ -685,7 +686,7 @@ impl Parser {
                 }
                 "NOINIT" | "NOINITIAL" | "NATIVE" | "NONNATIVE" | "HEXADEC" | "IEEE"
                 | "BIGENDIAN" | "LITTLEENDIAN" | "ASSEMBLER" | "LOCAL" | "RESERVED"
-                | "VARIABLE" | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT" | "OUTONLY" => continue,
+                | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT" | "OUTONLY" => continue,
                 _ => {
                     self.i -= 1;
                     return Ok(attrs);
@@ -1619,6 +1620,42 @@ impl Parser {
                     break;
                 }
                 StmtKind::Allocate(out)
+            }
+            "FETCH" => {
+                let mut out = Vec::new();
+                loop {
+                    let name = self.ident()?.to_ascii_uppercase();
+                    let mut title = None;
+                    loop {
+                        if self.eat_word("TITLE") {
+                            title = Some(self.paren_expr()?);
+                        } else if self.eat_word("SET") {
+                            self.paren_expr()?;
+                        } else {
+                            break;
+                        }
+                    }
+                    out.push((name, title));
+                    if self.eat_op(",") {
+                        continue;
+                    }
+                    self.semi()?;
+                    break;
+                }
+                StmtKind::Fetch(out)
+            }
+            "RELEASE" => {
+                let mut out = Vec::new();
+                if !self.eat_op("*") {
+                    loop {
+                        out.push(self.ident()?.to_ascii_uppercase());
+                        if !self.eat_op(",") {
+                            break;
+                        }
+                    }
+                }
+                self.semi()?;
+                StmtKind::Release(out)
             }
             "FREE" => {
                 let mut out = Vec::new();

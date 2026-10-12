@@ -1276,6 +1276,13 @@ impl Machine {
         self.find_program(name)
     }
 
+    /// Whether program `name` can be called (it is loaded, if need be).
+    pub fn load_program(&mut self, name: &str) -> bool {
+        self.find_program(name).is_some()
+            || self.natives.contains_key(name)
+            || self.natives_ref.contains_key(name)
+    }
+
     /// A separately compiled program by name (loaded on first use).
     fn find_program(&mut self, name: &str) -> Option<usize> {
         if let Some(&i) = self.by_name.get(name) {

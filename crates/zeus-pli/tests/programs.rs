@@ -156,3 +156,70 @@ fn embedded_sql() {
     assert_eq!(end, RunEnd::Rc(0), "{msg}");
     assert_eq!(out, expected("sql"));
 }
+
+/// ENTRY variables: assigned procedures, arrays of them, CALL through
+/// them, comparison, and ENTRY parameters.
+#[test]
+fn entry_variables() {
+    let (out, msg, end) = run("entries", HashMap::new(), "");
+    assert_eq!(out, expected("entries"), "{msg}");
+    assert_eq!(end, RunEnd::Rc(0));
+}
+
+/// FETCH and RELEASE of a separately compiled procedure: its STATIC
+/// storage lasts until RELEASE; FETCH TITLE names the load module; a
+/// module that cannot be loaded raises ERROR.
+#[test]
+fn fetch_and_release() {
+    let lib = tempfile::tempdir().unwrap();
+    let (rc, c) = zeus_pli::compile_file(&dir().join("suba.pli"), &zeus_pli::Options::default());
+    let sub = c
+        .module
+        .unwrap_or_else(|| panic!("suba: rc {rc}: {:?}", c.messages));
+    std::fs::write(
+        lib.path().join("SUBA"),
+        zeus_pli::module_bytes(&sub).unwrap(),
+    )
+    .unwrap();
+    let (rc, c) = zeus_pli::compile_file(&dir().join("fetch.pli"), &zeus_pli::Options::default());
+    let module = c
+        .module
+        .unwrap_or_else(|| panic!("fetch: rc {rc}: {:?}", c.messages));
+    let out = Capture::default();
+    let msg = Capture::default();
+    let env_of = {
+        let (out, msg) = (out.clone(), msg.clone());
+        move || RunEnv {
+            dds: HashMap::new(),
+            parm: String::new(),
+            stdout: Box::new(out.clone()),
+            msgout: Box::new(msg.clone()),
+            stdin: None,
+            stdin_reader: None,
+            linker: None,
+            exec_host: None,
+        }
+    };
+    let linker =
+        zeus_pli::link::ModuleLinker::new(vec![lib.path().to_path_buf()], Box::new(env_of.clone()));
+    let mut env = env_of();
+    env.linker = Some(linker.clone());
+    let end = zeus_pli::run(module, env);
+    let o = String::from_utf8(out.0.borrow().clone()).unwrap();
+    let m = String::from_utf8(msg.0.borrow().clone()).unwrap();
+    let lines: Vec<&str> = o.lines().map(str::trim_end).collect();
+    let squeeze = |l: &str| l.split_whitespace().collect::<Vec<_>>().join(" ");
+    assert_eq!(
+        lines.iter().map(|l| squeeze(l)).collect::<Vec<_>>(),
+        [
+            "SUBA ONE 1",
+            "SUBA TWO 2",
+            "SUBA AGAIN 1",
+            "SUBA TITLE 2",
+            "ERROR 9251",
+            "END"
+        ],
+        "{m}"
+    );
+    assert_eq!(end, RunEnd::Rc(0));
+}

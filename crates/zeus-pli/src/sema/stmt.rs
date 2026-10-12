@@ -276,6 +276,7 @@ impl Compiler {
                                         r.parts.iter().map(|p| p.0.clone()).collect();
                                     matches!(self.sym(&names[0]), Some(Sym::Var(_)) | None)
                                         && self.resolve_var(&names).is_some()
+                                        && !self.entry_invocation(r)
                                 } =>
                             {
                                 let rr = self.reference(r, true)?;
@@ -593,7 +594,11 @@ impl Compiler {
                 if aggregate {
                     return self.aggregate_assign(ts, &value, *by_name, pos);
                 }
-                let x = self.expr(&value)?;
+                let x = if matches!(tys[0], Some(Ty::Entry)) {
+                    self.entry_expr(&value)?
+                } else {
+                    self.expr(&value)?
+                };
                 let ty = tys[0].clone().unwrap_or(char_any());
                 if ts.len() == 1 {
                     Stmt::Assign(ts, self.conv(x, &ty))
@@ -837,6 +842,34 @@ impl Compiler {
                 }
                 Stmt::Allocate(v)
             }
+            StmtKind::Fetch(items) => {
+                let mut v = Vec::new();
+                for (name, title) in items {
+                    let t = match title {
+                        Some(e) => {
+                            let x = self.expr(e)?;
+                            Some(self.to_char(x))
+                        }
+                        None => None,
+                    };
+                    // the external name of the entry
+                    let ext = match self.sym(name) {
+                        Some(Sym::EntryDecl(d)) => d.name.clone(),
+                        _ => name.clone(),
+                    };
+                    v.push((ext, t));
+                }
+                Stmt::Fetch(v)
+            }
+            StmtKind::Release(names) => Stmt::Release(
+                names
+                    .iter()
+                    .map(|n| match self.sym(n) {
+                        Some(Sym::EntryDecl(d)) => d.name.clone(),
+                        _ => n.clone(),
+                    })
+                    .collect(),
+            ),
             StmtKind::Free(refs) => {
                 let mut v = Vec::new();
                 for r in refs {

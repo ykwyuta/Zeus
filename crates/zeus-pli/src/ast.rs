@@ -106,6 +106,8 @@ pub enum Attr {
     Format,
     Entry(Vec<Vec<Attr>>),
     Returns(Vec<Attr>),
+    /// VARIABLE: an ENTRY (or FILE, LABEL) variable rather than a constant.
+    Variable,
     File,
     Stream,
     Record,
@@ -343,6 +345,10 @@ pub enum StmtKind {
     /// length (`CHAR(n)` / `BIT(n)`).
     Allocate(Vec<(Ref, Option<Expr>, Option<Expr>)>),
     Free(Vec<Ref>),
+    /// FETCH entry [TITLE(name)] [SET(pointer)], ...
+    Fetch(Vec<(String, Option<Expr>)>),
+    /// RELEASE entry, ... (empty: RELEASE *)
+    Release(Vec<String>),
     Display {
         value: Expr,
         reply: Option<Expr>,

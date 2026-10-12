@@ -108,4 +108,21 @@ impl Linker for ModuleLinker {
         let r = m.call_entry(&name, args).transpose();
         (m.detach(), r)
     }
+
+    fn load(&self, name: &str) -> bool {
+        self.find(&name.to_ascii_uppercase()).is_some()
+    }
+
+    fn release(&self, name: &str) {
+        let name = name.to_ascii_uppercase();
+        self.plis
+            .borrow_mut()
+            .retain(|(_, m)| match m.try_borrow_mut() {
+                Ok(mut x) if x.has_entry(&name) => {
+                    x.finish();
+                    false
+                }
+                _ => true,
+            });
+    }
 }

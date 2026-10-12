@@ -151,6 +151,8 @@ pub struct Machine {
     /// The program's instance for the CICS host (its HANDLE CONDITION
     /// labels), set by the task that runs it.
     pub cics_instance: usize,
+    /// The load module of each fetched entry (FETCH TITLE).
+    titles: std::collections::HashMap<String, String>,
 }
 
 fn err<T>(m: impl Into<String>) -> R<T> {
@@ -192,6 +194,7 @@ impl Machine {
             random: 0x2545_F491_4F6C_DD1D,
             depth: 0,
             cics_instance: 0,
+            titles: std::collections::HashMap::new(),
         }
     }
 
@@ -1328,6 +1331,44 @@ impl Machine {
                 }
                 Ok(())
             }
+            Stmt::Fetch(items) => {
+                for (name, title) in items {
+                    let module = match title {
+                        Some(t) => match self.eval(t, act)? {
+                            Value::Char(c) => {
+                                zeus_cobol::ebcdic::decode(&c).trim().to_ascii_uppercase()
+                            }
+                            _ => name.clone(),
+                        },
+                        None => name.clone(),
+                    };
+                    let known = self.sys().load_program(&module)
+                        || self.env.linker.as_ref().is_some_and(|l| l.load(&module));
+                    if !known {
+                        // the module cannot be loaded: ERROR
+                        self.raise(Cond::Error, 9251, act)?;
+                        continue;
+                    }
+                    if module != *name {
+                        self.titles.insert(name.clone(), module);
+                    }
+                }
+                Ok(())
+            }
+            Stmt::Release(names) => {
+                let names: Vec<String> = if names.is_empty() {
+                    self.titles.keys().cloned().collect()
+                } else {
+                    names.clone()
+                };
+                for n in names {
+                    let module = self.titles.remove(&n).unwrap_or(n);
+                    if let Some(l) = &self.env.linker {
+                        l.release(&module);
+                    }
+                }
+                Ok(())
+            }
             Stmt::Free(items) => {
                 for (v, _) in items {
                     let root = self.module.vars[*v as usize].root;
@@ -1582,12 +1623,14 @@ impl Machine {
         act: usize,
         rt: Option<&Ty>,
     ) -> R<Option<Value>> {
-        let (pid, entry) = match callee {
-            Callee::Proc(p) => (*p, None),
-            Callee::Entry(p, k) => (*p, Some(*k)),
+        // the activation the static parent is found from: the caller's,
+        // or the one an entry value was taken in
+        let (pid, entry, env) = match callee {
+            Callee::Proc(p) => (*p, None, act),
+            Callee::Entry(p, k) => (*p, Some(*k), act),
             Callee::External(name) => return self.call_external(name, args, act, rt),
             Callee::Var(e) => match self.eval(e, act)? {
-                Value::Entry(p, _) => (p, None),
+                Value::Entry(p, a) => (p, None, a),
                 _ => return err("call of a non-entry value"),
             },
         };
@@ -1623,7 +1666,7 @@ impl Machine {
         }
         // the static parent: the activation of the containing block
         let parent = match m.blocks[block as usize].parent {
-            Some(pb) if m.blocks[pb as usize].name != "*PACKAGE" => Some(self.act_of(act, pb)?),
+            Some(pb) if m.blocks[pb as usize].name != "*PACKAGE" => Some(self.act_of(env, pb)?),
             _ => None,
         };
         let a = self.activate(block, parent, bindings, proc.returns.clone());
@@ -1793,6 +1836,9 @@ impl Machine {
                 }
             });
         }
+        // a fetched entry: its load module
+        let titled = self.titles.get(name).cloned();
+        let name = titled.as_deref().unwrap_or(name);
         // the callee may be another PL/I machine on this thread
         let (enabled, line) = (CUR_ENABLED.with(|c| c.get()), CUR_LINE.with(|c| c.get()));
         let _ = self.env.stdout.flush();

@@ -353,7 +353,88 @@ impl Compiler {
         Ok(())
     }
 
+    /// The parameter descriptors and RETURNS of an ENTRY declaration.
+    fn entry_signature(
+        &mut self,
+        name: &str,
+        attrs: &[Attr],
+        pos: Pos,
+        block: BlockId,
+    ) -> Result<EntryDecl> {
+        let mut params_d = None;
+        let mut returns = None;
+        let mut ext = name.to_string();
+        for a in attrs {
+            match a {
+                Attr::Entry(ps) => {
+                    if !ps.is_empty() || params_d.is_none() {
+                        let mut v = Vec::new();
+                        for p in ps {
+                            if p.is_empty() {
+                                v.push(None);
+                            } else {
+                                let has_data = p.iter().any(|a| {
+                                    !matches!(
+                                        a,
+                                        Attr::Byaddr
+                                            | Attr::Byvalue
+                                            | Attr::Optional
+                                            | Attr::Aligned
+                                            | Attr::Unaligned
+                                            | Attr::Connected
+                                            | Attr::Assignable
+                                            | Attr::NonAssignable
+                                            | Attr::Dimension(_)
+                                    )
+                                });
+                                let is_aggr = p.iter().any(|a| matches!(a, Attr::Dimension(_)));
+                                if has_data && !is_aggr {
+                                    v.push(Some(
+                                        self.scalar_type_in(p, "X", pos, block, false)
+                                            .unwrap_or(Ty::Entry),
+                                    ));
+                                } else {
+                                    v.push(None);
+                                }
+                            }
+                        }
+                        params_d = if ps.is_empty() { None } else { Some(v) };
+                    }
+                }
+                Attr::Returns(r) => returns = Some(self.scalar_type_in(r, "R", pos, block, false)?),
+                Attr::External(Some(n)) => ext = n.clone(),
+                _ => {}
+            }
+        }
+        Ok(EntryDecl {
+            name: ext,
+            params: params_d,
+            returns,
+        })
+    }
+
     fn declare_tree(
+        &mut self,
+        t: &Node,
+        block: BlockId,
+        params: &[String],
+        late: &mut Vec<(VarId, Vec<Attr>, Pos)>,
+        group: &[DeclItem],
+    ) -> Result<Option<VarId>> {
+        let v = self.declare_tree_inner(t, block, params, late, group)?;
+        // an ENTRY variable: its signature for calls through it
+        let attrs = &t.item.attrs;
+        if let Some(v) = v
+            && t.children.is_empty()
+            && has(attrs, |a| matches!(a, Attr::Entry(_)))
+        {
+            let d = self.entry_signature(&t.item.name, attrs, t.item.pos, block)?;
+            self.entry_sigs.insert(v, d);
+        }
+        Ok(v)
+    }
+
+    fn declare_tree_inner(
         &mut self,
         t: &Node,
         block: BlockId,
@@ -389,6 +470,7 @@ impl Compiler {
                         | Attr::Initial(_)
                         | Attr::Aligned
                         | Attr::Unaligned
+                        | Attr::Variable
                 )
             }) || !it.dims.is_empty();
             if has(attrs, |a| matches!(a, Attr::File)) && !variable {
@@ -396,63 +478,8 @@ impl Compiler {
                 return Ok(None);
             }
             if has(attrs, |a| matches!(a, Attr::Entry(_) | Attr::Returns(_))) && !variable {
-                let mut params_d = None;
-                let mut returns = None;
-                let mut ext = it.name.clone();
-                for a in attrs {
-                    match a {
-                        Attr::Entry(ps) => {
-                            if !ps.is_empty() || params_d.is_none() {
-                                let mut v = Vec::new();
-                                for p in ps {
-                                    if p.is_empty() {
-                                        v.push(None);
-                                    } else {
-                                        let has_data = p.iter().any(|a| {
-                                            !matches!(
-                                                a,
-                                                Attr::Byaddr
-                                                    | Attr::Byvalue
-                                                    | Attr::Optional
-                                                    | Attr::Aligned
-                                                    | Attr::Unaligned
-                                                    | Attr::Connected
-                                                    | Attr::Assignable
-                                                    | Attr::NonAssignable
-                                                    | Attr::Dimension(_)
-                                            )
-                                        });
-                                        let is_aggr =
-                                            p.iter().any(|a| matches!(a, Attr::Dimension(_)));
-                                        if has_data && !is_aggr {
-                                            v.push(Some(
-                                                self.scalar_type_in(p, "X", pos, block, false)
-                                                    .unwrap_or(Ty::Entry),
-                                            ));
-                                        } else {
-                                            v.push(None);
-                                        }
-                                    }
-                                }
-                                params_d = if ps.is_empty() { None } else { Some(v) };
-                            }
-                        }
-                        Attr::Returns(r) => {
-                            returns = Some(self.scalar_type_in(r, "R", pos, block, false)?)
-                        }
-                        Attr::External(Some(n)) => ext = n.clone(),
-                        _ => {}
-                    }
-                }
-                self.define(
-                    block,
-                    &it.name,
-                    Sym::EntryDecl(EntryDecl {
-                        name: ext,
-                        params: params_d,
-                        returns,
-                    }),
-                );
+                let d = self.entry_signature(&it.name, attrs, pos, block)?;
+                self.define(block, &it.name, Sym::EntryDecl(d));
                 return Ok(None);
             }
             if let Some(v) = attrs.iter().find_map(|a| match a {
