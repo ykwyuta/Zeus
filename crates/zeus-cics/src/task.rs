@@ -41,6 +41,15 @@ mod eib {
     pub const LEN: usize = 85;
 }
 
+/// The enqueue name of the lock of a record (data set, primary key).
+fn record_lock(dataset: &str, primary: &[u8]) -> Vec<u8> {
+    let mut n = b"\0record ".to_vec();
+    n.extend_from_slice(dataset.as_bytes());
+    n.push(0);
+    n.extend_from_slice(primary);
+    n
+}
+
 /// Prefix of the VM error that abends a task.
 const ABEND: &str = "\u{0}abend ";
 
@@ -262,6 +271,8 @@ fn run_task(
         out: out.clone(),
     });
     m.set_exec_host(task.clone());
+    // long running programs give other tasks the processor
+    m.set_tick(crate::dispatch::time_slice);
     // COBOL programs CALL PL/I procedures of the load libraries
     let pli_out = out.clone();
     m.set_linker(zeus_pli::link::ModuleLinker::new(
@@ -294,6 +305,7 @@ fn run_task(
         Ok(()) => r,
         Err(e) => r.and(Err(e)),
     };
+    region.borrow_mut().dequeue_task(taskn, true);
     if let Some(h) = task.db2.borrow_mut().take() {
         region.borrow_mut().db2_release(h);
     }
@@ -487,6 +499,81 @@ impl Task {
         Some(r.map_err(RunError))
     }
 
+    /// The time of START or DELAY from now, in milliseconds:
+    /// INTERVAL(hhmmss), AFTER / FOR HOURS MINUTES SECONDS (MILLISECS),
+    /// TIME(hhmmss), AT / UNTIL HOURS MINUTES SECONDS.
+    fn interval_ms(m: &Machine, call: &ExecCall) -> u64 {
+        let hms = |v: i64| (v / 10000) * 3600 + (v / 100 % 100) * 60 + v % 100;
+        let parts = || {
+            (Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
+                + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
+                + Self::opt_num(m, call, "SECONDS").unwrap_or(0))
+                * 1000
+                + Self::opt_num(m, call, "MILLISECS").unwrap_or(0)
+        };
+        let since_midnight = || {
+            let (_, _, _, _, h, mi, sec, ms) = time::split(time::abstime_now());
+            (h * 3600 + mi * 60 + sec) * 1000 + ms
+        };
+        let ms = if let Some(v) = Self::opt_num(m, call, "INTERVAL") {
+            hms(v) * 1000
+        } else if call.has("AFTER") || call.has("FOR") {
+            parts()
+        } else if let Some(v) = Self::opt_num(m, call, "TIME") {
+            hms(v) * 1000 - since_midnight()
+        } else if call.has("AT") || call.has("UNTIL") {
+            parts() - since_midnight()
+        } else {
+            0
+        };
+        ms.max(0) as u64
+    }
+
+    /// ENQ: the resource for the task (waiting while another task has it,
+    /// unless NOSUSPEND: ENQBUSY); DEQ gives it back.
+    fn enq(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        // the resource: LENGTH bytes of the data area, else its address
+        let name = match (call.arg("RESOURCE"), Self::opt_num(m, call, "LENGTH")) {
+            (Some(ExecArg::Area(a)), None) => {
+                let mut n = b"@".to_vec();
+                n.extend((a.addr as u32).to_be_bytes());
+                n
+            }
+            (Some(a), len) => {
+                let mut b = Self::bytes(m, a);
+                if let Some(l) = len {
+                    b.resize(l.max(0) as usize, 0);
+                }
+                b
+            }
+            (None, _) => return self.finish(m, call, "INVREQ", 0),
+        };
+        let taskn = self.st.borrow().taskn;
+        if call.command == "DEQ" {
+            self.region.borrow_mut().dequeue(&name, taskn);
+            return self.finish(m, call, "NORMAL", 0);
+        }
+        let for_task = call.has("TASK") || call.has("MAXLIFETIME");
+        loop {
+            if self.region.borrow_mut().enqueue(&name, taskn, for_task) {
+                return self.finish(m, call, "NORMAL", 0);
+            }
+            // NOSUSPEND, or HANDLE CONDITION ENQBUSY: the condition
+            let handled = self
+                .st
+                .borrow()
+                .handlers
+                .get(&call.instance)
+                .is_some_and(|h| h.cond.contains_key("ENQBUSY"));
+            if call.has("NOSUSPEND")
+                || handled
+                || crate::dispatch::suspend(crate::dispatch::Wait::Dispatch).is_none()
+            {
+                return self.finish(m, call, "ENQBUSY", 0);
+            }
+        }
+    }
+
     // ---- operands -------------------------------------------------------
 
     fn bytes(m: &Machine, a: &ExecArg) -> Vec<u8> {
@@ -647,6 +734,10 @@ impl Task {
             }
         }
         drop(st);
+        // ENQBUSY is ignored by default
+        if cond == "ENQBUSY" {
+            return Ok(ExecOutcome::Continue);
+        }
         self.raise_abend(call, &abend_code(cond))
     }
 
@@ -936,33 +1027,14 @@ impl Task {
                     }
                 }
                 let data = call.arg("FROM").map(|_| Self::from_data(m, call));
-                let hms = |v: i64| (v / 10000) * 3600 + (v / 100 % 100) * 60 + v % 100;
-                let secs = if let Some(v) = Self::opt_num(m, call, "INTERVAL") {
-                    hms(v)
-                } else if call.has("AFTER") {
-                    Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
-                        + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
-                        + Self::opt_num(m, call, "SECONDS").unwrap_or(0)
-                } else if let Some(v) = Self::opt_num(m, call, "TIME") {
-                    let (_, _, _, _, h, mi, sec, _) = time::split(time::abstime_now());
-                    (hms(v) - (h * 3600 + mi * 60 + sec)).max(0)
-                } else if call.has("AT") {
-                    let (_, _, _, _, h, mi, sec, _) = time::split(time::abstime_now());
-                    let at = Self::opt_num(m, call, "HOURS").unwrap_or(0) * 3600
-                        + Self::opt_num(m, call, "MINUTES").unwrap_or(0) * 60
-                        + Self::opt_num(m, call, "SECONDS").unwrap_or(0);
-                    (at - (h * 3600 + mi * 60 + sec)).max(0)
-                } else {
-                    0
-                };
+                let ms = Self::interval_ms(m, call);
                 let reqid = Self::opt_text(m, call, "REQID").map(|r| r.trim_end().to_string());
                 self.region.borrow_mut().starts.push(region::StartRequest {
                     transid,
                     termid,
                     data,
                     reqid,
-                    due: std::time::Instant::now()
-                        + std::time::Duration::from_secs(secs.max(0) as u64),
+                    due: std::time::Instant::now() + std::time::Duration::from_millis(ms),
                 });
                 self.finish(m, call, "NORMAL", 0)
             }
@@ -1192,6 +1264,9 @@ impl Task {
     /// Ends the unit of work: Db2 commits or rolls back with it, and on
     /// rollback the changes to recoverable files are backed out.
     fn end_uow(&self, commit: bool) -> RResult<()> {
+        // enqueues for the unit of work end with it
+        let taskn = self.st.borrow().taskn;
+        self.region.borrow_mut().dequeue_task(taskn, false);
         let db2 = self.db2.borrow().clone();
         if let Some(h) = db2 {
             let _ = h.end_uow(commit);
@@ -1251,6 +1326,18 @@ impl Task {
     }
 
     // ---- file control ---------------------------------------------------
+
+    /// The end of an update of a record: the lock of a recoverable file's
+    /// record lasts until the unit of work ends, of another file's until
+    /// now.
+    fn unlock_record(&self, fname: &str, key: &str, primary: &[u8]) {
+        if !self.recoverable(fname) {
+            let taskn = self.st.borrow().taskn;
+            self.region
+                .borrow_mut()
+                .dequeue(&record_lock(key, primary), taskn);
+        }
+    }
 
     /// The open data set of a FILE / DATASET option; None: FILENOTFOUND.
     fn open_file(&self, m: &Machine, call: &ExecCall) -> Option<(String, usize)> {
@@ -1324,12 +1411,27 @@ impl Task {
                 } else {
                     zeus_ds::Rel::Eq
                 };
-                let found = {
-                    let r = self.region.borrow();
-                    r.files[&key].dataset.position(which, &k, rel)
-                };
-                let Some(f) = found else {
-                    return self.finish(m, call, "NOTFND", 0);
+                let taskn = self.st.borrow().taskn;
+                let f = loop {
+                    let found = {
+                        let r = self.region.borrow();
+                        r.files[&key].dataset.position(which, &k, rel)
+                    };
+                    let Some(f) = found else {
+                        return self.finish(m, call, "NOTFND", 0);
+                    };
+                    // READ UPDATE locks the record: the task waits while
+                    // another task has it
+                    if !call.has("UPDATE")
+                        || self.region.borrow_mut().enqueue(
+                            &record_lock(&key, &f.primary),
+                            taskn,
+                            false,
+                        )
+                        || crate::dispatch::suspend(crate::dispatch::Wait::Dispatch).is_none()
+                    {
+                        break f;
+                    }
                 };
                 if let Some(a) = Self::area(call, "RIDFLD") {
                     Self::store_bytes(m, &a, &f.position.key);
@@ -1376,10 +1478,11 @@ impl Task {
                 }
             }
             "REWRITE" => {
-                if self.st.borrow_mut().updates.remove(&fname).is_none() {
+                let Some(locked) = self.st.borrow_mut().updates.remove(&fname) else {
                     // REWRITE needs a READ UPDATE first
                     return self.finish(m, call, "INVREQ", 0);
-                }
+                };
+                self.unlock_record(&fname, &key, &locked);
                 let rec = Self::from_data(m, call);
                 let (r, pk, before) = {
                     let mut r = self.region.borrow_mut();
@@ -1408,8 +1511,12 @@ impl Task {
                         .position(which, &k, zeus_ds::Rel::Eq)
                         .map(|f| f.primary)
                 } else {
-                    match self.st.borrow_mut().updates.remove(&fname) {
-                        Some(p) => Some(p),
+                    let locked = self.st.borrow_mut().updates.remove(&fname);
+                    match locked {
+                        Some(p) => {
+                            self.unlock_record(&fname, &key, &p);
+                            Some(p)
+                        }
                         None => return self.finish(m, call, "INVREQ", 0),
                     }
                 };
@@ -1427,7 +1534,10 @@ impl Task {
                 self.finish(m, call, "NORMAL", 0)
             }
             "UNLOCK" => {
-                self.st.borrow_mut().updates.remove(&fname);
+                let locked = self.st.borrow_mut().updates.remove(&fname);
+                if let Some(p) = locked {
+                    self.unlock_record(&fname, &key, &p);
+                }
                 self.finish(m, call, "NORMAL", 0)
             }
             "STARTBR" | "RESETBR" => {
@@ -1905,7 +2015,18 @@ impl ExecHost for Task {
                 self.end_uow(!call.has("ROLLBACK"))?;
                 self.finish(m, call, "NORMAL", 0)
             }
-            "ENQ" | "DEQ" | "DELAY" | "SUSPEND" => self.finish(m, call, "NORMAL", 0),
+            "ENQ" | "DEQ" => self.enq(m, call),
+            "DELAY" => {
+                let ms = Self::interval_ms(m, call);
+                crate::dispatch::delay_until(
+                    std::time::Instant::now() + std::time::Duration::from_millis(ms),
+                );
+                self.finish(m, call, "NORMAL", 0)
+            }
+            "SUSPEND" => {
+                crate::dispatch::suspend(crate::dispatch::Wait::Dispatch);
+                self.finish(m, call, "NORMAL", 0)
+            }
             other => Err(RunError(format!(
                 "{}: EXEC CICS {other} is not supported yet (line {})",
                 call.program, call.line

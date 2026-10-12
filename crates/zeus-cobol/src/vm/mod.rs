@@ -122,6 +122,10 @@ pub struct Machine {
     /// Addresses of the main program's USING parameters, when the host
     /// passes them (IMS PCB masks) instead of the PARM.
     main_args: Option<Vec<Option<usize>>>,
+    /// Called every few thousand instructions (the dispatcher of a CICS
+    /// region gives other tasks the processor).
+    tick: Option<fn()>,
+    ticks: u32,
 }
 
 /// A program implemented by the host: it gets the storage and the
@@ -190,6 +194,8 @@ impl Machine {
             natives: HashMap::new(),
             natives_ref: HashMap::new(),
             exec_host: None,
+            tick: None,
+            ticks: 0,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -412,6 +418,23 @@ impl Machine {
     }
 
     /// The interface that runs EXEC statements.
+    /// Sets the function called now and then while programs run.
+    pub fn set_tick(&mut self, f: fn()) {
+        self.tick = Some(f);
+    }
+
+    /// Counts an instruction (or a statement of another run time): every
+    /// few thousand, the function of [`Machine::set_tick`] is called.
+    #[inline]
+    pub fn count_tick(&mut self) {
+        if let Some(f) = self.tick {
+            self.ticks = self.ticks.wrapping_add(1);
+            if self.ticks.is_multiple_of(4096) {
+                f();
+            }
+        }
+    }
+
     pub fn exec_host(&self) -> Option<Rc<dyn exec::ExecHost>> {
         self.exec_host.clone()
     }
@@ -669,6 +692,7 @@ impl Machine {
                 ));
             };
             pc += 1;
+            self.count_tick();
             let ins = match ins {
                 Instr::Exec(n) => match self.exec(cur, &code, *n)? {
                     exec::ExecOutcome::Continue => continue,

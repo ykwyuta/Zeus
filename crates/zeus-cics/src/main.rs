@@ -222,9 +222,10 @@ mod server {
     use std::rc::Rc;
     use std::sync::atomic::{AtomicU32, Ordering};
     use std::sync::{Arc, Mutex, mpsc};
-    use std::time::Instant;
+    use std::time::{Duration, Instant};
 
     use zeus_cics::csd::Csd;
+    use zeus_cics::dispatch;
     use zeus_cics::region::{self, Event, Region, Terminal};
     use zeus_cics::tn3270::{self, DeviceRequest, Inbound, Refusal, Session};
     use zeus_cobol::ebcdic;
@@ -432,10 +433,20 @@ mod server {
         waiting: Rc<RefCell<bool>>,
     }
 
-    /// The region's side of the server. Terminal input is dispatched here
-    /// by the main loop and, while a task waits for its terminal's input,
-    /// by that wait: other terminals' transactions then run (nested), and
-    /// input for waiting terminals is held for them.
+    /// A task of the region: its coroutine, the connection of its terminal
+    /// and the input given to it while it waits.
+    struct Running {
+        task: dispatch::Task,
+        conn: Option<u32>,
+        input: Option<Option<u8>>,
+    }
+
+    /// The region's side of the server. Each task runs as a coroutine
+    /// (`zeus_cics::dispatch`): it runs until it waits for its terminal's
+    /// input, for a time or a resource, or has used its time slice; the
+    /// main loop then takes the terminals' input and runs the other tasks.
+    /// Input for a terminal whose task runs is held until the task waits
+    /// for it or ends.
     struct Server {
         region: Rc<RefCell<Region>>,
         home: std::path::PathBuf,
@@ -443,6 +454,7 @@ mod server {
         held: RefCell<VecDeque<Msg>>,
         terms: RefCell<HashMap<u32, Term>>,
         names: Arc<Mutex<Names>>,
+        tasks: RefCell<Vec<Running>>,
     }
 
     fn target(m: &Msg) -> Option<u32> {
@@ -464,17 +476,31 @@ mod server {
                 .is_some_and(|t| *t.waiting.borrow())
         }
 
-        /// The next held message `want` accepts, else the next one received
-        /// (a Tick when a started transaction falls due first).
-        fn next(&self, want: impl Fn(&Msg) -> bool) -> Option<Msg> {
-            let mut held = self.held.borrow_mut();
-            if let Some(i) = held.iter().position(want) {
-                return held.remove(i);
+        /// A task of the terminal of connection `id` runs (or waits).
+        fn busy(&self, id: u32) -> bool {
+            self.tasks.borrow().iter().any(|r| r.conn == Some(id))
+        }
+
+        /// Whether a message can be dispatched now.
+        fn deliverable(&self, m: &Msg) -> bool {
+            match (target(m), m) {
+                (None, _) | (_, Msg::Connect(..) | Msg::SysReq(_) | Msg::Sscp(..)) => true,
+                (Some(id), Msg::Input(..) | Msg::Gone(_)) => !self.busy(id) || self.is_waiting(id),
+                (Some(id), _) => !self.busy(id),
             }
-            drop(held);
-            match region::next_due(&self.region) {
-                Some(due) => {
-                    let wait = due.saturating_duration_since(Instant::now());
+        }
+
+        /// The next held message that can be dispatched, else the next one
+        /// received until `deadline` (then a Tick); None when the server
+        /// ends.
+        fn next(&self, deadline: Option<Instant>) -> Option<Msg> {
+            let pos = self.held.borrow().iter().position(|m| self.deliverable(m));
+            if let Some(i) = pos {
+                return self.held.borrow_mut().remove(i);
+            }
+            match deadline {
+                Some(d) => {
+                    let wait = d.saturating_duration_since(Instant::now());
                     match self.rx.recv_timeout(wait) {
                         Ok(m) => Some(m),
                         Err(mpsc::RecvTimeoutError::Timeout) => Some(Msg::Tick),
@@ -485,13 +511,88 @@ mod server {
             }
         }
 
+        /// When the main loop has to look again without a message: a task
+        /// can run, a DELAY ends, a started transaction falls due.
+        fn deadline(&self) -> Option<Instant> {
+            let now = Instant::now();
+            let mut d = region::next_due(&self.region)
+                // due but its terminal is busy: look again a little later
+                .map(|t| t.max(now + Duration::from_millis(20)));
+            for r in self.tasks.borrow().iter() {
+                let t = match r.task.wait {
+                    dispatch::Wait::Dispatch => now,
+                    dispatch::Wait::Until(t) => t,
+                    dispatch::Wait::Input if r.input.is_some() => now,
+                    dispatch::Wait::Input => continue,
+                };
+                d = Some(d.map_or(t, |d| d.min(t)));
+            }
+            d
+        }
+
+        /// Starts a task: it runs until it first waits.
+        fn spawn(&self, conn: Option<u32>, f: impl FnOnce() + 'static) {
+            let mut task = dispatch::Task::new(f);
+            if !task.resume(dispatch::Resume::Go) {
+                self.tasks.borrow_mut().push(Running {
+                    task,
+                    conn,
+                    input: None,
+                });
+            }
+        }
+
+        /// Runs each task that can run, once.
+        fn run_ready(&self) {
+            let mut list = std::mem::take(&mut *self.tasks.borrow_mut());
+            let mut i = 0;
+            while i < list.len() {
+                let r = &mut list[i];
+                if let Some(how) = r.task.ready(&mut r.input, Instant::now())
+                    && r.task.resume(how)
+                {
+                    list.remove(i);
+                    continue;
+                }
+                i += 1;
+            }
+            let mut tasks = self.tasks.borrow_mut();
+            list.append(&mut tasks);
+            *tasks = list;
+        }
+
         fn dispatch(self: &Rc<Self>, msg: Msg) {
             if let Some(id) = target(&msg)
-                && !matches!(msg, Msg::Connect(..))
-                && self.is_waiting(id)
+                && self.busy(id)
             {
-                self.held.borrow_mut().push_back(msg);
-                return;
+                match msg {
+                    // the input a task waits for
+                    Msg::Input(id, rec) if self.is_waiting(id) => {
+                        let Some(t) = self.terms.borrow().get(&id).cloned() else {
+                            return;
+                        };
+                        if let Some(aid) = input(&t.session, &t.writer, &t.term, &rec) {
+                            *t.waiting.borrow_mut() = false;
+                            self.give_input(id, Some(aid));
+                        }
+                        return;
+                    }
+                    Msg::Gone(id) => {
+                        if self.is_waiting(id)
+                            && let Some(t) = self.terms.borrow().get(&id)
+                        {
+                            *t.waiting.borrow_mut() = false;
+                            self.give_input(id, None);
+                        }
+                        self.held.borrow_mut().push_back(msg);
+                        return;
+                    }
+                    Msg::Connect(..) | Msg::SysReq(_) | Msg::Sscp(..) => {}
+                    msg => {
+                        self.held.borrow_mut().push_back(msg);
+                        return;
+                    }
+                }
             }
             match msg {
                 Msg::Connect(id, w, session) => self.connect(id, w, session),
@@ -505,27 +606,8 @@ mod server {
                     let Some(aid) = input(&t.session, &t.writer, &t.term, &rec) else {
                         return;
                     };
-                    let e = region::attention(&self.region, &t.term, aid);
-                    if let Event::Abended { transid, code } = &e {
-                        eprintln!("zcics: {} {transid} abended {code}", t.term.borrow().id);
-                    }
-                    for m in self.region.borrow_mut().log.drain(..) {
-                        eprintln!("zcics: {m}");
-                    }
-                    super::submit_jobs(&self.region, &self.home);
-                    // a blank screen left by a transaction gets the prompt
-                    // again (CLEAR leaves it blank)
-                    if e == Event::Idle
-                        && aid != zeus_cics::region::aid::CLEAR
-                        && t.term.borrow().screen.fields().is_empty()
-                    {
-                        let blank = t.term.borrow().screen.chars.iter().all(|&c| c == 0);
-                        if blank {
-                            t.term.borrow_mut().good_morning();
-                        }
-                    }
-                    send_screen(&t.writer, &t.session, &t.term);
-                    t.term.borrow_mut().screen.alarm = false;
+                    let server = self.clone();
+                    self.spawn(Some(id), move || server.attention(&t, aid));
                 }
                 Msg::SysReq(id) => {
                     let Some(t) = self.terms.borrow().get(&id).cloned() else {
@@ -567,7 +649,62 @@ mod server {
                 }
                 Msg::Tick => {}
             }
-            self.after();
+        }
+
+        /// Gives the input of terminal `id` to its waiting task.
+        fn give_input(&self, id: u32, aid: Option<u8>) {
+            if let Some(r) = self
+                .tasks
+                .borrow_mut()
+                .iter_mut()
+                .find(|r| r.conn == Some(id))
+            {
+                r.input = Some(aid);
+            }
+        }
+
+        /// The task of an attention key: the transaction, then the screen.
+        fn attention(&self, t: &Term, aid: u8) {
+            let e = region::attention(&self.region, &t.term, aid);
+            if let Event::Abended { transid, code } = &e {
+                eprintln!("zcics: {} {transid} abended {code}", t.term.borrow().id);
+            }
+            for m in self.region.borrow_mut().log.drain(..) {
+                eprintln!("zcics: {m}");
+            }
+            super::submit_jobs(&self.region, &self.home);
+            // a blank screen left by a transaction gets the prompt again
+            // (CLEAR leaves it blank)
+            if e == Event::Idle
+                && aid != zeus_cics::region::aid::CLEAR
+                && t.term.borrow().screen.fields().is_empty()
+            {
+                let blank = t.term.borrow().screen.chars.iter().all(|&c| c == 0);
+                if blank {
+                    t.term.borrow_mut().good_morning();
+                }
+            }
+            send_screen(&t.writer, &t.session, &t.term);
+            t.term.borrow_mut().screen.alarm = false;
+        }
+
+        /// The task of a started transaction; its display gets the screen.
+        fn started(&self, s: region::StartRequest) {
+            let (termid, e) = region::run_start(&self.region, s);
+            if let Event::Abended { transid, code } = &e {
+                eprintln!("zcics: started {transid} abended {code}");
+            }
+            let t = self
+                .terms
+                .borrow()
+                .values()
+                .find(|t| t.term.borrow().id == termid)
+                .cloned();
+            if let Some(t) = t
+                && !t.term.borrow().printer
+            {
+                send_screen(&t.writer, &t.session, &t.term);
+            }
         }
 
         fn sscp_say(&self, t: &Term, text: &str) {
@@ -578,24 +715,19 @@ mod server {
                 .send_sscp(&mut *w, &ebcdic::encode(text));
         }
 
-        /// After an event: started transactions that are due run, their
-        /// displays get their screens, printers what was printed.
+        /// Between events: started transactions that are due start, the
+        /// log is written, printers get what was printed.
         fn after(self: &Rc<Self>) {
-            for (termid, e) in region::run_due(&self.region) {
-                if let Event::Abended { transid, code } = &e {
-                    eprintln!("zcics: started {transid} abended {code}");
-                }
-                let t = self
-                    .terms
-                    .borrow()
-                    .values()
-                    .find(|t| t.term.borrow().id == termid)
-                    .cloned();
-                if let Some(t) = t
-                    && !t.term.borrow().printer
-                {
-                    send_screen(&t.writer, &t.session, &t.term);
-                }
+            for s in region::take_due(&self.region) {
+                let conn = s.termid.as_ref().and_then(|tid| {
+                    self.terms
+                        .borrow()
+                        .iter()
+                        .find(|(_, t)| &t.term.borrow().id == tid)
+                        .map(|(id, _)| *id)
+                });
+                let server = self.clone();
+                self.spawn(conn, move || server.started(s));
             }
             for m in self.region.borrow_mut().log.drain(..) {
                 eprintln!("zcics: {m}");
@@ -621,41 +753,28 @@ mod server {
             }
         }
 
-        /// Waits for the input of terminal `id` (a task's RECEIVE), running
-        /// the other terminals meanwhile.
-        fn wait(self: &Rc<Self>, id: u32, t: &Term) -> Option<u8> {
+        /// Waits for the input of a terminal (a task's RECEIVE): the task
+        /// is suspended until it comes.
+        fn wait(&self, t: &Term) -> Option<u8> {
             *t.waiting.borrow_mut() = true;
             send_screen(&t.writer, &t.session, &t.term);
-            let got = loop {
-                let msg = self.next(|m| match target(m) {
-                    Some(i) => i == id || !self.is_waiting(i),
-                    None => true,
-                });
-                let Some(msg) = msg else { break None };
-                match msg {
-                    Msg::Input(i, rec) if i == id => {
-                        if let Some(a) = input(&t.session, &t.writer, &t.term, &rec) {
-                            break Some(a);
-                        }
-                    }
-                    Msg::Gone(i) if i == id => {
-                        self.held.borrow_mut().push_back(Msg::Gone(i));
-                        break None;
-                    }
-                    other => {
-                        // SYSREQ and the SSCP work for the waiting terminal too
-                        if matches!(other, Msg::SysReq(i) | Msg::Sscp(i, _) if i == id) {
-                            *t.waiting.borrow_mut() = false;
-                            self.dispatch(other);
-                            *t.waiting.borrow_mut() = true;
-                        } else {
-                            self.dispatch(other);
-                        }
-                    }
-                }
-            };
+            let got = dispatch::suspend(dispatch::Wait::Input);
             *t.waiting.borrow_mut() = false;
-            got
+            match got {
+                Some(dispatch::Resume::Input(a)) => a,
+                _ => None,
+            }
+        }
+
+        fn run(self: &Rc<Self>) {
+            loop {
+                self.run_ready();
+                self.after();
+                let Some(msg) = self.next(self.deadline()) else {
+                    break;
+                };
+                self.dispatch(msg);
+            }
         }
 
         fn connect(self: &Rc<Self>, id: u32, w: Writer, session: Session) {
@@ -697,8 +816,7 @@ mod server {
                 t.term.borrow_mut().good_morning();
                 let server = Rc::downgrade(self);
                 let me = t.clone();
-                t.term.borrow_mut().converse =
-                    Some(Box::new(move |_| server.upgrade()?.wait(id, &me)));
+                t.term.borrow_mut().converse = Some(Box::new(move |_| server.upgrade()?.wait(&me)));
                 t.term.borrow_mut().model = t.session.borrow().caps.model();
                 // the capabilities of a terminal with extended attributes
                 if t.session.borrow().caps.extended {
@@ -770,10 +888,9 @@ mod server {
             held: RefCell::default(),
             terms: RefCell::default(),
             names,
+            tasks: RefCell::default(),
         });
-        while let Some(msg) = server.next(|_| true) {
-            server.dispatch(msg);
-        }
+        server.run();
         Ok(())
     }
 }
@@ -832,6 +949,10 @@ fn submit_jobs(region: &Rc<RefCell<Region>>, home: &std::path::Path) {
 }
 
 fn main() -> ExitCode {
+    // MQGET with MQGMO_WAIT lets the other tasks run while it waits
+    zeus_mq::mqi::set_wait_hook(|d| {
+        zeus_cics::dispatch::delay_until(std::time::Instant::now() + d)
+    });
     let mut home = std::env::var("ZEUS_HOME")
         .map(PathBuf::from)
         .unwrap_or_else(|_| PathBuf::from("zeus"));

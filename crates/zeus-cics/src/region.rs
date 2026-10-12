@@ -112,6 +112,10 @@ pub struct Region {
     /// MQ initiation queues the trigger monitor (CKTI) reads.
     pub initqs: Vec<String>,
     last_trigger_poll: Option<std::time::Instant>,
+    /// Enqueued resources: the task that has each one, how many times it
+    /// enqueued it, and whether until the task ends (else the unit of
+    /// work).
+    enqs: HashMap<Vec<u8>, (u32, u32, bool)>,
 }
 
 pub type Shared<T> = Rc<RefCell<T>>;
@@ -125,6 +129,41 @@ impl Region {
         self.db2_free
             .pop()
             .or_else(|| zeus_db2::Db2Host::from_env().map(Rc::new))
+    }
+
+    /// ENQ of a resource by task `taskn`: false when another task has it.
+    pub fn enqueue(&mut self, name: &[u8], taskn: u32, for_task: bool) -> bool {
+        match self.enqs.get_mut(name) {
+            Some((t, n, ft)) if *t == taskn => {
+                *n += 1;
+                *ft |= for_task;
+                true
+            }
+            Some(_) => false,
+            None => {
+                self.enqs.insert(name.to_vec(), (taskn, 1, for_task));
+                true
+            }
+        }
+    }
+
+    /// DEQ of a resource by task `taskn`.
+    pub fn dequeue(&mut self, name: &[u8], taskn: u32) {
+        if let Some((t, n, _)) = self.enqs.get_mut(name)
+            && *t == taskn
+        {
+            *n -= 1;
+            if *n == 0 {
+                self.enqs.remove(name);
+            }
+        }
+    }
+
+    /// The end of a unit of work (all: of the task) of task `taskn`: its
+    /// enqueues for it end.
+    pub fn dequeue_task(&mut self, taskn: u32, all: bool) {
+        self.enqs
+            .retain(|_, (t, _, for_task)| *t != taskn || (*for_task && !all));
     }
 
     /// Gives back a connection whose unit of work has ended.
@@ -179,6 +218,7 @@ impl Region {
             db2_free: Vec::new(),
             initqs: Vec::new(),
             last_trigger_poll: None,
+            enqs: HashMap::new(),
         }
     }
 
@@ -479,8 +519,6 @@ fn abended(term: &Shared<Terminal>, transid: String, code: String) -> Event {
     Event::Abended { transid, code }
 }
 
-/// Runs the started transactions that are due and whose terminal (if any)
-/// is free; their events, with the terminal identifier.
 /// The trigger monitor (CKTI): each trigger message on the initiation
 /// queues starts the transaction its ApplId names, with the message as the
 /// data it RETRIEVEs (at most every half second).
@@ -530,50 +568,93 @@ fn poll_triggers(region: &Shared<Region>) {
     }
 }
 
-pub fn run_due(region: &Shared<Region>) -> Vec<(String, Event)> {
+/// The started transactions that are due and whose terminal (if any) is
+/// free, taken off the list (one for each terminal).
+pub fn take_due(region: &Shared<Region>) -> Vec<StartRequest> {
     poll_triggers(region);
-    let mut events = Vec::new();
-    loop {
-        let now = std::time::Instant::now();
-        let pick = {
-            let r = region.borrow();
-            r.starts.iter().position(|s| {
-                s.due <= now
-                    && match &s.termid {
-                        None => true,
-                        Some(t) => r
-                            .terminals
-                            .get(t)
-                            .and_then(std::rc::Weak::upgrade)
-                            .is_some_and(|t| !t.borrow().busy),
-                    }
-            })
-        };
-        let Some(i) = pick else { break };
-        let s = region.borrow_mut().starts.remove(i);
-        let term = match &s.termid {
-            Some(t) => region.borrow().terminals[t].upgrade().unwrap(),
-            // no terminal: the task has no principal facility
-            None => Rc::new(RefCell::new(Terminal::new(""))),
-        };
-        if !region.borrow().csd.transactions.contains_key(&s.transid) {
+    let now = std::time::Instant::now();
+    let mut r = region.borrow_mut();
+    let mut taken: Vec<StartRequest> = Vec::new();
+    let mut i = 0;
+    while i < r.starts.len() {
+        let s = &r.starts[i];
+        if s.due > now {
+            i += 1;
             continue;
         }
-        let e = match crate::task::run_started(region, &term, &s.transid, s.data) {
-            Ok(()) => Event::Ended {
-                transid: s.transid.clone(),
-            },
-            Err(code) => Event::Abended {
-                transid: s.transid.clone(),
-                code,
-            },
+        if !r.csd.transactions.contains_key(&s.transid) {
+            r.starts.remove(i);
+            continue;
+        }
+        let free = match &s.termid {
+            None => true,
+            Some(t) => {
+                !taken.iter().any(|o| o.termid.as_ref() == Some(t))
+                    && r.terminals
+                        .get(t)
+                        .and_then(std::rc::Weak::upgrade)
+                        .is_some_and(|t| !t.borrow().busy)
+            }
         };
-        events.push((s.termid.unwrap_or_default(), e));
+        if free {
+            taken.push(r.starts.remove(i));
+        } else {
+            i += 1;
+        }
+    }
+    taken
+}
+
+/// Runs a started transaction (from [`take_due`]) at its terminal, or
+/// without one; its event, with the terminal identifier.
+pub fn run_start(region: &Shared<Region>, s: StartRequest) -> (String, Event) {
+    let term = match s.termid.as_ref().and_then(|t| {
+        region
+            .borrow()
+            .terminals
+            .get(t)
+            .and_then(std::rc::Weak::upgrade)
+    }) {
+        Some(t) => t,
+        // no terminal: the task has no principal facility
+        None => Rc::new(RefCell::new(Terminal::new(""))),
+    };
+    let e = match crate::task::run_started(region, &term, &s.transid, s.data) {
+        Ok(()) => Event::Ended {
+            transid: s.transid.clone(),
+        },
+        Err(code) => Event::Abended {
+            transid: s.transid.clone(),
+            code,
+        },
+    };
+    (s.termid.unwrap_or_default(), e)
+}
+
+/// Runs the started transactions that are due and whose terminal (if any)
+/// is free, one after the other; their events, with the terminal
+/// identifier.
+pub fn run_due(region: &Shared<Region>) -> Vec<(String, Event)> {
+    let mut events = Vec::new();
+    loop {
+        let due = take_due(region);
+        if due.is_empty() {
+            break;
+        }
+        for s in due {
+            events.push(run_start(region, s));
+        }
     }
     events
 }
 
-/// When the next started transaction is due.
+/// When the region has work next: a started transaction falls due, or the
+/// trigger monitor reads its initiation queues.
 pub fn next_due(region: &Shared<Region>) -> Option<std::time::Instant> {
-    region.borrow().starts.iter().map(|s| s.due).min()
+    let r = region.borrow();
+    let poll = (!r.initqs.is_empty()).then(|| {
+        r.last_trigger_poll.unwrap_or_else(std::time::Instant::now)
+            + std::time::Duration::from_millis(500)
+    });
+    r.starts.iter().map(|s| s.due).chain(poll).min()
 }

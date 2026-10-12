@@ -14,7 +14,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 3 | L | **PL/I の DL/I 呼出し** (PLITDLI と EXEC DLI): PCB ポインタ、引数の数、SYSTEM(IMS) の主手続き。Bank of Z の IBLOGIN が使う (#2 の前提) | 0004・0006 | **済** (PLITDLI。PL/I の EXEC DLI は未対応) |
 | 4 | L | **z/OS Connect 相当の REST 経路**: HTTP の JSON 要求を COMMAREA / コンテナに写像して CICS / IMS のプログラムを呼ぶ (Bank of Z の API、GenApp の Web サービス経路) | 0002 Phase 5・6 | **済** (Bank of Z の API。GenApp は Web サービス定義がない。0008) |
 | 5 | L | **CICS のトリガーモニター (CKTI)**: 開始キューのトリガーメッセージから取引を START し、RETRIEVE で MQTM を渡す。CardDemo の CODATE01・COACCT01・COPAUA0C | 0005・0006 | **済** (`tools/carddemo-mq.sh test`) |
-| 6 | L | zcics のタスクの並行実行 (入力待ちでない処理が他の端末を待たせない) | 0002 Phase 4 | 未着手 |
+| 6 | L | zcics のタスクの並行実行 (入力待ちでない処理が他の端末を待たせない) | 0002 Phase 4 | **済** (`tools/tn3270-test.sh`) |
 | 7 | L | IMS の WAL の共有 (zcics とバッチの同時アクセス、常駐サーバー) | 0006 | 未着手 |
 | 8 | L | PostgreSQL バックエンド (Db2 方言の変換、SQLCODE の対応表) | 0002 Phase 7 | 未着手 |
 | 9 | M | DL/I の機能: コマンドコード、ブール演算子の修飾、等号以外の比較、パス呼出し、XRST・記号チェックポイント | 0006 | 未着手 |
@@ -77,3 +77,16 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
     プログラムは RETRIEVE で MQTM を受け取る。
   - CardDemo の CODATE01・COACCT01 と、承認モジュールの COPAUA0C (MQ と IMS DB) が `tools/carddemo-mq.sh test` で動く。
   - 要求と応答のテスト用に `zmq` (put / get) を追加した。
+- **#6 タスクの並行実行** (2026-10):
+  - zcics のサーバーは各タスクをコルーチン (corosensei、スタックはタスクごと) で動かす。待ちの間は他のタスクが動く。
+    - 待ち: 端末の入力 (会話型の RECEIVE)、DELAY (INTERVAL・FOR・TIME・UNTIL)、ENQ の資源、READ UPDATE のレコード、
+      MQGET の MQGMO_WAIT (待ち時間の間 0.1 秒ごとにキューを見る)。
+    - タイムスライス: COBOL・PL/I の解釈実行が一定命令ごとに時刻を見て、50 ms を超えたら譲る。
+  - 以前は会話型の待ちの中で他の端末のタスクを入れ子に実行していた。待ちの解ける順序が入れ子の順に縛られ、計算の長いタスクは
+    他を待たせた。
+  - ENQ / DEQ を実装した。資源ごとの所有タスク、NOSUSPEND・HANDLE CONDITION ENQBUSY、作業単位またはタスクの終わりの解放。
+    READ UPDATE はレコードをロックし、回復可能なファイルでは作業単位の終わりまで保持する。
+  - unsafe コードはディスパッチャーのモジュール (`crates/zeus-cics/src/dispatch.rs`) だけ。動いているコルーチンの yielder を
+    ポインターで参照する。
+  - スクリプトモードは従来どおり 1 タスクずつ実行する (DELAY は眠る)。
+  - 制約: MQ の既定の接続はリージョンで 1 つなので、タスクの作業単位 (同期点つきの MQPUT / MQGET) は混ざる。

@@ -7,7 +7,8 @@
 # and SYSREQ / LOGOFF (SSCP-LU data, UNBIND); then an oversize screen
 # (160 x 62, 14-bit addresses, a new BIND after the Query Reply) and a
 # Japanese screen (CCSID 939 on both sides: double-byte characters with SO /
-# SI, a SOSI input field), and file transfers with IND$FILE.
+# SI, a SOSI input field), file transfers with IND$FILE, and tasks of two
+# displays running at the same time.
 #
 # usage: tools/tn3270-test.sh      (needs s3270 and pr3287)
 set -eu
@@ -20,7 +21,7 @@ port=${ZEUS_TN3270_PORT:-13273}
 cargo build --release -q -p zeus-cobol -p zeus-cics
 rm -rf "$work"
 mkdir -p "$work/loadlib"
-for p in ZPRT ZPR2P ZALT ZSF ZBUF ZSA; do
+for p in ZPRT ZPR2P ZALT ZSF ZBUF ZSA ZLONG; do
     $bin/zcobc compile -o "$work/loadlib/$p.zo" "$src/$p.cbl"
 done
 (exec $bin/zcics --home "$work" --csd "$src/TEST.CSD" --loadlib "$work/loadlib" \
@@ -115,6 +116,31 @@ for want in "SF(c0=e0,42=f2) 52 45 44" "SA(42=f6) 59 45 4c SA(41=f2) 52 45 56" "
     grep -qF "$want" "$work/sa.log" || { cat "$work/sa.log"; fail "attributes: '$want' not in the buffer"; }
 done
 
+# concurrent tasks: ZLNG on one display enqueues a resource, computes
+# (8 million additions) and waits two seconds (DELAY); another display's
+# transactions answer meanwhile, and its ZLNG finds the resource busy
+(exec $bin/zcics --home "$work" --csd "$src/TEST.CSD" --loadlib "$work/loadlib" \
+    --serve $port >"$work/server7.log" 2>&1) &
+server=$!
+sleep 1
+printf 'Connect(localhost:%s)\nWait(10,InputField)\nClear()\nString("ZLNG")\nEnter()\nWait(20,Output)\nAscii(0,0,1,40)\nQuit()\n' $port |
+    timeout 30 s3270 >"$work/long.log" 2>&1 &
+long=$!
+sleep 1.5
+start=$(date +%s%N)
+printf 'Connect(localhost:%s)\nWait(10,InputField)\nClear()\nString("ZALT")\nEnter()\nWait(10,Output)\nAscii(0,0,1,40)\nClear()\nString("ZLNG")\nEnter()\nWait(10,Output)\nAscii(0,0,1,40)\nQuit()\n' $port |
+    timeout 30 s3270 >"$work/short.log" 2>&1 || true
+elapsed=$((($(date +%s%N) - start) / 1000000))
+wait $long || true
+kill $server 2>/dev/null || true
+wait $server 2>/dev/null || true
+grep -q "data: ZLONG: DONE 032000004000000" "$work/long.log" &&
+    grep -q "data: SIZE " "$work/short.log" && grep -q "data: ZLONG: BUSY" "$work/short.log" ||
+    { cat "$work/long.log" "$work/short.log" "$work/server7.log"; fail "concurrent tasks"; }
+# ZLNG takes more than four seconds; the other display's work, not two
+[ "$elapsed" -lt 2000 ] ||
+    { cat "$work/short.log" "$work/server7.log"; fail "concurrent tasks: the second display waited ${elapsed} ms"; }
+
 # file transfer (IND$FILE, DFT): text to a data set and back, binary
 # data to a TS queue and back
 printf 'first record\nsecond, a longer record\nthird\n' >"$work/up.txt"
@@ -191,4 +217,4 @@ for want in "日本語の画面" "お名前：   山田" "こんにちは、  �
     grep -q "$want" "$work/japanese.log" || { cat "$work/japanese.log" "$work/server3.log"; fail "Japanese: '$want' not shown"; }
 done
 grep -q "dbcs: true" "$work/server3.log" || fail "Japanese: DBCS not in the Query Reply"
-echo "TN3270E display (model 5, oversize, Japanese), printer, structured fields, SYSREQ, IND\$FILE and TLS passed"
+echo "TN3270E display (model 5, oversize, Japanese), printer, structured fields, SYSREQ, concurrent tasks, IND\$FILE and TLS passed"

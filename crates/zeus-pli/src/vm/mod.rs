@@ -1095,6 +1095,9 @@ impl Machine {
     }
 
     fn exec(&mut self, s: &Stmt, act: usize) -> R<()> {
+        if let Some(sys) = self.sys.as_mut() {
+            sys.count_tick();
+        }
         match s {
             Stmt::Null => Ok(()),
             Stmt::Exec(x) => self.exec_stmt(x, act),

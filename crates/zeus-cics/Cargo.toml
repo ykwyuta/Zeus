@@ -8,6 +8,7 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+corosensei = "0.3"
 rustls.workspace = true
 rustls-pki-types.workspace = true
 serde.workspace = true
@@ -29,5 +30,9 @@ tempfile.workspace = true
 name = "zcics"
 path = "src/main.rs"
 
-[lints]
-workspace = true
+# The dispatcher's coroutines need unsafe code; everything else denies it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

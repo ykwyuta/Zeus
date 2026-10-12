@@ -19,6 +19,9 @@ pub const MQRC_GMO_ERROR: i32 = 2186;
 pub const MQRC_BUFFER_LENGTH_ERROR: i32 = 2005;
 /// MQCCSI_Q_MGR: the queue manager's CCSID (here: the program's code page).
 const MQCCSI_Q_MGR: i32 = 0;
+/// Offsets of Options and WaitInterval in MQGMO.
+const GMO_OPTIONS: usize = 8;
+const GMO_WAIT_INTERVAL: usize = 12;
 /// Offset of CodedCharSetId in MQMD.
 const MD_CCSID: usize = 28;
 
@@ -34,6 +37,16 @@ struct State {
 
 thread_local! {
     static STATE: RefCell<State> = RefCell::new(State::default());
+    static WAIT_HOOK: std::cell::Cell<Option<fn(std::time::Duration)>> =
+        const { std::cell::Cell::new(None) };
+}
+
+/// Sets how MQGET waits for a message on this thread (MQGMO_WAIT): the
+/// call polls the queue and calls `f` with the time to wait before the
+/// next look, so that a CICS region runs other tasks meanwhile. Without
+/// it, the client library waits.
+pub fn set_wait_hook(f: fn(std::time::Duration)) {
+    WAIT_HOOK.set(Some(f));
 }
 
 /// Runs `f` with the client library (loaded on first use).
@@ -410,8 +423,40 @@ pub fn mqget(mem: &mut [u8], addrs: &[Option<usize>]) -> Result<i32, String> {
     // MQGMO_CONVERT converts to the code page of the program's data
     own_ccsid(&mut md);
     let mut buf = vec![0u8; n as usize];
-    let (len, cr) = with_lib(|l| l.get(h, o, &mut md, &mut gmo, &mut buf))
-        .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)));
+    let get = |md: &mut Vec<u8>, gmo: &mut Vec<u8>, buf: &mut Vec<u8>| {
+        with_lib(|l| l.get(h, o, md, gmo, buf))
+            .unwrap_or((0, (MQCC_FAILED, MQRC_ENVIRONMENT_ERROR)))
+    };
+    const MQGMO_WAIT: i32 = 1;
+    const MQWI_UNLIMITED: i32 = -1;
+    const MQRC_NO_MSG_AVAILABLE: i32 = 2033;
+    let options = ne(&gmo, GMO_OPTIONS);
+    let (len, cr) = match WAIT_HOOK.get() {
+        Some(wait) if options & MQGMO_WAIT != 0 => {
+            // look at the queue now and then until the wait interval ends
+            let interval = ne(&gmo, GMO_WAIT_INTERVAL);
+            let md0 = md.clone();
+            let start = std::time::Instant::now();
+            set_ne(&mut gmo, GMO_OPTIONS, options & !MQGMO_WAIT);
+            let r = loop {
+                let r = get(&mut md, &mut gmo, &mut buf);
+                let waited = start.elapsed().as_millis() as i64;
+                let left = if interval == MQWI_UNLIMITED {
+                    i64::MAX
+                } else {
+                    interval as i64 - waited
+                };
+                if r.1 != (MQCC_FAILED, MQRC_NO_MSG_AVAILABLE) || left <= 0 {
+                    break r;
+                }
+                md.copy_from_slice(&md0);
+                wait(std::time::Duration::from_millis(left.min(100) as u64));
+            };
+            set_ne(&mut gmo, GMO_OPTIONS, options);
+            r
+        }
+        _ => get(&mut md, &mut gmo, &mut buf),
+    };
     let k = (len.max(0) as usize).min(buf.len());
     a.bytes_mut(5, n as usize)?[..k].copy_from_slice(&buf[..k]);
     a.put_back(2, &MD, &md)?;

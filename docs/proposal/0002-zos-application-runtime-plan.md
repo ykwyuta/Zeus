@@ -198,12 +198,13 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   ASSIGN SCRNHT/ALTSCRNHT/COLOR など)、構造化フィールド (SEND STRFIELD を Write Structured
   Field で送り、AID X'88' の応答を RECEIVE に渡す)、RECEIVE BUFFER、ERASEAUP、
   START (TERMID・FROM・INTERVAL/AFTER/AT/TIME・REQID) / RETRIEVE / CANCEL と開始コード、
-  を実装した。会話型タスクが入力を待つ間は、他の端末の入力をその待ちの中で処理し (入れ子に
-  タスクを実行し、待っている端末宛ての入力は保留する)、各タスクは自分の Db2 接続を使う。
-  `tools/tn3270-test.sh` が s3270 (3279 モデル 5、TN3270E) と pr3287 (ASSOCIATE) でこれらを
-  確認し、GenApp の TN3270 試験は 2 端末の同時操作も確認する (いずれも CI)。
-  未着手: 端末からの入力待ちでない処理の並行実行 (計算の長いタスクは他を待たせる)、
-  SNA 応答 (RESPONSES は合意するが要求しない)、プリンタの BIND 以外の SNA 制御。
+  を実装した。タスクはコルーチンとして動き (CICS の QR TCB と同じく 1 スレッドで切り替える)、
+  端末の入力・DELAY・ENQ の資源・READ UPDATE のレコードを待つ間や、タイムスライス (50 ms) を
+  使い切ったときに他のタスクに譲る。動いているタスクの端末宛ての入力は保留する。各タスクは自分の
+  Db2 接続を使う。`tools/tn3270-test.sh` が s3270 (3279 モデル 5、TN3270E) と pr3287 (ASSOCIATE)
+  でこれらと、長いタスクの間に他の端末の取引が応答することを確認し、GenApp の TN3270 試験は
+  2 端末の同時操作も確認する (いずれも CI)。
+  未着手:   SNA 応答 (RESPONSES は合意するが要求しない)、プリンタの BIND 以外の SNA 制御。
 
 ### Phase 5: Db2 (Db2 CE) → GenApp (8〜10 週) — コンパイラ C6
 - EXEC SQL のコンパイラ統合、SQLCA、ホスト変数・標識変数、カーソル、DCLGEN copybook。

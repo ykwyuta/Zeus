@@ -44,8 +44,10 @@ capabilities (Read Partition Query) and sends colour and highlighting only to
 those that have them. Programs get the alternate screen size (ERASE
 ALTERNATE), structured fields (SEND STRFIELD, replies with AID X'88'),
 RECEIVE BUFFER, and START / RETRIEVE, also to printers (SCS print data to
-pr3287, or a file in script mode). While a conversational task waits for its
-terminal, the other terminals' transactions run, each task with its own Db2
+pr3287, or a file in script mode). Tasks run as coroutines, as on the
+quasi-reentrant TCB of CICS: while one waits for its terminal, a DELAY, an
+enqueued resource or a record read for update, or has used its time slice
+(50 ms), the other terminals' transactions run, each task with its own Db2
 connection (`tools/tn3270-test.sh` checks this with s3270 and pr3287). The CardDemo online transactions
 (sign-on, menus, account view and update, card list, view and update,
 transaction list, view and add, bill payment, report submission through the

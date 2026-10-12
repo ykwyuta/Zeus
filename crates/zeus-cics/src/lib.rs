@@ -10,6 +10,7 @@
 
 pub mod bms;
 pub mod csd;
+pub mod dispatch;
 pub mod indfile;
 pub mod region;
 pub mod screen;
