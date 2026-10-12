@@ -676,6 +676,87 @@ fn shopchk() -> String {
     )
 }
 
+/// SSAs with command codes and Boolean qualifications, and a symbolic
+/// checkpoint.
+fn shopmore() -> String {
+    format!(
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SHOPMORE.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 SSA-PATH.
+          05 FILLER     PIC X(11) VALUE 'CUSTOMER*D('.
+          05 FILLER     PIC X(10) VALUE 'CUSTNO  = '.
+          05 FILLER     PIC X(6) VALUE 'C0001)'.
+       01 SSA-ORD-GE.
+          05 FILLER     PIC X(9) VALUE 'ORDERS  ('.
+          05 FILLER     PIC X(10) VALUE 'ORDNO   >='.
+          05 FILLER     PIC X(5) VALUE '0002)'.
+       01 PATH-AREA.
+          05 P-CUST     PIC X(30).
+          05 P-ORD      PIC X(20).
+       01 SSA-OR.
+          05 FILLER     PIC X(9) VALUE 'CUSTOMER('.
+          05 FILLER     PIC X(10) VALUE 'CUSTNO  = '.
+          05 FILLER     PIC X(6) VALUE 'C0009+'.
+          05 FILLER     PIC X(10) VALUE 'CUSTNO  = '.
+          05 FILLER     PIC X(6) VALUE 'C0002)'.
+       01 SSA-AND.
+          05 FILLER     PIC X(9) VALUE 'CUSTOMER('.
+          05 FILLER     PIC X(10) VALUE 'CUSTNO  GT'.
+          05 FILLER     PIC X(6) VALUE 'C0000&'.
+          05 FILLER     PIC X(10) VALUE 'CUSTNO  < '.
+          05 FILLER     PIC X(6) VALUE 'C0002)'.
+       01 SSA-LAST      PIC X(11) VALUE 'ORDERS  *L '.
+       01 F-CHKP        PIC X(4) VALUE 'CHKP'.
+       01 IO-LEN        PIC S9(9) COMP VALUE 12.
+       01 CHKP-ID       PIC X(12) VALUE 'SHOP0001'.
+       01 SAVE-LEN      PIC S9(9) COMP VALUE 10.
+       01 SAVED         PIC X(10) VALUE 'COUNT=0042'.
+{SHOPDATA}       PROCEDURE DIVISION USING IOPCB DBPCB.
+           CALL 'CBLTDLI' USING F-GU DBPCB PATH-AREA SSA-PATH SSA-ORD-GE
+           DISPLAY 'PATH ' PCB-STATUS ' ' P-CUST(1:10) ' ' P-ORD(1:8)
+                   PCB-SEGM
+           CALL 'CBLTDLI' USING F-GU DBPCB CUST-REC SSA-OR
+           DISPLAY 'OR ' PCB-STATUS ' ' CUST-NO
+           CALL 'CBLTDLI' USING F-GU DBPCB CUST-REC SSA-AND
+           DISPLAY 'AND ' PCB-STATUS ' ' CUST-NO
+           MOVE 'C0001' TO SSA-KEY
+           CALL 'CBLTDLI' USING F-GU DBPCB ORD-REC SSA-CUST SSA-LAST
+           DISPLAY 'LAST ' PCB-STATUS ' ' ORD-NO
+           CALL 'CBLTDLI' USING F-CHKP IOPCB IO-LEN CHKP-ID SAVE-LEN
+                SAVED
+           DISPLAY 'CHKP ' IOPCB(11:2)
+           GOBACK.
+"
+    )
+}
+
+/// XRST: a normal start, then a restart from the symbolic checkpoint.
+fn shoprst() -> String {
+    format!(
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. SHOPRST.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 F-XRST        PIC X(4) VALUE 'XRST'.
+       01 IO-LEN        PIC S9(9) COMP VALUE 12.
+       01 RST-ID        PIC X(12) VALUE SPACES.
+       01 SAVE-LEN      PIC S9(9) COMP VALUE 10.
+       01 SAVED         PIC X(10) VALUE 'FRESH'.
+{SHOPDATA}       PROCEDURE DIVISION USING IOPCB DBPCB.
+           CALL 'CBLTDLI' USING F-XRST IOPCB IO-LEN RST-ID SAVE-LEN
+                SAVED
+           DISPLAY 'START ' IOPCB(11:2) ' ' SAVED
+           MOVE 'SHOP0001' TO RST-ID
+           CALL 'CBLTDLI' USING F-XRST IOPCB IO-LEN RST-ID SAVE-LEN
+                SAVED
+           DISPLAY 'XRST ' IOPCB(11:2) ' ' RST-ID(1:8) ' ' SAVED
+           GOBACK.
+"
+    )
+}
+
 /// IMS batch regions (DFSRRC00): DL/I calls and EXEC DLI on a database
 /// defined by DBD and PSB members of the IMS DD libraries, committed at
 /// the end of a step and backed out when it abends.
@@ -705,6 +786,8 @@ fn ims_batch_regions() {
         ("SHOPLOAD", shopload()),
         ("SHOPREAD", shopread()),
         ("SHOPCHK", shopchk()),
+        ("SHOPMORE", shopmore()),
+        ("SHOPRST", shoprst()),
     ] {
         job.push_str(&compile_step(n, "IGYCRCTL", &src));
     }
@@ -713,6 +796,8 @@ fn ims_batch_regions() {
         ("LOAD", "DLI", "SHOPLOAD", ""),
         ("READ", "BMP", "SHOPREAD", ""),
         ("CHECK", "DBB", "SHOPCHK", ",COND=EVEN"),
+        ("MORE", "DLI", "SHOPMORE", ",COND=EVEN"),
+        ("RESTART", "DLI", "SHOPRST", ",COND=EVEN"),
     ] {
         job.push_str(&format!(
             "//{step:<8} EXEC PGM=DFSRRC00,PARM='{region},{pgm},SHOPPSB'{cond}\n//STEPLIB  DD DSN=ZEUS.LOADLIB,DISP=SHR\n//IMS      DD DSN=ZEUS.PSBLIB,DISP=SHR\n//         DD DSN=ZEUS.DBDLIB,DISP=SHR\n//SYSOUT   DD SYSOUT=*\n"
@@ -736,13 +821,15 @@ fn ims_batch_regions() {
             .map(|l| l.trim_end().to_string())
             .collect()
     };
-    let steps: Vec<(String, Outcome)> = outcomes(&r).into_iter().skip(6).collect();
+    let steps: Vec<(String, Outcome)> = outcomes(&r).into_iter().skip(10).collect();
     assert_eq!(
         steps,
         [
             ("LOAD".into(), Outcome::Rc(0)),
             ("READ".into(), Outcome::Abend("U0123".into())),
             ("CHECK".into(), Outcome::Rc(0)),
+            ("MORE".into(), Outcome::Rc(0)),
+            ("RESTART".into(), Outcome::Rc(0)),
         ],
         "{log}"
     );
@@ -773,4 +860,18 @@ fn ims_batch_regions() {
         ]
     );
     assert_eq!(out("CHECK"), ["GU C0007 GE", "GU C0002    ROBERT"]);
+    assert_eq!(
+        out("MORE"),
+        [
+            "PATH    C0001ALICE 0002PEN ORDERS",
+            "OR    C0002",
+            "AND    C0001",
+            "LAST    0002",
+            "CHKP",
+        ]
+    );
+    assert_eq!(
+        out("RESTART"),
+        ["START    FRESH", "XRST    SHOP0001 COUNT=0042"]
+    );
 }

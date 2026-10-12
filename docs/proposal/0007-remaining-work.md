@@ -17,7 +17,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 6 | L | zcics のタスクの並行実行 (入力待ちでない処理が他の端末を待たせない) | 0002 Phase 4 | **済** (`tools/tn3270-test.sh`) |
 | 7 | L | IMS の WAL の共有 (zcics とバッチの同時アクセス、常駐サーバー) | 0006 | **済** (常駐サーバーなしで共有。`tools/carddemo-ims.sh test`) |
 | 8 | L | PostgreSQL バックエンド (Db2 方言の変換、SQLCODE の対応表) | 0002 Phase 7 | **済** (`ZEUS_DB2=postgres://...`、CI) |
-| 9 | M | DL/I の機能: コマンドコード、ブール演算子の修飾、等号以外の比較、パス呼出し、XRST・記号チェックポイント | 0006 | 未着手 |
+| 9 | M | DL/I の機能: コマンドコード、ブール演算子の修飾、等号以外の比較、パス呼出し、XRST・記号チェックポイント | 0006 | **済** (ISRT のパス呼出しを除く) |
 | 10 | M | PL/I: ENTRY 変数による呼出し、FETCH/RELEASE | 0004 | 未着手 |
 | 11 | M | PL/I: AREA と OFFSET、iSUB 定義、構造体の途中の REFER、CONTROLLED の引数 | 0004 | 未着手 |
 | 12 | M | PL/I: 型の追加 (COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ、ORDINAL)、DEFAULT 文、GENERIC、HANDLE と DEFINE STRUCTURE | 0004 | 未着手 |
@@ -113,3 +113,12 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
     - FOR UPDATE のカーソルはサーバーのカーソルにして、WHERE CURRENT OF の位置付け更新を PostgreSQL で行う。
   - 合わせて直したもの: DSNTIAD の PARMS('RC0') はエラーでも戻りコード 0 (IBM の仕様どおり)。
   - CI の `postgres` ジョブが、CardDemo の Db2 モジュール・GenApp・Bank of Z を PostgreSQL で流す。
+- **#9 DL/I の機能** (2026-10):
+  - SSA の解析を作り直した。コマンドコード (D・F・L・C・P、U・V・Q・N・- は受け付けるだけ)、AND / OR で結んだ複数の修飾文、
+    EQ 以外の比較演算子。パック 10 進のフィールドは数値で比べる。
+  - GU・GN・GNP は複数階層の SSA を受け付ける。上位の SSA は親の条件で、GU は条件を満たす最初のパスを階層順に探す
+    (すべてが固有キーの等号なら従来どおりキーでたどる)。GNP は親の下の全階層を順にたどる。親子関係は GU・GN で取り出したセグメントに置く。
+  - パス呼出し (D): 親のセグメントを上から順に入出力域に並べる。
+  - 記号チェックポイント (CHKP に領域を続ける、EXEC DLI SYMCHKP) は領域を WAL のチェックポイントのフレームに保存し、
+    XRST (CALL と EXEC DLI) が ID か LAST で戻す。
+  - `crates/zeus-jcl/tests/jobs.rs` の `ims_batch_regions` と `crates/zeus-ims/tests/core.rs` で確かめる。

@@ -232,6 +232,18 @@ impl CallAdapter {
         Ok(())
     }
 
+    pub fn commit_symbolic(&mut self, id: [u8; 8], data: Vec<u8>) -> Result<(), String> {
+        self.session
+            .commit_symbolic(id, data)
+            .map_err(|e| e.to_string())?;
+        self.current_segments.fill(None);
+        Ok(())
+    }
+
+    pub fn checkpoint_data(&self, id: Option<[u8; 8]>) -> Option<([u8; 8], Vec<u8>)> {
+        self.session.checkpoint_data(id)
+    }
+
     /// Decode only SSA control bytes. The qualification value remains in its original bytes.
     pub fn call_encoded(
         &mut self,
@@ -343,20 +355,21 @@ impl CallAdapter {
         if function.read().is_some()
             && let Some(record) = &outcome.record
         {
-            if record.data.len() > io_area.len() {
-                return Err(format!(
-                    "I/O area needs {} bytes; got {}",
-                    record.data.len(),
-                    io_area.len()
-                ));
+            // a path call: the parents' segments first
+            let mut at = 0;
+            for r in outcome.path.iter().chain(std::iter::once(record)) {
+                if at + r.data.len() > io_area.len() {
+                    return Err(format!(
+                        "I/O area needs {} bytes; got {}",
+                        at + r.data.len(),
+                        io_area.len()
+                    ));
+                }
+                let converted =
+                    convert_numeric_fields(dbd, &r.segment, &r.data, self.numeric_byte_order)?;
+                io_area[at..at + r.data.len()].copy_from_slice(&converted);
+                at += r.data.len();
             }
-            let converted = convert_numeric_fields(
-                dbd,
-                &record.segment,
-                &record.data,
-                self.numeric_byte_order,
-            )?;
-            io_area[..record.data.len()].copy_from_slice(&converted);
         }
         if !outcome.secondary_key {
             convert_key_feedback(dbd, &mut outcome, self.numeric_byte_order)?;
@@ -381,55 +394,71 @@ fn normalize_ssa(
     if raw.len() < 8 {
         return Err("SSA is shorter than 8 bytes".into());
     }
+    let ctl = |b: u8| encoding.decode_control(b);
     let mut normalized = raw.to_vec();
     for byte in &mut normalized[..raw.len().min(9)] {
-        *byte = encoding.decode_control(*byte);
+        *byte = ctl(*byte);
     }
-    if normalized.get(8) == Some(&b'(') {
-        if normalized.len() < 20 {
-            return Err("qualified SSA is too short".into());
-        }
-        for byte in &mut normalized[9..19] {
-            *byte = encoding.decode_control(*byte);
-        }
-        let segment = std::str::from_utf8(&normalized[..8])
-            .map_err(|_| "invalid SSA segment name")?
-            .trim();
-        let field = std::str::from_utf8(&normalized[9..17])
-            .map_err(|_| "invalid SSA field name")?
-            .trim();
+    let segment = std::str::from_utf8(&normalized[..8])
+        .map_err(|_| "invalid SSA segment name")?
+        .trim()
+        .to_string();
+    // a field of the segment, or a secondary index field the PCB uses
+    let field = |name: &str| -> Option<(usize, bool)> {
         let physical = dbd
-            .segment(segment)
-            .and_then(|segment| segment.fields.iter().find(|f| f.name == field));
+            .segment(&segment)
+            .and_then(|s| s.fields.iter().find(|f| f.name == name));
         let mut matching = secondary
             .iter()
-            .filter(|(target, name, _)| target == segment && name == field);
-        let selected = matching.next();
-        if matching.next().is_some() {
-            return Err(format!("ambiguous secondary SSA field {segment}/{field}"));
-        }
-        let (length, numeric) = if let Some((_, _, bytes)) = selected {
-            (
+            .filter(|(target, f, _)| *target == segment && f == name);
+        match matching.next() {
+            Some((_, _, bytes)) => Some((
                 *bytes,
                 physical.is_some_and(|def| {
                     def.bytes == *bytes && matches!(def.datatype.as_deref(), Some("INT" | "LONG"))
                 }),
-            )
-        } else if let Some(def) = physical {
-            (
-                def.bytes,
-                matches!(def.datatype.as_deref(), Some("INT" | "LONG")),
-            )
-        } else {
-            return Err(format!("unknown SSA field {segment}/{field}"));
-        };
-        let close = 19 + length;
-        let byte = normalized
-            .get_mut(close)
-            .ok_or("SSA value is shorter than DBD field")?;
-        *byte = encoding.decode_control(*byte);
-        if order == NumericByteOrder::Little && numeric {
-            normalized[19..close].reverse();
+            )),
+            None => physical.map(|def| {
+                (
+                    def.bytes,
+                    matches!(def.datatype.as_deref(), Some("INT" | "LONG")),
+                )
+            }),
+        }
+    };
+    let ambiguous = |name: &str| {
+        secondary
+            .iter()
+            .filter(|(target, f, _)| *target == segment && f == name)
+            .count()
+            > 1
+    };
+    let layout = crate::dli::ssa_layout(raw, ctl, &segment, dbd, |name| field(name).map(|f| f.0))?;
+    for b in &mut normalized[layout.codes.0..layout.codes.1] {
+        *b = ctl(*b);
+    }
+    if let Some(open) = layout.open {
+        normalized[open] = ctl(raw[open]);
+    }
+    if let Some((_, end)) = layout.concatenated_key {
+        normalized[end] = ctl(raw[end]);
+    }
+    for &(f, v, e, conn) in &layout.statements {
+        for b in &mut normalized[f..v] {
+            *b = ctl(*b);
+        }
+        normalized[conn] = ctl(raw[conn]);
+        let name: String = normalized[f..f + 8]
+            .iter()
+            .map(|&b| b as char)
+            .collect::<String>()
+            .trim()
+            .to_string();
+        if ambiguous(&name) {
+            return Err(format!("ambiguous secondary SSA field {segment}/{name}"));
+        }
+        if order == NumericByteOrder::Little && field(&name).is_some_and(|x| x.1) {
+            normalized[v..e].reverse();
         }
     }
     Ok(normalized)

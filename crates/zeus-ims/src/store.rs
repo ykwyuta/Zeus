@@ -124,6 +124,8 @@ struct State {
     secondary_defs: Vec<SecondaryDef>,
     next_id: u64,
     latest_checkpoint: Option<[u8; 8]>,
+    /// The areas each symbolic checkpoint saved (for XRST).
+    checkpoint_data: HashMap<[u8; 8], Vec<u8>>,
     /// The end of the WAL frames the state has applied.
     wal_end: u64,
 }
@@ -308,6 +310,8 @@ pub struct Transaction {
     changes: Vec<Change>,
     locks: Vec<(String, Vec<u8>)>,
     checkpoint: Option<[u8; 8]>,
+    /// The areas a symbolic checkpoint saves.
+    checkpoint_data: Option<Vec<u8>>,
     /// The transaction holds the WAL's exclusive lock (for its updates).
     exclusive: bool,
 }
@@ -578,6 +582,11 @@ impl Transaction {
         let mut payload = Vec::new();
         if let Some(id) = self.checkpoint {
             payload.extend_from_slice(&id);
+            // a symbolic checkpoint: the saved areas
+            if let Some(d) = &self.checkpoint_data {
+                payload.extend_from_slice(&(d.len() as u32).to_le_bytes());
+                payload.extend_from_slice(d);
+            }
         }
         payload.extend_from_slice(&encode_changes(&self.changes));
         let len = u32::try_from(payload.len())
@@ -617,11 +626,15 @@ impl Transaction {
             inverses.push(inverse);
         }
         let write_result = (|| -> std::io::Result<()> {
-            wal.write_all(if self.checkpoint.is_some() {
-                b"IMS2"
-            } else {
-                b"IMS1"
-            })?;
+            wal.write_all(
+                if self.checkpoint_data.is_some() && self.checkpoint.is_some() {
+                    b"IMS3"
+                } else if self.checkpoint.is_some() {
+                    b"IMS2"
+                } else {
+                    b"IMS1"
+                },
+            )?;
             wal.write_all(&len.to_le_bytes())?;
             wal.write_all(&checksum(&payload).to_le_bytes())?;
             wal.write_all(&payload)?;
@@ -635,6 +648,9 @@ impl Transaction {
         }
         if let Some(id) = self.checkpoint {
             state.latest_checkpoint = Some(id);
+            if let Some(d) = self.checkpoint_data.take() {
+                state.checkpoint_data.insert(id, d);
+            }
         }
         state.wal_end = wal.stream_position()?;
         drop(wal);
@@ -646,6 +662,12 @@ impl Transaction {
 
     pub fn set_checkpoint(&mut self, id: [u8; 8]) {
         self.checkpoint = Some(id);
+    }
+
+    /// A symbolic checkpoint: `id` and the areas it saves.
+    pub fn set_symbolic_checkpoint(&mut self, id: [u8; 8], data: Vec<u8>) {
+        self.checkpoint = Some(id);
+        self.checkpoint_data = Some(data);
     }
 }
 
@@ -891,7 +913,7 @@ fn replay(
         if got < 12 {
             break;
         } // Interrupted final write has no commit record.
-        if &header[..4] != b"IMS1" && &header[..4] != b"IMS2" {
+        if !matches!(&header[..4], b"IMS1" | b"IMS2" | b"IMS3") {
             return Err(StoreError::Corrupt("invalid WAL magic".into()));
         }
         let len = u32::from_le_bytes(header[4..8].try_into().unwrap()) as usize;
@@ -909,21 +931,30 @@ fn replay(
         if checksum(&payload) != expected {
             return Err(StoreError::Corrupt("WAL checksum mismatch".into()));
         }
-        let checkpoint = if &header[..4] == b"IMS2" {
+        let mut changes_at = 0;
+        let checkpoint = if &header[..4] != b"IMS1" {
             let id: [u8; 8] = payload
                 .get(..8)
                 .ok_or_else(|| StoreError::Corrupt("short checkpoint WAL frame".into()))?
                 .try_into()
                 .unwrap();
+            changes_at = 8;
+            if &header[..4] == b"IMS3" {
+                let n = payload
+                    .get(8..12)
+                    .map(|b| u32::from_le_bytes(b.try_into().unwrap()) as usize)
+                    .ok_or_else(|| StoreError::Corrupt("short checkpoint WAL frame".into()))?;
+                let data = payload
+                    .get(12..12 + n)
+                    .ok_or_else(|| StoreError::Corrupt("short checkpoint WAL frame".into()))?;
+                state.checkpoint_data.insert(id, data.to_vec());
+                changes_at = 12 + n;
+            }
             Some(id)
         } else {
             None
         };
-        let changes = decode_changes(if checkpoint.is_some() {
-            &payload[8..]
-        } else {
-            &payload
-        })?;
+        let changes = decode_changes(&payload[changes_at..])?;
         for change in changes {
             let record = match &change {
                 Change::Insert(r)
@@ -1084,6 +1115,7 @@ impl Database {
             changes: Vec::new(),
             locks: Vec::new(),
             checkpoint: None,
+            checkpoint_data: None,
             exclusive: false,
         }
     }
@@ -1238,6 +1270,11 @@ impl Database {
     ) -> Result<Option<(Vec<u8>, u64, Record)>, StoreError> {
         let state = self.state();
         secondary_entry_in_state(&state, index_dbd, search, after, false)
+    }
+
+    /// The areas symbolic checkpoint `id` saved.
+    pub fn checkpoint_data(&self, id: [u8; 8]) -> Option<Vec<u8>> {
+        self.state().checkpoint_data.get(&id).cloned()
     }
 
     pub fn latest_checkpoint(&self) -> Option<[u8; 8]> {

@@ -282,7 +282,19 @@ impl Schedule {
                     .filter(|_| matches!(function, "ISRT" | "REPL" | "DLET"))
                     .map(|s| text_of(&s[..s.len().min(8)]))
                     .and_then(|n| dbd.segment(&n).map(|s| s.max_bytes));
-                named.unwrap_or_else(|| dbd.segments.iter().map(|s| s.max_bytes).max().unwrap_or(0))
+                let one = named
+                    .unwrap_or_else(|| dbd.segments.iter().map(|s| s.max_bytes).max().unwrap_or(0));
+                // a path call (command code D) gets the parents' segments too
+                let path: usize = ssas
+                    .iter()
+                    .take(ssas.len().saturating_sub(1))
+                    .filter(|s| path_call(s))
+                    .filter_map(|s| {
+                        dbd.segment(&text_of(&s[..s.len().min(8)]))
+                            .map(|d| d.max_bytes)
+                    })
+                    .sum();
+                one + path
             }
         }
     }
@@ -411,6 +423,55 @@ impl Schedule {
             g.commit()?;
         }
         Ok(())
+    }
+
+    /// A symbolic checkpoint (CHKP with areas): commits, saving the areas
+    /// with checkpoint `id`.
+    pub fn symbolic_checkpoint(&mut self, id: [u8; 8], areas: &[&[u8]]) -> Result<(), String> {
+        let mut data = Vec::new();
+        for a in areas {
+            data.extend((a.len() as u32).to_be_bytes());
+            data.extend_from_slice(a);
+        }
+        self.adapter.commit_symbolic(id, data)?;
+        for g in self.gsam.values_mut() {
+            g.commit()?;
+        }
+        Ok(())
+    }
+
+    /// XRST: the checkpoint ID in `id` (blank: a normal start, nothing to
+    /// restore; `LAST`: the latest checkpoint); the areas it saved go back
+    /// into `areas`. The ID restarted from, or None for a normal start.
+    pub fn restart(&self, id: &[u8], areas: &mut [&mut [u8]]) -> Result<Option<[u8; 8]>, String> {
+        let text = text_of(id);
+        if text.is_empty() {
+            return Ok(None);
+        }
+        let wanted = if text.eq_ignore_ascii_case("LAST") {
+            None
+        } else {
+            let mut b = [ebcdic::SPACE; 8];
+            let n = id.len().min(8);
+            b[..n].copy_from_slice(&id[..n]);
+            Some(b)
+        };
+        let (found, data) = self
+            .adapter
+            .checkpoint_data(wanted)
+            .ok_or_else(|| format!("XRST: no symbolic checkpoint {text}"))?;
+        let mut at = 0;
+        for a in areas.iter_mut() {
+            let Some(len) = data.get(at..at + 4) else {
+                break;
+            };
+            let len = u32::from_be_bytes(len.try_into().unwrap()) as usize;
+            let saved = &data[at + 4..(at + 4 + len).min(data.len())];
+            let n = saved.len().min(a.len());
+            a[..n].copy_from_slice(&saved[..n]);
+            at += 4 + len;
+        }
+        Ok(Some(found))
     }
 
     pub fn rollback(&mut self) {
@@ -720,12 +781,27 @@ fn be32(b: &[u8]) -> i32 {
 /// its closing parenthesis).
 fn ssa_len(mem: &[u8], a: usize) -> usize {
     let end = mem.len().min(a + 512);
-    if mem.get(a + 8) != Some(&ebcdic::from_latin1(b'(')) {
+    // command codes (*) or a qualification follow the name
+    if mem.get(a + 8) != Some(&ebcdic::from_latin1(b'('))
+        && mem.get(a + 8) != Some(&ebcdic::from_latin1(b'*'))
+    {
         return 9.min(end - a);
     }
     // the value may contain any byte: the closing parenthesis after the
     // field name, operator and value is found by the call; give it all
     end - a
+}
+
+/// Whether an SSA (EBCDIC) has command code D.
+fn path_call(ssa: &[u8]) -> bool {
+    if ssa.get(8) != Some(&ebcdic::from_latin1(b'*')) {
+        return false;
+    }
+    ssa[9..]
+        .iter()
+        .map(|&b| ebcdic::to_latin1(b))
+        .take_while(|&c| c != b'(' && c != b' ')
+        .any(|c| c == b'D')
 }
 
 /// CALL 'CBLTDLI' USING [count] function pcb [io-area [ssa...]].
@@ -752,6 +828,43 @@ pub fn cbltdli(mem: &mut [u8], args: &[Option<usize>]) -> Result<i32, String> {
             .iter()
             .position(|&a| a == pa)
             .ok_or("CBLTDLI: the PCB is not one of the program's PCBs")?;
+        let tp = matches!(b.sched.pcbs[k], PcbKind::Io | PcbKind::Tp(_));
+        // symbolic CHKP and XRST: I/O area length, I/O area (the checkpoint
+        // ID), then the length and address of each area to save or restore
+        if tp && (function == "XRST" || (function == "CHKP" && n >= start + 6)) {
+            let io = arg(start + 3).ok_or("CBLTDLI: no I/O area")?;
+            let mut spans = Vec::new();
+            let mut j = start + 4;
+            while j + 1 < n {
+                let (Some(l), Some(a)) = (arg(j), arg(j + 1)) else {
+                    break;
+                };
+                let len = be32(&mem[l..l + 4]).max(0) as usize;
+                spans.push((a, len.min(mem.len() - a)));
+                j += 2;
+            }
+            let status =
+                |mem: &mut [u8]| mem[pa + 10..pa + 12].copy_from_slice(&ebcdic_text("", 2));
+            if function == "CHKP" {
+                let mut id = [ebcdic::SPACE; 8];
+                id.copy_from_slice(&mem[io..io + 8]);
+                let areas: Vec<&[u8]> = spans.iter().map(|&(a, l)| &mem[a..a + l]).collect();
+                b.sched.symbolic_checkpoint(id, &areas)?;
+            } else {
+                let id = mem[io..io + 8].to_vec();
+                let mut saved: Vec<Vec<u8>> =
+                    spans.iter().map(|&(a, l)| mem[a..a + l].to_vec()).collect();
+                let mut refs: Vec<&mut [u8]> = saved.iter_mut().map(Vec::as_mut_slice).collect();
+                if let Some(found) = b.sched.restart(&id, &mut refs)? {
+                    for (&(a, l), d) in spans.iter().zip(&saved) {
+                        mem[a..a + l].copy_from_slice(d);
+                    }
+                    mem[io..io + 8].copy_from_slice(&found);
+                }
+            }
+            status(mem);
+            return Ok(0);
+        }
         let ssa_addrs: Vec<usize> = (start + 3..n).filter_map(arg).collect();
         let ssas: Vec<Vec<u8>> = ssa_addrs
             .iter()
@@ -760,7 +873,6 @@ pub fn cbltdli(mem: &mut [u8], args: &[Option<usize>]) -> Result<i32, String> {
         let refs: Vec<&[u8]> = ssas.iter().map(Vec::as_slice).collect();
         let io_addr = arg(start + 2);
         let gsam = matches!(b.sched.pcbs[k], PcbKind::Gsam(_));
-        let tp = matches!(b.sched.pcbs[k], PcbKind::Io | PcbKind::Tp(_));
         let io_len = io_addr.map_or(0, |a| {
             if tp {
                 let ll = mem
@@ -973,6 +1085,56 @@ pub fn exec_command(
         }
         "ROLB" | "ROLL" => {
             sched.rollback();
+            set_dib(m, call, "", None);
+            return Ok(());
+        }
+        // SYMCHKP ID() AREA1() LENGTH1() ...; XRST ID() AREA1() ...
+        "SYMCHKP" | "XRST" => {
+            let mut spans = Vec::new();
+            for k in 1..=7 {
+                let Some(ExecArg::Area(a)) = call.arg(&format!("AREA{k}")) else {
+                    continue;
+                };
+                let len = call
+                    .arg(&format!("LENGTH{k}"))
+                    .and_then(|l| arg_num(m, l))
+                    .map_or(a.len, |l| l.max(0) as usize);
+                spans.push((a.addr, len.min(m.storage().len() - a.addr)));
+            }
+            let id_area = match call.arg("ID") {
+                Some(ExecArg::Area(a)) => Some(a.clone()),
+                _ => None,
+            };
+            let id: Vec<u8> = match call.arg("ID") {
+                Some(ExecArg::Area(a)) => m.storage()[a.addr..a.addr + a.len.min(8)].to_vec(),
+                Some(other) => ebcdic_text(&arg_text(m, other), 8),
+                None => ebcdic_text("", 8),
+            };
+            if cmd == "SYMCHKP" {
+                let mut b = [ebcdic::SPACE; 8];
+                b[..id.len().min(8)].copy_from_slice(&id[..id.len().min(8)]);
+                let areas: Vec<Vec<u8>> = spans
+                    .iter()
+                    .map(|&(a, l)| m.storage()[a..a + l].to_vec())
+                    .collect();
+                let refs: Vec<&[u8]> = areas.iter().map(Vec::as_slice).collect();
+                sched.symbolic_checkpoint(b, &refs).map_err(RunError)?;
+            } else {
+                let mut saved: Vec<Vec<u8>> = spans
+                    .iter()
+                    .map(|&(a, l)| m.storage()[a..a + l].to_vec())
+                    .collect();
+                let mut refs: Vec<&mut [u8]> = saved.iter_mut().map(Vec::as_mut_slice).collect();
+                if let Some(found) = sched.restart(&id, &mut refs).map_err(RunError)? {
+                    for (&(a, l), d) in spans.iter().zip(&saved) {
+                        m.storage_mut()[a..a + l].copy_from_slice(d);
+                    }
+                    if let Some(a) = id_area {
+                        let n = a.len.min(8);
+                        m.storage_mut()[a.addr..a.addr + n].copy_from_slice(&found[..n]);
+                    }
+                }
+            }
             set_dib(m, call, "", None);
             return Ok(());
         }

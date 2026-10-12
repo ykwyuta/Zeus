@@ -973,10 +973,122 @@ fn dli_gu_gn_gnp_follow_parent_child_position_and_binary_ssa() {
         session.read(0, ReadOp::Gn, &[]).unwrap().record.unwrap().id,
         first
     );
-    assert!(
+    // packed decimal fields compare arithmetically
+    assert_eq!(
         session
             .read(0, ReadOp::Gu, &[b"ROOT    (ID      NE\x12\x3c)"])
-            .is_err()
+            .unwrap()
+            .record
+            .unwrap()
+            .id,
+        second
+    );
+    drop(session);
+    drop(database);
+    std::fs::remove_file(path).unwrap();
+}
+
+#[test]
+fn ssa_command_codes_and_boolean_qualifications() {
+    let path = path();
+    let database = Database::open(&path, vec![dbd()]).unwrap();
+    let wait = Duration::from_secs(1);
+    let mut tx = database.begin();
+    let mut roots = Vec::new();
+    let mut children = Vec::new();
+    for (k, id) in [[0x01, 0x0c], [0x02, 0x0c], [0x03, 0x0c]]
+        .iter()
+        .enumerate()
+    {
+        let r = tx
+            .insert(
+                "TEST",
+                "ROOT",
+                None,
+                vec![id[0], id[1], 0, 0, 0, k as u8],
+                wait,
+            )
+            .unwrap();
+        roots.push(r);
+        for c in *b"ABC" {
+            children.push(
+                tx.insert(
+                    "TEST",
+                    "CHILD",
+                    Some(r),
+                    vec![c, b'0' + k as u8, 9, 9, 9],
+                    wait,
+                )
+                .unwrap(),
+            );
+        }
+    }
+    tx.commit().unwrap();
+    let mut session = Session::new(database.clone(), parse_psb(PSB).unwrap()).unwrap();
+    let id = |o: zeus_ims::dli::ReadOutcome| o.record.map(|r| r.id);
+    // a qualified parent and child: the first root above 1 with a C child
+    let r = session
+        .read(
+            0,
+            ReadOp::Gu,
+            &[b"ROOT    (ID      GT\x01\x0c)", b"CHILD   (SEQNO   >=C0)"],
+        )
+        .unwrap();
+    assert_eq!(id(r), Some(children[5]));
+    // OR and AND: root 1 or root 3
+    let ors: &[u8] = b"ROOT    (ID      EQ\x01\x0c+ID      EQ\x03\x0c)";
+    assert_eq!(
+        id(session.read(0, ReadOp::Gu, &[ors]).unwrap()),
+        Some(roots[0])
+    );
+    assert_eq!(
+        id(session.read(0, ReadOp::Gn, &[ors]).unwrap()),
+        Some(roots[2])
+    );
+    let ands: &[u8] = b"ROOT    (ID      >=\x02\x0c*ID      <=\x02\x0c)";
+    assert_eq!(
+        id(session.read(0, ReadOp::Gu, &[ands]).unwrap()),
+        Some(roots[1])
+    );
+    // L: the last child; then GNP from it finds no more
+    let r = session
+        .read(
+            0,
+            ReadOp::Gu,
+            &[b"ROOT    (ID      EQ\x02\x0c)", b"CHILD   *L "],
+        )
+        .unwrap();
+    assert_eq!(id(r), Some(children[5]));
+    // F: from the first child of the parentage again
+    session
+        .read(0, ReadOp::Gu, &[b"ROOT    (ID      EQ\x02\x0c)"])
+        .unwrap();
+    session.read(0, ReadOp::Gnp, &[b"CHILD    "]).unwrap();
+    session.read(0, ReadOp::Gnp, &[b"CHILD    "]).unwrap();
+    assert_eq!(
+        id(session.read(0, ReadOp::Gnp, &[b"CHILD   *F "]).unwrap()),
+        Some(children[3])
+    );
+    // D: a path call gives the root too
+    let r = session
+        .read(
+            0,
+            ReadOp::Gu,
+            &[b"ROOT    *D(ID      EQ\x03\x0c)", b"CHILD   (SEQNO   EQB2)"],
+        )
+        .unwrap();
+    assert_eq!(
+        r.path.iter().map(|p| p.id).collect::<Vec<_>>(),
+        vec![roots[2]]
+    );
+    assert_eq!(id(r), Some(children[7]));
+    // C: the concatenated key
+    let mut c = b"CHILD   *C(".to_vec();
+    c.extend_from_slice(&[0x01, 0x0c]);
+    c.extend_from_slice(b"C0)");
+    assert_eq!(
+        id(session.read(0, ReadOp::Gu, &[&c]).unwrap()),
+        Some(children[2])
     );
     drop(session);
     drop(database);

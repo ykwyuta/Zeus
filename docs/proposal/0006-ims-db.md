@@ -32,8 +32,9 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
 | ライブラリ | DBD と PSB はマクロのソースをメンバーとして持つ PDS (DBDLIB・PSBLIB)。カタログ上の FB 80 の EBCDIC レコードも、ホストのテキストファイルも読める |
 | データベース | 全 DBD を 1 つの WAL に保持する。zjob は `ZEUS_IMS_WAL`、なければカタログの隣の `ims/ims.wal`。zcics は `--ims-wal` (既定は同じ場所)。WAL は複数のプロセス (zcics とバッチジョブ) が同時に開ける。各プロセスは他のプロセスがコミットしたフレームを、データベースを読むたびに追って適用する。更新する作業単位は、最初のルートのロックから終わりまで WAL のファイルロック (排他) を持つので、他のプロセスの更新は待つ (ロックの待ち時間を過ぎると、ルートのロックと同じくタイムアウト)。プロセス内の作業単位どうしは、従来どおりルート単位でロックする |
 | `EXEC PGM=DFSRRC00` | `PARM='DLI\|DBB\|BMP,プログラム,PSB'`。ライブラリは IMS DD の連結。プログラムには PCB マスクを USING で渡す (BMP と CMPAT=YES では I/O PCB が先頭)。正常終了でコミット、異常終了でバックアウト。`PARM=(ULR,DFSURGL0,DBD)` は DD DFSUINPT のアンロード (DFSURGU0 形式) から再ロードする |
-| CALL 'CBLTDLI' | 引数の個数 (省略可)、関数、PCB、入出力域、SSA。DB PCB: GU/GN/GNP と GHU/GHN/GHNP、ISRT/REPL/DLET (可変長セグメントは先頭の長さで書く)。GSAM PCB: OPEN/CLSE/GN/GU/ISRT と RSA。I/O PCB: CHKP (ID)、SYNC、ROLB。バッチでは GU/GN は QC |
-| EXEC DLI | SEGMENT、WHERE (フィールド・比較演算子・COBOL のデータ項目かリテラル)、INTO/FROM、PCB(n)、CHKP ID、SCHD PSB/TERM。結果は DIB (DIBSTAT、DIBSEGM、DIBSEGLV、DIBKFBL、DIBDBDNM、DIBDBORG) に返す。取得コマンドは保持付きの取得として扱う。SEGMENT で現在のパス上の親を指定した DLET/REPL は、キーフィードバックからその親を保持し直してから実行する (子を GNP で読んだ後に親を削除する CardDemo の書き方) |
+| SSA | コマンドコード (D: パス呼出しで親のセグメントも入出力域に入れる、F: 親の下の最初から、L: 最後のもの、C: 連結キーで修飾、P: 親子関係をその階層に置く。U・V・Q・N・- は受け付ける)、修飾文を AND (`*`・`&`・`#`) と OR (`+`・`\|`) で結んだブール修飾、比較演算子 EQ・NE・GT・GE・LT・LE (`= `・`¬=`・`>=` などの記号も)。パック 10 進のフィールドは数値で、ほかはバイトで比べる。GU・GN・GNP はどの階層の SSA も受け付け、上位の SSA は親のセグメントの条件になる。親子関係は GU・GN が取り出したセグメントに置く (GNP は変えない) |
+| CALL 'CBLTDLI' | 引数の個数 (省略可)、関数、PCB、入出力域、SSA。DB PCB: GU/GN/GNP と GHU/GHN/GHNP、ISRT/REPL/DLET (可変長セグメントは先頭の長さで書く)。GSAM PCB: OPEN/CLSE/GN/GU/ISRT と RSA。I/O PCB: CHKP (ID。領域の長さと番地を続けると記号チェックポイントで、その領域を保存する)、XRST (I/O 域の ID が空白なら通常の開始、ID か LAST なら記号チェックポイントの領域を戻す)、SYNC、ROLB。バッチでは GU/GN は QC |
+| EXEC DLI | SEGMENT、WHERE (フィールド・比較演算子・COBOL のデータ項目かリテラル)、INTO/FROM、PCB(n)、CHKP ID、SYMCHKP・XRST (ID、AREA1〜7、LENGTH1〜7)、SCHD PSB/TERM。結果は DIB (DIBSTAT、DIBSEGM、DIBSEGLV、DIBKFBL、DIBDBDNM、DIBDBORG) に返す。取得コマンドは保持付きの取得として扱う。SEGMENT で現在のパス上の親を指定した DLET/REPL は、キーフィードバックからその親を保持し直してから実行する (子を GNP で読んだ後に親を削除する CardDemo の書き方) |
 | CICS (zcics) | `--ims-lib` (カタログの PDS 名かディレクトリ、複数可) と `--ims-wal`。タスクの EXEC DLI SCHD で PSB をスケジュールし (二重のスケジュールは TC)、TERM・SYNCPOINT・タスク終了で作業単位を確定する |
 | コンパイラ | EXEC DLI の WHERE を解析し、比較の右辺の COBOL 項目を実行時に渡す。DLZDIB (DIB) を EXEC DLI の結果の受け取り先として渡す。PROCEDURE DIVISION USING がなければ、最初の ENTRY 文 (ENTRY 'DLITCBL' USING) のパラメーターをプログラムのパラメーターにする |
 | IMS TM (メッセージ処理) | `EXEC PGM=CSLUSPOC` の `CREATE TRAN NAME(t) SET(PGM(p))` がトランザクションを定義する (カタログの隣の `ims/transactions`、PSB はプログラムと同名)。`zjob ims send t テキスト [--hex] [--lterm L]` が入力メッセージをキュー (`ims/tmq`、`zeus_ims::tm`) に入れ、`DFSRRC00 PARM='MSG'` のメッセージ処理領域がキューのメッセージごとにプログラムを (I/O PCB を先頭に) 実行する。I/O PCB: GU (次のメッセージ。前のメッセージの作業単位をコミットし、LTERM・日付・時刻・順序番号・利用者 ID を PCB に入れる。なければ QC)、GN (次のセグメント、なければ QD)、ISRT (LL の長さのセグメントを入力元の LTERM へ)、PURG。代替 PCB: CHNG・ISRT・PURG。プログラムが正常に終われば出力をキューに入れて入力を消し、異常終了なら DB をバックアウトして入力をキューに残す。`zjob ims receive L` が LTERM の出力を 16 進とテキストで表示する |
@@ -61,11 +62,7 @@ IMS DB を使う COBOL プログラムを、元の DBD・PSB・プログラム�
 - **PL/I の EXEC DLI**。
 - **COPAUS2C の不正マーク (F5)**: Db2 を使う。ZEUS_DB2 の環境で別途確認する。
 - **アンロードユーティリティ DFSURGU0**: 書き出しは未対応。再ロード DFSURGL0 は対応済み。
-- **DL/I の機能の範囲**:
-  - コマンドコード、ブール演算子 (AND/OR) で結んだ修飾。
-  - 等号以外の比較 (流用元の制約)。
-  - パス呼出し (D コマンドコード)。
-  - XRST、記号チェックポイント。
+- **DL/I の機能の範囲**: ISRT のパス呼出し (D コマンドコードで複数のセグメントを挿入する)。
 
 ## 6. Bank of Z の IMS 経路
 
