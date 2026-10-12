@@ -122,6 +122,16 @@ fn operand_field(s: &str) -> &str {
     s
 }
 
+/// Position of the word THEN in the text of an IF statement.
+fn then_at(s: &str) -> Option<usize> {
+    let u = s.to_ascii_uppercase();
+    let b = u.as_bytes();
+    let word = |c: Option<&u8>| c.is_some_and(|c| c.is_ascii_alphanumeric() || b"@#$.".contains(c));
+    u.match_indices("THEN")
+        .map(|(p, _)| p)
+        .find(|&p| !word(p.checked_sub(1).and_then(|q| b.get(q))) && !word(b.get(p + 4)))
+}
+
 struct OperandParser<'a> {
     s: &'a [u8],
     i: usize,
@@ -306,8 +316,35 @@ pub fn parse(text: &str) -> Result<Vec<Stmt>, JclError> {
         let rest = rest.trim_start();
         let n = rest.find(' ').unwrap_or(rest.len());
         let op = rest[..n].to_ascii_uppercase();
-        let mut operands = operand_field(rest[n..].trim_start()).to_string();
         i += 1;
+        // IF: the relational expression (blanks allowed) up to THEN,
+        // possibly over several cards; ELSE and ENDIF have no operands
+        if op == "IF" || op == "ELSE" || op == "ENDIF" {
+            let mut text = rest[n..].to_string();
+            if op == "IF" {
+                while then_at(&text).is_none() && i < lines.len() && lines[i].starts_with("// ") {
+                    text.push(' ');
+                    text.push_str(&lines[i].chars().take(72).collect::<String>()[2..]);
+                    i += 1;
+                }
+                match then_at(&text) {
+                    Some(p) => text.truncate(p),
+                    None => return err(lineno, "THEN expected in IF statement"),
+                }
+            } else {
+                text.clear();
+            }
+            out.push(Stmt {
+                name,
+                op,
+                params: Vec::new(),
+                operands: text.trim().to_string(),
+                data: None,
+                line: lineno,
+            });
+            continue;
+        }
+        let mut operands = operand_field(rest[n..].trim_start()).to_string();
         // continuation cards
         while operands.ends_with(',') && i < lines.len() {
             let next: String = lines[i].chars().take(72).collect();

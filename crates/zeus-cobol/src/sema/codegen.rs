@@ -796,6 +796,14 @@ impl<'a> Gen<'a> {
                 .map(|&id| self.dm.items[id].desc),
             debugging: false,
             uses,
+            return_code: self
+                .dm
+                .by_name
+                .get("RETURN-CODE")
+                .into_iter()
+                .flatten()
+                .find(|&&id| self.dm.items[id].area == super::data::Area::Special)
+                .map(|&id| self.dm.items[id].desc),
         })
     }
 

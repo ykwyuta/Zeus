@@ -8,9 +8,16 @@
 //! statements named `procstep.ddname` after the EXEC override (or add to)
 //! the DD statements of that procedure step; overriding parameters
 //! replace the ones with the same keyword, an empty value removes one.
+//!
+//! IF/THEN/ELSE/ENDIF constructs (in the job or in procedures) give each
+//! step the conditions it runs under ([`Step::guards`]); INCLUDE
+//! MEMBER=name statements are replaced by the member's statements, found
+//! like procedures.
 
+use std::cell::RefCell;
 use std::collections::HashMap;
 
+use crate::cond;
 use crate::parse::{self, JclError, Param, Stmt, Value};
 
 /// EXEC keywords that are not symbolic parameters.
@@ -27,6 +34,9 @@ pub struct Step {
     pub proc_step: Option<String>,
     pub exec: Stmt,
     pub dds: Vec<Stmt>,
+    /// Enclosing IF statements (index into [`Job::ifs`]) and the branch
+    /// (THEN: true, ELSE: false) the step is in.
+    pub guards: Vec<(usize, bool)>,
 }
 
 #[derive(Debug, Clone, Default)]
@@ -38,6 +48,8 @@ pub struct Job {
     /// JOBLIB DD statements.
     pub joblib: Vec<Stmt>,
     pub steps: Vec<Step>,
+    /// Relational expressions of the IF statements.
+    pub ifs: Vec<cond::Expr>,
 }
 
 /// Finds catalogued procedures: (procedure libraries of JCLLIB, name) ->
@@ -74,8 +86,10 @@ pub fn substitute(s: &str, symbols: &HashMap<String, String>) -> String {
                 continue;
             }
         }
-        out.push(b[i] as char);
-        i += 1;
+        // copy up to the next '&' (whole UTF-8 characters)
+        let next = s[i + 1..].find('&').map_or(s.len(), |p| i + 1 + p);
+        out.push_str(&s[i..next]);
+        i = next;
     }
     out
 }
@@ -142,20 +156,83 @@ struct Expander<'a> {
     lib: &'a dyn ProcLibrary,
     instream: HashMap<String, Vec<Stmt>>,
     jcllib: Vec<String>,
+    ifs: RefCell<Vec<cond::Expr>>,
 }
+
+/// IF/THEN/ELSE/ENDIF nesting while statements are read.
+#[derive(Default)]
+struct Nesting(Vec<(usize, bool)>);
 
 impl Expander<'_> {
     fn proc_stmts(&self, name: &str, line: usize) -> Result<Vec<Stmt>, JclError> {
         if let Some(p) = self.instream.get(name) {
-            return Ok(p.clone());
+            return self.include(p.clone(), 0);
         }
         match self.lib.find(&self.jcllib, name) {
-            Some(text) => parse::parse(&text),
+            Some(text) => self.include(parse::parse(&text)?, 0),
             None => Err(JclError {
                 line,
                 message: format!("procedure {name} not found"),
             }),
         }
+    }
+
+    /// Replaces the INCLUDE statements by the members' statements.
+    fn include(&self, stmts: Vec<Stmt>, depth: usize) -> Result<Vec<Stmt>, JclError> {
+        let mut out = Vec::new();
+        for s in stmts {
+            if s.op != "INCLUDE" {
+                out.push(s);
+                continue;
+            }
+            let fail = |m: String| JclError {
+                line: s.line,
+                message: m,
+            };
+            let member = s
+                .get_str("MEMBER")
+                .ok_or_else(|| fail("INCLUDE without MEMBER".into()))?
+                .to_ascii_uppercase();
+            if depth > 15 {
+                return Err(fail("INCLUDE groups nested too deeply".into()));
+            }
+            let text = self
+                .lib
+                .find(&self.jcllib, &member)
+                .ok_or_else(|| fail(format!("INCLUDE group {member} not found")))?;
+            out.extend(self.include(parse::parse(&text)?, depth + 1)?);
+        }
+        Ok(out)
+    }
+
+    /// Handles an IF, ELSE or ENDIF statement; false for other statements.
+    fn nesting(
+        &self,
+        s: &Stmt,
+        n: &mut Nesting,
+        symbols: &HashMap<String, String>,
+    ) -> Result<bool, JclError> {
+        let fail = |m: &str| JclError {
+            line: s.line,
+            message: m.into(),
+        };
+        match s.op.as_str() {
+            "IF" => {
+                let e = cond::parse(&substitute(&s.operands, symbols)).map_err(|m| fail(&m))?;
+                let mut ifs = self.ifs.borrow_mut();
+                ifs.push(e);
+                n.0.push((ifs.len() - 1, true));
+            }
+            "ELSE" => match n.0.last_mut() {
+                Some((_, b @ true)) => *b = false,
+                _ => return Err(fail("ELSE without IF")),
+            },
+            "ENDIF" => {
+                n.0.pop().ok_or_else(|| fail("ENDIF without IF"))?;
+            }
+            _ => return Ok(false),
+        }
+        Ok(true)
     }
 
     /// Expands one EXEC statement with its DD statements into steps.
@@ -186,6 +263,7 @@ impl Expander<'_> {
                 proc_step: None,
                 exec,
                 dds,
+                guards: Vec::new(),
             }]);
         };
         if depth > 15 {
@@ -218,14 +296,17 @@ impl Expander<'_> {
             .iter()
             .filter(|s| s.op != "PROC" && s.op != "PEND")
             .collect();
+        let mut nest = Nesting::default();
         while i < stmts.len() {
             let s = stmts[i];
             i += 1;
-            if s.op != "EXEC" {
+            if self.nesting(s, &mut nest, &syms)? || s.op != "EXEC" {
                 continue;
             }
             let mut step_dds = Vec::new();
-            while i < stmts.len() && stmts[i].op != "EXEC" {
+            while i < stmts.len()
+                && !matches!(stmts[i].op.as_str(), "EXEC" | "IF" | "ELSE" | "ENDIF")
+            {
                 if stmts[i].op == "DD" {
                     step_dds.push(stmts[i].clone());
                 }
@@ -271,6 +352,7 @@ impl Expander<'_> {
                 if st.proc_step.is_none() {
                     st.proc_step = Some(st.name.clone());
                 }
+                st.guards.splice(0..0, nest.0.iter().copied());
                 st.name = step_name.clone();
             }
             out.extend(sub);
@@ -293,11 +375,24 @@ pub fn build_job(stmts: &[Stmt], lib: &dyn ProcLibrary) -> Result<Job, JclError>
         lib,
         instream: HashMap::new(),
         jcllib: Vec::new(),
+        ifs: RefCell::new(Vec::new()),
     };
+    let mut stmts = stmts.to_vec();
+    let mut nest = Nesting::default();
     let mut i = 0;
     while i < stmts.len() {
-        let s = &stmts[i];
+        let s = stmts[i].clone();
+        let s = &s;
         i += 1;
+        if s.op == "INCLUDE" {
+            let body = ex.include(vec![s.clone()], 0)?;
+            stmts.splice(i - 1..i, body);
+            i -= 1;
+            continue;
+        }
+        if ex.nesting(s, &mut nest, &symbols)? {
+            continue;
+        }
         match s.op.as_str() {
             "JOB" => {
                 job.name = s.name.clone().unwrap_or_default();
@@ -347,12 +442,23 @@ pub fn build_job(stmts: &[Stmt], lib: &dyn ProcLibrary) -> Result<Job, JclError>
                     dds.push(stmts[i].clone());
                     i += 1;
                 }
-                job.steps.extend(ex.expand(s, &dds, &symbols, 0)?);
+                let mut steps = ex.expand(s, &dds, &symbols, 0)?;
+                for st in &mut steps {
+                    st.guards.splice(0..0, nest.0.iter().copied());
+                }
+                job.steps.extend(steps);
             }
             _ => {}
         }
     }
+    if !nest.0.is_empty() {
+        return Err(JclError {
+            line: stmts.last().map_or(0, |s| s.line),
+            message: "IF without ENDIF".into(),
+        });
+    }
     job.jcllib = ex.jcllib;
+    job.ifs = ex.ifs.into_inner();
     Ok(job)
 }
 

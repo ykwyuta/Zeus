@@ -13,6 +13,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
+use zeus_decimal::binary;
 
 use zeus_decimal::Dec;
 
@@ -397,6 +398,34 @@ impl Machine {
         self.return_code
     }
 
+    /// The RETURN-CODE special register of an instance.
+    fn rc_loc(&self, inst: usize) -> Option<zir::Loc> {
+        self.instances[inst].code.return_code.map(|desc| zir::Loc {
+            desc,
+            subs: Vec::new(),
+            refmod: None,
+        })
+    }
+
+    /// Takes the return code from the RETURN-CODE register of `inst`.
+    fn load_rc(&mut self, inst: usize) {
+        if let Some(loc) = self.rc_loc(inst)
+            && let Ok((a, l)) = self.addr(inst, &loc)
+        {
+            let v = binary::read(&self.mem[a..a + l], true);
+            self.return_code = v as i32;
+        }
+    }
+
+    /// Sets the RETURN-CODE register of `inst` to the return code.
+    fn store_rc(&mut self, inst: usize) {
+        if let Some(loc) = self.rc_loc(inst)
+            && let Ok((a, l)) = self.addr(inst, &loc)
+        {
+            binary::write(&mut self.mem[a..a + l], i128::from(self.return_code));
+        }
+    }
+
     /// Executes from the entry of instance `main` until STOP RUN.
     /// Resolves and sets up the program named by a CALL: binds its
     /// USING parameters and puts it in its initial state when needed.
@@ -423,6 +452,7 @@ impl Machine {
             if let Some(f) = self.natives.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
                 self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
+                self.store_rc(cur);
                 return Ok(None);
             }
             if !handled {
@@ -602,7 +632,10 @@ impl Machine {
                 }
                 Instr::AlterableGo(slot) => pc = self.instances[cur].alter[*slot as usize],
                 Instr::Alter(slot, target) => self.instances[cur].alter[*slot as usize] = *target,
-                Instr::StopRun => return Ok(Exit::StopRun(self.return_code_value())),
+                Instr::StopRun => {
+                    self.load_rc(cur);
+                    return Ok(Exit::StopRun(self.return_code_value()));
+                }
                 Instr::StopLiteral(src) => {
                     let v = self.eval_src(cur, src)?;
                     let bytes = self.display_bytes(cur, &v)?;
@@ -617,6 +650,8 @@ impl Machine {
                 }
                 Instr::ExitProgram | Instr::GoBack => {
                     let is_main = stack.is_empty();
+                    // RETURN-CODE goes back to the caller (or ends the run)
+                    self.load_rc(cur);
                     if is_main && called {
                         self.instances[cur].active = false;
                         self.instances[cur].perform.clear();
@@ -640,6 +675,7 @@ impl Machine {
                     let f = stack.pop().unwrap();
                     cur = f.inst;
                     pc = f.pc;
+                    self.store_rc(cur);
                 }
                 Instr::Display {
                     items,
@@ -1020,7 +1056,7 @@ impl Machine {
             Instr::Call { program, args, .. } => {
                 if let Some(callee) = self.prepare_call(cur, program, args, false)? {
                     match self.run_from(callee, true)? {
-                        Exit::Returned => {}
+                        Exit::Returned => self.store_rc(cur),
                         Exit::StopRun(_) => return err(STOP_RUN),
                     }
                 }

@@ -1,5 +1,6 @@
 //! System utilities run as step programs.
 
+mod compile;
 pub mod idcams;
 mod iebgener;
 pub mod sort;
@@ -16,6 +17,8 @@ pub fn run(program: &str, ctx: &mut StepCtx) -> Option<ProgramResult> {
         "IEBGENER" | "ICEGENER" => iebgener::run(ctx),
         "IDCAMS" => idcams::run(ctx),
         "SORT" | "ICEMAN" | "DFSORT" | "SYNCSORT" => sort::run(ctx),
+        "IGYCRCTL" => compile::cobol(ctx),
+        "IEWL" | "IEWBLINK" | "HEWL" | "HEWLH096" | "IEWLF128" => compile::bind(ctx),
         // Operator and network facilities of the z/OS installation; the
         // CardDemo batch jobs use them to close / open CICS files.
         "SDSF" | "FTP" => {

@@ -306,7 +306,7 @@ impl ProcLibrary for Procs<'_> {
 
 /// Text of a library member: EBCDIC 80-byte records (a catalogued
 /// library) or host text (a host directory).
-fn member_text(b: &[u8]) -> String {
+pub(crate) fn member_text(b: &[u8]) -> String {
     if !b.contains(&b'\n') && b.len().is_multiple_of(80) && !b.is_empty() {
         b.chunks(80).map(|r| text_of(r) + "\n").collect()
     } else {
@@ -608,10 +608,11 @@ impl Runner<'_> {
         let _ = self.env.catalog.save();
     }
 
-    fn cond_bypass(&self, exec: &Stmt, results: &[StepResult]) -> bool {
-        let abended = results
-            .iter()
-            .any(|r| matches!(r.outcome, Outcome::Abend(_)));
+    fn cond_bypass(&self, exec: &Stmt, results: &[StepResult], abend_test: bool) -> bool {
+        let abended = !abend_test
+            && results
+                .iter()
+                .any(|r| matches!(r.outcome, Outcome::Abend(_)));
         let Some(cond) = exec.get("COND") else {
             return abended;
         };
@@ -823,6 +824,7 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
             proc_step: None,
             exec: st.clone(),
             dds: Vec::new(),
+            guards: Vec::new(),
         };
         match r.allocate(st, &[], i, &step) {
             Ok(d) => joblib.push(d),
@@ -830,6 +832,7 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
         }
     }
     let mut jcl_error = false;
+    let mut if_values: HashMap<usize, bool> = HashMap::new();
     for (n, step) in job.steps.iter().enumerate() {
         let seq = n + 1;
         let program = step
@@ -843,7 +846,22 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
             program: program.clone(),
             outcome: Outcome::Bypassed,
         };
-        if jcl_error || r.cond_bypass(&step.exec, &results) {
+        // IF/THEN/ELSE: each IF is evaluated when the first step under
+        // it is reached (the steps before have all completed then)
+        let mut guarded = true;
+        for &(n, branch) in &step.guards {
+            let v = *if_values
+                .entry(n)
+                .or_insert_with(|| job.ifs[n].eval(&results));
+            if v != branch {
+                guarded = false;
+                break;
+            }
+        }
+        // after an abend only steps under an IF testing ABEND (or with
+        // COND=EVEN / ONLY) run
+        let abend_test = step.guards.iter().any(|&(n, _)| job.ifs[n].tests_abend());
+        if jcl_error || !guarded || r.cond_bypass(&step.exec, &results, abend_test) {
             log_step(r, &result);
             results.push(result);
             continue;

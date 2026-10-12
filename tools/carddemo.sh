@@ -69,7 +69,11 @@ run() {
         echo "=== $job"
         rc=0
         $zjob submit "$f" || rc=$?
-        if [ "$rc" -ne 0 ]; then
+        # POSTTRAN ends with RC 4 when it rejects transactions (CBTRN02C
+        # sets RETURN-CODE); the sample data has rejects
+        expected=0
+        [ "$job" = POSTTRAN ] && expected=4
+        if [ "$rc" -ne "$expected" ]; then
             echo "=== $job ended with exit status $rc"
             failed="$failed $job"
         fi
@@ -101,7 +105,7 @@ case ${1:-} in
             echo "failed jobs:$failed" >&2
             exit 1
         fi
-        echo "all CardDemo batch jobs ended with RC 0"
+        echo "all CardDemo batch jobs ended with their expected return codes"
         ;;
     *) echo "usage: $0 setup | run JOB... | all" >&2; exit 2 ;;
 esac

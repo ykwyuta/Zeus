@@ -80,6 +80,9 @@ pub struct ProgramCode {
     /// EXEC blocks of the data division (SQL DECLARE CURSOR, ...).
     #[serde(default)]
     pub data_execs: Vec<ExecDef>,
+    /// Descriptor of the RETURN-CODE special register.
+    #[serde(default)]
+    pub return_code: Option<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

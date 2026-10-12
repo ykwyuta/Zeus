@@ -25,7 +25,8 @@ Phase 1 continues with Enterprise COBOL extensions for the applications.
 The AWS CardDemo batch process runs end to end: `tools/carddemo.sh all`
 catalogs the sample data, compiles the batch programs and submits the
 initialization, daily batch and report jobs through `zjob`, all ending with
-RC 0.
+RC 0 except POSTTRAN, which ends with RC 4 because CBTRN02C rejects some of
+the sample transactions (it sets RETURN-CODE).
 
 Online programs: `zcobc` compiles EXEC CICS, EXEC SQL and EXEC DLI (run
 through a host interface that the CICS, Db2 and IMS runtimes provide)
@@ -91,7 +92,7 @@ host variables handle national data.
 |---|---|
 | `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
-| `crates/zeus-jcl` | `zjob`: JCL parsing and PROC expansion, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT |
+| `crates/zeus-jcl` | `zjob`: JCL interpreter in Rust: parsing, PROC / INCLUDE expansion, COND and IF/THEN/ELSE/ENDIF, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT / IKJEFT01, compile and bind steps (IGYCRCTL, IEWL) |
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
 | `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
 | `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
