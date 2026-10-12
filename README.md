@@ -78,7 +78,11 @@ programs and maps. The 3270 menu transactions work on Db2
 (`tools/bankofz.sh test`). They cover customers (inquiry, update, deletion,
 and creation with a credit check by child tasks through channels and
 containers) and accounts (list, inquiry, creation, update, deletion, credit
-and debit, transfer). Remaining work, largest first:
+and debit, transfer). Its IMS path runs too (`tools/bankofz-ims.sh test`). IMS DB is loaded by
+the application's own load programs. The transactions, including the PL/I
+IBLOGIN with CALL PLITDLI, run as messages through a message processing
+region: `zjob ims send`, then `EXEC PGM=DFSRRC00,PARM='MSG'`, then
+`zjob ims receive`. Remaining work, largest first:
 [docs/proposal/0007-remaining-work.md](docs/proposal/0007-remaining-work.md).
 
 Code pages: data stays in EBCDIC; text crosses to the host in the code page

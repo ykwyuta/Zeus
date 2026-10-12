@@ -10,8 +10,8 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | # | 規模 | 項目 | 出典 | 状態 |
 |---|---|---|---|---|
 | 1 | XL | **Bank of Z の CICS 経路**: チャネルとコンテナ (PUT/GET CONTAINER)、非同期 API (RUN TRANSID CHANNEL・FETCH ANY / CHILD)、INQUIRE ASSOCIATION・INQUIRE/SET TERMINAL、Db2 の表 (CUSTOMER・ACCOUNT・PROCTRAN・CONTROL) の作成と初期データ、BMS 画面 (BNK1*) のシナリオ (顧客・口座の作成/照会/更新/削除、入出金、振替) | 0002 Phase 6 | **済** (`tools/bankofz.sh test`) |
-| 2 | XL | **IMS TM** (メッセージ処理領域): トランザクションの定義と入力メッセージのキュー、I/O PCB の GU/GN/ISRT、MPP として COBOL / PL/I プログラムを実行、端末 (または API) からの入出力。Bank of Z の IMS 経路 (IBLOGIN・IBACSUM・IBGCUDAT・IBSCUDAT・IBLOGOUT) | 0006 | 未着手 |
-| 3 | L | **PL/I の DL/I 呼出し** (PLITDLI と EXEC DLI): PCB ポインタ、引数の数、SYSTEM(IMS) の主手続き。Bank of Z の IBLOGIN が使う (#2 の前提) | 0004・0006 | 未着手 |
+| 2 | XL | **IMS TM** (メッセージ処理領域): トランザクションの定義と入力メッセージのキュー、I/O PCB の GU/GN/ISRT、MPP として COBOL / PL/I プログラムを実行、端末 (または API) からの入出力。Bank of Z の IMS 経路 (IBLOGIN・IBACSUM・IBGCUDAT・IBSCUDAT・IBLOGOUT) | 0006 | **済** (MPP 領域・I/O PCB。MFS などの残りは 0006) |
+| 3 | L | **PL/I の DL/I 呼出し** (PLITDLI と EXEC DLI): PCB ポインタ、引数の数、SYSTEM(IMS) の主手続き。Bank of Z の IBLOGIN が使う (#2 の前提) | 0004・0006 | **済** (PLITDLI。PL/I の EXEC DLI は未対応) |
 | 4 | L | **z/OS Connect 相当の REST 経路**: HTTP の JSON 要求を COMMAREA / コンテナに写像して CICS / IMS のプログラムを呼ぶ (Bank of Z の API、GenApp の Web サービス経路) | 0002 Phase 5・6 | 未着手 |
 | 5 | L | **CICS のトリガーモニター (CKTI)**: 開始キューのトリガーメッセージから取引を START し、RETRIEVE で MQTM を渡す。CardDemo の CODATE01・COACCT01・COPAUA0C | 0005・0006 | 未着手 |
 | 6 | L | zcics のタスクの並行実行 (入力待ちでない処理が他の端末を待たせない) | 0002 Phase 4 | 未着手 |
@@ -60,3 +60,8 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
       - TSO の RUN が PARM(...) を受け付ける。
   - 補足: CRECUST は子タスクに 399 バイトのコンテナを渡すが、子 (CRDTAGY1〜5) は 397 バイトの領域で GET するため、
     CICS の仕様どおり LENGERR になる。信用スコアは 0 のまま、顧客の作成は成功する。
+- **#2 IMS TM、#3 PL/I の DL/I** (2026-10):
+  - トランザクションの定義 (CSLUSPOC)、メッセージキュー (`zjob ims send / receive`)、メッセージ処理領域 (DFSRRC00 PARM='MSG')、I/O PCB と代替 PCB のメッセージ呼出し。
+  - PL/I: CALL PLITDLI と、IMS の主手続き (POINTER パラメーターに PCB)。
+  - COBOL: ENTRY 'DLITCBL' USING をパラメーターとして扱う。
+  - Bank of Z の IMS 経路 (IBLOGIN・IBACSUM・IBGCUDAT・IBSCUDAT・IBLOGOUT) が `tools/bankofz-ims.sh test` で動く。

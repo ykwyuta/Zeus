@@ -19,13 +19,19 @@ const SQLCA: &str = "DCL 1 SQLCA, 2 SQLCAID CHAR(8), 2 SQLCABC FIXED BIN(31), \
 pub struct Parser {
     toks: Vec<Token>,
     i: usize,
+    /// Unnamed structure members (`*`) so far.
+    anon: u32,
 }
 
 const COMPOUND: &[&str] = &["+=", "-=", "*=", "/=", "|=", "&=", "||=", "**="];
 
 impl Parser {
     pub fn new(toks: Vec<Token>) -> Parser {
-        Parser { toks, i: 0 }
+        Parser {
+            toks,
+            i: 0,
+            anon: 0,
+        }
     }
 
     /// Whether all tokens have been consumed.
@@ -733,7 +739,13 @@ impl Parser {
             }
             return Ok(());
         }
-        let name = self.ident()?;
+        // `*`: an unnamed member (no reference reaches it)
+        let name = if level > 1 && self.eat_op("*") {
+            self.anon += 1;
+            format!("*{}", self.anon)
+        } else {
+            self.ident()?
+        };
         let mut dims = if self.is_op("(") {
             self.bump();
             self.bounds()?

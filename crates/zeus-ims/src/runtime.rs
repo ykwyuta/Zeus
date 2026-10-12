@@ -131,6 +131,8 @@ pub const GSAM_PCB_LEN: usize = 44;
 pub struct Schedule {
     pub psb: Psb,
     pub pcbs: Vec<PcbKind>,
+    /// Message processing (an MPP): the input messages and the output.
+    pub tm: Option<Tm>,
     adapter: CallAdapter,
     gsam: HashMap<usize, GsamSession>,
     dbds: HashMap<String, Dbd>,
@@ -204,6 +206,7 @@ impl Schedule {
         Ok(Schedule {
             psb,
             pcbs,
+            tm: None,
             adapter,
             gsam,
             dbds,
@@ -310,11 +313,12 @@ impl Schedule {
                 }
                 "ROLB" => {
                     self.rollback();
+                    if let Some(tm) = self.tm.as_mut() {
+                        tm.building.clear();
+                    }
                     status(pcb, "");
                 }
-                // no message processing in a batch region
-                "GU" | "GN" => status(pcb, "QC"),
-                other => return Err(format!("DL/I call {other} on the I/O PCB is not supported")),
+                _ => self.tm_call(k, function, pcb, io)?,
             },
             PcbKind::Gsam(i) => {
                 let g = self.gsam.get_mut(&i).ok_or("GSAM PCB not scheduled")?;
@@ -417,6 +421,243 @@ impl Schedule {
     }
 }
 
+// ---- message processing (IMS TM) ---------------------------------------
+
+/// A message: its destination (transaction code or LTERM), its source
+/// (LTERM) and its segments (each with its LL ZZ prefix).
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TmMessage {
+    pub destination: String,
+    pub source: String,
+    pub segments: Vec<Vec<u8>>,
+}
+
+impl TmMessage {
+    /// A one-segment input message for transaction `tran`: LL ZZ, the
+    /// transaction code (padded to 8) and `data`.
+    pub fn input(tran: &str, source: &str, data: &[u8]) -> TmMessage {
+        let mut text = ebcdic_text(tran, 8);
+        text.extend_from_slice(data);
+        let mut seg = ((text.len() + 4) as u16).to_be_bytes().to_vec();
+        seg.extend([0, 0]);
+        seg.extend(text);
+        TmMessage {
+            destination: tran.to_ascii_uppercase(),
+            source: source.to_string(),
+            segments: vec![seg],
+        }
+    }
+
+    /// The segments one after the other (as kept in the message queue).
+    pub fn data(&self) -> Vec<u8> {
+        self.segments.concat()
+    }
+
+    /// The segments of queue data (each starts with its LL).
+    pub fn split(data: &[u8]) -> Vec<Vec<u8>> {
+        let mut out = Vec::new();
+        let mut i = 0;
+        while i + 2 <= data.len() {
+            let ll = (u16::from_be_bytes([data[i], data[i + 1]]) as usize).max(4);
+            let end = (i + ll).min(data.len());
+            out.push(data[i..end].to_vec());
+            i = end;
+        }
+        out
+    }
+}
+
+/// The messages of a message processing program: the input messages it
+/// gets (GU, GN on the I/O PCB) and the output messages it inserts (ISRT,
+/// PURG, CHNG). Its unit of work ends at each GU for a new message.
+#[derive(Debug, Default)]
+pub struct Tm {
+    pub inputs: std::collections::VecDeque<TmMessage>,
+    /// The current input message and its next segment.
+    current: Option<(TmMessage, usize)>,
+    /// Output messages complete (ISRT ... PURG, or the next GU).
+    pub outputs: Vec<TmMessage>,
+    /// Output being built, per PCB.
+    building: HashMap<usize, TmMessage>,
+    /// Destinations set by CHNG, per PCB.
+    changed: HashMap<usize, String>,
+    pub userid: String,
+    seq: u32,
+}
+
+impl Tm {
+    pub fn new(inputs: Vec<TmMessage>, userid: &str) -> Tm {
+        Tm {
+            inputs: inputs.into(),
+            userid: userid.to_string(),
+            ..Tm::default()
+        }
+    }
+
+    /// Ends the output messages being built.
+    pub fn flush(&mut self) {
+        let mut keys: Vec<usize> = self.building.keys().copied().collect();
+        keys.sort_unstable();
+        for k in keys {
+            if let Some(m) = self.building.remove(&k) {
+                self.outputs.push(m);
+            }
+        }
+    }
+
+    /// The length of the segment the next GU / GN returns.
+    fn next_len(&self, function: &str) -> usize {
+        match function {
+            "GU" => self.inputs.front().and_then(|m| m.segments.first()),
+            _ => self.current.as_ref().and_then(|(m, i)| m.segments.get(*i)),
+        }
+        .map_or(0, Vec::len)
+    }
+}
+
+/// Packed date 0CYYDDDF and time HHMMSSTF of now (UTC).
+fn pcb_date_time() -> ([u8; 4], [u8; 4]) {
+    let unix = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0) as i64;
+    let days = unix.div_euclid(86400);
+    let sod = unix.rem_euclid(86400);
+    let (y, _, _) = zeus_cobol::vm::civil_from_days(days);
+    let doy = days - zeus_cobol::vm::days_from_civil(y, 1, 1) + 1;
+    let c = (y - 1900) / 100;
+    let date = c * 100_000 + (y % 100) * 1000 + doy;
+    let time = (sod / 3600) * 100_000 + (sod / 60 % 60) * 1000 + (sod % 60) * 10;
+    let pack = |v: i64| -> [u8; 4] {
+        let mut b = [0u8; 4];
+        zeus_decimal::packed::store(&mut b, zeus_decimal::Dec::from_i64(v), false);
+        b
+    };
+    (pack(date), pack(time))
+}
+
+impl Schedule {
+    /// A message call on the I/O PCB or an alternate PCB (PCB `k`).
+    fn tm_call(
+        &mut self,
+        k: usize,
+        function: &str,
+        pcb: &mut [u8],
+        io: &mut [u8],
+    ) -> Result<(), String> {
+        let status = |pcb: &mut [u8], s: &str| pcb[10..12].copy_from_slice(&ebcdic_text(s, 2));
+        let alt = match self.pcbs[k] {
+            PcbKind::Tp(i) => Some(i),
+            _ => None,
+        };
+        let Some(tm) = self.tm.as_mut() else {
+            // no message processing in a batch region
+            status(pcb, "QC");
+            return Ok(());
+        };
+        match function {
+            "GU" if alt.is_none() => {
+                // a new message: the previous one's unit of work ends
+                tm.flush();
+                let Some(m) = tm.inputs.pop_front() else {
+                    tm.current = None;
+                    status(pcb, "QC");
+                    return Ok(());
+                };
+                let seg = m.segments.first().cloned().unwrap_or_default();
+                let n = seg.len().min(io.len());
+                io[..n].copy_from_slice(&seg[..n]);
+                pcb[..8].copy_from_slice(&ebcdic_text(&m.source, 8));
+                let (d, t) = pcb_date_time();
+                pcb[12..16].copy_from_slice(&d);
+                pcb[16..20].copy_from_slice(&t);
+                tm.seq += 1;
+                pcb[20..24].copy_from_slice(&tm.seq.to_be_bytes());
+                if pcb.len() >= 40 {
+                    let u = tm.userid.clone();
+                    pcb[32..40].copy_from_slice(&ebcdic_text(&u, 8));
+                }
+                tm.current = Some((m, 1));
+                // the end of the previous message's unit of work
+                self.commit(None)?;
+                status(pcb, "");
+            }
+            "GN" if alt.is_none() => {
+                let next = tm
+                    .current
+                    .as_mut()
+                    .and_then(|(m, i)| m.segments.get(*i).cloned().inspect(|_| *i += 1));
+                match next {
+                    Some(seg) => {
+                        let n = seg.len().min(io.len());
+                        io[..n].copy_from_slice(&seg[..n]);
+                        status(pcb, "");
+                    }
+                    None => status(pcb, if tm.current.is_some() { "QD" } else { "QC" }),
+                }
+            }
+            "ISRT" => {
+                let destination = match alt {
+                    Some(i) => tm
+                        .changed
+                        .get(&k)
+                        .cloned()
+                        .unwrap_or_else(|| self.psb.pcbs[i].lterm.clone().unwrap_or_default()),
+                    None => tm
+                        .current
+                        .as_ref()
+                        .map(|(m, _)| m.source.clone())
+                        .unwrap_or_default(),
+                };
+                if destination.is_empty() {
+                    status(pcb, "QH");
+                    return Ok(());
+                }
+                let ll = if io.len() >= 2 {
+                    (u16::from_be_bytes([io[0], io[1]]) as usize).clamp(4, io.len())
+                } else {
+                    io.len()
+                };
+                let seg = io[..ll].to_vec();
+                let m = tm.building.entry(k).or_insert_with(|| TmMessage {
+                    destination,
+                    source: String::new(),
+                    segments: Vec::new(),
+                });
+                m.segments.push(seg);
+                status(pcb, "");
+            }
+            "PURG" => {
+                if let Some(m) = tm.building.remove(&k) {
+                    tm.outputs.push(m);
+                }
+                status(pcb, "");
+            }
+            "CHNG" if alt.is_some() => {
+                let d = text_of(&io[..io.len().min(8)]);
+                tm.changed.insert(k, d);
+                status(pcb, "");
+            }
+            other => {
+                return Err(format!("DL/I call {other} on a TP PCB is not supported"));
+            }
+        }
+        Ok(())
+    }
+
+    /// The I/O area length of a message call (`ll`: the halfword at the
+    /// start of the I/O area).
+    pub fn tm_io_len(&self, function: &str, ll: Option<usize>) -> usize {
+        match function {
+            "GU" | "GN" => self.tm.as_ref().map_or(0, |t| t.next_len(function)),
+            "ISRT" => ll.unwrap_or(0),
+            "CHNG" => 8,
+            "CHKP" => 8,
+            _ => 0,
+        }
+    }
+}
+
 // ---- the CALL interface of a batch program ----------------------------
 
 struct Batch {
@@ -438,14 +679,36 @@ pub fn start_batch(sched: Schedule, addrs: Vec<usize>) {
 /// Ends the batch program: its unit of work is committed (normal end) or
 /// backed out.
 pub fn end_batch(commit: bool) -> Result<(), String> {
+    let out = end_region(commit)?;
+    OUTPUTS.with(|o| o.borrow_mut().extend(out));
+    Ok(())
+}
+
+thread_local! {
+    static OUTPUTS: RefCell<Vec<TmMessage>> = const { RefCell::new(Vec::new()) };
+}
+
+/// The output messages of the message processing programs that ended
+/// (with [`end_batch`]) since the last call.
+pub fn take_outputs() -> Vec<TmMessage> {
+    OUTPUTS.with(|o| std::mem::take(&mut *o.borrow_mut()))
+}
+
+/// Ends the program as [`end_batch`]; the output messages of a message
+/// processing program (none when it ended abnormally).
+pub fn end_region(commit: bool) -> Result<Vec<TmMessage>, String> {
     let Some(mut b) = BATCH.with(|b| b.borrow_mut().take()) else {
-        return Ok(());
+        return Ok(Vec::new());
     };
     if commit {
-        b.sched.commit(None)
+        b.sched.commit(None)?;
+        Ok(b.sched.tm.take().map_or(Vec::new(), |mut t| {
+            t.flush();
+            t.outputs
+        }))
     } else {
         b.sched.rollback();
-        Ok(())
+        Ok(Vec::new())
     }
 }
 
@@ -497,8 +760,17 @@ pub fn cbltdli(mem: &mut [u8], args: &[Option<usize>]) -> Result<i32, String> {
         let refs: Vec<&[u8]> = ssas.iter().map(Vec::as_slice).collect();
         let io_addr = arg(start + 2);
         let gsam = matches!(b.sched.pcbs[k], PcbKind::Gsam(_));
+        let tp = matches!(b.sched.pcbs[k], PcbKind::Io | PcbKind::Tp(_));
         let io_len = io_addr.map_or(0, |a| {
-            b.sched.io_len(k, &function, &refs).min(mem.len() - a)
+            if tp {
+                let ll = mem
+                    .get(a..a + 2)
+                    .map(|h| u16::from_be_bytes([h[0], h[1]]) as usize);
+                b.sched.tm_io_len(&function, ll)
+            } else {
+                b.sched.io_len(k, &function, &refs)
+            }
+            .min(mem.len() - a)
         });
         let mut io = io_addr.map_or(Vec::new(), |a| mem[a..a + io_len].to_vec());
         let plen = b.sched.mask_len(k).min(mem.len() - pa);
@@ -531,9 +803,52 @@ pub fn with_batch<T>(f: impl FnOnce(&mut Schedule, &[usize]) -> T) -> Option<T> 
     BATCH.with(|b| b.borrow_mut().as_mut().map(|b| f(&mut b.sched, &b.addrs)))
 }
 
-/// Makes CBLTDLI callable by the programs of `m`.
+/// CALL PLITDLI(count, function, pcb, io-area, ssa...) from PL/I: the PCB
+/// is a POINTER to the PCB, or the PCB (a based structure) itself.
+pub fn plitdli(mem: &mut [u8], args: &[zeus_cobol::interlang::XRef]) -> Result<i32, String> {
+    let mut addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
+    if let (Some(x), Some(Some(a))) = (args.get(2), addrs.get(2).copied())
+        && x.len == 4
+    {
+        let p = be32(&mem[a..a + 4]) as u32 as usize;
+        addrs[2] = Some(p);
+    }
+    // a message segment of a PL/I program has a fullword LL (the segment
+    // length less 2): ISRT on a TP PCB gets the usual halfword LL
+    let function = addrs
+        .get(1)
+        .copied()
+        .flatten()
+        .map(|f| text_of(&mem[f..f + 4]))
+        .unwrap_or_default();
+    let tp = addrs.get(2).copied().flatten().is_some_and(|pcb| {
+        with_batch(|s, a| {
+            a.iter()
+                .position(|&x| x == pcb)
+                .is_some_and(|k| matches!(s.pcbs[k], PcbKind::Io | PcbKind::Tp(_)))
+        })
+        .unwrap_or(false)
+    });
+    if function == "ISRT"
+        && tp
+        && let Some(Some(io)) = addrs.get(3).copied()
+    {
+        let len = (be32(&mem[io..io + 4]).max(2) as usize + 2).min(mem.len() - io);
+        let saved = mem[io..io + len].to_vec();
+        let mut seg = ((len - 2) as u16).to_be_bytes().to_vec();
+        seg.extend_from_slice(&saved[4.min(len)..]);
+        mem[io..io + seg.len()].copy_from_slice(&seg);
+        let r = cbltdli(mem, &addrs);
+        mem[io..io + len].copy_from_slice(&saved);
+        return r;
+    }
+    cbltdli(mem, &addrs)
+}
+
+/// Makes CBLTDLI (and PLITDLI for PL/I) callable by the programs of `m`.
 pub fn register(m: &mut zeus_cobol::vm::Machine) {
     m.add_native("CBLTDLI", cbltdli);
+    m.add_native_ref("PLITDLI", plitdli);
 }
 
 // ---- EXEC DLI ---------------------------------------------------------

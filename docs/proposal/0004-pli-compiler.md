@@ -82,6 +82,7 @@ COBOL と PL/I は一つの実行単位の記憶域 (アドレス空間) を共�
 | 外部呼出し | 別モジュールの外部手続き (PL/I モジュールをロードライブラリから読込み、関数の戻り値、`*` の範囲・長さの記述子)、COBOL プログラムの呼出しと COBOL からの PL/I 手続きの呼出し (戻りコードは RETURN-CODE と PLIRETV で受け渡し)。引数は実行単位の記憶域のアドレスで渡す (2.1 節) |
 | EXEC SQL | INCLUDE SQLCA (コンパイラが宣言する 136 バイトの SQLCA)、INCLUDE メンバー (DCLGEN)、ホスト変数 (`:a.b`、標識変数 `:x :ind` / `INDICATOR`)、DECLARE CURSOR / OPEN / FETCH / CLOSE、SELECT INTO、INSERT / UPDATE / DELETE、COMMIT / ROLLBACK、WHENEVER (SQLERROR・SQLWARNING・NOT FOUND の GO TO / CONTINUE)。ホスト変数の型は CHAR、CHAR VARYING (VARCHAR)、FIXED DEC、FIXED BIN(15/31/63)。COBOL と同じ Db2 インターフェース (zeus-db2、ZEUS_DB2) で実行する |
 | EXEC CICS | EXEC CICS を含むプログラムには、コンパイラが `DFHEIPTR` (POINTER STATIC) と `DFHEIBLK` (DFHEIPTR を基底とする UNALIGNED の EIB、COBOL の DFHEIBLK と同じ配置) を宣言する。OPTIONS(MAIN) の手続きの第 1 引数は COMMAREA を指すポインタ (COMMAREA がなければ NULL)。オプションの引数は、変数なら記憶域 (CHAR、FIXED DEC、FIXED BIN、POINTER、CHAR VARYING の現在値、構造体・配列は全体)、ラベル (HANDLE CONDITION / AID / ABEND)、名前、式の値として CICS に渡す。DFHRESP・DFHVALUE は定数になる。SEND MAP の FROM と RECEIVE MAP の INTO は省略すると `<マップ名>O` / `<マップ名>I`。ADDRESS EIB / COMMAREA。%INCLUDE DFHAID・DFHBMSCA は組込みのメンバー (CHAR(1) の STATIC 変数) を使う (インクルードディレクトリにあればそちらが優先)。`zbms --pli` が PL/I のシンボリックマップ (`<マップ名>I` と、それを基底とする `<マップ名>O`) を作る。zcics はロードライブラリの PL/I モジュールを CICS プログラムとして実行し、LINK / XCTL / RETURN TRANSID COMMAREA で COBOL のプログラムと相互に呼び合える。PL/I の EXEC SQL も CICS のタスクの Db2 接続で実行する。タスクの異常終了はそのまま、未処理の ERROR は APLI、その他の実行時エラーは ASRA になる |
+| IMS | CALL PLITDLI (0006)。IMS の領域では主手続きの POINTER パラメーターが PCB を指す。構造体の名前のないメンバー (`2 * CHAR(2)`) |
 | JCL | `IBMZPLI` (SYSIN のソース、SYSLIB の %INCLUDE メンバー) → `IEWL` → `EXEC PGM=` で実行。DD はファイル名 (または TITLE) で対応付け、SYSPRINT・SYSIN・SYSOUT (メッセージ)、PARM、戻りコード、U4038 |
 
 ## 5. 未対応 (今後)
@@ -92,7 +93,7 @@ COBOL と PL/I は一つの実行単位の記憶域 (アドレス空間) を共�
 - ENTRY 変数による呼出し、FETCH/RELEASE
 - 言語間呼出しの制約: 呼出し中のモジュールへの再帰的な呼出しはできない。呼ばれた PL/I モジュールは自分の SYSPRINT に書く (行の単位で呼出し側と順序を合わせる)
 - EXEC CICS の制約: COBOL から CALL された PL/I 手続き (CICS プログラムとして LINK されたのではないもの) の中の EXEC CICS RETURN / XCTL は異常終了になり、HANDLE CONDITION は呼んだ COBOL プログラムのものと区別されない。翻訳系のオプション (EDF など) と EXEC CICS の引数に書いた PL/I の組込み関数以外の関数呼出しは未確認
-- EXEC DLI (PL/I から IMS DB を呼ぶ)
+- EXEC DLI (PL/I からの IMS の呼出しは CALL PLITDLI だけ。0006 を参照)
 - EXEC SQL: FLOAT・PICTURE・BIT のホスト変数、構造体のホスト変数の展開、動的 SQL (PREPARE / EXECUTE)、SQLDA
 - マルチスレッド (ATTACH)
 - LOCATE、REGIONAL・相対データセット

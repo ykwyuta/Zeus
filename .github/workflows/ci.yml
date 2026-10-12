@@ -87,6 +87,27 @@ jobs:
           name: carddemo-spool
           path: work/carddemo/spool
 
+  bankofz-ims:
+    # Bank of Z on IMS: its databases loaded by its load programs, and its
+    # transactions (COBOL and the PL/I IBLOGIN) run as messages through a
+    # message processing region.
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - uses: actions/cache@v4
+        with:
+          path: .cache/bankofz
+          key: bankofz-${{ hashFiles('tools/fetch-bankofz.sh') }}
+      - run: tools/bankofz-ims.sh test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: bankofz-ims-spool
+          path: work/bankofz-ims/spool
+
   db2:
     # Db2 Community Edition in a container (downloaded from IBM's registry):
     # the DRDA client and EXEC SQL tests, CardDemo's Db2 module (table

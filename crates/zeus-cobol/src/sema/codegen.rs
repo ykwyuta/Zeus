@@ -831,11 +831,31 @@ impl<'a> Gen<'a> {
             .iter()
             .map(|e| self.exec_def(e))
             .collect::<Result<Vec<_>>>()?;
+        // without PROCEDURE DIVISION USING, the parameters of the first
+        // ENTRY statement (ENTRY 'DLITCBL' USING pcb...: the entry IMS
+        // calls)
+        let entry_using: Vec<DataRef> = if self.prog.procedure.using.is_empty() {
+            self.prog
+                .procedure
+                .sections
+                .iter()
+                .flat_map(|s| &s.paragraphs)
+                .flat_map(|p| &p.sentences)
+                .flatten()
+                .find_map(|st| match st {
+                    Stmt::Entry { using, .. } => Some(using.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        } else {
+            Vec::new()
+        };
         let using = self
             .prog
             .procedure
             .using
             .iter()
+            .chain(entry_using.iter())
             .map(|r| {
                 let id = self.dm.resolve(r)?;
                 match self.dm.items[id].area {

@@ -1799,6 +1799,16 @@ impl Machine {
             Ok(None) => None,
             Err(m) => Some(Err(m)),
         };
+        // a program of the host (PLITDLI, ...)
+        if r.is_none() {
+            r = self.sys().call_native(name, &refs).map(|x| {
+                x.map(|rc| XEnd {
+                    rc,
+                    ret: None,
+                    stop: false,
+                })
+            });
+        }
         if r.is_none()
             && let Some(l) = self.env.linker.clone()
         {
@@ -2016,6 +2026,11 @@ impl Machine {
         }
         let _ = self.env.msgout.flush();
         format!("{ABEND}U4038")
+    }
+
+    /// The return code (PLIRETC).
+    pub fn return_code(&self) -> i32 {
+        self.rc
     }
 
     /// Ends a module used through `call_entry`: closes its files.

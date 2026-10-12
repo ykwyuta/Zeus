@@ -9,6 +9,8 @@ mod le;
 mod report;
 mod text;
 
+pub use eval::{civil_from_days, days_from_civil};
+
 use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
@@ -111,6 +113,7 @@ pub struct Machine {
     return_code: i32,
     /// Programs implemented by the host (see [`Machine::add_native`]).
     natives: HashMap<String, NativeFn>,
+    natives_ref: HashMap<String, NativeRefFn>,
     /// Runs EXEC CICS / SQL / DLI statements.
     exec_host: Option<Rc<dyn exec::ExecHost>>,
     /// Programs of other run times (PL/I).
@@ -125,6 +128,10 @@ pub struct Machine {
 /// addresses of the CALL arguments (None: OMITTED) and returns the
 /// return code or an error that ends the run unit.
 pub type NativeFn = fn(&mut [u8], &[Option<usize>]) -> Result<i32, String>;
+
+/// A host implemented program called with the lengths of its arguments
+/// (a PL/I caller's arguments: aggregates and pointers differ).
+pub type NativeRefFn = fn(&mut [u8], &[crate::interlang::XRef]) -> Result<i32, String>;
 
 /// The job step a program runs in (z/OS TIOT contents).
 #[derive(Debug, Clone, Default)]
@@ -181,6 +188,7 @@ impl Machine {
             step: StepInfo::default(),
             opened: Vec::new(),
             natives: HashMap::new(),
+            natives_ref: HashMap::new(),
             exec_host: None,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
@@ -311,6 +319,28 @@ impl Machine {
     /// found in the search directories take precedence.
     pub fn add_native(&mut self, name: &str, f: NativeFn) {
         self.natives.insert(name.to_ascii_uppercase(), f);
+    }
+
+    /// Makes `name` callable from other languages (PL/I) as a host
+    /// implemented program that sees its arguments' lengths.
+    pub fn add_native_ref(&mut self, name: &str, f: NativeRefFn) {
+        self.natives_ref.insert(name.to_ascii_uppercase(), f);
+    }
+
+    /// Calls host implemented program `name` for another language's
+    /// program; None when there is no such program.
+    pub fn call_native(
+        &mut self,
+        name: &str,
+        args: &[crate::interlang::XRef],
+    ) -> Option<Result<i32, String>> {
+        let name = name.to_ascii_uppercase();
+        if let Some(f) = self.natives_ref.get(&name).copied() {
+            return Some(f(&mut self.mem, args));
+        }
+        let f = self.natives.get(&name).copied()?;
+        let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
+        Some(f(&mut self.mem, &addrs))
     }
 
     /// Passes `args` (addresses in this machine's storage, see
