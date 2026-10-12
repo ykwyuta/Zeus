@@ -1,0 +1,29 @@
+# Transaction types (Db2): the list after MNTTRDB2, paging, update and
+# delete of rows through the cursors and SQL of COTRTLIC.
+tran CC00
+type 19 44 ADMIN001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 05
+key ENTER
+expect 4 Maintain Transaction Type
+expect 12 01      PURCHASE
+expect 17 06      REVERSAL
+expect 18 07      ADJUSTMENT
+key PF8
+expect 4 Page  2
+expect 12 08      INTEREST
+key PF7
+type 17 7 U
+key ENTER
+expect 21 Update HIGHLIGHTED row
+type 17 26 CHARGEBACK
+key PF10
+expect * HIGHLIGHTED row was updated
+expect 17 06      CHARGEBACK
+key PF8
+type 12 7 D
+key ENTER
+expect 21 Delete HIGHLIGHTED row
+key PF10
+expect * HIGHLIGHTED row deleted

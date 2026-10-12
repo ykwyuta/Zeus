@@ -1,0 +1,53 @@
+# Customer menu (SSC1, conversational): inquiry from Db2, add (customer
+# number from the named counter LGSE defines, Db2 and VSAM), update.
+tran LGSE
+expect 1 HIGH CUSTOMER=0000000011
+tran SSC1
+expect 1 General Insurance Customer Menu
+type 4 51 0000000001
+type 22 25 1
+key ENTER
+expect 5 Andrew
+expect 6 Pandy
+expect 7 1950-07-11
+expect 13 A.Pandy@beebhouse.com
+key PF3
+expect 1 Transaction ended
+tran SSC1
+type 5 51 Ada
+type 6 51 Lovelace
+type 7 51 1815-12-10
+type 8 51 Ockham Park
+type 9 51 12
+type 10 51 KT11 3EX
+type 11 51 01932 123456
+type 12 51 07700 900001
+type 13 51 ada@example.com
+type 22 25 2
+key ENTER
+expect * New Customer Inserted
+expect 4 0000000011
+key PF3
+tran SSC1
+type 4 51 0000000011
+type 22 25 1
+key ENTER
+expect 6 Lovelace
+expect 10 KT11 3EX
+key PF3
+tran SSC1
+type 4 51 0000000003
+type 22 25 4
+key ENTER
+expect 13 Noaksey@beebhouse.com
+eof 13 51
+type 13 51 john.noakes@example.com
+key ENTER
+expect * Customer details updated
+key PF3
+tran SSC1
+type 4 51 0000000003
+type 22 25 1
+key ENTER
+expect 13 john.noakes@example.com
+key PF3

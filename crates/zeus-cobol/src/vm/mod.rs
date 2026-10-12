@@ -2,6 +2,7 @@
 
 pub mod data;
 mod eval;
+pub mod exec;
 mod files;
 mod func;
 mod le;
@@ -12,6 +13,7 @@ use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
+use zeus_decimal::binary;
 
 use zeus_decimal::Dec;
 
@@ -107,6 +109,14 @@ pub struct Machine {
     return_code: i32,
     /// Programs implemented by the host (see [`Machine::add_native`]).
     natives: HashMap<String, NativeFn>,
+    /// Runs EXEC CICS / SQL / DLI statements.
+    exec_host: Option<Rc<dyn exec::ExecHost>>,
+    /// Programs of other run times (PL/I).
+    linker: Option<Rc<dyn crate::interlang::Linker>>,
+    control_blocks: bool,
+    /// Addresses of the main program's USING parameters, when the host
+    /// passes them (IMS PCB masks) instead of the PARM.
+    main_args: Option<Vec<Option<usize>>>,
 }
 
 /// A program implemented by the host: it gets the storage and the
@@ -168,6 +178,7 @@ impl Machine {
             step: StepInfo::default(),
             opened: Vec::new(),
             natives: HashMap::new(),
+            exec_host: None,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -183,6 +194,9 @@ impl Machine {
             sort_records: Vec::new(),
             sort_return: None,
             return_code: 0,
+            linker: None,
+            control_blocks: false,
+            main_args: None,
         }
     }
 
@@ -296,6 +310,95 @@ impl Machine {
         self.natives.insert(name.to_ascii_uppercase(), f);
     }
 
+    /// Passes `args` (addresses in this machine's storage, see
+    /// [`Machine::getmain`]) to the USING parameters of the main program
+    /// in place of the PARM.
+    pub fn set_main_args(&mut self, args: Vec<Option<usize>>) {
+        self.main_args = Some(args);
+    }
+
+    /// Finds the programs that are not COBOL programs of the search
+    /// directories.
+    pub fn set_linker(&mut self, l: Rc<dyn crate::interlang::Linker>) {
+        self.linker = Some(l);
+    }
+
+    /// Calls a separately compiled program from another run time: the
+    /// arguments are placed in this machine's storage for the call and
+    /// copied back.
+    pub fn call_program(
+        &mut self,
+        name: &str,
+        args: &[crate::interlang::XRef],
+    ) -> Result<Option<crate::interlang::XEnd>, String> {
+        if !self.control_blocks {
+            self.build_control_blocks();
+        }
+        let name = name.to_ascii_uppercase();
+        let Some(callee) = self.find_program(&name) else {
+            return Ok(None);
+        };
+        if self.instances[callee].active {
+            return Err(format!("recursive CALL of active program {name}"));
+        }
+        let ci = &mut self.instances[callee];
+        if ci.code.initial || !ci.initialized {
+            let first = !ci.initialized;
+            ci.initialized = true;
+            if !first {
+                self.reset(callee);
+            }
+        }
+        let ci = &mut self.instances[callee];
+        for (k, slot) in ci.code.using.clone().iter().enumerate() {
+            ci.linkage[*slot as usize] = args.get(k).and_then(|a| a.addr);
+        }
+        ci.active = true;
+        ci.perform.clear();
+        self.return_code = 0;
+        let r = self.run_from(callee, true);
+        self.instances[callee].active = false;
+        let _ = self.stdout.flush();
+        let stop = match r {
+            Ok(Exit::Returned) => false,
+            Ok(Exit::StopRun(_)) => true,
+            Err(e) if e.0 == STOP_RUN => true,
+            Err(e) => return Err(e.0),
+        };
+        Ok(Some(crate::interlang::XEnd {
+            rc: self.return_code,
+            ret: None,
+            stop,
+        }))
+    }
+
+    /// A machine with no programs and no storage, standing in for one
+    /// that is lent to another run time.
+    pub fn placeholder() -> Machine {
+        Machine::new(Vec::new())
+    }
+
+    /// The interface that runs EXEC statements.
+    pub fn exec_host(&self) -> Option<Rc<dyn exec::ExecHost>> {
+        self.exec_host.clone()
+    }
+
+    /// The linker of the run unit (PL/I modules).
+    pub fn linker(&self) -> Option<Rc<dyn crate::interlang::Linker>> {
+        self.linker.clone()
+    }
+
+    /// Writes the output of the programs (DISPLAY) so far.
+    pub fn flush(&mut self) {
+        let _ = self.stdout.flush();
+    }
+
+    /// Closes the files of all programs (the end of the run unit).
+    pub fn finish(&mut self) {
+        self.close_all();
+        let _ = self.stdout.flush();
+    }
+
     /// Sets the job step identification shown to programs (TIOT).
     pub fn set_step(&mut self, step: StepInfo) {
         self.step = step;
@@ -359,10 +462,16 @@ impl Machine {
 
     pub fn run_main(&mut self, module: Module) -> RResult<i32> {
         self.build_control_blocks();
+        self.control_blocks = true;
         let module = Rc::new(module);
         let main = self.instantiate(&module, 0);
-        // PARM: the first USING parameter of the main program
-        if let Some(&slot) = self.instances[main].code.using.first() {
+        if let Some(args) = self.main_args.take() {
+            let using = self.instances[main].code.using.clone();
+            for (k, slot) in using.iter().enumerate() {
+                self.instances[main].linkage[*slot as usize] = args.get(k).copied().flatten();
+            }
+        } else if let Some(&slot) = self.instances[main].code.using.first() {
+            // PARM: the first USING parameter of the main program
             let text = ebcdic::encode(&self.step.parm);
             let mut area = (text.len() as u16).to_be_bytes().to_vec();
             area.extend(text);
@@ -393,6 +502,34 @@ impl Machine {
         self.return_code
     }
 
+    /// The RETURN-CODE special register of an instance.
+    fn rc_loc(&self, inst: usize) -> Option<zir::Loc> {
+        self.instances[inst].code.return_code.map(|desc| zir::Loc {
+            desc,
+            subs: Vec::new(),
+            refmod: None,
+        })
+    }
+
+    /// Takes the return code from the RETURN-CODE register of `inst`.
+    fn load_rc(&mut self, inst: usize) {
+        if let Some(loc) = self.rc_loc(inst)
+            && let Ok((a, l)) = self.addr(inst, &loc)
+        {
+            let v = binary::read(&self.mem[a..a + l], true);
+            self.return_code = v as i32;
+        }
+    }
+
+    /// Sets the RETURN-CODE register of `inst` to the return code.
+    fn store_rc(&mut self, inst: usize) {
+        if let Some(loc) = self.rc_loc(inst)
+            && let Ok((a, l)) = self.addr(inst, &loc)
+        {
+            binary::write(&mut self.mem[a..a + l], i128::from(self.return_code));
+        }
+    }
+
     /// Executes from the entry of instance `main` until STOP RUN.
     /// Resolves and sets up the program named by a CALL: binds its
     /// USING parameters and puts it in its initial state when needed.
@@ -419,7 +556,33 @@ impl Machine {
             if let Some(f) = self.natives.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
                 self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
+                self.store_rc(cur);
                 return Ok(None);
+            }
+            if let Some(l) = self.linker.clone() {
+                let refs: Vec<crate::interlang::XRef> = self
+                    .call_args_sized(cur, args)?
+                    .iter()
+                    .map(|s| crate::interlang::XRef {
+                        addr: s.map(|x| x.0),
+                        len: s.map_or(0, |x| x.1),
+                        ..Default::default()
+                    })
+                    .collect();
+                let _ = self.stdout.flush();
+                // the run unit's storage (this machine) is lent to the callee
+                let me = std::mem::replace(self, Machine::placeholder());
+                let (back, r) = l.call(&name, me, &refs);
+                *self = back;
+                if let Some(r) = r {
+                    let end = r.map_err(RunError)?;
+                    self.return_code = end.rc;
+                    self.store_rc(cur);
+                    if end.stop {
+                        return err(STOP_RUN);
+                    }
+                    return Ok(None);
+                }
             }
             if !handled {
                 return err(format!("program {name} not found"));
@@ -470,6 +633,17 @@ impl Machine {
                 ));
             };
             pc += 1;
+            let ins = match ins {
+                Instr::Exec(n) => match self.exec(cur, &code, *n)? {
+                    exec::ExecOutcome::Continue => continue,
+                    exec::ExecOutcome::Goto(t) => {
+                        pc = t;
+                        continue;
+                    }
+                    exec::ExecOutcome::Return => &Instr::GoBack,
+                },
+                _ => ins,
+            };
             match ins {
                 Instr::Nop => {}
                 Instr::Move(src, dst) => {
@@ -587,11 +761,14 @@ impl Machine {
                 }
                 Instr::AlterableGo(slot) => pc = self.instances[cur].alter[*slot as usize],
                 Instr::Alter(slot, target) => self.instances[cur].alter[*slot as usize] = *target,
-                Instr::StopRun => return Ok(Exit::StopRun(self.return_code_value())),
+                Instr::StopRun => {
+                    self.load_rc(cur);
+                    return Ok(Exit::StopRun(self.return_code_value()));
+                }
                 Instr::StopLiteral(src) => {
                     let v = self.eval_src(cur, src)?;
                     let bytes = self.display_bytes(cur, &v)?;
-                    let _ = self.stdout.write_all(&ebcdic::decode_latin1(&bytes));
+                    let _ = self.stdout.write_all(&ebcdic::to_host(&bytes));
                     let _ = self.stdout.write_all(b"\n");
                     let _ = self.stdout.flush();
                     // The run waits for the operator's reply; an interrupt
@@ -602,6 +779,8 @@ impl Machine {
                 }
                 Instr::ExitProgram | Instr::GoBack => {
                     let is_main = stack.is_empty();
+                    // RETURN-CODE goes back to the caller (or ends the run)
+                    self.load_rc(cur);
                     if is_main && called {
                         self.instances[cur].active = false;
                         self.instances[cur].perform.clear();
@@ -625,6 +804,7 @@ impl Machine {
                     let f = stack.pop().unwrap();
                     cur = f.inst;
                     pc = f.pc;
+                    self.store_rc(cur);
                 }
                 Instr::Display {
                     items,
@@ -636,7 +816,7 @@ impl Machine {
                         let v = self.eval_src(cur, it)?;
                         out.extend(self.display_bytes(cur, &v)?);
                     }
-                    let _ = self.stdout.write_all(&ebcdic::decode_latin1(&out));
+                    let _ = self.stdout.write_all(&ebcdic::to_host(&out));
                     if *advance {
                         let _ = self.stdout.write_all(b"\n");
                     }
@@ -775,6 +955,7 @@ impl Machine {
                     self.sort_records.push(rec);
                 }
                 Instr::Return(f, into) => self.sort_return_record(cur, *f, into.as_ref())?,
+                Instr::Exec(_) => unreachable!(),
                 Instr::Unsupported(name) => {
                     return err(format!(
                         "{}: statement {name} is not supported yet",
@@ -940,7 +1121,7 @@ impl Machine {
                     let v = self.eval_src(cur, it)?;
                     out.extend(self.display_bytes(cur, &v)?);
                 }
-                let _ = self.stdout.write_all(&ebcdic::decode_latin1(&out));
+                let _ = self.stdout.write_all(&ebcdic::to_host(&out));
                 if *advance {
                     let _ = self.stdout.write_all(b"\n");
                 }
@@ -1004,7 +1185,7 @@ impl Machine {
             Instr::Call { program, args, .. } => {
                 if let Some(callee) = self.prepare_call(cur, program, args, false)? {
                     match self.run_from(callee, true)? {
-                        Exit::Returned => {}
+                        Exit::Returned => self.store_rc(cur),
                         Exit::StopRun(_) => return err(STOP_RUN),
                     }
                 }
@@ -1032,6 +1213,11 @@ impl Machine {
                 return Some(self.instantiate(&module, idx as u32));
             }
         }
+        self.find_program(name)
+    }
+
+    /// A separately compiled program by name (loaded on first use).
+    fn find_program(&mut self, name: &str) -> Option<usize> {
         if let Some(&i) = self.by_name.get(name) {
             return Some(i);
         }

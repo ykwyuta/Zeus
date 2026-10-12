@@ -1,0 +1,22 @@
+# a PL/I transaction: map, file, COMMAREA, LINK to COBOL and back to PL/I
+tran PLGR
+expect 1 PL/I GREETER
+expect 7 VISIT 00
+type 3 13 alice
+key ENTER
+expect 5 HELLO, ALICE!
+expect 6 FOUND WONDERLAND
+expect 7 VISIT 01
+expect 8 LAST (NOBODY)
+eof 3 13
+type 3 13 bob
+key ENTER
+expect 5 HELLO, BOB!
+expect 6 NOT IN FILE
+expect 7 VISIT 02
+expect 8 LAST ALICE
+# CLEAR sends no data: MAPFAIL goes to the HANDLE CONDITION label
+key CLEAR
+expect 5 PLEASE TYPE A NAME
+key PF3
+expect 1 GOODBYE PL/I

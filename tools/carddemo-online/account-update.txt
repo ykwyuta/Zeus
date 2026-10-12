@@ -1,0 +1,31 @@
+# Account update of account 3: the application's own checks (phone area
+# codes, state and ZIP code), then the update of account and customer.
+tran CC00
+type 19 44 USER0001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 02
+key ENTER
+type 5 39 00000000003
+key ENTER
+expect * Update account details presented above.
+eof 18 11
+type 18 11 Zeusville
+key ENTER
+expect 23 Phone Number 1: Not valid North America general purpose area code
+eof 19 11
+type 19 11 201
+eof 20 11
+type 20 11 202
+eof 17 74
+type 17 74 30301
+key ENTER
+expect * Changes validated.Press F5 to save
+key PF5
+expect * Changes committed to database
+key PF3
+type 20 42 01
+key ENTER
+type 5 39 00000000003
+key ENTER
+expect * Zeusville

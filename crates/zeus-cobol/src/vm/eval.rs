@@ -124,14 +124,16 @@ impl Machine {
             len = odo.fixed as usize + n * odo.stride as usize;
         }
         if let Some((start, l)) = &loc.refmod {
+            // national items are positioned in characters (two bytes)
+            let w = if desc.ty == DataType::National { 2 } else { 1 };
             let s = self.int_of(cur, start)?.max(1) as usize;
-            let total = len;
+            let total = len / w;
             let l = match l {
                 Some(l) => self.int_of(cur, l)?.max(0) as usize,
                 None => total.saturating_sub(s - 1),
             };
-            a += s - 1;
-            len = l;
+            a += (s - 1) * w;
+            len = l * w;
         }
         if a + len > self.mem.len() {
             return err(format!(
@@ -142,9 +144,9 @@ impl Machine {
         Ok((a, len))
     }
 
-    fn loc_type(&self, cur: usize, loc: &Loc) -> DataType {
+    pub(super) fn loc_type(&self, cur: usize, loc: &Loc) -> DataType {
         let ty = &self.instances[cur].code.descs[loc.desc as usize].ty;
-        if loc.refmod.is_some() {
+        if loc.refmod.is_some() && *ty != DataType::National {
             DataType::Alphanumeric { just: false }
         } else {
             ty.clone()
@@ -196,6 +198,7 @@ impl Machine {
                 Val::Item(self.loc_type(cur, loc), self.mem[a..a + l].to_vec())
             }
             Src::Alnum(b) => Val::Alnum(b.clone()),
+            Src::National(b) => Val::Item(DataType::National, b.clone()),
             Src::NumLit(v, digits) => Val::NumLit(*v, digits.clone()),
             // With a PROGRAM COLLATING SEQUENCE, HIGH-VALUE and LOW-VALUE
             // are its highest and lowest characters.
@@ -209,6 +212,7 @@ impl Machine {
             Src::All(p) => Val::All(p.clone()),
             Src::Num(e) => Val::Num(self.eval_ex(cur, e)?),
             Src::Func(f, args, refmod) => {
+                let national = *f == crate::zir::Func::NationalOf;
                 let mut b = self.func_alnum(cur, *f, args)?;
                 if let Some((s, l)) = refmod {
                     let s = self.int_of(cur, s)?.max(1) as usize;
@@ -216,13 +220,31 @@ impl Machine {
                         Some(l) => self.int_of(cur, l)?.max(0) as usize,
                         None => b.len().saturating_sub(s - 1),
                     };
+                    // national results are positioned in characters
+                    let (s, l) = if national { (2 * s - 1, 2 * l) } else { (s, l) };
                     b = b
                         .get(s - 1..(s - 1 + l).min(b.len()))
                         .unwrap_or(&[])
                         .to_vec();
                 }
-                Val::Alnum(b)
+                if national {
+                    Val::Item(DataType::National, b)
+                } else {
+                    Val::Alnum(b)
+                }
             }
+        })
+    }
+
+    /// An operand as national data (UTF-16): national as it is, DBCS and
+    /// alphanumeric data converted from the code page.
+    pub(super) fn national_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
+        Ok(match v {
+            Val::Item(DataType::National, b) => b.clone(),
+            Val::Item(DataType::Dbcs, b) => d::utf16(&crate::codepage::active().decode_dbcs(b)),
+            Val::Fig(f) => d::national_fig(fig_byte(*f)),
+            Val::All(p) => d::national_of(p),
+            _ => d::national_of(&self.alnum_bytes(cur, v, 0)?),
         })
     }
 
@@ -278,6 +300,15 @@ impl Machine {
                 }
             },
             Val::Item(DataType::Index, b) => int_digits(Dec::new(binary::read(b, true), 0)),
+            // national data is displayed in the code page
+            Val::Item(DataType::National, b) => d::display_of(b),
+            // DBCS data is displayed between SO and SI
+            Val::Item(DataType::Dbcs, b) => {
+                let mut out = vec![crate::codepage::SO];
+                out.extend_from_slice(b);
+                out.push(crate::codepage::SI);
+                out
+            }
             Val::Item(_, b) | Val::Alnum(b) => b.clone(),
             Val::NumLit(x, _) | Val::Num(x) => ebcdic::encode(&x.to_string()),
             Val::Fig(f) => vec![fig_byte(*f)],
@@ -467,6 +498,30 @@ impl Machine {
                 let vb = self.eval_src(cur, b)?;
                 let ord = match mode {
                     CmpMode::Numeric => self.val_num(&va).cmp(&self.val_num(&vb)),
+                    // national comparison: both operands as national
+                    // data, the shorter padded with national spaces
+                    CmpMode::Alnum
+                        if matches!(va, Val::Item(DataType::National, _))
+                            || matches!(vb, Val::Item(DataType::National, _)) =>
+                    {
+                        let x = self.national_bytes(cur, &va)?;
+                        let y = self.national_bytes(cur, &vb)?;
+                        let n = x.len().max(y.len()).max(2);
+                        let fit = |v: &Val, b: Vec<u8>| match v {
+                            Val::Fig(_) | Val::All(_) => {
+                                b.iter().copied().cycle().take(n).collect::<Vec<u8>>()
+                            }
+                            _ => b,
+                        };
+                        let mut x = fit(&va, x);
+                        let mut y = fit(&vb, y);
+                        for z in [&mut x, &mut y] {
+                            while z.len() < n {
+                                z.extend_from_slice(&d::NATIONAL_SPACE);
+                            }
+                        }
+                        x.cmp(&y)
+                    }
                     CmpMode::Alnum => {
                         let la = self.alnum_len(&va);
                         let lb = self.alnum_len(&vb);
@@ -519,14 +574,23 @@ impl Machine {
         let v = match from {
             AcceptFrom::Stdin => {
                 let line = self.stdin_line().unwrap_or_default();
-                let bytes: Vec<u8> = line
-                    .chars()
-                    .map(|c| ebcdic::from_latin1(u32::from(c).min(255) as u8))
-                    .collect();
+                let bytes: Vec<u8> = if crate::codepage::active().ccsid == 37 {
+                    line.chars()
+                        .map(|c| ebcdic::from_latin1(u32::from(c).min(255) as u8))
+                        .collect()
+                } else {
+                    ebcdic::encode(&line)
+                };
                 // The data is transferred as alphanumeric data, whatever
-                // the receiving item's class.
+                // the receiving item's class (national: converted).
+                let national =
+                    self.instances[cur].code.descs[dst.desc as usize].ty == DataType::National;
                 let (a, l) = self.addr(cur, dst)?;
-                d::move_alnum(&bytes, &mut self.mem[a..a + l], false);
+                if national {
+                    d::move_national(&d::utf16(&line), &mut self.mem[a..a + l]);
+                } else {
+                    d::move_alnum(&bytes, &mut self.mem[a..a + l], false);
+                }
                 return Ok(());
             }
             other => {
@@ -556,10 +620,23 @@ impl Machine {
         cur: usize,
         args: &[CallArgMode],
     ) -> RResult<Vec<Option<usize>>> {
+        Ok(self
+            .call_args_sized(cur, args)?
+            .into_iter()
+            .map(|a| a.map(|(a, _)| a))
+            .collect())
+    }
+
+    /// Addresses and lengths of CALL arguments.
+    pub(super) fn call_args_sized(
+        &mut self,
+        cur: usize,
+        args: &[CallArgMode],
+    ) -> RResult<Vec<Option<(usize, usize)>>> {
         let mut out = Vec::new();
         for a in args {
             out.push(match a {
-                CallArgMode::Reference(loc) => Some(self.addr(cur, loc)?.0),
+                CallArgMode::Reference(loc) => Some(self.addr(cur, loc)?),
                 CallArgMode::Content(src, len) => {
                     let v = self.eval_src(cur, src)?;
                     let mut bytes = vec![ebcdic::SPACE; *len as usize];
@@ -570,13 +647,13 @@ impl Machine {
                             d::move_alnum(&b, &mut bytes, false);
                         }
                     }
-                    Some(self.alloc(&bytes))
+                    Some((self.alloc(&bytes), bytes.len()))
                 }
                 CallArgMode::Value(e) => {
                     let v = self.eval_ex(cur, e)?;
                     let mut b = [0u8; 4];
                     binary::write(&mut b, d::to_raw(v, 0, false));
-                    Some(self.alloc(&b))
+                    Some((self.alloc(&b), 4))
                 }
                 CallArgMode::Omitted => None,
             });
@@ -784,7 +861,15 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         d::edit_alnum(edit, &src, out);
         return;
     }
-    // Figurative constants and ALL literals.
+    // Figurative constants and ALL literals (national receivers take
+    // them as national characters).
+    if *ty == DataType::National {
+        match v {
+            Val::Fig(f) => return d::fill_pattern(out, &d::national_fig(fig_byte(*f))),
+            Val::All(p) => return d::fill_pattern(out, &d::national_of(p)),
+            _ => {}
+        }
+    }
     match v {
         Val::Fig(Fig::Zero) => match ty {
             DataType::Numeric(t) => {
@@ -880,6 +965,22 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             let bytes = alnum_source(v);
             d::move_alnum(&bytes, out, *just);
         }
+        // padded with DBCS spaces (X'4040')
+        DataType::Dbcs => {
+            let bytes = alnum_source(v);
+            d::move_alnum(&bytes, out, false);
+        }
+        // national: converted from the code page (DBCS and mixed data),
+        // padded with national spaces
+        DataType::National => match v {
+            Val::Item(DataType::National, b) => d::move_national(b, out),
+            Val::Item(DataType::Dbcs, b) => {
+                d::move_national(&d::utf16(&crate::codepage::active().decode_dbcs(b)), out)
+            }
+            Val::Fig(f) => d::fill_pattern(out, &d::national_fig(fig_byte(*f))),
+            Val::All(p) => d::fill_pattern(out, &d::national_of(p)),
+            _ => d::move_national(&d::national_of(&alnum_source(v)), out),
+        },
         DataType::AlphanumericEdited { edit } => {
             let bytes = alnum_source(v);
             d::edit_alnum(edit, &bytes, out);
@@ -913,6 +1014,8 @@ fn alnum_source(v: &Val) -> Vec<u8> {
             d::display_digits(raw, n)
         }
         Val::Item(DataType::Index, b) => int_digits(Dec::new(binary::read(b, true), 0)),
+        // national data moves to alphanumeric data in the code page
+        Val::Item(DataType::National, b) => d::display_of(b),
         Val::Item(_, b) | Val::Alnum(b) => b.clone(),
         Val::NumLit(_, digits) => digits.clone(),
         Val::Num(x) => int_digits(*x),

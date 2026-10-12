@@ -142,6 +142,13 @@ pub fn read(text: &str, file: u32, debugging_mode: bool) -> Vec<(char, Pos)> {
             }
         }
         let mut text = line.text.clone();
+        // (not looked for on a line continuing a literal)
+        if !(ind == '-' && open.is_some()) {
+            let k = floating_comment(None, &text);
+            for c in &mut text[k..] {
+                *c = ' ';
+            }
+        }
         let line = line.clone();
         if let Some(header) = comment_paragraph(&text) {
             for c in &mut text[header..] {
@@ -193,6 +200,22 @@ pub fn read(text: &str, file: u32, debugging_mode: bool) -> Vec<(char, Pos)> {
         out.push(('\n', line.pos));
     }
     out
+}
+
+/// Where a floating comment (`*>` outside literals) starts in a line;
+/// the line length when there is none. `open` is the quote of a literal
+/// continued from the previous line.
+fn floating_comment(mut open: Option<char>, text: &[char]) -> usize {
+    for (i, &c) in text.iter().enumerate() {
+        match open {
+            Some(q) if c == q => open = None,
+            Some(_) => {}
+            None if c == '"' || c == '\'' => open = Some(c),
+            None if c == '*' && text.get(i + 1) == Some(&'>') => return i,
+            None => {}
+        }
+    }
+    text.len()
 }
 
 /// Whether the next non-comment line is a continuation line whose first

@@ -1,0 +1,8 @@
+ /* LINKed to from COBOL: the name in the COMMAREA in capitals. */
+ PLUPPER: PROC(P) OPTIONS(MAIN);
+   DCL P POINTER;
+   DCL NAME CHAR(10) BASED(P);
+   NAME = TRANSLATE(NAME, 'ABCDEFGHIJKLMNOPQRSTUVWXYZ',
+                          'abcdefghijklmnopqrstuvwxyz');
+   EXEC CICS RETURN;
+ END PLUPPER;

@@ -3,12 +3,15 @@
 use super::Parser;
 use crate::diag::Result;
 use crate::front::ast::*;
-use crate::front::lexer::Tok;
+use crate::front::lexer::{Tok, Token};
 
 impl Parser {
     pub(super) fn data_division(&mut self) -> Result<DataDivision> {
         let mut dd = DataDivision::default();
         loop {
+            if self.data_exec(&mut dd)? {
+                continue;
+            }
             if self.is("FILE") && self.is_at(1, "SECTION") {
                 self.i += 2;
                 self.expect_period()?;
@@ -18,15 +21,30 @@ impl Parser {
             } else if self.is("WORKING-STORAGE") && self.is_at(1, "SECTION") {
                 self.i += 2;
                 self.expect_period()?;
-                dd.working.extend(self.data_entries()?);
+                loop {
+                    dd.working.extend(self.data_entries()?);
+                    if !self.data_exec(&mut dd)? {
+                        break;
+                    }
+                }
             } else if self.is("LOCAL-STORAGE") && self.is_at(1, "SECTION") {
                 self.i += 2;
                 self.expect_period()?;
-                dd.local = self.data_entries()?;
+                loop {
+                    dd.local.extend(self.data_entries()?);
+                    if !self.data_exec(&mut dd)? {
+                        break;
+                    }
+                }
             } else if self.is("LINKAGE") && self.is_at(1, "SECTION") {
                 self.i += 2;
                 self.expect_period()?;
-                dd.linkage = self.data_entries()?;
+                loop {
+                    dd.linkage.extend(self.data_entries()?);
+                    if !self.data_exec(&mut dd)? {
+                        break;
+                    }
+                }
             } else if self.is("COMMUNICATION") && self.is_at(1, "SECTION") {
                 // Communication descriptions (module CM, not supported by
                 // Enterprise COBOL): the CD area and its records are kept
@@ -84,7 +102,25 @@ impl Parser {
         self.is_integer()
     }
 
-    fn data_entries(&mut self) -> Result<Vec<DataEntry>> {
+    /// An EXEC block between data entries (EXEC SQL DECLARE, BEGIN /
+    /// END DECLARE SECTION): kept in `execs`.
+    fn data_exec(&mut self, dd: &mut DataDivision) -> Result<bool> {
+        let Some(Token {
+            tok: Tok::Exec(kind, text),
+            pos,
+        }) = self.peek().cloned()
+        else {
+            return Ok(false);
+        };
+        self.i += 1;
+        if self.is_period() {
+            self.i += 1;
+        }
+        dd.execs.push(self.exec_block(&kind, &text, pos)?);
+        Ok(true)
+    }
+
+    pub(super) fn data_entries(&mut self) -> Result<Vec<DataEntry>> {
         let mut out = Vec::new();
         while self.is_level() {
             out.push(self.data_entry()?);
@@ -475,6 +511,8 @@ impl Parser {
     fn usage_word(&mut self) -> Option<Usage> {
         let u = match self.peek()?.word()? {
             "DISPLAY" => Usage::Display,
+            "DISPLAY-1" => Usage::Display1,
+            "NATIONAL" => Usage::National,
             "COMP" | "COMPUTATIONAL" | "COMP-4" | "COMPUTATIONAL-4" | "BINARY" => Usage::Binary,
             "COMP-3" | "COMPUTATIONAL-3" | "PACKED-DECIMAL" => Usage::Packed,
             "COMP-5" | "COMPUTATIONAL-5" => Usage::NativeBinary,

@@ -18,6 +18,11 @@ use:
 - Test suites and OS images (CCVS85, MVS 3.8j, ...) are downloaded by scripts
   under `tools/` and are never committed.
 
+- Code page tables come from ICU (Unicode License V3): `tools/icu-codepages.sh`
+  downloads its mapping files at a pinned commit and regenerates
+  `crates/zeus-cobol/codepages`, which carries ICU's license. Zeus converts
+  with its own code; it does not use iconv or ICU at run time.
+
 When an oracle and the IBM specification disagree, the specification wins;
 record the case under `docs/oracle/`.
 
@@ -58,6 +63,24 @@ initialization, daily batch and report jobs with `zjob`. It fails unless every
 job ends with RC 0; job output is in `work/carddemo/spool/<JOB>/`. Single jobs
 can be resubmitted with `tools/carddemo.sh run POSTTRAN ...`.
 
+## CardDemo online
+
+After `tools/carddemo.sh all`, `tools/carddemo-online.sh test` compiles the
+online programs, writes the mapsets as JSON and runs the terminal scripts in
+`tools/carddemo-online/` with `zcics` (they expect freshly set up data). A
+single script runs with `tools/carddemo-online.sh run SCRIPT`; `show` in a
+script prints the screen. `tools/carddemo-online.sh serve` starts the TN3270
+server on port 3270 for a 3270 emulator; `tools/carddemo-online.sh tn3270`
+signs on through `s3270` (`apt-get install s3270`) as CI does.
+
+## Application inventory
+
+`tools/apps-inventory.sh` fetches CardDemo, GenApp and Bank of Z, generates
+their BMS symbolic maps, compiles every COBOL program and rewrites
+`docs/inventory/apps.md` (compilation results and the statements, functions,
+data clauses and EXEC commands the programs use). Commit the regenerated
+file when a change alters it; CI checks that it is up to date.
+
 ## Hercules decimal-instruction oracle
 
 `zeus-hercdiff` generates packed-decimal instruction cases (AP, SP, ZAP, CP,
@@ -69,3 +92,28 @@ the expected results for the decimal arithmetic of the compiler runtime.
 sudo apt-get install hercules
 cargo run --release -p zeus-hercdiff -- run --count 300 --seed 1 --out work/decimal-oracle.json
 ```
+
+## Db2
+
+Db2 is reached through DRDA, the protocol Db2 servers speak; `zeus-drda`
+implements it from the Open Group DRDA / DDM specifications, so Zeus links no
+IBM client library. The server is Db2 Community Edition in a container
+(Docker), which users install themselves; it is not redistributed:
+
+```sh
+export ZEUS_DB2=$(tools/db2ce.sh start)   # db2://db2inst1:zeuspass@localhost:50000/ZEUSDB
+cargo test -p zeus-drda -p zeus-db2       # the Db2 tests are skipped without ZEUS_DB2
+tools/carddemo.sh setup
+tools/carddemo-db2.sh test                # CardDemo's Db2 module, batch and online
+```
+
+`ZEUS_DB2_SCHEMA` sets the default schema; `ZEUS_DRDA_TRACE=1` prints the
+DRDA flows.
+
+## 3270 terminals
+
+`tools/carddemo-online.sh tn3270`, `tools/genapp.sh tn3270` and
+`tools/tn3270-test.sh` drive the TN3270 server with the x3270 family's
+scripted display emulator `s3270` and printer emulator `pr3287`
+(`apt-get install s3270 pr3287`). `ZEUS_TN3270_TRACE=1` prints the records
+the server sends and receives.

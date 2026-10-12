@@ -80,9 +80,11 @@ impl Machine {
             Ok(())
         };
         Ok(match func {
-            Func::Length => {
+            Func::Length | Func::ByteLength => {
                 let vals = self.arg_values(cur, args)?;
                 let n = match vals.first() {
+                    // national data: characters (two bytes each)
+                    Some(Val::Item(DataType::National, b)) if func == Func::Length => b.len() / 2,
                     Some(Val::Item(DataType::Numeric(_), b) | Val::Item(_, b)) => b.len(),
                     Some(Val::Alnum(b) | Val::All(b)) => b.len(),
                     Some(Val::NumLit(_, d)) => d.len(),
@@ -133,6 +135,18 @@ impl Machine {
                 }
                 Dec::from_i64(best as i64 + 1)
             }
+            Func::TestNumVal | Func::TestNumValC => {
+                let vals = self.arg_values(cur, args)?;
+                let b = match vals.first() {
+                    Some(v) => self.alnum_bytes(cur, v, 0)?,
+                    None => vec![],
+                };
+                let s: String = ebcdic::decode_latin1(&b)
+                    .iter()
+                    .map(|&c| c as char)
+                    .collect();
+                Dec::from_i64(test_numval(&s, func == Func::TestNumValC) as i64)
+            }
             Func::NumVal | Func::NumValC => {
                 let vals = self.arg_values(cur, args)?;
                 let b = match vals.first() {
@@ -165,6 +179,33 @@ impl Machine {
     pub(super) fn func_alnum(&mut self, cur: usize, func: Func, args: &[Arg]) -> RResult<Vec<u8>> {
         let vals = self.arg_values(cur, args)?;
         Ok(match func {
+            // the code page: the second argument (a CCSID), else the
+            // program's
+            Func::NationalOf | Func::DisplayOf => {
+                let cp = match vals.get(1) {
+                    Some(v) => {
+                        let c = super::data::to_raw(self.val_num(v), 0, false);
+                        crate::codepage::get(c as u32)
+                            .ok_or_else(|| super::RunError(format!("CCSID {c} is not supported")))?
+                    }
+                    None => crate::codepage::active(),
+                };
+                match (func, vals.first()) {
+                    (Func::NationalOf, Some(Val::Item(DataType::National, b))) => b.clone(),
+                    (Func::NationalOf, Some(Val::Item(DataType::Dbcs, b))) => {
+                        super::data::utf16(&cp.decode_dbcs(b))
+                    }
+                    (Func::NationalOf, Some(v)) => {
+                        let b = self.alnum_bytes(cur, v, 0)?;
+                        super::data::utf16(&cp.decode(&b))
+                    }
+                    (Func::DisplayOf, Some(v)) => {
+                        let b = self.national_bytes(cur, v)?;
+                        cp.encode(&super::data::from_utf16(&b))
+                    }
+                    _ => vec![],
+                }
+            }
             Func::Char => {
                 let n = vals.first().map(|v| self.val_num(v)).unwrap_or(Dec::ZERO);
                 let n = super::data::to_raw(n, 0, false);
@@ -176,6 +217,35 @@ impl Machine {
                     None => w as u8,
                 };
                 vec![b]
+            }
+            Func::Trim => {
+                let b = match vals.first() {
+                    Some(v) => self.alnum_bytes(cur, v, 0)?,
+                    None => vec![],
+                };
+                let mode = match vals.get(1) {
+                    Some(v) => self.alnum_bytes(cur, v, 0)?.first().copied(),
+                    None => None,
+                };
+                let (lead, trail) = match mode {
+                    Some(0xD3) => (true, false), // L
+                    Some(0xE3) => (false, true), // T
+                    _ => (true, true),
+                };
+                let sp = ebcdic::SPACE;
+                let s = if lead {
+                    b.iter().position(|&c| c != sp).unwrap_or(b.len())
+                } else {
+                    0
+                };
+                let e = if trail {
+                    b.iter().rposition(|&c| c != sp).map_or(s, |p| p + 1)
+                } else {
+                    b.len()
+                };
+                // all spaces: a zero-length value (CardDemo tests
+                // FUNCTION LENGTH(FUNCTION TRIM(x)) = 0 for blank fields)
+                if s >= e { Vec::new() } else { b[s..e].to_vec() }
             }
             Func::UpperCase | Func::LowerCase | Func::Reverse => {
                 let mut b = match vals.first() {
@@ -258,6 +328,61 @@ fn cmp_padded(a: &[u8], b: &[u8], coll: Option<&[u16]>) -> std::cmp::Ordering {
         }
     }
     std::cmp::Ordering::Equal
+}
+
+/// TEST-NUMVAL / TEST-NUMVAL-C: 0 when `s` is a valid argument of
+/// NUMVAL (NUMVAL-C), otherwise the position of the first character in
+/// error (the length plus one when the string ends too early).
+fn test_numval(s: &str, currency: bool) -> usize {
+    let c: Vec<char> = s.chars().collect();
+    let n = c.len();
+    let mut i = 0;
+    let skip = |i: &mut usize| {
+        while *i < n && c[*i] == ' ' {
+            *i += 1;
+        }
+    };
+    skip(&mut i);
+    let mut sign = false;
+    if i < n && (c[i] == '+' || c[i] == '-') {
+        sign = true;
+        i += 1;
+        skip(&mut i);
+    }
+    if currency && i < n && c[i] == '$' {
+        i += 1;
+        skip(&mut i);
+        if !sign && i < n && (c[i] == '+' || c[i] == '-') {
+            sign = true;
+            i += 1;
+            skip(&mut i);
+        }
+    }
+    let mut digits = 0;
+    let mut point = false;
+    while i < n {
+        match c[i] {
+            '0'..='9' => digits += 1,
+            '.' if !point => point = true,
+            ',' if currency && !point => {}
+            _ => break,
+        }
+        i += 1;
+    }
+    if digits == 0 {
+        return if i >= n { n + 1 } else { i + 1 };
+    }
+    skip(&mut i);
+    if !sign && i < n {
+        let rest: String = c[i..].iter().collect::<String>().to_ascii_uppercase();
+        if c[i] == '+' || c[i] == '-' {
+            i += 1;
+        } else if rest.starts_with("CR") || rest.starts_with("DB") {
+            i += 2;
+        }
+        skip(&mut i);
+    }
+    if i < n { i + 1 } else { 0 }
 }
 
 fn numval(s: &str, currency: bool) -> Dec {
@@ -457,4 +582,19 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
         }
         _ => return err(format!("function {func:?} is not supported yet")),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_numval_positions() {
+        assert_eq!(test_numval(" -12.5 ", false), 0);
+        assert_eq!(test_numval("12.5CR", false), 0);
+        assert_eq!(test_numval("12A", false), 3);
+        assert_eq!(test_numval("   ", false), 4);
+        assert_eq!(test_numval("$1,234.50", true), 0);
+        assert_eq!(test_numval("$1,234.50", false), 1);
+    }
 }

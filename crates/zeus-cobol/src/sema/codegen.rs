@@ -16,6 +16,10 @@ use crate::zir::{self, Category, Cx, DataType, Ex, FileDef, Instr, Loc, Op, Src}
 type Label = u32;
 
 pub struct Gen<'a> {
+    /// EXEC statements (labels unresolved until the end).
+    execs: Vec<zir::ExecDef>,
+    /// SQL cursor declarations (DECLARE c CURSOR FOR ...) by cursor name.
+    sql_cursors: HashMap<String, SqlText>,
     pub prog: &'a ast::Program,
     pub dm: DataModel,
     pub code: Vec<Instr>,
@@ -134,6 +138,8 @@ impl<'a> Gen<'a> {
             dbg: Debugging::default(),
             in_decl: false,
             reports: Vec::new(),
+            execs: Vec::new(),
+            sql_cursors: sql_cursors(prog),
             pos: prog.pos,
         };
         g.environment()?;
@@ -439,6 +445,247 @@ impl<'a> Gen<'a> {
         }
     }
 
+    /// ZIR form of an EXEC block: option arguments resolved to data
+    /// areas, values, procedure labels or names.
+    fn exec_def(&mut self, e: &ExecBlock) -> Result<zir::ExecDef> {
+        let kind = match e.kind {
+            ExecKind::Cics => zir::ExecKind::Cics,
+            ExecKind::Sql => zir::ExecKind::Sql,
+            ExecKind::Dli => zir::ExecKind::Dli,
+        };
+        let mut options = Vec::new();
+        for o in &e.options {
+            if e.kind == ExecKind::Dli
+                && o.name == "WHERE"
+                && let Some(ExecArg::Raw(t)) = &o.arg
+            {
+                options.extend(self.dli_where(t, e.pos)?);
+                continue;
+            }
+            let arg = match &o.arg {
+                None => None,
+                Some(ExecArg::Raw(t)) => Some(zir::ExecVal::Name(t.clone())),
+                Some(ExecArg::Expr(x)) => Some(self.exec_val(x, e.kind)?),
+            };
+            options.push(zir::ExecOpt {
+                name: o.name.clone(),
+                arg,
+            });
+        }
+        // EXEC DLI reports to the DL/I interface block
+        if e.kind == ExecKind::Dli {
+            let dib = DataRef {
+                name: "DLZDIB".into(),
+                qualifiers: Vec::new(),
+                subscripts: Vec::new(),
+                refmod: None,
+                pos: e.pos,
+            };
+            if self.dm.resolve(&dib).is_ok() {
+                options.push(zir::ExecOpt {
+                    name: "DIB".into(),
+                    arg: Some(zir::ExecVal::Area(self.loc(&dib)?)),
+                });
+            }
+        }
+        // BMS: SEND MAP without FROM and RECEIVE MAP without INTO / SET use
+        // the symbolic map named after the map (mapO / mapI).
+        if e.kind == ExecKind::Cics && (e.command == "SEND" || e.command == "RECEIVE") {
+            let has = |n: &str| e.options.iter().any(|o| o.name == n);
+            let map = e
+                .options
+                .iter()
+                .find(|o| o.name == "MAP")
+                .and_then(|o| match &o.arg {
+                    Some(ExecArg::Expr(Expr::Operand(Operand::Lit(Literal::Str(s))))) => {
+                        Some(s.trim().to_ascii_uppercase())
+                    }
+                    _ => None,
+                });
+            let (opt, suffix, wanted) = if e.command == "SEND" {
+                ("FROM", 'O', !has("FROM") && !has("MAPONLY"))
+            } else {
+                ("INTO", 'I', !has("INTO") && !has("SET"))
+            };
+            if let (Some(map), true) = (map, wanted) {
+                let r = DataRef {
+                    name: format!("{map}{suffix}"),
+                    qualifiers: Vec::new(),
+                    subscripts: Vec::new(),
+                    refmod: None,
+                    pos: e.pos,
+                };
+                if self.dm.resolve(&r).is_ok() {
+                    options.push(zir::ExecOpt {
+                        name: opt.to_string(),
+                        arg: Some(zir::ExecVal::Area(self.loc(&r)?)),
+                    });
+                }
+            }
+        }
+        let mut host = Vec::new();
+        let mut host_varchar = Vec::new();
+        let mut sql = e.sql.clone();
+        if e.kind == ExecKind::Sql {
+            // OPEN: the query and host variables of the cursor declaration
+            // (the declaration itself is not executable)
+            if e.command == "OPEN"
+                && let Some(text) = &sql
+                && let Some(name) = text.text.split_whitespace().nth(1)
+            {
+                let name = name.to_ascii_uppercase();
+                let Some(decl) = self.sql_cursors.get(&name).cloned() else {
+                    return Err(Diag::error(e.pos, format!("cursor {name} is not declared")));
+                };
+                let query = cursor_query(&decl.text).unwrap_or_default();
+                options.push(zir::ExecOpt {
+                    name: "QUERY".into(),
+                    arg: Some(zir::ExecVal::Name(query)),
+                });
+                sql = Some(SqlText {
+                    text: text.text.clone(),
+                    host: decl.host.clone(),
+                });
+            }
+            // the SQLCA the statement reports to
+            let ca = DataRef {
+                name: "SQLCA".into(),
+                qualifiers: Vec::new(),
+                subscripts: Vec::new(),
+                refmod: None,
+                pos: e.pos,
+            };
+            if self.dm.resolve(&ca).is_ok() {
+                options.push(zir::ExecOpt {
+                    name: "SQLCA".into(),
+                    arg: Some(zir::ExecVal::Area(self.loc(&ca)?)),
+                });
+            }
+        }
+        if let Some(sql) = &sql {
+            for h in &sql.host {
+                let v = self.loc(&h.var)?;
+                let i = h.indicator.as_ref().map(|r| self.loc(r)).transpose()?;
+                host_varchar.push(self.is_varchar(&h.var));
+                host.push((v, i));
+            }
+        }
+        Ok(zir::ExecDef {
+            kind,
+            line: e.pos.line,
+            command: e.command.clone(),
+            options,
+            sql: sql.as_ref().map(|s| s.text.clone()),
+            host,
+            host_varchar,
+        })
+    }
+
+    /// `WHERE (field op operand)` of EXEC DLI: the option WHERE names the
+    /// field and the operator, WHEREVAL is the operand (a data area, or
+    /// the literal text in WHERE).
+    fn dli_where(&mut self, text: &str, pos: Pos) -> Result<Vec<zir::ExecOpt>> {
+        let words: Vec<&str> = text.split_whitespace().collect();
+        let ops = [
+            "=", "EQ", "^=", "¬=", "NE", ">", "GT", "<", "LT", ">=", "GE", "<=", "LE", "=>", "=<",
+        ];
+        let Some(at) = words
+            .iter()
+            .position(|w| ops.contains(&w.to_ascii_uppercase().as_str()))
+        else {
+            return Err(Diag::error(
+                pos,
+                format!("DL/I qualification expected: {text}"),
+            ));
+        };
+        if words
+            .iter()
+            .any(|w| matches!(w.to_ascii_uppercase().as_str(), "AND" | "OR" | "&" | "|"))
+        {
+            return Err(Diag::error(
+                pos,
+                format!("only one DL/I qualification is supported: {text}"),
+            ));
+        }
+        let field = words[..at].join("");
+        let op = words[at].to_ascii_uppercase();
+        let operand = &words[at + 1..];
+        // a data name, possibly qualified (NAME OF GROUP)
+        let mut parts = operand
+            .split(|w| w.eq_ignore_ascii_case("OF") || w.eq_ignore_ascii_case("IN"))
+            .map(|p| p.join(""));
+        let name = parts.next().unwrap_or_default().to_ascii_uppercase();
+        let r = DataRef {
+            name,
+            qualifiers: parts.map(|q| q.to_ascii_uppercase()).collect(),
+            subscripts: Vec::new(),
+            refmod: None,
+            pos,
+        };
+        let value = if !r.name.is_empty() && self.dm.resolve(&r).is_ok() {
+            Some(zir::ExecVal::Area(self.loc(&r)?))
+        } else {
+            None
+        };
+        let mut out = vec![zir::ExecOpt {
+            name: "WHERE".into(),
+            arg: Some(zir::ExecVal::Name(match &value {
+                Some(_) => format!("{field} {op}"),
+                None => format!("{field} {op} {}", operand.join(" ")),
+            })),
+        }];
+        if let Some(v) = value {
+            out.push(zir::ExecOpt {
+                name: "WHEREVAL".into(),
+                arg: Some(v),
+            });
+        }
+        Ok(out)
+    }
+
+    /// A VARCHAR host variable: a group of a halfword length and the
+    /// text, both level 49 (as DCLGEN writes them).
+    fn is_varchar(&self, r: &DataRef) -> bool {
+        let Ok(id) = self.dm.resolve(r) else {
+            return false;
+        };
+        let it = &self.dm.items[id];
+        match it.children.as_slice() {
+            [len, text] => {
+                let (l, t) = (&self.dm.items[*len], &self.dm.items[*text]);
+                l.level == 49 && t.level == 49 && l.len == 2 && l.pic.is_some()
+            }
+            _ => false,
+        }
+    }
+
+    fn exec_val(&mut self, x: &Expr, kind: ExecKind) -> Result<zir::ExecVal> {
+        Ok(match x {
+            Expr::Operand(Operand::Ref(r)) => {
+                if self.dm.resolve(r).is_ok() {
+                    zir::ExecVal::Area(self.loc(r)?)
+                } else {
+                    let p = ProcName {
+                        name: r.name.clone(),
+                        section: r.qualifiers.first().cloned(),
+                        pos: r.pos,
+                    };
+                    match self.proc_start(&p) {
+                        Ok(l) => zir::ExecVal::Label(l),
+                        // DL/I segment and PCB names are not data items
+                        Err(_) if kind == ExecKind::Dli => zir::ExecVal::Name(r.name.clone()),
+                        Err(_) => {
+                            self.dm.resolve(r)?;
+                            unreachable!()
+                        }
+                    }
+                }
+            }
+            Expr::Operand(Operand::AddressOf(r)) => zir::ExecVal::Address(self.loc(r)?),
+            _ => zir::ExecVal::Value(self.src_expr(x)?),
+        })
+    }
+
     fn proc_start(&self, p: &ProcName) -> Result<Label> {
         let (a, _) = self.proc_range(p)?;
         Ok(self.entry_label(p, a))
@@ -538,6 +785,14 @@ impl<'a> Gen<'a> {
             }
         }
         let alter_init: Vec<u32> = self.alter_init.iter().map(|&l| res(l)).collect();
+        let mut execs = std::mem::take(&mut self.execs);
+        for e in &mut execs {
+            for o in &mut e.options {
+                if let Some(zir::ExecVal::Label(l)) = &mut o.arg {
+                    *l = res(*l);
+                }
+            }
+        }
         let paragraphs = self
             .paras
             .iter()
@@ -569,6 +824,13 @@ impl<'a> Gen<'a> {
             }
             None => (0x00, 0xFF),
         };
+        let data_execs = self
+            .prog
+            .data
+            .execs
+            .iter()
+            .map(|e| self.exec_def(e))
+            .collect::<Result<Vec<_>>>()?;
         let using = self
             .prog
             .procedure
@@ -609,6 +871,8 @@ impl<'a> Gen<'a> {
             externals: self.dm.externals.clone(),
             debug_decls: self.dbg.decls.clone(),
             reports: std::mem::take(&mut self.reports),
+            execs,
+            data_execs,
             debug_item: self
                 .dm
                 .by_name
@@ -617,6 +881,14 @@ impl<'a> Gen<'a> {
                 .map(|&id| self.dm.items[id].desc),
             debugging: false,
             uses,
+            return_code: self
+                .dm
+                .by_name
+                .get("RETURN-CODE")
+                .into_iter()
+                .flatten()
+                .find(|&&id| self.dm.items[id].area == super::data::Area::Special)
+                .map(|&id| self.dm.items[id].desc),
         })
     }
 
@@ -2079,6 +2351,15 @@ impl<'a> Gen<'a> {
             Stmt::Sort { .. } | Stmt::Merge { .. } | Stmt::Release { .. } | Stmt::Return { .. } => {
                 self.sort_stmt(s)?
             }
+            // Alternate entry points are recorded only; executed in line,
+            // ENTRY does nothing.
+            Stmt::Entry { .. } => {}
+            Stmt::Exec(e) => {
+                self.pos = e.pos;
+                let def = self.exec_def(e)?;
+                self.execs.push(def);
+                self.emit(Instr::Exec(self.execs.len() as u32 - 1));
+            }
             Stmt::Unsupported(name, pos) => {
                 self.pos = *pos;
                 self.emit(Instr::Unsupported(name.clone()));
@@ -2192,6 +2473,10 @@ impl<'a> Gen<'a> {
             let cat = match &d.ty {
                 DataType::Alphabetic { .. } => Category::Alphabetic,
                 DataType::Alphanumeric { .. } | DataType::Group => Category::Alphanumeric,
+                DataType::Dbcs => Category::Dbcs,
+                // initialized to national spaces, as alphanumeric data to
+                // spaces
+                DataType::National => Category::Alphanumeric,
                 DataType::Numeric(_) => Category::Numeric,
                 DataType::NumericEdited { .. } => Category::NumericEdited,
                 DataType::AlphanumericEdited { .. } => Category::AlphanumericEdited,
@@ -2924,7 +3209,10 @@ pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
     for p in programs {
         compile_nested(p, None, &[], &mut out)?;
     }
-    Ok(zir::Module { programs: out })
+    Ok(zir::Module {
+        programs: out,
+        ccsid: crate::codepage::active().ccsid,
+    })
 }
 
 fn compile_nested<'a>(
@@ -3023,4 +3311,62 @@ fn line_pos(l: LineClause) -> zir::LinePos {
         LineClause::NextPage => zir::LinePos::NextPage,
         LineClause::AbsoluteNextPage(n) => zir::LinePos::AbsoluteNextPage(n),
     }
+}
+
+/// The SQL cursor declarations of a program: in the data division and in
+/// the sentences of the procedure division.
+fn sql_cursors(prog: &ast::Program) -> HashMap<String, SqlText> {
+    let mut out = HashMap::new();
+    let mut add = |e: &ExecBlock| {
+        if e.kind != ExecKind::Sql || e.command != "DECLARE" {
+            return;
+        }
+        let Some(sql) = &e.sql else { return };
+        // DECLARE c [ASENSITIVE|INSENSITIVE|SENSITIVE ...] [NO] [SCROLL] CURSOR
+        let words: Vec<&str> = sql.text.split_whitespace().collect();
+        let attrs = [
+            "ASENSITIVE",
+            "INSENSITIVE",
+            "SENSITIVE",
+            "STATIC",
+            "DYNAMIC",
+            "NO",
+            "SCROLL",
+        ];
+        let mut i = 2;
+        while words
+            .get(i)
+            .is_some_and(|w| attrs.iter().any(|a| w.eq_ignore_ascii_case(a)))
+        {
+            i += 1;
+        }
+        if words
+            .get(i)
+            .is_some_and(|w| w.eq_ignore_ascii_case("CURSOR"))
+        {
+            out.insert(words[1].to_ascii_uppercase(), sql.clone());
+        }
+    };
+    for e in &prog.data.execs {
+        add(e);
+    }
+    for sec in &prog.procedure.sections {
+        for p in &sec.paragraphs {
+            for sentence in &p.sentences {
+                for st in sentence {
+                    if let Stmt::Exec(e) = st {
+                        add(e);
+                    }
+                }
+            }
+        }
+    }
+    out
+}
+
+/// The query of `DECLARE c CURSOR [WITH HOLD] FOR query`.
+fn cursor_query(decl: &str) -> Option<String> {
+    let words: Vec<&str> = decl.split_whitespace().collect();
+    let at = words.iter().position(|w| w.eq_ignore_ascii_case("FOR"))?;
+    Some(words[at + 1..].join(" "))
 }

@@ -1,0 +1,26 @@
+# Administrator updates USER0005 and deletes USER0004.
+tran CC00
+type 19 44 ADMIN001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 03
+key ENTER
+type 6 22 USER0005
+key ENTER
+expect * Press PF5 key to save your updates
+eof 11 19
+type 11 19 LEEZEUS
+key PF5
+expect 23 User USER0005 has been updated
+key PF3
+type 20 42 04
+key ENTER
+type 6 22 USER0004
+key ENTER
+expect * Press PF5 key to delete this user
+key PF5
+expect 23 User USER0004 has been deleted
+key PF3
+type 20 42 01
+key ENTER
+expect * USER0005    LEEZEUS

@@ -1,0 +1,31 @@
+# Transaction view and add (the dates are checked with CSUTLDTC, LINKed,
+# which calls CEEDAYS).
+tran CC00
+type 19 44 USER0001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 07
+key ENTER
+type 6 22 0000000000683580
+key ENTER
+expect * Description: Purchase at Abshire-Lowe
+key PF3
+type 20 42 08
+key ENTER
+type 6 22 00000000001
+type 10 16 01
+type 10 37 0001
+type 10 55 POS TERM
+type 12 20 Coffee at Zeus Cafe
+type 14 15 -00000004.50
+type 14 43 2026-10-01
+type 14 69 2026-10-02
+type 16 20 800000001
+type 16 49 Zeus Cafe
+type 18 22 Tokyo
+type 18 68 10001
+key ENTER
+expect 23 Confirm to add this transaction
+type 21 64 Y
+key ENTER
+expect 23 Transaction added successfully

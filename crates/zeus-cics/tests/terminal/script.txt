@@ -1,0 +1,19 @@
+# START to a printer (now and after a second), RETRIEVE, STARTCODE
+tran ZPRT
+expect 1 PRINT REQUESTED, TERMIDERR OK
+wait 1.5
+# alternate screen size of a model 5 (27 x 132)
+tran ZALT
+expect 1 SIZE 027X132 ALT 027X132 COLOR YES
+# structured fields: the query goes out, the reply comes back with AID X'88'
+tran ZSF
+sf 00088186000100F4
+expect 1 SF BYTES: 008 AID: SF
+# RECEIVE BUFFER
+tran ZBUF
+expect 1 BUFFER BYTES 1920 ZBUF
+# a program's own 3270 data stream (SEND FROM): fields, SA, RA, IC
+tran ZSA
+expect 2 RED FIELDYELREV PLAIN
+expect 4  *********
+fields

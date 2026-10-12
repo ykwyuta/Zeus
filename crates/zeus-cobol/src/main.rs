@@ -1,22 +1,29 @@
 //! `zcobc` - the Zeus COBOL compiler driver.
 //!
 //! ```text
-//! zcobc compile [-I <dir>]... [--subprogram] -o <artifact> <source>
+//! zcobc compile [-I <dir>]... [--subprogram] [--cics] -o <artifact> <source>
 //! zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>   (files: see zeus_ds::dd)
-//! zcobc check [-I <dir>]... <source>...     (syntax check only)
+//! zcobc check [-I <dir>]... [--cics] <source>...   (compile without output)
+//! zcobc inventory [-I <dir>]... <source>...  (statements, functions, EXEC usage)
 //! ```
+//!
+//! `--ccsid N` (or ZEUS_CCSID) chooses the EBCDIC code page of literals and
+//! of the data a run reads and writes as text: 37 (default), or the
+//! Japanese code pages 930, 939, 1390, 1399. `--nsymbol dbcs` makes N
+//! literals and PICTURE N DBCS data (default NATIONAL: UTF-16).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 
-use zeus_cobol::front::{self, FileTable, FrontOptions};
+use zeus_cobol::front::FrontOptions;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] -o <artifact> <source>"
+        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] [--nsymbol dbcs|national] -o <artifact> <source>"
     );
-    eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>");
-    eprintln!("       zcobc check [-I <dir>]... <source>...");
+    eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] <artifact>");
+    eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
+    eprintln!("       zcobc inventory [-I <dir>]... <source>...");
     ExitCode::from(2)
 }
 
@@ -25,6 +32,10 @@ struct Args {
     output: Option<PathBuf>,
     subprogram: bool,
     debugging_lines: bool,
+    /// `--cics`: translate as a CICS program.
+    cics: bool,
+    /// `--nsymbol dbcs`: N literals and PICTURE N are DBCS.
+    nsymbol_dbcs: bool,
     /// DD allocations (`--dd NAME=PATH`).
     dds: Vec<(String, PathBuf)>,
     /// `--parm TEXT`: the EXEC PARM of the main program.
@@ -38,6 +49,8 @@ fn parse_args(args: &[String]) -> Option<Args> {
         output: None,
         subprogram: false,
         debugging_lines: false,
+        cics: false,
+        nsymbol_dbcs: false,
         dds: Vec::new(),
         parm: String::new(),
         inputs: Vec::new(),
@@ -49,7 +62,25 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "-o" => a.output = Some(PathBuf::from(it.next()?)),
             "--subprogram" => a.subprogram = true,
             "--debugging-lines" => a.debugging_lines = true,
+            "--cics" => a.cics = true,
+            "--nsymbol" => {
+                a.nsymbol_dbcs = match it.next()?.to_ascii_uppercase().as_str() {
+                    "DBCS" => true,
+                    "NATIONAL" => false,
+                    _ => return None,
+                }
+            }
             "--parm" => a.parm = it.next()?.clone(),
+            "--ccsid" => {
+                let c: u32 = it.next()?.parse().ok()?;
+                if !zeus_cobol::codepage::set_active(c) {
+                    eprintln!(
+                        "zcobc: CCSID {c} is not supported ({:?})",
+                        zeus_cobol::codepage::CCSIDS
+                    );
+                    return None;
+                }
+            }
             "--dd" => {
                 let (n, p) = it.next()?.split_once('=')?;
                 a.dds.push((n.to_string(), PathBuf::from(p)));
@@ -65,22 +96,42 @@ fn check(args: &Args) -> ExitCode {
     let opts = FrontOptions {
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
+        cics: args.cics,
+        nsymbol_dbcs: args.nsymbol_dbcs,
     };
     let mut worst = 0;
     for input in &args.inputs {
-        let mut files = FileTable::default();
-        match front::parse_file(input, &opts, &mut files) {
-            Ok(programs) => {
-                println!("{}: OK ({} program(s))", input.display(), programs.len());
+        match zeus_cobol::compile_file(input, &opts) {
+            Ok(module) => {
+                println!(
+                    "{}: OK ({} program(s))",
+                    input.display(),
+                    module.programs.len()
+                );
             }
-            Err(mut d) => {
-                d.file = files.names.get(d.pos.file as usize).cloned();
+            Err(d) => {
                 eprintln!("{d}");
                 worst = worst.max(d.severity.return_code());
             }
         }
     }
     ExitCode::from(worst as u8)
+}
+
+fn inventory(args: &Args) -> ExitCode {
+    let opts = FrontOptions {
+        copy_dirs: args.copy_dirs.clone(),
+        debugging_lines: args.debugging_lines,
+        cics: args.cics,
+        nsymbol_dbcs: args.nsymbol_dbcs,
+    };
+    let paths: Vec<&std::path::Path> = args.inputs.iter().map(|p| p.as_path()).collect();
+    let (inv, failed) = zeus_cobol::inventory::inventory(&paths, &opts);
+    print!("{}", inv.report());
+    for (name, msg) in &failed {
+        println!("not compiled\t{name}\t1\t1\t{msg}");
+    }
+    ExitCode::SUCCESS
 }
 
 fn compile(args: &Args) -> ExitCode {
@@ -90,6 +141,8 @@ fn compile(args: &Args) -> ExitCode {
     let opts = FrontOptions {
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
+        cics: args.cics,
+        nsymbol_dbcs: args.nsymbol_dbcs,
     };
     match zeus_cobol::compile_file(input, &opts) {
         Ok(module) => {
@@ -121,6 +174,10 @@ fn run(args: &Args) -> ExitCode {
             return ExitCode::from(16);
         }
     };
+    // the module's code page, unless --ccsid or ZEUS_CCSID chose one
+    if std::env::var_os("ZEUS_CCSID").is_none() {
+        zeus_cobol::codepage::set_active(module.ccsid);
+    }
     let dir = artifact
         .parent()
         .map(|p| {
@@ -164,6 +221,7 @@ fn main() -> ExitCode {
     };
     match cmd.as_str() {
         "check" => check(&parsed),
+        "inventory" => inventory(&parsed),
         "compile" => compile(&parsed),
         "run" => run(&parsed),
         "--version" => {

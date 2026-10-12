@@ -210,7 +210,7 @@ impl Machine {
                     .map(|mut d| {
                         if text {
                             for r in &mut d.records {
-                                *r = r.iter().map(|&b| ebcdic::from_latin1(b)).collect();
+                                *r = ebcdic::from_host(r);
                             }
                         }
                         Data::Seq(d)
@@ -464,7 +464,7 @@ impl Machine {
                     Data::Seq(d) if self.file_format(&def) == RecordFormat::Text => {
                         let mut text = d.clone();
                         for r in &mut text.records {
-                            let mut line = ebcdic::decode_latin1(r);
+                            let mut line = ebcdic::to_host(r);
                             while line.last() == Some(&b' ') {
                                 line.pop();
                             }
@@ -595,7 +595,7 @@ impl Machine {
                 }
                 None => lines_before = 1,
             }
-            let mut line = ebcdic::decode_latin1(&rec);
+            let mut line = ebcdic::to_host(&rec);
             while line.last() == Some(&b' ') {
                 line.pop();
             }

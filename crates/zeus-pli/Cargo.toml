@@ -1,0 +1,26 @@
+[package]
+name = "zeus-pli"
+description = "Zeus PL/I compiler (Enterprise PL/I dialect) and interpreter"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-cobol = { path = "../zeus-cobol" }
+zeus-db2 = { path = "../zeus-db2" }
+zeus-decimal = { path = "../zeus-decimal", features = ["serde"] }
+zeus-ds = { path = "../zeus-ds" }
+serde.workspace = true
+serde_json = { workspace = true, features = ["unbounded_depth"] }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "zpli"
+path = "src/main.rs"
+
+[lints]
+workspace = true

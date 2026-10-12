@@ -1,0 +1,13 @@
+ALLOC                                0
+ALLOC                                3          TOP                           30
+ALLOC                                2          TOP                           20
+ALLOC                                0
+A                                    3                       6
+A                                    5                      15
+A                                    3                       6
+B                                    7                      14
+S                       CONTROLLED                          10
+SHOW                                 7                       2
+MSG                             5               HELLO                                7
+TAB                                  4                       4                          28                  12
+TAB                                  2                          14

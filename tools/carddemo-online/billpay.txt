@@ -1,0 +1,17 @@
+# Bill payment of account 2: REWRITE of the account, WRITE of a
+# transaction; a second payment finds nothing to pay.
+tran CC00
+type 19 44 USER0001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 10
+key ENTER
+type 6 22 00000000002
+key ENTER
+expect * Your current balance is:  +0000001764.21
+type 15 61 Y
+key ENTER
+expect 23 Payment successful
+type 6 22 00000000002
+key ENTER
+expect 23 You have nothing to pay

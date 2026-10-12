@@ -14,6 +14,14 @@ pub use crate::sema::picture::{Category, EditSym};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
     pub programs: Vec<ProgramCode>,
+    /// The CCSID of the literals (the code page the module was compiled
+    /// for).
+    #[serde(default = "default_ccsid")]
+    pub ccsid: u32,
+}
+
+fn default_ccsid() -> u32 {
+    37
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -66,6 +74,61 @@ pub struct ProgramCode {
     pub debug_item: Option<u32>,
     /// Report Writer reports.
     pub reports: Vec<ReportDef>,
+    /// EXEC CICS / SQL / DLI statements (operand of `Instr::Exec`).
+    #[serde(default)]
+    pub execs: Vec<ExecDef>,
+    /// EXEC blocks of the data division (SQL DECLARE CURSOR, ...).
+    #[serde(default)]
+    pub data_execs: Vec<ExecDef>,
+    /// Descriptor of the RETURN-CODE special register.
+    #[serde(default)]
+    pub return_code: Option<u32>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum ExecKind {
+    Cics,
+    Sql,
+    Dli,
+}
+
+/// An embedded EXEC statement, run by the host interface (CICS, Db2, IMS).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecDef {
+    pub kind: ExecKind,
+    /// Source line (for diagnostics and EIB fields).
+    pub line: u32,
+    /// CICS / DLI: command word; SQL: first keyword.
+    pub command: String,
+    pub options: Vec<ExecOpt>,
+    /// SQL text with `?` for each host variable.
+    pub sql: Option<String>,
+    /// SQL host variables and indicator variables, in order.
+    pub host: Vec<(Loc, Option<Loc>)>,
+    /// Which host variables are VARCHAR structures (length and text).
+    #[serde(default)]
+    pub host_varchar: Vec<bool>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ExecOpt {
+    pub name: String,
+    pub arg: Option<ExecVal>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ExecVal {
+    /// A data area: its address and length are passed.
+    Area(Loc),
+    /// A value: literal or expression.
+    Value(Src),
+    /// `ADDRESS OF item`: a pointer value or receiver (SET option).
+    Address(Loc),
+    /// A procedure name (HANDLE CONDITION / AID / ABEND LABEL).
+    Label(u32),
+    /// A name that is not a data item (DL/I segment names, ...) or text
+    /// that is not a COBOL expression.
+    Name(String),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -270,6 +333,10 @@ pub enum DataType {
     Alphanumeric {
         just: bool,
     },
+    /// DBCS data: double-byte characters without SO / SI.
+    Dbcs,
+    /// National data: UTF-16 big-endian.
+    National,
     Numeric(NumType),
     NumericEdited {
         edit: Vec<EditSym>,
@@ -360,6 +427,15 @@ pub enum Arg {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum Func {
+    /// NATIONAL-OF(alphanumeric [, CCSID]): national (UTF-16) data.
+    NationalOf,
+    /// DISPLAY-OF(national [, CCSID]): alphanumeric data in a code page.
+    DisplayOf,
+    /// TRIM (Enterprise COBOL); a second argument "L" / "T" trims
+    /// only leading / trailing spaces.
+    Trim,
+    TestNumVal,
+    TestNumValC,
     Abs,
     Acos,
     Annuity,
@@ -376,6 +452,7 @@ pub enum Func {
     Integer,
     IntegerPart,
     Length,
+    ByteLength,
     Log,
     Log10,
     LowerCase,
@@ -423,6 +500,8 @@ pub enum Src {
     Loc(Loc),
     /// Alphanumeric literal (EBCDIC bytes).
     Alnum(Vec<u8>),
+    /// National literal (UTF-16 big-endian).
+    National(Vec<u8>),
     /// Numeric literal: value and its digits as EBCDIC characters.
     NumLit(Dec, Vec<u8>),
     Fig(Fig),
@@ -779,6 +858,8 @@ pub enum Instr {
     /// Execute the next statement only once per program activation (used
     /// for one-time initialisation of nested INITIAL programs).
     Unsupported(String),
+    /// EXEC statement (index into `ProgramCode::execs`).
+    Exec(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

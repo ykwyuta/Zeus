@@ -44,7 +44,10 @@ fn alnum_function(f: Func) -> bool {
             | Func::LowerCase
             | Func::UpperCase
             | Func::Reverse
+            | Func::Trim
             | Func::WhenCompiled
+            | Func::NationalOf
+            | Func::DisplayOf
     )
 }
 
@@ -66,6 +69,9 @@ pub fn function(name: &str) -> Option<Func> {
         "INTEGER" => Func::Integer,
         "INTEGER-PART" => Func::IntegerPart,
         "LENGTH" => Func::Length,
+        "BYTE-LENGTH" => Func::ByteLength,
+        "NATIONAL-OF" => Func::NationalOf,
+        "DISPLAY-OF" => Func::DisplayOf,
         "LOG" => Func::Log,
         "LOG10" => Func::Log10,
         "LOWER-CASE" => Func::LowerCase,
@@ -96,6 +102,9 @@ pub fn function(name: &str) -> Option<Func> {
         "DATE-TO-YYYYMMDD" => Func::DateToYyyymmdd,
         "DAY-TO-YYYYDDD" => Func::DayToYyyyddd,
         "YEAR-TO-YYYY" => Func::YearToYyyy,
+        "TRIM" => Func::Trim,
+        "TEST-NUMVAL" => Func::TestNumVal,
+        "TEST-NUMVAL-C" => Func::TestNumValC,
         _ => return None,
     })
 }
@@ -211,6 +220,8 @@ impl Gen<'_> {
             Operand::Fig(Figurative::Zero) => Ex::Lit(Dec::ZERO),
             Operand::Ref(r) => Ex::Load(self.loc(r)?),
             Operand::LengthOf(r) => Ex::LengthOf(self.loc(r)?),
+            Operand::AddressOf(r) => Ex::AddressOf(self.loc(r)?),
+            Operand::Null => Ex::Lit(Dec::ZERO),
             Operand::Func(f) => {
                 let func = function(&f.name)
                     .ok_or_else(|| Diag::error(f.pos, format!("unknown function {}", f.name)))?;
@@ -235,6 +246,16 @@ impl Gen<'_> {
     fn func_args(&mut self, args: &[Expr]) -> Result<Vec<Arg>> {
         let mut out = Vec::new();
         for a in args {
+            // TRIM (x LEADING / TRAILING)
+            if let Expr::Operand(Operand::Ref(r)) = a
+                && (r.name == "LEADING" || r.name == "TRAILING")
+                && r.qualifiers.is_empty()
+                && self.dm.resolve(r).is_err()
+            {
+                let flag = if r.name == "LEADING" { "L" } else { "T" };
+                out.push(Arg::Src(Src::Alnum(crate::ebcdic::encode(flag))));
+                continue;
+            }
             if let Expr::Operand(Operand::Ref(r)) = a
                 && r.subscripts.iter().any(|s| matches!(s, Subscript::All))
             {
@@ -267,6 +288,7 @@ impl Gen<'_> {
                 let (d, digits) = lit::numeric(n).map_err(|m| Diag::error(self.pos, m))?;
                 Src::NumLit(d, digits)
             }
+            Operand::Lit(Literal::National(b)) => Src::National(b.clone()),
             Operand::Lit(l) => Src::Alnum(lit::literal_bytes(l)),
             Operand::Fig(Figurative::Symbolic(name)) => {
                 let b = self.symbolic_byte(name)?;
@@ -307,7 +329,8 @@ impl Gen<'_> {
                 }
             }
             Operand::LengthOf(r) => Src::Num(Ex::LengthOf(self.loc(r)?)),
-            Operand::AddressOf(_) | Operand::Null => Src::Fig(Fig::Low),
+            Operand::AddressOf(r) => Src::Num(Ex::AddressOf(self.loc(r)?)),
+            Operand::Null => Src::Num(Ex::Lit(Dec::ZERO)),
         })
     }
 

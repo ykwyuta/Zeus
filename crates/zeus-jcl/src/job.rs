@@ -110,11 +110,7 @@ pub struct StepCtx<'a> {
 pub type ProgramResult = Result<i32, Outcome>;
 
 fn text_of(rec: &[u8]) -> String {
-    let mut t: Vec<u8> = ebcdic::decode_latin1(rec);
-    while t.last() == Some(&b' ') {
-        t.pop();
-    }
-    t.iter().map(|&b| b as char).collect()
+    ebcdic::decode(rec).trim_end_matches(' ').to_string()
 }
 
 impl StepCtx<'_> {
@@ -218,16 +214,16 @@ impl StepCtx<'_> {
     /// Appends to the spool file of a SYSOUT DD (or of the job log when
     /// the DD is not allocated).
     pub fn sysout(&self, name: &str) -> Result<std::fs::File, String> {
-        let path = match self.dd(name) {
+        open_append(&self.sysout_path(name))
+    }
+
+    /// The spool file of a SYSOUT DD (or of an unallocated one).
+    pub fn sysout_path(&self, name: &str) -> PathBuf {
+        match self.dd(name) {
             Some(d) if matches!(d.kind, DdKind::Sysout) => d.path.clone(),
             Some(d) if matches!(d.kind, DdKind::Dummy) => PathBuf::from("/dev/null"),
             _ => self.spool_prefix.with_extension(name),
-        };
-        std::fs::OpenOptions::new()
-            .create(true)
-            .append(true)
-            .open(&path)
-            .map_err(|e| format!("{}: {e}", path.display()))
+        }
     }
 
     /// Gives a data set created by this step without DCB attributes the
@@ -310,7 +306,7 @@ impl ProcLibrary for Procs<'_> {
 
 /// Text of a library member: EBCDIC 80-byte records (a catalogued
 /// library) or host text (a host directory).
-fn member_text(b: &[u8]) -> String {
+pub(crate) fn member_text(b: &[u8]) -> String {
     if !b.contains(&b'\n') && b.len().is_multiple_of(80) && !b.is_empty() {
         b.chunks(80).map(|r| text_of(r) + "\n").collect()
     } else {
@@ -612,10 +608,11 @@ impl Runner<'_> {
         let _ = self.env.catalog.save();
     }
 
-    fn cond_bypass(&self, exec: &Stmt, results: &[StepResult]) -> bool {
-        let abended = results
-            .iter()
-            .any(|r| matches!(r.outcome, Outcome::Abend(_)));
+    fn cond_bypass(&self, exec: &Stmt, results: &[StepResult], abend_test: bool) -> bool {
+        let abended = !abend_test
+            && results
+                .iter()
+                .any(|r| matches!(r.outcome, Outcome::Abend(_)));
         let Some(cond) = exec.get("COND") else {
             return abended;
         };
@@ -686,47 +683,284 @@ impl Runner<'_> {
     }
 }
 
+/// Runs a PL/I program compiled by zpli (or IBMZPLI in a job): its DD
+/// allocations, PARM, SYSPRINT and SYSIN; messages go to SYSOUT.
+/// The COBOL run time of a step: DDs, step identification, SYSOUT,
+/// SYSIN, native programs and the Db2 connection.
+fn cobol_factory(
+    ctx: &StepCtx,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+    db2: Option<std::rc::Rc<zeus_db2::Db2Host>>,
+) -> Box<dyn Fn() -> zeus_cobol::vm::Machine> {
+    let libs = libs.to_vec();
+    let mut allocs = Vec::new();
+    let mut tiot = Vec::new();
+    for dd in &ctx.dds {
+        allocs.push((
+            dd.name.clone(),
+            Allocation {
+                path: dd.path.clone(),
+                format: dd.format,
+            },
+        ));
+        tiot.push((dd.name.clone(), !matches!(dd.kind, DdKind::Dummy)));
+    }
+    let info = zeus_cobol::vm::StepInfo {
+        job: job.to_string(),
+        step: step.name.clone(),
+        proc_step: step.proc_step.clone().unwrap_or_default(),
+        dds: Some(tiot),
+        parm: ctx.parm.clone(),
+    };
+    let sysout = ctx.sysout_path("SYSOUT");
+    let stdin = ctx
+        .dd("SYSIN")
+        .is_some()
+        .then(|| ctx.read_text("SYSIN").unwrap_or_default());
+    Box::new(move || {
+        let mut m = zeus_cobol::vm::Machine::new(libs.clone());
+        crate::native::register(&mut m);
+        if let Some(h) = &db2 {
+            m.set_exec_host(h.clone());
+        }
+        for (n, a) in &allocs {
+            m.allocate(n, a.clone());
+        }
+        m.set_step(info.clone());
+        if let Ok(out) = open_append(&sysout) {
+            m.set_stdout(Box::new(out));
+        }
+        if let Some(lines) = &stdin {
+            m.set_stdin(lines.clone());
+        }
+        m
+    })
+}
+
+/// The PL/I run-time environment of a step; the in-stream data sets
+/// written to temporary files are added to `temps`.
+fn pli_env(
+    ctx: &StepCtx,
+    temps: &mut Vec<PathBuf>,
+    db2: Option<std::rc::Rc<zeus_db2::Db2Host>>,
+) -> zeus_pli::link::EnvFactory {
+    use zeus_pli::vm::{DdInfo, RunEnv};
+    let mut dds = std::collections::HashMap::new();
+    let mut stdin = None;
+    for dd in &ctx.dds {
+        let info = match &dd.kind {
+            DdKind::Dummy => DdInfo {
+                path: PathBuf::from("/dev/null"),
+                format: None,
+                keys: None,
+                sysout: true,
+            },
+            DdKind::Sysout => DdInfo {
+                path: dd.path.clone(),
+                format: None,
+                keys: None,
+                sysout: true,
+            },
+            DdKind::Instream(lines) => {
+                if dd.name == "SYSIN" {
+                    stdin = Some(lines.clone());
+                    continue;
+                }
+                // in-stream data as 80-byte EBCDIC records
+                let path = std::env::temp_dir().join(format!(
+                    "zeus-pli-{}-{}",
+                    std::process::id(),
+                    dd.name
+                ));
+                let mut data = Vec::new();
+                for l in lines {
+                    let mut r = ebcdic::encode(l);
+                    r.resize(80, ebcdic::SPACE);
+                    data.extend(r);
+                }
+                let _ = std::fs::write(&path, data);
+                temps.push(path.clone());
+                DdInfo {
+                    path,
+                    format: Some(RecordFormat::Fixed(80)),
+                    keys: None,
+                    sysout: false,
+                }
+            }
+            DdKind::Dataset { dsn, .. } => {
+                let keys = match ctx.env.catalog.get(dsn).map(|e| &e.kind) {
+                    Some(EntryKind::Cluster { keys, .. }) => *keys,
+                    _ => None,
+                };
+                DdInfo {
+                    path: dd.path.clone(),
+                    format: dd.format.or_else(|| ctx.env.catalog.record_format(dsn)),
+                    keys,
+                    sysout: false,
+                }
+            }
+        };
+        dds.insert(dd.name.clone(), info);
+    }
+    let sysprint = ctx.sysout_path("SYSPRINT");
+    let sysout = ctx.sysout_path("SYSOUT");
+    let parm = ctx.parm.clone();
+    // SYSIN goes to the first module that reads it
+    let stdin = std::cell::RefCell::new(stdin);
+    Box::new(move || {
+        let w = |p: &PathBuf| -> Box<dyn std::io::Write> {
+            match open_append(p) {
+                Ok(f) => Box::new(f),
+                Err(_) => Box::new(std::io::sink()),
+            }
+        };
+        RunEnv {
+            dds: dds.clone(),
+            parm: parm.clone(),
+            stdout: w(&sysprint),
+            msgout: w(&sysout),
+            stdin: stdin.borrow_mut().take(),
+            stdin_reader: None,
+            linker: None,
+            exec_host: db2
+                .clone()
+                .map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>),
+        }
+    })
+}
+
+fn run_pli(
+    ctx: &mut StepCtx,
+    module: zeus_pli::ir::Module,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+) -> ProgramResult {
+    use zeus_pli::vm::RunEnd;
+    let mut temps = Vec::new();
+    let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
+    let env = pli_env(ctx, &mut temps, db2.clone());
+    let linker =
+        zeus_pli::link::ModuleLinker::new(libs.to_vec(), pli_env(ctx, &mut temps, db2.clone()));
+    // the run unit: the COBOL programs of the load libraries and the
+    // storage the PL/I modules run in
+    let mut sys = cobol_factory(ctx, libs, job, step, db2.clone())();
+    sys.set_linker(linker.clone());
+    let mut env = env();
+    env.linker = Some(linker.clone());
+    let (end, mut sys) = zeus_pli::run_in(module, env, sys);
+    linker.finish();
+    sys.finish();
+    zeus_mq::end_run(matches!(end, RunEnd::Rc(_)));
+    if let Some(h) = &db2 {
+        let _ = h.end_uow(matches!(end, RunEnd::Rc(_)));
+    }
+    for t in temps {
+        let _ = std::fs::remove_file(t);
+    }
+    match end {
+        RunEnd::Rc(rc) => Ok(rc),
+        RunEnd::Abend(code) => Err(Outcome::Abend(code)),
+    }
+}
+
 /// Runs a COBOL program compiled by zcobc.
-fn run_cobol(
+pub(crate) fn run_cobol(
     ctx: &mut StepCtx,
     program: &str,
     libs: &[PathBuf],
     job: &str,
     step: &Step,
 ) -> ProgramResult {
-    let module = libs
+    run_program(ctx, program, libs, job, step, None)
+}
+
+/// Runs a program; `ims`: the PSB scheduled for it (an IMS batch region),
+/// whose PCB masks it receives as its parameters.
+pub(crate) fn run_program(
+    ctx: &mut StepCtx,
+    program: &str,
+    libs: &[PathBuf],
+    job: &str,
+    step: &Step,
+    ims: Option<zeus_ims::runtime::Schedule>,
+) -> ProgramResult {
+    let path = libs
         .iter()
         .flat_map(|d| [d.join(program), d.join(format!("{program}.zo"))])
         .find(|p| p.is_file())
-        .and_then(|p| zeus_cobol::load_module(&p).ok())
         .ok_or_else(|| Outcome::Abend("S806".into()))?;
-    let mut m = zeus_cobol::vm::Machine::new(libs.to_vec());
-    crate::native::register(&mut m);
-    let mut tiot = Vec::new();
-    for dd in &ctx.dds {
-        m.allocate(
-            &dd.name,
-            Allocation {
-                path: dd.path.clone(),
-                format: dd.format,
-            },
-        );
-        tiot.push((dd.name.clone(), !matches!(dd.kind, DdKind::Dummy)));
+    // a PL/I load module
+    if let Ok(data) = std::fs::read(&path)
+        && zeus_pli::is_module(&data)
+    {
+        let module =
+            zeus_pli::load_module_bytes(&data).map_err(|_| Outcome::Abend("S806".into()))?;
+        if ims.is_some() {
+            if let Ok(mut f) = ctx.sysout("SYSOUT") {
+                let _ = writeln!(f, "ZEUS IMS: {program}: PL/I programs cannot use DL/I yet");
+            }
+            return Err(Outcome::Abend("U0476".into()));
+        }
+        return run_pli(ctx, module, libs, job, step);
     }
-    m.set_step(zeus_cobol::vm::StepInfo {
-        job: job.to_string(),
-        step: step.name.clone(),
-        proc_step: step.proc_step.clone().unwrap_or_default(),
-        dds: Some(tiot),
-        parm: ctx.parm.clone(),
-    });
-    if let Ok(out) = ctx.sysout("SYSOUT") {
-        m.set_stdout(Box::new(out));
-    }
-    if ctx.dd("SYSIN").is_some() {
-        m.set_stdin(ctx.read_text("SYSIN").unwrap_or_default());
+    let module = zeus_cobol::load_module(&path).map_err(|_| Outcome::Abend("S806".into()))?;
+    // embedded SQL runs on the Db2 server named by ZEUS_DB2
+    let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
+    let mut m = cobol_factory(ctx, libs, job, step, db2.clone())();
+    // PL/I procedures (and COBOL programs they call)
+    let mut temps = Vec::new();
+    let linker =
+        zeus_pli::link::ModuleLinker::new(libs.to_vec(), pli_env(ctx, &mut temps, db2.clone()));
+    m.set_linker(linker.clone());
+    let batch = ims.is_some();
+    if let Some(sched) = ims {
+        // the program gets the PCB masks of its PSB; EXEC DLI and
+        // CALL 'CBLTDLI' work on them
+        zeus_ims::runtime::register(&mut m);
+        m.set_exec_host(std::rc::Rc::new(zeus_ims::runtime::BatchHost {
+            sql: db2
+                .clone()
+                .map(|h| h as std::rc::Rc<dyn zeus_cobol::vm::exec::ExecHost>),
+        }));
+        let mut addrs = Vec::new();
+        for k in 0..sched.pcbs.len() {
+            let mask = sched.mask(k);
+            let a = m.getmain(mask.len(), 0);
+            m.storage_mut()[a..a + mask.len()].copy_from_slice(&mask);
+            addrs.push(a);
+        }
+        m.set_main_args(addrs.iter().map(|&a| Some(a)).collect());
+        zeus_ims::runtime::start_batch(sched, addrs);
     }
     let r = m.run_main(module);
+    linker.finish();
+    // the IMS unit of work: committed at the normal end of the program
+    let r = match (batch, r) {
+        (true, r) => {
+            let ok = r.is_ok();
+            match zeus_ims::runtime::end_batch(ok) {
+                Ok(()) => r,
+                Err(e) => r.and(Err(zeus_cobol::vm::RunError(format!(
+                    "IMS commit failed: {e}"
+                )))),
+            }
+        }
+        (false, r) => r,
+    };
+    // MQ connections end with the step: committed, or backed out when
+    // the program failed
+    zeus_mq::end_run(r.is_ok());
+    for t in temps {
+        let _ = std::fs::remove_file(t);
+    }
+    // the unit of work ends with the step: committed, or backed out when
+    // the program failed
+    if let Some(h) = &db2 {
+        let _ = h.end_uow(r.is_ok());
+    }
     // attributes of new data sets from the files the program opened
     for (dd, fmt, max) in m.opened_formats().to_vec() {
         let Some(d) = ctx.dd(&dd).filter(|d| d.open_attributes) else {
@@ -780,6 +1014,22 @@ pub fn run_job(env: &mut Env, text: &str, log: &mut dyn Write) -> Result<Vec<Ste
         temps: HashMap::new(),
         passed: Vec::new(),
     };
+    // TYPRUN=SCAN: the JCL is checked (it was parsed and expanded above)
+    // but no step runs
+    let scan = job
+        .job
+        .as_ref()
+        .and_then(|j| j.get_str("TYPRUN"))
+        .is_some_and(|t| t.eq_ignore_ascii_case("SCAN"));
+    if scan {
+        r.note(&format!(
+            "ZEUS JOB {} SCANNED (TYPRUN=SCAN), NOT RUN",
+            job.name
+        ));
+        let _ = writeln!(log, "{}", r.log.trim_end());
+        std::fs::write(dir.join("JESMSGLG"), &r.log).map_err(|e| e.to_string())?;
+        return Ok(Vec::new());
+    }
     r.note(&format!("ZEUS JOB {} STARTED", job.name));
     let results = run_steps(&mut r, &job)?;
     for t in std::mem::take(&mut r.passed) {
@@ -801,6 +1051,7 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
             proc_step: None,
             exec: st.clone(),
             dds: Vec::new(),
+            guards: Vec::new(),
         };
         match r.allocate(st, &[], i, &step) {
             Ok(d) => joblib.push(d),
@@ -808,6 +1059,7 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
         }
     }
     let mut jcl_error = false;
+    let mut if_values: HashMap<usize, bool> = HashMap::new();
     for (n, step) in job.steps.iter().enumerate() {
         let seq = n + 1;
         let program = step
@@ -821,7 +1073,22 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
             program: program.clone(),
             outcome: Outcome::Bypassed,
         };
-        if jcl_error || r.cond_bypass(&step.exec, &results) {
+        // IF/THEN/ELSE: each IF is evaluated when the first step under
+        // it is reached (the steps before have all completed then)
+        let mut guarded = true;
+        for &(n, branch) in &step.guards {
+            let v = *if_values
+                .entry(n)
+                .or_insert_with(|| job.ifs[n].eval(&results));
+            if v != branch {
+                guarded = false;
+                break;
+            }
+        }
+        // after an abend only steps under an IF testing ABEND (or with
+        // COND=EVEN / ONLY) run
+        let abend_test = step.guards.iter().any(|&(n, _)| job.ifs[n].tests_abend());
+        if jcl_error || !guarded || r.cond_bypass(&step.exec, &results, abend_test) {
             log_step(r, &result);
             results.push(result);
             continue;
@@ -866,11 +1133,15 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
         let mut ctx = StepCtx {
             env: r.env,
             dds,
-            parm: step.exec.get_str("PARM").unwrap_or("").to_string(),
+            parm: step.exec.get("PARM").map(parm_text).unwrap_or_default(),
             spool_prefix: r.dir.join(format!("{seq:02}.{}", step.name)),
         };
         let outcome = match crate::utils::run(&program, &mut ctx) {
             Some(res) => res,
+            None if matches!(program.as_str(), "IKJEFT01" | "IKJEFT1A" | "IKJEFT1B") => {
+                crate::utils::tso::run(&program, &mut ctx, &libs, &job_name, step)
+            }
+            None if program == "DFSRRC00" => crate::ims::run(&mut ctx, &libs, &job_name, step),
             None => run_cobol(&mut ctx, &program, &libs, &job_name, step),
         };
         let dds = ctx.dds;
@@ -932,4 +1203,28 @@ pub fn param_str<'a>(params: &'a [Param], key: &str) -> Option<&'a str> {
 /// Host path helper used by tests and tools.
 pub fn spool_dir(env: &Env, job: &str) -> PathBuf {
     Path::new(&env.spool).join(job)
+}
+
+/// Opens a spool file for appending.
+fn open_append(path: &std::path::Path) -> Result<std::fs::File, String> {
+    std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(path)
+        .map_err(|e| format!("{}: {e}", path.display()))
+}
+
+/// The text of a PARM: a list `(a,b,c)` is passed as `a,b,c`.
+fn parm_text(v: &crate::parse::Value) -> String {
+    match v {
+        crate::parse::Value::Str(s) => s.clone(),
+        crate::parse::Value::List(ps) => ps
+            .iter()
+            .map(|p| match &p.key {
+                Some(k) => format!("{k}={}", parm_text(&p.value)),
+                None => parm_text(&p.value),
+            })
+            .collect::<Vec<_>>()
+            .join(","),
+    }
 }

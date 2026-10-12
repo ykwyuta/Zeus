@@ -194,6 +194,20 @@ CCVS85 合格 (C0〜C3) を先に完了させ、その後でアプリケーシ�
   - ジョブステップでは DD 文のないファイルは開けない (LE の既定 CBLQDA(OFF) と同じく状態 35)。
     CBIMPORT は CardDemo の JCL に CARDOUT DD がないため z/OS と同じく異常終了する。
   - 対象外: CICS CSD 更新 (CBADMCDJ)、TXT2PDF 製品 (TXT2PDF1)、FTP 用データが必要なジョブ。
+- 3 アプリの COBOL 構文使用一覧表 (C4 の成果物) は `tools/apps-inventory.sh` で生成し
+  [docs/inventory/apps.md](../inventory/apps.md) に置く。CI でソースとの一致を確認する。
+- C5 着手 (コンパイラ側): 3 アプリの COBOL 115 本中 111 本がコンパイルできる。
+  - EXEC CICS / EXEC SQL / EXEC DLI を構文解析し、CICS・DL/I はコマンドとオプション
+    (引数は COBOL の式)、SQL は文字列とホスト変数として ZIR の `Exec` 命令にする。
+    実行はホスト側インタフェース (`vm::exec::ExecHost`) に委ね、HANDLE CONDITION の分岐先・
+    RETURN による終了を VM が処理する。CICS ランタイム本体は Phase 4 で作る。
+  - CICS トランスレータ相当の処理: DFHRESP/DFHVALUE の置換、DFHEIBLK と DFHCOMMAREA の自動挿入、
+    EXEC DLI の DIB 挿入、EXEC SQL INCLUDE。システムコピーブック (DFHAID, DFHBMSCA, SQLCA,
+    SQLDA, CEEIGZCT) は公開されているインタフェース値から自作した。
+  - BMS: `zeus-bms` (`zbms`) がマップ定義からシンボリックマップを生成する。CardDemo 同梱の
+    生成済みコピーブック 17 本と一致することをテストで確認している。
+  - 残り 4 本: MQ のコピーブック (CMQ*) が必要な 3 本 (MQ 対応のフェーズで扱う)、
+    オブジェクト指向 COBOL (Java 連携) の 1 本 (Bank of Z の IMS 経路、対象外)。
 
 ## 8. 0002 計画への影響
 

@@ -219,7 +219,7 @@ impl DataModel {
                     .ok_or_else(|| Diag::error(it.pos, "PICTURE required"))?;
                 (p.digits / 2 + 1).max(1)
             }
-            Usage::Display => {
+            Usage::Display | Usage::Display1 | Usage::National => {
                 let p = it.pic.as_ref().ok_or_else(|| {
                     Diag::error(
                         it.pos,
@@ -332,6 +332,23 @@ impl DataModel {
         match p.category {
             Category::Alphabetic => DataType::Alphabetic { just },
             Category::Alphanumeric => DataType::Alphanumeric { just },
+            // PICTURE N: national with USAGE NATIONAL or NSYMBOL(NATIONAL)
+            // (unless USAGE DISPLAY-1); PICTURE G: DBCS
+            Category::Dbcs => {
+                let pic_n = it
+                    .entry
+                    .picture
+                    .as_deref()
+                    .is_some_and(|p| p.to_ascii_uppercase().contains('N'));
+                let national = pic_n
+                    && (it.usage == Usage::National
+                        || (it.usage != Usage::Display1 && !crate::front::nsymbol_dbcs()));
+                if national {
+                    DataType::National
+                } else {
+                    DataType::Dbcs
+                }
+            }
             Category::AlphanumericEdited => DataType::AlphanumericEdited {
                 edit: p.edit.clone(),
             },
@@ -584,6 +601,19 @@ impl DataModel {
     ) -> Result<()> {
         let value = lit::constant(v, self.decimal_comma).map_err(|m| Diag::error(pos, m))?;
         match (&value, ty) {
+            // national items: national literals as they are, other
+            // literals and figurative constants converted (national spaces)
+            (lit::Const::National(b), DataType::National) => vdata::move_national(b, field),
+            (lit::Const::National(b), _) => vdata::move_alnum(b, field, false),
+            (lit::Const::Bytes(b), DataType::National) => {
+                vdata::move_national(&vdata::national_of(b), field);
+            }
+            (lit::Const::Fig(f), DataType::National) => {
+                vdata::fill_pattern(field, &vdata::national_fig(f.byte()));
+            }
+            (lit::Const::All(p), DataType::National) => {
+                vdata::fill_pattern(field, &vdata::national_of(p));
+            }
             (lit::Const::Num(d, _), DataType::Numeric(t)) => {
                 vdata::store_num(t, field, *d, false);
             }

@@ -1,5 +1,6 @@
 //! EBCDIC code page 037 (the default CCSID for Enterprise COBOL in the
-//! U.S.; 1140 differs only in the currency sign at X'9F').
+//! U.S.; 1140 differs only in the currency sign at X'9F'), and text
+//! conversion in the active code page (`crate::codepage`).
 //!
 //! Code page 037 is a permutation of ISO 8859-1, so conversion is a
 //! byte-for-byte bijection.
@@ -49,11 +50,37 @@ pub fn from_latin1(b: u8) -> u8 {
     FROM_LATIN1[b as usize]
 }
 
-/// Converts host text (characters up to U+00FF) to EBCDIC.
+/// Converts host text to EBCDIC in the active code page (037 unless
+/// ZEUS_CCSID names another; mixed code pages shift to double-byte
+/// characters with SO / SI).
 pub fn encode(s: &str) -> Vec<u8> {
-    s.chars()
-        .map(|c| from_latin1(u32::from(c).min(0xFF) as u8))
-        .collect()
+    crate::codepage::active().encode(s)
+}
+
+/// Converts EBCDIC data in the active code page to text.
+pub fn decode(bytes: &[u8]) -> String {
+    crate::codepage::active().decode(bytes)
+}
+
+/// EBCDIC data as bytes of the host (files, the console): ISO 8859-1 for
+/// code page 037, UTF-8 for the other code pages.
+pub fn to_host(bytes: &[u8]) -> Vec<u8> {
+    let cp = crate::codepage::active();
+    if cp.ccsid == 37 {
+        decode_latin1(bytes)
+    } else {
+        cp.decode(bytes).into_bytes()
+    }
+}
+
+/// Host bytes (see `to_host`) as EBCDIC data.
+pub fn from_host(bytes: &[u8]) -> Vec<u8> {
+    let cp = crate::codepage::active();
+    if cp.ccsid == 37 {
+        bytes.iter().map(|&b| from_latin1(b)).collect()
+    } else {
+        cp.encode(&String::from_utf8_lossy(bytes))
+    }
 }
 
 /// Converts EBCDIC bytes to ISO 8859-1 bytes (for files and the terminal).

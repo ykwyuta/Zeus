@@ -78,6 +78,9 @@ pub enum EntryKind {
         record_size: (u32, u32),
         /// Alternate indexes related to the cluster.
         aixs: Vec<String>,
+        /// LOG(NONE | UNDO | ALL): whether CICS backs out changes.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        log: Option<String>,
     },
     AlternateIndex {
         relate: String,
@@ -325,6 +328,7 @@ mod tests {
                 keys: Some((11, 0)),
                 record_size: (300, 300),
                 aixs: vec![],
+                log: None,
             },
         })
         .unwrap();
@@ -409,6 +413,62 @@ impl Catalog {
             EntryKind::Cluster { .. } => Some(RecordFormat::Variable),
             _ => None,
         }
+    }
+
+    /// Keyed access to a KSDS or to a path over one: the host file of the
+    /// base cluster, the key specifications of the cluster (primary key,
+    /// then the key of each alternate index), which of them `name` uses and
+    /// the maximum record length.
+    /// LOG of the cluster a data set (cluster, path) belongs to: Some(true)
+    /// for UNDO / ALL, Some(false) for NONE, None when not given.
+    pub fn recoverable(&self, name: &str) -> Option<bool> {
+        match &self.base_of(name)?.kind {
+            EntryKind::Cluster { log: Some(l), .. } => Some(l != "NONE"),
+            _ => None,
+        }
+    }
+
+    pub fn keyed_access(
+        &self,
+        name: &str,
+    ) -> Result<(PathBuf, Vec<crate::keyed::KeySpec>, usize, usize)> {
+        let entry = self.get(name).ok_or(DsError::NotFound)?;
+        let base = self.base_of(name).ok_or(DsError::NotFound)?;
+        let EntryKind::Cluster {
+            org: VsamOrg::Ksds,
+            keys: Some(keys),
+            record_size,
+            aixs,
+            ..
+        } = &base.kind
+        else {
+            return Err(DsError::Damaged(format!("{name} is not a KSDS")));
+        };
+        let mut specs = vec![crate::keyed::KeySpec {
+            offset: keys.1 as usize,
+            len: keys.0 as usize,
+            duplicates: false,
+        }];
+        let via = match &entry.kind {
+            EntryKind::Path { entry } => Some(entry.to_ascii_uppercase()),
+            _ => None,
+        };
+        let mut which = 0;
+        for aix in aixs {
+            if let Some(EntryKind::AlternateIndex { keys, unique, .. }) =
+                self.get(aix).map(|e| &e.kind)
+            {
+                specs.push(crate::keyed::KeySpec {
+                    offset: keys.1 as usize,
+                    len: keys.0 as usize,
+                    duplicates: !unique,
+                });
+                if via.as_deref() == Some(aix.to_ascii_uppercase().as_str()) {
+                    which = specs.len() - 1;
+                }
+            }
+        }
+        Ok((self.path(&base.name), specs, which, record_size.1 as usize))
     }
 
     /// Reads all records of a catalogued data set (a KSDS in key order,
@@ -581,6 +641,7 @@ mod record_tests {
                 keys: Some((2, 0)),
                 record_size: (4, 4),
                 aixs: vec![],
+                log: None,
             },
         })
         .unwrap();

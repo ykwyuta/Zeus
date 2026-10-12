@@ -4,9 +4,12 @@
 //! and code generation to ZIR ([`sema`], [`zir`]), and execution by the ZIR
 //! interpreter ([`vm`]).
 
+pub mod codepage;
 pub mod diag;
 pub mod ebcdic;
 pub mod front;
+pub mod interlang;
+pub mod inventory;
 pub mod sema;
 pub mod vm;
 pub mod zir;
@@ -35,6 +38,10 @@ pub fn save_module(module: &zir::Module, path: &Path) -> std::io::Result<()> {
 }
 
 pub fn load_module(path: &Path) -> std::io::Result<zir::Module> {
+    use serde::Deserialize;
     let data = std::fs::read(path)?;
-    serde_json::from_slice(&data).map_err(std::io::Error::other)
+    // long condition chains nest deeply
+    let mut de = serde_json::Deserializer::from_slice(&data);
+    de.disable_recursion_limit();
+    zir::Module::deserialize(&mut de).map_err(std::io::Error::other)
 }

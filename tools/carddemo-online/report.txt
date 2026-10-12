@@ -1,0 +1,14 @@
+# Monthly transaction report: CORPT00C writes the job to the internal
+# reader (TD queue JOBS); zcics submits it to the JCL engine.
+tran CC00
+type 19 44 USER0001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 09
+key ENTER
+type 7 11 X
+key ENTER
+expect 23 Please confirm to print the Monthly report
+type 19 67 Y
+key ENTER
+expect 23 Monthly report submitted for printing

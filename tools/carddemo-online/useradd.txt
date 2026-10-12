@@ -1,0 +1,21 @@
+# Administrator adds a user; the user can sign on.
+tran CC00
+type 19 44 ADMIN001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 02
+key ENTER
+type 8 19 ZEUS
+type 8 57 TESTER
+type 11 16 ZEUS0001
+type 11 56 SECRET01
+type 14 18 U
+key ENTER
+expect 23 User ZEUS0001 has been added
+key PF3
+key PF3
+tran CC00
+type 19 44 ZEUS0001
+type 20 44 SECRET01
+key ENTER
+expect 4 Main Menu

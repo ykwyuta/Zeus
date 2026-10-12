@@ -1,0 +1,24 @@
+# Transaction type update screen (COTRTUPC): a new type is added, then
+# shown by the list (COTRTLIC).
+tran CC00
+type 19 44 ADMIN001
+type 20 44 PASSWORD
+key ENTER
+type 20 42 05
+key ENTER
+key PF2
+expect 1 CTTU
+type 12 27 10
+key ENTER
+expect * No record found for this key in database
+key PF5
+type 14 27 FOREIGN FEE
+key ENTER
+expect * Changes validated
+key PF5
+expect * Changes committed to database
+key PF3
+expect 1 CTLI
+expect 17 06      CHARGEBACK
+key PF8
+expect 12 10      FOREIGN FEE

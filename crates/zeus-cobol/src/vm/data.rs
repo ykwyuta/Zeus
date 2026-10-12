@@ -424,6 +424,52 @@ pub fn edit_alnum(syms: &[EditSym], src: &[u8], dst: &mut [u8]) {
     }
 }
 
+/// The national space (U+0020).
+pub const NATIONAL_SPACE: [u8; 2] = [0x00, 0x20];
+
+/// Text as national data (UTF-16 big-endian).
+pub fn utf16(text: &str) -> Vec<u8> {
+    text.encode_utf16().flat_map(u16::to_be_bytes).collect()
+}
+
+/// National data as text.
+pub fn from_utf16(b: &[u8]) -> String {
+    let units: Vec<u16> = b
+        .chunks_exact(2)
+        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// Alphanumeric (mixed) data in the code page as national data.
+pub fn national_of(b: &[u8]) -> Vec<u8> {
+    utf16(&ebcdic::decode(b))
+}
+
+/// National data as alphanumeric data in the code page.
+pub fn display_of(b: &[u8]) -> Vec<u8> {
+    ebcdic::encode(&from_utf16(b))
+}
+
+/// A figurative constant's byte as a national character.
+pub fn national_fig(byte: u8) -> Vec<u8> {
+    match byte {
+        0x00 => vec![0x00, 0x00],
+        0xFF => vec![0xFF, 0xFF],
+        b => utf16(&ebcdic::decode(&[b])),
+    }
+}
+
+/// Moves national data into a national field: truncated, or padded with
+/// national spaces.
+pub fn move_national(src: &[u8], out: &mut [u8]) {
+    let n = (src.len().min(out.len())) & !1;
+    out[..n].copy_from_slice(&src[..n]);
+    for pair in out[n..].chunks_mut(2) {
+        pair.copy_from_slice(&NATIONAL_SPACE[..pair.len()]);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

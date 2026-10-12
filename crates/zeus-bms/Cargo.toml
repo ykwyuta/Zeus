@@ -1,0 +1,19 @@
+[package]
+name = "zeus-bms"
+description = "Zeus BMS: map definitions (DFHMSD/DFHMDI/DFHMDF), symbolic maps and physical map descriptions"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+serde.workspace = true
+serde_json.workspace = true
+
+[[bin]]
+name = "zbms"
+path = "src/main.rs"
+
+[lints]
+workspace = true

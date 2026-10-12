@@ -10,6 +10,8 @@
 //!
 //! options: --home DIR (default $ZEUS_HOME or ./zeus): catalog in
 //!          DIR/catalog, job output in DIR/spool
+//!          --ccsid N (or ZEUS_CCSID): code page of text (037; 930, 939,
+//!          1390, 1399 for Japanese, UTF-8 on the host side)
 //!          --proclib DIR, --loadlib DIR (repeatable)
 //! ```
 //!
@@ -66,6 +68,11 @@ fn parse_opts(args: Vec<String>) -> Option<Opts> {
             "--recfm" => o.recfm = Some(Recfm::parse(&it.next()?)?),
             "--lrecl" => o.lrecl = Some(it.next()?.parse().ok()?),
             "--text" => o.text = true,
+            "--ccsid" => {
+                if !zeus_cobol::codepage::set_active(it.next()?.parse().ok()?) {
+                    return None;
+                }
+            }
             _ => o.args.push(a),
         }
     }
@@ -161,12 +168,14 @@ fn catalog_cmd(o: &Opts, cat: &mut Catalog) -> ExitCode {
         }
         ["catalog", "print", dsn] => match cat.read_records(dsn) {
             Ok(recs) => {
+                use std::io::Write;
+                let mut out = std::io::stdout().lock();
                 for r in recs {
-                    let t: String = ebcdic::decode_latin1(&r)
-                        .iter()
-                        .map(|&b| b as char)
-                        .collect();
-                    println!("{}", t.trim_end());
+                    let t = ebcdic::decode(&r);
+                    // a closed pipe (| head) ends the listing
+                    if writeln!(out, "{}", t.trim_end()).is_err() {
+                        return ExitCode::SUCCESS;
+                    }
                 }
             }
             Err(e) => return fail(format!("{dsn}: {e}")),

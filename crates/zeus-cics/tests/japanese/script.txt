@@ -1,0 +1,8 @@
+# a Japanese map; the name entered in the SOSI field is greeted
+tran JPGM
+expect 1 日本語の画面
+expect 3 お名前：
+type 3 13 山田
+key ENTER
+# STRING joins mixed strings: SI and SO between them show as blanks
+expect 5 こんにちは、  山田  さん
