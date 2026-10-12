@@ -1,0 +1,2 @@
+ %DCL TRACE CHAR;
+ %TRACE = 'ON';

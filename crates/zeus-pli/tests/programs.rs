@@ -117,3 +117,10 @@ fn files() {
     assert_eq!(data.len(), 160);
     assert_eq!(&data[12..16], &[0xE2, 0xC5, 0xC5, 0xD5]);
 }
+
+#[test]
+fn preprocessor() {
+    let (out, msg, end) = run("macros", HashMap::new(), "");
+    assert_eq!(end, RunEnd::Rc(0), "{msg}");
+    assert_eq!(out, expected("macros"));
+}

@@ -20,6 +20,11 @@ impl Parser {
         Parser { toks, i: 0 }
     }
 
+    /// Whether all tokens have been consumed.
+    pub fn at_end(&self) -> bool {
+        matches!(self.tok(), Tok::Eof)
+    }
+
     fn tok(&self) -> &Tok {
         &self.toks[self.i.min(self.toks.len() - 1)].tok
     }
@@ -83,12 +88,13 @@ impl Parser {
     }
 
     fn ident(&mut self) -> Result<String> {
-        match self.bump() {
-            Tok::Ident(s) => Ok(s),
-            _ => {
-                self.i -= 1;
-                Err(self.unexpected("name"))
+        match self.tok() {
+            Tok::Ident(s) => {
+                let s = s.clone();
+                self.bump();
+                Ok(s)
             }
+            _ => Err(self.unexpected("name")),
         }
     }
 
@@ -828,7 +834,7 @@ impl Parser {
         matches!(self.tok_at(k), Tok::Op(o) if *o == op)
     }
 
-    fn do_spec(&mut self) -> Result<DoSpec> {
+    pub fn do_spec(&mut self) -> Result<DoSpec> {
         if self.is_op(";") {
             return Ok(DoSpec::Group);
         }

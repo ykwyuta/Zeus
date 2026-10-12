@@ -14,6 +14,7 @@ pub mod ir;
 pub mod lexer;
 pub mod parser;
 pub mod picture;
+pub mod preproc;
 pub mod sema;
 pub mod types;
 pub mod vm;
@@ -85,11 +86,11 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
             );
         }
     };
-    let stmts = match parser::Parser::new(toks).program() {
-        Ok(s) => s,
+    let (toks, pp_diags) = match preproc::preprocess(toks, &lo, &mut files) {
+        Ok(t) => t,
         Err(d) => {
             return (
-                12,
+                16,
                 Compiled {
                     module: None,
                     messages: messages(&[d], &files.names),
@@ -97,8 +98,24 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
             );
         }
     };
+    let stmts = match parser::Parser::new(toks).program() {
+        Ok(s) => s,
+        Err(d) => {
+            let mut all = pp_diags;
+            all.push(d);
+            return (
+                12,
+                Compiled {
+                    module: None,
+                    messages: messages(&all, &files.names),
+                },
+            );
+        }
+    };
     let ccsid = zeus_cobol::codepage::active().ccsid;
-    let (module, diags) = sema::compile(&stmts, ccsid, files.names.clone());
+    let (module, sema_diags) = sema::compile(&stmts, ccsid, files.names.clone());
+    let mut diags = pp_diags;
+    diags.extend(sema_diags);
     let msgs = messages(&diags, &files.names);
     let rc = if module.is_none() || diags.iter().any(|d| d.severity == 'S' || d.severity == 'E') {
         12

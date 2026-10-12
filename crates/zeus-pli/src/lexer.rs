@@ -171,14 +171,11 @@ pub fn prepare(text: &str, opts: &LexOptions) -> (String, (usize, usize)) {
     (out, margins)
 }
 
-struct Lexer<'a> {
+struct Lexer {
     c: Vec<char>,
     i: usize,
     line: u32,
     file: u16,
-    files: &'a mut Files,
-    opts: &'a LexOptions,
-    depth: usize,
     out: Vec<Token>,
 }
 
@@ -186,7 +183,7 @@ fn ident_char(c: char) -> bool {
     c.is_ascii_alphanumeric() || matches!(c, '_' | '@' | '#' | '$')
 }
 
-impl Lexer<'_> {
+impl Lexer {
     fn pos(&self) -> Pos {
         Pos {
             file: self.file,
@@ -395,27 +392,7 @@ impl Lexer<'_> {
             .collect::<String>()
             .to_ascii_uppercase();
         match w.as_str() {
-            "INCLUDE" | "XINCLUDE" => {
-                let mut text = String::new();
-                while let Some(c) = self.peek(0)
-                    && c != ';'
-                {
-                    if c == '\n' {
-                        self.line += 1;
-                    }
-                    text.push(c);
-                    self.i += 1;
-                }
-                self.i += 1;
-                for name in text.split(',') {
-                    let name = name.trim();
-                    if !name.is_empty() {
-                        self.include(name, pos)?;
-                    }
-                }
-                Ok(())
-            }
-            "PAGE" | "SKIP" | "PRINT" | "NOPRINT" | "PUSH" | "POP" | "NOTE" | "PROCESS" => {
+            "PAGE" | "SKIP" | "PRINT" | "NOPRINT" | "PUSH" | "POP" | "PROCESS" => {
                 while let Some(c) = self.peek(0)
                     && c != ';'
                 {
@@ -427,48 +404,15 @@ impl Lexer<'_> {
                 self.i += 1;
                 Ok(())
             }
-            _ => Err(Diag::error(
-                pos,
-                format!("preprocessor statement %{w} is not supported"),
-            )),
+            _ => {
+                // a preprocessor statement: the preprocessor executes it
+                self.i = start;
+                self.push(Tok::Op("%"), pos);
+                Ok(())
+            }
         }
     }
 
-    fn include(&mut self, spec: &str, pos: Pos) -> Result<()> {
-        // 'file', member, or ddname(member)
-        let member = if let Some(q) = spec.strip_prefix(['\'', '"']) {
-            q.trim_end_matches(['\'', '"']).to_string()
-        } else if let (Some(o), Some(c)) = (spec.find('('), spec.rfind(')')) {
-            spec[o + 1..c].trim().to_string()
-        } else {
-            spec.to_string()
-        };
-        if self.depth > 20 {
-            return Err(Diag::error(pos, "%INCLUDE nested too deeply"));
-        }
-        let path = find_include(&self.opts.include_dirs, &member)
-            .ok_or_else(|| Diag::error(pos, format!("%INCLUDE member {member} not found")))?;
-        let text = std::fs::read(&path)
-            .map_err(|e| Diag::error(pos, format!("{}: {e}", path.display())))?;
-        let text = String::from_utf8_lossy(&text).into_owned();
-        let (prepared, _) = prepare(&text, self.opts);
-        self.files.names.push(path.display().to_string());
-        let file = (self.files.names.len() - 1) as u16;
-        let mut sub = Lexer {
-            c: prepared.chars().collect(),
-            i: 0,
-            line: 1,
-            file,
-            files: self.files,
-            opts: self.opts,
-            depth: self.depth + 1,
-            out: Vec::new(),
-        };
-        sub.run()?;
-        let toks = std::mem::take(&mut sub.out);
-        self.out.extend(toks);
-        Ok(())
-    }
 }
 
 /// Finds an include member: the name as given, upper and lower case, with
@@ -509,11 +453,7 @@ pub fn tokenize_text(
     opts: &LexOptions,
     files: &mut Files,
 ) -> Result<Vec<Token>> {
-    let (prepared, margins) = prepare(text, opts);
-    let opts = LexOptions {
-        margins,
-        include_dirs: opts.include_dirs.clone(),
-    };
+    let (prepared, _) = prepare(text, opts);
     files.names.push(name.to_string());
     let file = (files.names.len() - 1) as u16;
     let mut lx = Lexer {
@@ -521,9 +461,6 @@ pub fn tokenize_text(
         i: 0,
         line: 1,
         file,
-        files,
-        opts: &opts,
-        depth: 0,
         out: Vec::new(),
     };
     lx.run()?;
@@ -534,6 +471,49 @@ pub fn tokenize_text(
     let mut out = lx.out;
     out.push(Token { tok: Tok::Eof, pos });
     Ok(out)
+}
+
+/// Tokens of text without margins (preprocessor replacement values),
+/// positioned at `pos`; no end-of-file token.
+pub fn tokenize_raw(text: &str, pos: Pos) -> Result<Vec<Token>> {
+    let mut lx = Lexer {
+        c: text.chars().collect(),
+        i: 0,
+        line: pos.line,
+        file: pos.file,
+        out: Vec::new(),
+    };
+    lx.run()?;
+    Ok(lx.out)
+}
+
+/// The source text of tokens (for preprocessor arguments and values).
+pub fn tokens_text(toks: &[Token]) -> String {
+    let mut out = String::new();
+    for t in toks {
+        if !out.is_empty() {
+            out.push(' ');
+        }
+        match &t.tok {
+            Tok::Str { text, kind } => {
+                out.push('\'');
+                out.push_str(&text.replace('\'', "''"));
+                out.push('\'');
+                out.push_str(match kind {
+                    StrKind::Char => "",
+                    StrKind::Hex => "X",
+                    StrKind::Bit(1) => "B",
+                    StrKind::Bit(2) => "B2",
+                    StrKind::Bit(3) => "B3",
+                    StrKind::Bit(_) => "B4",
+                    StrKind::HexBin => "XN",
+                    StrKind::HexUnsigned => "XU",
+                });
+            }
+            other => out.push_str(&other.to_string()),
+        }
+    }
+    out
 }
 
 #[cfg(test)]

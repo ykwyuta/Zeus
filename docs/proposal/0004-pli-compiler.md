@@ -59,11 +59,12 @@ z/OS 上の Enterprise PL/I で書かれたバッチプログラムを、ソー�
 | レコード入出力 | OPEN/CLOSE (TITLE・LINESIZE・PAGESIZE)、暗黙オープン、READ (INTO・SET・KEY・KEYTO・IGNORE)、WRITE (FROM・KEYFROM)、REWRITE、DELETE。順次データセットと VSAM KSDS (カタログのキー定義) |
 | ピクチャ | 9 Z * Y V , . / B $ S + - CR DB T I R F(n)、浮動記号・ゼロ抑制、文字ピクチャ (A X 9) |
 | 組込み関数 | 算術 (ABS、MOD、REM、ROUND、TRUNC、CEIL、FLOOR、MAX、MIN、SIGN、ADD/SUBTRACT/MULTIPLY/DIVIDE、PRECISION、BINARY、DECIMAL、FIXED、FLOAT など)、数学関数、文字列 (SUBSTR、INDEX、SEARCH、VERIFY、TALLY、LENGTH、MAXLENGTH、TRIM、LEFT、RIGHT、CENTER、COPY、REPEAT、REVERSE、TRANSLATE、UPPERCASE、LOWERCASE、HIGH、LOW、COLLATE、HEX、BOOL、UNSPEC、STRING、CHAR、BIT)、配列 (DIM、LBOUND、HBOUND、SUM、PROD、ALL、ANY)、記憶域 (ADDR、NULL、SYSNULL、SIZE、CURRENTSIZE、POINTERADD)、日付 (DATE、TIME、DATETIME、DAYS、DAYSTODATE、WEEKDAY)、PLIRETC/PLIRETV |
+| プリプロセッサ | %DECLARE (FIXED・CHARACTER・BIT)、% 代入、%IF/%THEN/%ELSE、%DO (グループ・反復・WHILE/UNTIL・SKIP)、%SELECT、%LEAVE/%ITERATE、%ACTIVATE/%DEACTIVATE (RESCAN・NORESCAN)、%REPLACE、%NOTE、%INCLUDE/%XINCLUDE、プリプロセッサ手続き (引数、RETURNS、ソース中の呼出し) と主な組込み関数、置換後の再走査 |
 | JCL | `IBMZPLI` (SYSIN のソース、SYSLIB の %INCLUDE メンバー) → `IEWL` → `EXEC PGM=` で実行。DD はファイル名 (または TITLE) で対応付け、SYSPRINT・SYSIN・SYSOUT (メッセージ)、PARM、戻りコード、U4038 |
 
 ## 5. 未対応 (今後)
 
-- プリプロセッサ: %INCLUDE とリスト制御以外の %DECLARE / %IF / %DO / %ACTIVATE / %REPLACE
+- プリプロセッサ: %GO TO、キーワード引数・STATEMENT 形式の手続き呼出し、MACRO 以外のプリプロセッサ (SQL・CICS の前処理は 5 章の EXEC を参照)
 - CONTROLLED 記憶域、AREA と OFFSET、REFER、iSUB 定義
 - COMPLEX、GRAPHIC/WIDECHAR/UCHAR、浮動小数点ピクチャ (E/K)、DEFAULT 文、GENERIC、ORDINAL、HANDLE と DEFINE STRUCTURE
 - ENTRY 変数による呼出し、FETCH、別ロードモジュールの外部手続きの呼出し、COBOL との相互呼出し
@@ -72,7 +73,7 @@ z/OS 上の Enterprise PL/I で書かれたバッチプログラムを、ソー�
 
 ## 6. テスト
 
-- `crates/zeus-pli/tests/programs/`: 基本機能、条件処理、レコード・ストリーム入出力、リスト出力の各プログラムと、期待する SYSPRINT 出力・戻りコード。
+- `crates/zeus-pli/tests/programs/`: 基本機能、条件処理、レコード・ストリーム入出力、リスト出力、プリプロセッサの各プログラムと、期待する SYSPRINT 出力・戻りコード。
   - モジュールを直列化して読み戻してから実行するので、ロードモジュールの形も検証している。
 - 単体テスト:
   - 字句解析、構文解析、精度規則
