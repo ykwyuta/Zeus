@@ -155,6 +155,12 @@ fn embedded_sql() {
     let _ = h.end_uow(true);
     assert_eq!(end, RunEnd::Rc(0), "{msg}");
     assert_eq!(out, expected("sql"));
+    // structures, FLOAT, PICTURE and BIT host variables, dynamic SQL and
+    // the SQLDA
+    let (out, msg, end) = run_with("dynsql", HashMap::new(), "", Some(h.clone()));
+    let _ = h.end_uow(true);
+    assert_eq!(end, RunEnd::Rc(0), "{msg}");
+    assert_eq!(out, expected("dynsql"));
 }
 
 /// ENTRY variables: assigned procedures, arrays of them, CALL through

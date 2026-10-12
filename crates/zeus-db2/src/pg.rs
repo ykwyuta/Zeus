@@ -279,6 +279,15 @@ pub fn translate(sql: &str) -> String {
     let mut i = 0;
     while i < t.len() {
         let u = upper(&t[i]);
+        // X'..': a binary string
+        if u == "X"
+            && let Some(Tok::Str(h)) = t.get(i + 1)
+        {
+            let h = h.trim_matches('\'');
+            out.push(Tok::Str(format!("'\\x{h}'::BYTEA")));
+            i += 2;
+            continue;
+        }
         // string literals: Db2 timestamps
         if let Tok::Str(s) = &t[i] {
             let inner = &s[1..s.len().saturating_sub(1)];
@@ -606,6 +615,36 @@ fn translate_part(t: &[Tok]) -> String {
 // ---- results --------------------------------------------------------------
 
 /// A PostgreSQL value in the form Db2 gives it.
+/// A result column described in DRDA terms (type code, length).
+fn column(c: &zeus_pg::Column) -> zeus_drda::sql::Column {
+    let m = c.type_mod;
+    let (t, len) = match c.type_oid {
+        oid::INT2 | oid::BOOL => (0x04, 2),
+        oid::INT4 => (0x02, 4),
+        oid::INT8 => (0x16, 8),
+        oid::NUMERIC if m >= 4 => {
+            let m = m - 4;
+            (0x0E, ((((m >> 16) & 0xFF) << 8) | (m & 0xFF)) as u16)
+        }
+        oid::NUMERIC => (0x0E, 31 << 8),
+        oid::FLOAT4 => (0x0C, 4),
+        oid::FLOAT8 => (0x0A, 8),
+        oid::DATE => (0x20, 10),
+        oid::TIME => (0x22, 8),
+        oid::TIMESTAMP | oid::TIMESTAMPTZ => (0x24, 26),
+        oid::BPCHAR if m >= 4 => (0x30, (m - 4) as u16),
+        oid::VARCHAR if m >= 4 => (0x32, (m - 4) as u16),
+        oid::BYTEA => (0x28, 32704),
+        _ => (0x32, 32704),
+    };
+    zeus_drda::sql::Column {
+        drda_type: t,
+        nullable: true,
+        len,
+        name: c.name.to_ascii_uppercase(),
+    }
+}
+
 fn value(v: Option<String>, type_oid: u32) -> Value {
     let Some(s) = v else { return Value::Null };
     match type_oid {
@@ -782,7 +821,7 @@ impl Session {
     pub fn query(&mut self, sql: &str) -> Result<Rows, String> {
         Ok(match self.run(sql)? {
             Ok(st) => Rows {
-                columns: Vec::new(),
+                columns: st.columns.iter().map(column).collect(),
                 rows: st
                     .rows
                     .into_iter()

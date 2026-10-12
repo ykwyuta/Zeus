@@ -217,7 +217,8 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   SECCHK/ACCRDB による接続、NULLID.SYSSH200 パッケージでの動的 SQL 実行・問い合わせ・コミット) と
   EXEC SQL 実行時 `zeus-db2` (ホスト変数を EBCDIC から変換してリテラルとして束縛、VARCHAR の
   level-49 対、標識変数、SELECT INTO・SET・カーソル、プログラムの SQLCA への SQLCODE/SQLSTATE 書き
-  込み、Db2 for z/OS の DDL のうち LUW にない句・文の除去) を作成。`zjob` は IKJEFT01 の
+  込み、Db2 for z/OS の DDL のうち LUW にない句・文の除去、動的 SQL (EXECUTE IMMEDIATE・PREPARE・EXECUTE・
+  DESCRIBE と SQLDA・USING DESCRIPTOR)、COMP-1/COMP-2 のホスト変数) を作成。`zjob` は IKJEFT01 の
   DSN RUN PROGRAM を実行し、DSNTIAD/DSNTEP2/DSNTEP4 を SQL スクリプトの実行として扱う。`zcics` は
   タスクに Db2 接続を与え、SYNCPOINT とタスク終了でコミットする。CardDemo の取引種別管理モジュール
   (表の作成 CREADB21、一括保守 MNTTRDB2、一覧・更新・削除・追加画面) が `tools/carddemo-db2.sh test`

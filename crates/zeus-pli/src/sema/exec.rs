@@ -91,6 +91,32 @@ pub fn host_variables(text: &str) -> (String, HostNames) {
     (out, host)
 }
 
+/// Replaces the k-th `?` marker (outside literals) by `counts[k]`
+/// markers.
+fn expand_markers(sql: &str, counts: &[usize]) -> String {
+    if counts.iter().all(|&c| c == 1) {
+        return sql.to_string();
+    }
+    let mut out = String::with_capacity(sql.len());
+    let mut q = false;
+    let mut k = 0;
+    for c in sql.chars() {
+        match c {
+            '\'' => {
+                q = !q;
+                out.push(c);
+            }
+            '?' if !q => {
+                let n = counts.get(k).copied().unwrap_or(1);
+                out.push_str(&vec!["?"; n].join(", "));
+                k += 1;
+            }
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
 impl Compiler {
     fn host_ref(&mut self, names: &[String], pos: Pos) -> Result<Ref> {
         let r = ast::Ref {
@@ -107,18 +133,88 @@ impl Compiler {
         self.reference(&r, true)
     }
 
+    /// The scalar members of a structure, in order.
+    fn leaves(&self, v: VarId, out: &mut Vec<VarId>) {
+        for &m in &self.m.vars[v as usize].members {
+            if self.m.vars[m as usize].ty.is_some() {
+                out.push(m);
+            } else {
+                self.leaves(m, out);
+            }
+        }
+    }
+
     fn sql_host(&mut self, text: &str, pos: Pos) -> Result<(String, HostVars)> {
         let (sql, names) = host_variables(text);
+        // an SQLDA (DESCRIBE, PREPARE INTO, USING DESCRIPTOR) is passed as
+        // a whole; other structures stand for their members
+        let first = sql
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        let whole = matches!(first.as_str(), "DESCRIBE" | "PREPARE")
+            || sql
+                .split_whitespace()
+                .any(|w| w.eq_ignore_ascii_case("DESCRIPTOR"));
         let mut host = Vec::new();
+        let mut counts = Vec::new();
         for (v, i) in names {
-            let v = self.host_ref(&v, pos)?;
-            let i = match i {
-                Some(i) => Some(self.host_ref(&i, pos)?),
-                None => None,
-            };
-            host.push((v, i));
+            let r = self.host_ref(&v, pos)?;
+            if whole || self.m.vars[r.var as usize].ty.is_some() {
+                let i = match i {
+                    Some(i) => Some(self.host_ref(&i, pos)?),
+                    None => None,
+                };
+                host.push((r, i));
+                counts.push(1);
+                continue;
+            }
+            // a structure: its members, with the elements of an
+            // indicator array
+            let mut leaves = Vec::new();
+            self.leaves(r.var, &mut leaves);
+            for (k, &leaf) in leaves.iter().enumerate() {
+                let mut path = Vec::new();
+                let mut x = leaf;
+                while x != r.var {
+                    path.push(self.m.vars[x as usize].name.clone());
+                    match self.m.vars[x as usize].parent {
+                        Some(p) => x = p,
+                        None => break,
+                    }
+                }
+                path.reverse();
+                let mut full = v.clone();
+                full.extend(path);
+                let m = self.host_ref(&full, pos)?;
+                let ind = match &i {
+                    Some(i) => {
+                        let mut parts: Vec<(String, Vec<Vec<ast::Expr>>)> =
+                            i.iter().map(|n| (n.clone(), Vec::new())).collect();
+                        if let Some(last) = parts.last_mut() {
+                            last.1.push(vec![ast::Expr::Num {
+                                text: (k + 1).to_string(),
+                                binary: false,
+                                pos,
+                            }]);
+                        }
+                        Some(self.reference(
+                            &ast::Ref {
+                                locator: None,
+                                parts,
+                                pos,
+                            },
+                            false,
+                        )?)
+                    }
+                    None => None,
+                };
+                host.push((m, ind));
+            }
+            counts.push(leaves.len());
         }
-        Ok((sql, host))
+        Ok((expand_markers(&sql, &counts), host))
     }
 
     /// An EXEC statement.
@@ -177,7 +273,10 @@ impl Compiler {
                 .position(|x| x.eq_ignore_ascii_case("FOR"))
                 .unwrap_or(words.len());
             query = Some(words[(at + 1).min(words.len())..].join(" "));
-            host = h;
+            // the cursor's host variables, then OPEN's (USING)
+            let mut all = h;
+            all.extend(host);
+            host = all;
         }
         let sqlca = if self.resolve_var(&["SQLCA".to_string()]).is_some() {
             Some(self.host_ref(&["SQLCA".to_string()], pos)?)

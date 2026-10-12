@@ -478,12 +478,27 @@ impl Machine {
     /// length of 0); 0 for other members.
     fn refer_delta(&self, w: VarId, act: usize, rb: Option<u64>) -> R<i64> {
         let var = &self.module.vars[w as usize];
+        let refer = |b: &Bound| matches!(b, Bound::Refer(_));
+        // the dimensions it declares (not those of an enclosing array)
+        let inherited = var
+            .parent
+            .map_or(0, |p| self.module.vars[p as usize].dims.len())
+            .min(var.dims.len());
+        let own = &var.dims[inherited..];
+        if own.iter().any(|d| refer(&d.lb) || refer(&d.ub)) {
+            // mapped with one element per REFER extent
+            let (mut now, mut mapped) = (1i64, 1i64);
+            for d in own {
+                let a = self.act_of(act, var.block).unwrap_or(act);
+                now *= (self.bound(d.ub, a, w, rb)? - self.bound(d.lb, a, w, rb)? + 1).max(0);
+                if let (Bound::Const(l), Bound::Const(u)) = (d.lb, d.ub) {
+                    mapped *= (u - l + 1).max(0);
+                }
+            }
+            return Ok((now - mapped) * i64::from(var.size));
+        }
         let refer_len = matches!(var.ty.as_ref().and_then(Ty::str_len), Some(Ext::Refer(_)));
-        let refer_dim = var
-            .dims
-            .iter()
-            .any(|d| matches!(d.lb, Bound::Refer(_)) || matches!(d.ub, Bound::Refer(_)));
-        if var.ty.is_none() || !(refer_len || refer_dim) {
+        if var.ty.is_none() || !refer_len || inherited > 0 {
             return Ok(0);
         }
         let mut mapped = i64::from(var.size);
@@ -503,9 +518,16 @@ impl Machine {
         if v == root || self.module.refers.is_empty() || !self.has_refers(root) {
             return Ok(var.bit_offset);
         }
+        // the variables before it, not those containing it
+        let mut ancestors = Vec::new();
+        let mut p = var.parent;
+        while let Some(x) = p {
+            ancestors.push(x);
+            p = self.module.vars[x as usize].parent;
+        }
         let mut delta = 0i64;
         for w in (root + 1)..v {
-            if self.module.vars[w as usize].root == root {
+            if self.module.vars[w as usize].root == root && !ancestors.contains(&w) {
                 delta += self.refer_delta(w, act, Some(rb))?;
             }
         }
@@ -840,9 +862,32 @@ impl Machine {
                     self.bound(d.ub, a, r.var, rb)?,
                 ));
             }
+            // a dimension of an array of structures (inherited by a
+            // member): its elements are the structure's
+            let mut chain = vec![r.var];
+            while let Some(p) = self.module.vars[*chain.last().unwrap() as usize].parent {
+                chain.push(p);
+            }
+            let owner = |k: usize| {
+                chain
+                    .iter()
+                    .rev()
+                    .copied()
+                    .find(|&o| self.module.vars[o as usize].dims.len() > k)
+                    .unwrap_or(r.var)
+            };
+            let n = bounds.len();
             let mut stride = elem;
-            let mut strides = vec![0; bounds.len()];
-            for k in (0..bounds.len()).rev() {
+            let mut strides = vec![0; n];
+            for k in (0..n).rev() {
+                let o = owner(k);
+                if k + 1 == n || owner(k + 1) != o {
+                    stride = if o == r.var {
+                        elem
+                    } else {
+                        u64::from(self.module.vars[o as usize].size) * 8
+                    };
+                }
                 strides[k] = stride;
                 stride *= (bounds[k].1 - bounds[k].0 + 1).max(0) as u64;
             }

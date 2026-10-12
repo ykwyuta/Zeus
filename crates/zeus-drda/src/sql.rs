@@ -274,6 +274,8 @@ pub struct Column {
     pub nullable: bool,
     /// Length; for DECIMAL precision (high byte) and scale (low byte).
     pub len: u16,
+    /// The column name, when the server describes it (else empty).
+    pub name: String,
 }
 
 /// A column value.
@@ -313,6 +315,7 @@ fn parse_qrydsc(d: &[u8]) -> Result<Vec<Column>> {
                     drda_type: t & 0xFE,
                     nullable: t & 1 == 1,
                     len: u16::from_be_bytes([d[k + 1], d[k + 2]]),
+                    name: String::new(),
                 });
                 k += 3;
             }
@@ -470,7 +473,8 @@ mod tests {
             Column {
                 drda_type: 0x0E,
                 nullable: true,
-                len: 0x0902
+                len: 0x0902,
+                name: String::new(),
             }
         );
     }

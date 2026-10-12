@@ -16,6 +16,14 @@ const SQLCA: &str = "DCL 1 SQLCA, 2 SQLCAID CHAR(8), 2 SQLCABC FIXED BIN(31), \
 3 SQLWARN6 CHAR(1), 3 SQLWARN7 CHAR(1), 2 SQLEXT, 3 SQLWARN8 CHAR(1), \
 3 SQLWARN9 CHAR(1), 3 SQLWARNA CHAR(1), 3 SQLSTATE CHAR(5);";
 
+/// The SQLDA declaration (EXEC SQL INCLUDE SQLDA): based on SQLDAPTR,
+/// SQLN entries of 44 bytes (allocate it with SQLSIZE set).
+const SQLDA: &str = "DCL 1 SQLDA BASED(SQLDAPTR), 2 SQLDAID CHAR(8), \
+2 SQLDABC FIXED BIN(31), 2 SQLN FIXED BIN(15), 2 SQLD FIXED BIN(15), \
+2 SQLVAR(SQLSIZE REFER(SQLN)), 3 SQLTYPE FIXED BIN(15), 3 SQLLEN FIXED BIN(15), \
+3 SQLDATA POINTER, 3 SQLIND POINTER, 3 SQLNAME CHAR(30) VARYING, \
+SQLSIZE FIXED BIN(15), SQLDAPTR POINTER;";
+
 pub struct Parser {
     toks: Vec<Token>,
     i: usize,
@@ -1910,9 +1918,11 @@ impl Parser {
                     .split_whitespace()
                     .map(|w| w.to_ascii_uppercase())
                     .collect();
-                if kind == "SQL" && words == ["INCLUDE", "SQLCA"] {
-                    // the SQL communication area
-                    let mut toks = crate::lexer::tokenize_raw(SQLCA, pos)?;
+                if kind == "SQL" && (words == ["INCLUDE", "SQLCA"] || words == ["INCLUDE", "SQLDA"])
+                {
+                    // the SQL communication area, the descriptor area
+                    let decl = if words[1] == "SQLCA" { SQLCA } else { SQLDA };
+                    let mut toks = crate::lexer::tokenize_raw(decl, pos)?;
                     toks.push(Token { tok: Tok::Eof, pos });
                     return Parser::new(toks).statement().map(|s| s.kind);
                 }

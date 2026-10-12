@@ -542,9 +542,12 @@ impl<'a> Gen<'a> {
                     name: "QUERY".into(),
                     arg: Some(zir::ExecVal::Name(query)),
                 });
+                // the cursor's host variables, then OPEN's (USING)
+                let mut host = decl.host.clone();
+                host.extend(text.host.iter().cloned());
                 sql = Some(SqlText {
                     text: text.text.clone(),
-                    host: decl.host.clone(),
+                    host,
                 });
             }
             // the SQLCA the statement reports to

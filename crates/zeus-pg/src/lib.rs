@@ -48,6 +48,9 @@ fn io(e: std::io::Error) -> Error {
 pub struct Column {
     pub name: String,
     pub type_oid: u32,
+    /// The type modifier (`atttypmod`): -1, or for VARCHAR / CHAR the length
+    /// + 4, for NUMERIC ((precision << 16) | scale) + 4.
+    pub type_mod: i32,
 }
 
 /// Type OIDs of the built-in types.
@@ -329,8 +332,14 @@ impl Connection {
                             let name = cstr(b, &mut at);
                             at += 6;
                             let type_oid = int32(b, &mut at) as u32;
-                            at += 8;
-                            Column { name, type_oid }
+                            at += 2;
+                            let type_mod = int32(b, &mut at);
+                            at += 2;
+                            Column {
+                                name,
+                                type_oid,
+                                type_mod,
+                            }
                         })
                         .collect();
                 }

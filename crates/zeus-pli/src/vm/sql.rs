@@ -29,6 +29,65 @@ fn data_type(ty: &Ty) -> Option<(DataType, bool)> {
         Ty::Fixed {
             dec: true, p, q, ..
         } => (num(NumUsage::Packed, u32::from(*p), i32::from(*q)), false),
+        // FLOAT: COMP-1 / COMP-2
+        Ty::Float { .. } => match ty.storage(true).0 {
+            4 => (DataType::Float { long: false }, false),
+            8 => (DataType::Float { long: true }, false),
+            _ => return None,
+        },
+        // BIT(8n): its bytes (FOR BIT DATA)
+        Ty::Bit {
+            var: Varying::Fixed,
+            ..
+        } if ty
+            .str_len()
+            .is_some_and(|l| matches!(l, crate::types::Ext::Const(n) if n % 8 == 0)) =>
+        {
+            (DataType::Group, false)
+        }
+        Ty::Wchar {
+            var: Varying::Fixed,
+            graphic,
+            ..
+        } => (
+            if *graphic {
+                DataType::Dbcs
+            } else {
+                DataType::National
+            },
+            false,
+        ),
+        // numeric pictures of digits (an overpunched sign last): zoned
+        // decimal; other pictures: their character image
+        Ty::Pic(p) if p.numeric && p.float.is_none() => {
+            use crate::picture::PicChar;
+            let n = p.items.len();
+            let plain = p.items.iter().enumerate().all(|(k, c)| match c {
+                PicChar::Nine | PicChar::V => true,
+                PicChar::Over('T' | 'I' | 'R') => k + 1 == n,
+                _ => false,
+            });
+            if plain && p.f == 0 {
+                let signed = matches!(p.items.last(), Some(PicChar::Over(_)));
+                (
+                    DataType::Numeric(NumType {
+                        usage: NumUsage::Display,
+                        digits: u32::from(p.p),
+                        scale: i32::from(p.q),
+                        signed,
+                        sign: if signed {
+                            SignPos::Trailing
+                        } else {
+                            SignPos::None
+                        },
+                    }),
+                    false,
+                )
+            } else {
+                (DataType::Alphanumeric { just: false }, false)
+            }
+        }
+        Ty::Pic(_) => (DataType::Alphanumeric { just: false }, false),
         Ty::Fixed {
             dec: false, q: 0, ..
         } => {
@@ -47,6 +106,19 @@ fn data_type(ty: &Ty) -> Option<(DataType, bool)> {
 impl Machine {
     /// The scalar host variable or area of `r` in the run unit's storage.
     pub(super) fn exec_area(&mut self, r: &Ref, act: usize) -> R<(Area, bool)> {
+        // a structure (an SQLDA): its storage as a whole
+        if self.module.vars[r.var as usize].ty.is_none() {
+            let (bit, _) = self.element_or_start(r, act)?;
+            let len = self.aggregate_bytes(r, act)?.len();
+            return Ok((
+                Area {
+                    addr: (bit / 8) as usize,
+                    len,
+                    ty: DataType::Group,
+                },
+                false,
+            ));
+        }
         let loc = self.locate(r, act)?;
         let name = &self.module.vars[r.var as usize].name;
         let Some((ty, vc)) = data_type(&loc.ty) else {

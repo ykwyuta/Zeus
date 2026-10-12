@@ -12,9 +12,9 @@ use std::collections::HashMap;
 use zeus_cobol::ebcdic;
 use zeus_cobol::vm::exec::{Area, ExecArg, ExecCall, ExecHost, ExecOutcome};
 use zeus_cobol::vm::{Machine, RResult, RunError, data};
-use zeus_cobol::zir::{DataType, ExecKind};
+use zeus_cobol::zir::{DataType, ExecKind, NumType, NumUsage, SignPos};
 use zeus_decimal::Dec;
-use zeus_drda::sql::{Rows, SqlCa, Value};
+use zeus_drda::sql::{Column, Rows, SqlCa, Value};
 
 /// The database server: Db2 (DRDA) or PostgreSQL.
 #[derive(Clone)]
@@ -104,6 +104,8 @@ struct State {
     schema: Option<String>,
     conn: Option<Connection>,
     cursors: HashMap<String, Cursor>,
+    /// Prepared statements (PREPARE): their text.
+    prepared: HashMap<String, String>,
 }
 
 /// The Db2 interface of a run unit or a CICS region.
@@ -128,6 +130,7 @@ impl Db2Host {
                 schema,
                 conn: None,
                 cursors: HashMap::new(),
+                prepared: HashMap::new(),
             }),
         }
     }
@@ -249,6 +252,13 @@ fn literal(m: &Machine, area: &Area, varchar: bool, ind: Option<&Area>) -> Strin
     }
     match &area.ty {
         DataType::Numeric(t) => data::num_value(t, b).to_string(),
+        // COMP-1 / COMP-2, PL/I FLOAT: hexadecimal floating point
+        DataType::Float { .. } => format!("{:E}", zeus_decimal::hfp::decode(b)),
+        // bytes (PL/I BIT): a binary string
+        DataType::Group => {
+            let h: String = b.iter().map(|x| format!("{x:02X}")).collect();
+            format!("X'{h}'")
+        }
         DataType::Pointer | DataType::Index => {
             i32::from_be_bytes([b[0], b[1], b[2], b[3]]).to_string()
         }
@@ -301,6 +311,10 @@ fn store(m: &mut Machine, area: &Area, varchar: bool, ind: Option<&Area>, v: &Va
         DataType::Numeric(t) => {
             let d = Dec::parse(text.trim()).unwrap_or(Dec::ZERO);
             data::store_num(t, mem, d, false);
+        }
+        DataType::Float { .. } => {
+            let f: f64 = text.trim().parse().unwrap_or(0.0);
+            zeus_decimal::hfp::encode(f, mem);
         }
         DataType::Dbcs => {
             let e = zeus_cobol::codepage::active().encode_dbcs(&text);
@@ -424,7 +438,322 @@ fn set_sqlca(m: &mut Machine, area: &Area, ca: &SqlCa) {
     m.storage_mut()[area.addr..area.addr + 136].copy_from_slice(&b);
 }
 
+fn num(usage: NumUsage, digits: u32, scale: i32) -> DataType {
+    DataType::Numeric(NumType {
+        usage,
+        digits,
+        scale,
+        signed: true,
+        sign: SignPos::Trailing,
+    })
+}
+
+/// SQLTYPE and SQLLEN of a result column (in an SQLDA).
+fn sqltype(c: &Column) -> (i16, i16) {
+    let (t, l): (i16, i16) = match c.drda_type {
+        0x02 => (496, 4),
+        0x04 => (500, 2),
+        0x16 => (492, 8),
+        0x0E => (484, c.len as i16),
+        0x0A => (480, 8),
+        0x0C => (480, 4),
+        0x20 => (384, 10),
+        0x22 => (388, 8),
+        0x24 => (392, 26),
+        0x30 | 0x3C | 0x26 => (452, c.len as i16),
+        _ => (448, c.len.min(32704) as i16),
+    };
+    (t + i16::from(c.nullable), l)
+}
+
+const SQLDA_HEADER: usize = 16;
+const SQLVAR_LEN: usize = 44;
+
+fn half(b: &[u8], at: usize) -> i16 {
+    i16::from_be_bytes([b[at], b[at + 1]])
+}
+
+fn word(b: &[u8], at: usize) -> u32 {
+    u32::from_be_bytes([b[at], b[at + 1], b[at + 2], b[at + 3]])
+}
+
+/// The host variables an SQLDA describes: SQLDATA and SQLIND of its first
+/// SQLD entries, typed by SQLTYPE and SQLLEN.
+fn sqlda_vars(m: &Machine, a: &Area) -> (Vec<(Area, Option<Area>)>, Vec<bool>) {
+    let st = m.storage();
+    let base = a.addr;
+    let mut host = Vec::new();
+    let mut vc = Vec::new();
+    if base + SQLDA_HEADER > st.len() {
+        return (host, vc);
+    }
+    let n = half(st, base + 12).max(0) as usize;
+    let d = half(st, base + 14).max(0) as usize;
+    let null = |p: u32| p == 0 || p == 0xFF00_0000;
+    for k in 0..n.min(d) {
+        let v = base + SQLDA_HEADER + SQLVAR_LEN * k;
+        if v + SQLVAR_LEN > st.len() {
+            break;
+        }
+        let ty = half(st, v);
+        let len = half(st, v + 2) as u16 as usize;
+        let (data, ind) = (word(st, v + 4), word(st, v + 8));
+        let (dt, l, varchar) = match ty & !1 {
+            448 => (DataType::Alphanumeric { just: false }, len + 2, true),
+            484 => {
+                let (p, q) = (len >> 8, len & 0xFF);
+                (num(NumUsage::Packed, p as u32, q as i32), p / 2 + 1, false)
+            }
+            496 => (num(NumUsage::Native, 9, 0), 4, false),
+            500 => (num(NumUsage::Native, 4, 0), 2, false),
+            492 => (num(NumUsage::Native, 18, 0), 8, false),
+            480 => (DataType::Float { long: len == 8 }, len, false),
+            468 => (DataType::Dbcs, 2 * len, false),
+            _ => (DataType::Alphanumeric { just: false }, len, false),
+        };
+        let area = if null(data) {
+            Area {
+                addr: 0,
+                len: 0,
+                ty: dt,
+            }
+        } else {
+            Area {
+                addr: data as usize,
+                len: l,
+                ty: dt,
+            }
+        };
+        let ind = (ty & 1 == 1 && !null(ind)).then(|| Area {
+            addr: ind as usize,
+            len: 2,
+            ty: num(NumUsage::Native, 4, 0),
+        });
+        host.push((area, ind));
+        vc.push(varchar);
+    }
+    (host, vc)
+}
+
+/// Describes result columns in an SQLDA (DESCRIBE, PREPARE INTO): SQLD
+/// and, when SQLN is large enough, the SQLTYPE, SQLLEN and SQLNAME of each.
+fn write_sqlda(m: &mut Machine, a: &Area, cols: &[Column]) -> SqlCa {
+    let mem = m.storage_mut();
+    let base = a.addr;
+    if base + SQLDA_HEADER > mem.len() {
+        return SqlCa::ok();
+    }
+    let n = half(mem, base + 12).max(0) as usize;
+    mem[base..base + 8].copy_from_slice(&ebcdic::encode("SQLDA   "));
+    mem[base + 8..base + 12]
+        .copy_from_slice(&((SQLDA_HEADER + SQLVAR_LEN * n) as i32).to_be_bytes());
+    mem[base + 14..base + 16].copy_from_slice(&(cols.len() as i16).to_be_bytes());
+    if n < cols.len() {
+        // SQLN too small: only SQLD is set
+        return SqlCa {
+            sqlcode: 236,
+            sqlstate: "01005".into(),
+            ..SqlCa::default()
+        };
+    }
+    for (k, c) in cols.iter().enumerate() {
+        let v = base + SQLDA_HEADER + SQLVAR_LEN * k;
+        if v + SQLVAR_LEN > mem.len() {
+            break;
+        }
+        let (t, l) = sqltype(c);
+        mem[v..v + 2].copy_from_slice(&t.to_be_bytes());
+        mem[v + 2..v + 4].copy_from_slice(&l.to_be_bytes());
+        let mut name = ebcdic::encode(&c.name);
+        name.truncate(30);
+        mem[v + 12..v + 14].copy_from_slice(&(name.len() as i16).to_be_bytes());
+        name.resize(30, ebcdic::SPACE);
+        mem[v + 14..v + 44].copy_from_slice(&name);
+    }
+    SqlCa::ok()
+}
+
+/// The text of a host variable (a statement string).
+fn host_text(m: &Machine, a: &Area, varchar: bool) -> String {
+    let b = &m.storage()[a.addr..a.addr + a.len];
+    if varchar && b.len() >= 2 {
+        let n = (u16::from_be_bytes([b[0], b[1]]) as usize).min(b.len() - 2);
+        return text_of(&b[2..2 + n]);
+    }
+    text_of(b).trim_end().to_string()
+}
+
 impl Db2Host {
+    /// The statement string after keyword `kw` (FROM of PREPARE, IMMEDIATE
+    /// of EXECUTE IMMEDIATE): a host variable or a string constant.
+    fn source_text(m: &Machine, call: &ExecCall, sql: &str, kw: &str) -> Option<String> {
+        let at = find_kw(sql, kw, 0)?;
+        let rest = sql[at + kw.len()..].trim();
+        if rest.starts_with('?') {
+            let k = count_markers(&sql[..at]);
+            let (a, _) = call.host.get(k)?;
+            let vc = call.host_varchar.get(k).copied().unwrap_or(false);
+            return Some(host_text(m, a, vc));
+        }
+        let t = rest.strip_prefix('\'')?.strip_suffix('\'')?;
+        Some(t.replace("''", "'"))
+    }
+
+    /// Runs a statement text with these host variables (EXECUTE).
+    fn run_text(
+        &self,
+        m: &mut Machine,
+        call: &ExecCall,
+        text: String,
+        host: (Vec<(Area, Option<Area>)>, Vec<bool>),
+    ) -> SqlCa {
+        let mut c = call.clone();
+        c.command = text
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        c.sql = Some(text);
+        c.host = host.0;
+        c.host_varchar = host.1;
+        self.statement(m, &c).unwrap_or_else(SqlCa::ok)
+    }
+
+    /// The columns of a query's result.
+    fn describe(&self, text: &str) -> Result<Vec<Column>, SqlCa> {
+        // parameter markers: NULL
+        let r = self.query(&bind(text, &[]))?;
+        if r.sqlca.sqlcode < 0 {
+            return Err(r.sqlca);
+        }
+        Ok(r.columns)
+    }
+
+    fn not_prepared(name: &str) -> SqlCa {
+        SqlCa {
+            sqlcode: -514,
+            sqlstate: "26501".into(),
+            tokens: vec![name.to_string()],
+            ..SqlCa::default()
+        }
+    }
+
+    /// Dynamic SQL: PREPARE, EXECUTE (IMMEDIATE), DESCRIBE, and OPEN /
+    /// FETCH of a prepared query or with an SQLDA (USING DESCRIPTOR).
+    fn dynamic(&self, m: &mut Machine, call: &ExecCall, sql: &str) -> Option<SqlCa> {
+        let words: Vec<String> = sql
+            .split_whitespace()
+            .map(|w| w.to_ascii_uppercase())
+            .collect();
+        let w = |k: usize| words.get(k).map(String::as_str).unwrap_or("");
+        let descriptor = find_kw(sql, "DESCRIPTOR", 0);
+        let sqlda = || {
+            let k = count_markers(&sql[..descriptor.unwrap_or(0)]);
+            call.host.get(k).map(|(a, _)| sqlda_vars(m, a))
+        };
+        Some(match w(0) {
+            "PREPARE" => {
+                let Some(text) = Self::source_text(m, call, sql, "FROM") else {
+                    return Some(SqlCa {
+                        sqlcode: -104,
+                        sqlstate: "42601".into(),
+                        ..SqlCa::default()
+                    });
+                };
+                let name = w(1).to_string();
+                self.st
+                    .borrow_mut()
+                    .prepared
+                    .insert(name, text.trim().to_string());
+                // PREPARE ... INTO :sqlda: also described
+                if find_kw(sql, "INTO", 0).is_some()
+                    && let Some((a, _)) = call.host.first()
+                {
+                    let a = a.clone();
+                    return Some(match self.describe(text.trim()) {
+                        Ok(cols) => write_sqlda(m, &a, &cols),
+                        Err(ca) => ca,
+                    });
+                }
+                SqlCa::ok()
+            }
+            "EXECUTE" if w(1) == "IMMEDIATE" => {
+                match Self::source_text(m, call, sql, "IMMEDIATE") {
+                    Some(text) => self.run_text(m, call, text, (Vec::new(), Vec::new())),
+                    None => SqlCa {
+                        sqlcode: -104,
+                        sqlstate: "42601".into(),
+                        ..SqlCa::default()
+                    },
+                }
+            }
+            "EXECUTE" => {
+                let name = w(1);
+                let Some(text) = self.st.borrow().prepared.get(name).cloned() else {
+                    return Some(Self::not_prepared(name));
+                };
+                let host = if descriptor.is_some() {
+                    sqlda().unwrap_or_default()
+                } else {
+                    (call.host.clone(), call.host_varchar.clone())
+                };
+                self.run_text(m, call, text, host)
+            }
+            "DESCRIBE" => {
+                let name = if w(1) == "OUTPUT" { w(2) } else { w(1) };
+                let Some(text) = self.st.borrow().prepared.get(name).cloned() else {
+                    return Some(Self::not_prepared(name));
+                };
+                let Some((a, _)) = call.host.last() else {
+                    return Some(SqlCa::ok());
+                };
+                let a = a.clone();
+                match self.describe(&text) {
+                    Ok(cols) => write_sqlda(m, &a, &cols),
+                    Err(ca) => ca,
+                }
+            }
+            "OPEN" => {
+                // a cursor for a prepared statement: its text, the USING
+                // values (or the SQLDA's)
+                let query = match call.arg("QUERY") {
+                    Some(ExecArg::Name(q)) => q.trim().to_ascii_uppercase(),
+                    _ => return None,
+                };
+                let prepared = self.st.borrow().prepared.get(&query).cloned();
+                if prepared.is_none() && descriptor.is_none() {
+                    return None;
+                }
+                let mut c = call.clone();
+                if let Some(text) = prepared {
+                    c.options.retain(|(n, _)| n != "QUERY");
+                    c.options
+                        .push(("QUERY".to_string(), Some(ExecArg::Name(text))));
+                } else if !query.contains(' ') {
+                    return Some(Self::not_prepared(&query));
+                }
+                if descriptor.is_some() {
+                    let (h, v) = sqlda().unwrap_or_default();
+                    c.host = h;
+                    c.host_varchar = v;
+                }
+                let words = sql.split_whitespace().take(2).collect::<Vec<_>>().join(" ");
+                c.sql = Some(words);
+                self.statement(m, &c)?
+            }
+            "FETCH" if descriptor.is_some() => {
+                let (h, v) = sqlda().unwrap_or_default();
+                let mut c = call.clone();
+                c.host = h;
+                c.host_varchar = v;
+                let at = find_kw(sql, "USING", 0).unwrap_or(sql.len());
+                c.sql = Some(sql[..at].to_string());
+                self.statement(m, &c)?
+            }
+            _ => return None,
+        })
+    }
+
     fn inputs(m: &Machine, call: &ExecCall, range: std::ops::Range<usize>) -> Vec<String> {
         range
             .filter_map(|k| {
@@ -505,6 +834,9 @@ impl Db2Host {
             .collect();
         let w = |k: usize| words.get(k).map(String::as_str).unwrap_or("");
         let n = call.host.len();
+        if let Some(ca) = self.dynamic(m, call, &sql) {
+            return Some(ca);
+        }
         Some(match w(0) {
             // declarations and precompiler directives
             "DECLARE" | "INCLUDE" | "WHENEVER" | "BEGIN" | "END" => return None,
