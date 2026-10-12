@@ -1162,3 +1162,116 @@ fn ims_batch_regions() {
         ["START    FRESH", "XRST    SHOP0001 COUNT=0042"]
     );
 }
+
+/// The Db2 utilities on the server of ZEUS_DB2 (skipped without it):
+/// LOAD of delimited records (DSNUTILB), DSNTIAUL's unload with its
+/// LOAD statements, and LOAD of the unloaded records with them.
+#[test]
+fn db2_unload_and_load() {
+    if std::env::var_os("ZEUS_DB2").is_none() {
+        eprintln!("ZEUS_DB2 is not set: Db2 utility test skipped");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let job = "//UTLJOB   JOB (ACCT),'DB2 UTIL'
+//DDL      EXEC PGM=IKJEFT01
+//SYSTSPRT DD SYSOUT=*
+//SYSPRINT DD SYSOUT=*
+//SYSTSIN  DD *
+  DSN SYSTEM(DB2)
+  RUN PROGRAM(DSNTIAD) PLAN(DSNTIAD) PARMS('RC0')
+  END
+/*
+//SYSIN    DD *
+  DROP TABLE ZEUSTEST.UTL1;
+/*
+//CREATE   EXEC PGM=IKJEFT01
+//SYSTSPRT DD SYSOUT=*
+//SYSPRINT DD SYSOUT=*
+//SYSTSIN  DD *
+  DSN SYSTEM(DB2)
+  RUN PROGRAM(DSNTIAD) PLAN(DSNTIAD)
+  END
+/*
+//SYSIN    DD *
+  CREATE TABLE ZEUSTEST.UTL1 (ID BIGINT NOT NULL,
+    NAME CHAR(5), AMT DECIMAL(7,2), TS TIMESTAMP);
+/*
+//LOAD1    EXEC PGM=DSNUTILB,PARM='DB2'
+//SYSPRINT DD SYSOUT=*
+//SYSIN    DD *
+  LOAD DATA REPLACE
+  FORMAT DELIMITED COLDEL ',' CHARDEL '\"' DECPT '.'
+  INTO TABLE ZEUSTEST.UTL1
+  (ID BIGINT, NAME CHAR, AMT DECIMAL, TS TIMESTAMP EXTERNAL)
+/*
+//SYSREC   DD *
+1,\"ALPHA\",10.50,\"2003-07-23 17:56:00.64\"
+2,,-2.25,\"2003-07-23 17:56:01\"
+3,\"GAM\"\"A\",,
+/*
+//UNLOAD   EXEC PGM=IKJEFT01
+//SYSTSPRT DD SYSOUT=*
+//SYSPRINT DD SYSOUT=*
+//SYSREC00 DD DSN=ZEUS.UTL.UNLOAD,DISP=(NEW,CATLG)
+//SYSPUNCH DD DSN=ZEUS.UTL.PUNCH,DISP=(NEW,CATLG),RECFM=FB,LRECL=80
+//SYSTSIN  DD *
+  DSN SYSTEM(DB2)
+  RUN PROGRAM(DSNTIAUL) PLAN(DSNTIAUL) PARMS('SQL')
+  END
+/*
+//SYSIN    DD *
+  SELECT ID, NAME, AMT FROM ZEUSTEST.UTL1 ORDER BY ID;
+/*
+//RELOAD   EXEC PGM=DSNUTILB,PARM='DB2'
+//SYSPRINT DD SYSOUT=*
+//SYSIN    DD DSN=ZEUS.UTL.PUNCH,DISP=SHR
+//SYSREC00 DD DSN=ZEUS.UTL.UNLOAD,DISP=SHR
+//CHECK    EXEC PGM=IKJEFT01
+//SYSTSPRT DD SYSOUT=*
+//SYSPRINT DD SYSOUT=*
+//SYSTSIN  DD *
+  DSN SYSTEM(DB2)
+  RUN PROGRAM(DSNTEP2) PLAN(DSNTEP2)
+  END
+/*
+//SYSIN    DD *
+  SELECT COUNT(*), COUNT(NAME), SUM(AMT) FROM ZEUSTEST.UTL1;
+/*
+";
+    let mut log = Vec::new();
+    let r = run_job(&mut env, job, &mut log).unwrap();
+    let log = String::from_utf8_lossy(&log);
+    let spool: String = {
+        let mut files: Vec<_> = std::fs::read_dir(dir.path().join("spool/UTLJOB"))
+            .unwrap()
+            .flatten()
+            .map(|e| e.path())
+            .collect();
+        files.sort();
+        files
+            .iter()
+            .map(|p| std::fs::read_to_string(p).unwrap_or_default())
+            .collect()
+    };
+    let rcs: Vec<(String, Outcome)> = outcomes(&r);
+    for (step, o) in &rcs[1..] {
+        assert_eq!(*o, Outcome::Rc(0), "{step}\n{log}\n{spool}");
+    }
+    // the unloaded records: ID BIGINT, NAME CHAR(5) and its indicator,
+    // AMT DECIMAL(7,2) and its indicator
+    let recs = env.catalog.read_records("ZEUS.UTL.UNLOAD").unwrap();
+    assert_eq!(recs.len(), 3, "{spool}");
+    assert_eq!(recs[0].len(), 8 + 6 + 5);
+    assert_eq!(&recs[0][..8], &1i64.to_be_bytes());
+    assert_eq!(&recs[0][8..13], &zeus_cobol::ebcdic::encode("ALPHA")[..]);
+    assert_eq!(recs[0][13], 0);
+    assert_eq!(&recs[0][14..18], &[0x00, 0x01, 0x05, 0x0C]);
+    assert_eq!(recs[1][13], b'?' ^ 0x50, "NAME of row 2 is NULL");
+    assert_eq!(&recs[1][14..18], &[0x00, 0x00, 0x22, 0x5D]);
+    assert_eq!(&recs[2][8..13], &zeus_cobol::ebcdic::encode("GAM\"A")[..]);
+    assert_eq!(recs[2][18], b'?' ^ 0x50, "AMT of row 3 is NULL");
+    // reloaded with the LOAD statements DSNTIAUL wrote: 6 rows
+    assert!(spool.contains("| 6 | 4 | 16.50"), "{spool}");
+}

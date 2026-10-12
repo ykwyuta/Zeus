@@ -9,6 +9,8 @@
 #        tools/bankofz-ims.sh test               # setup, then tools/bankofz-ims/*.txt
 #                                                # and the REST API (api.zconn)
 #        tools/bankofz-ims.sh api [PORT]         # the REST API (zconn, default 9081)
+#        tools/bankofz-ims.sh db2                # the Db2 transaction table and its
+#                                                # data (DSNUTILB LOAD), on ZEUS_DB2
 #
 # A test file has lines `send TRAN TEXT`, `sendhex TRAN HEX` (the message
 # text in hexadecimal) and `expect TEXT` (the output of the last message
@@ -79,6 +81,24 @@ setup() {
     submit Ims-spoc.jcl.j2
 }
 
+# The Db2 table of the IMS path's transactions (Db2-create) and its data
+# (Db2-insert: the LOAD utility), on the server of ZEUS_DB2.
+db2() {
+    for lib in DSN.V13.SDSNLOAD DSN.V13.SDSNEXIT DSN.V13.RUNLIB.LOAD; do
+        $zjob catalog define-pds $lib --recfm U --lrecl 0 >/dev/null 2>&1 || true
+    done
+    for t in Db2-drop Db2-create Db2-insert; do
+        sed -e 's/{{ *db2\.jobcard *}}/\/\/BANKZDB2 JOB (ZEUS),CLASS=A/' \
+            -e 's/{{ *db2\.ssid *}}/DB2/g; s/{{ *db2\.dsntep *}}/DSNTEP2/g' \
+            -e 's/{{ *db2\.runlib *}}/DSN.V13.RUNLIB.LOAD/g; s/{{ *db2\.db2_hlq *}}/DSN.V13/g' \
+            -e 's/{{ *db2\.sdsnload *}}/DSN.V13.SDSNLOAD/g; s/{{ *db2\.sdsnexit *}}/DSN.V13.SDSNEXIT/g' \
+            -e 's/{{ *db2\.sqlid *}}/BANKZIMS/g' \
+            -e 's/{{ *ims\.db2_database *}}/BANKZIMS/g; s/{{ *ims\.db2_table *}}/TXNHIST/g' \
+            "$b/.setup/jcl/ims/$t.j2" >"$home/cntl/$t.jcl"
+        $zjob submit "$home/cntl/$t.jcl" || [ $t = Db2-drop ]
+    done
+}
+
 # The job of a message processing region.
 region_jcl() {
     cat >"$home/cntl/MPP.jcl" <<JCL
@@ -113,6 +133,7 @@ case ${1:-} in
     setup) setup ;;
     tran) tran "$2" "$3" ;;
     api) zconn serve "${2:-9081}" ;;
+    db2) db2 ;;
     test)
         setup >"$home.setup.log" 2>&1 || { cat "$home.setup.log"; exit 1; }
         for s in tools/bankofz-ims/*.txt; do
@@ -145,7 +166,17 @@ case ${1:-} in
         echo "=== tools/bankofz-ims/api.zconn"
         zconn script tools/bankofz-ims/api.zconn >"$home/api.log" 2>&1 ||
             { cat "$home/api.log"; exit 1; }
+        if [ -n "${ZEUS_DB2:-}" ]; then
+            echo "=== Db2-create, Db2-insert"
+            db2 >"$home/db2.log" 2>&1 || { cat "$home/db2.log"; exit 1; }
+            if grep -E "RC=[0-9]{4}" "$home/db2.log" | grep -v "Db2-drop\|DROP" | grep -vq "RC=0000"; then
+                cat "$home/db2.log"; exit 1
+            fi
+            grep -q "NUMBER OF RECORDS=$(sed -n '/^\/\/SYSREC/,/^\/\*/p' "$b/.setup/jcl/ims/Db2-insert.j2" | grep -c '^[0-9]')" \
+                "$home"/spool/BANKZDB2*/*SYSPRINT* 2>/dev/null ||
+                { echo "the LOAD did not load every record" >&2; exit 1; }
+        fi
         echo "all Bank of Z IMS tests passed"
         ;;
-    *) echo "usage: $0 setup | tran TRAN TEXT | api [PORT] | test" >&2; exit 2 ;;
+    *) echo "usage: $0 setup | tran TRAN TEXT | api [PORT] | db2 | test" >&2; exit 2 ;;
 esac

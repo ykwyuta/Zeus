@@ -173,6 +173,24 @@ impl Db2Host {
 
     /// As [`Db2Host::run_script_statement`]; the rows of a query are added
     /// to `rows` as text (DSNTEP2 output).
+    /// The rows of a query, with their column descriptions (utilities:
+    /// DSNTIAUL).
+    pub fn select(&self, sql: &str) -> Result<Rows, SqlCa> {
+        let r = self.query(sql)?;
+        if r.sqlca.sqlcode < 0 {
+            return Err(r.sqlca);
+        }
+        Ok(r)
+    }
+
+    /// Runs a statement in the unit of work (utilities: LOAD).
+    pub fn execute_sql(&self, sql: &str) -> SqlCa {
+        match crate::dialect::translate(sql) {
+            None => SqlCa::ok(),
+            Some(t) => self.with_conn(|c| c.execute(&t)).unwrap_or_else(|e| e),
+        }
+    }
+
     pub fn run_script_query(
         &self,
         sql: &str,

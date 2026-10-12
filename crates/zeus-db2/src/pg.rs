@@ -616,7 +616,7 @@ fn translate_part(t: &[Tok]) -> String {
 
 /// A PostgreSQL value in the form Db2 gives it.
 /// A result column described in DRDA terms (type code, length).
-fn column(c: &zeus_pg::Column) -> zeus_drda::sql::Column {
+fn column(c: &zeus_pg::Column, nullable: bool) -> zeus_drda::sql::Column {
     let m = c.type_mod;
     let (t, len) = match c.type_oid {
         oid::INT2 | oid::BOOL => (0x04, 2),
@@ -639,7 +639,7 @@ fn column(c: &zeus_pg::Column) -> zeus_drda::sql::Column {
     };
     zeus_drda::sql::Column {
         drda_type: t,
-        nullable: true,
+        nullable,
         len,
         name: c.name.to_ascii_uppercase(),
     }
@@ -757,12 +757,17 @@ fn ok_ca(st: &Statement) -> SqlCa {
 
 pub struct Session {
     conn: Connection,
+    /// Whether table columns are NOT NULL, by (table, column number).
+    not_null: std::collections::HashMap<(u32, i16), bool>,
 }
 
 impl Session {
     pub fn connect(p: &Params) -> Result<Session, String> {
         let conn = Connection::connect(p).map_err(|e| e.to_string())?;
-        Ok(Session { conn })
+        Ok(Session {
+            conn,
+            not_null: std::collections::HashMap::new(),
+        })
     }
 
     /// The qualifier of unqualified names (the schema is created if need
@@ -774,6 +779,43 @@ impl Session {
             ))
             .map(|_| ())
             .map_err(|e| e.to_string())
+    }
+
+    /// Whether the result columns are NOT NULL: columns of tables as the
+    /// catalog says, expressions taken as not null.
+    fn not_null_of(&mut self, cols: &[zeus_pg::Column]) -> Vec<bool> {
+        let missing: Vec<(u32, i16)> = cols
+            .iter()
+            .filter(|c| c.table_oid != 0)
+            .map(|c| (c.table_oid, c.attnum))
+            .filter(|k| !self.not_null.contains_key(k))
+            .collect();
+        if !missing.is_empty() && self.conn.status != b'E' {
+            let list: Vec<String> = missing.iter().map(|(t, a)| format!("({t},{a})")).collect();
+            let q = format!(
+                "SELECT attrelid, attnum, attnotnull FROM pg_catalog.pg_attribute \
+                 WHERE (attrelid, attnum) IN ({})",
+                list.join(",")
+            );
+            if let Ok((sts, None)) = self.conn.simple_query(&q) {
+                for row in sts.iter().flat_map(|s| s.rows.iter()) {
+                    let get = |k: usize| row.get(k).cloned().flatten().unwrap_or_default();
+                    if let (Ok(t), Ok(a)) = (get(0).parse(), get(1).parse()) {
+                        self.not_null.insert((t, a), get(2) == "t");
+                    }
+                }
+            }
+        }
+        cols.iter()
+            .map(|c| {
+                c.table_oid == 0
+                    || self
+                        .not_null
+                        .get(&(c.table_oid, c.attnum))
+                        .copied()
+                        .unwrap_or(false)
+            })
+            .collect()
     }
 
     /// Runs a statement (in Db2's dialect) in the unit of work: its
@@ -821,7 +863,14 @@ impl Session {
     pub fn query(&mut self, sql: &str) -> Result<Rows, String> {
         Ok(match self.run(sql)? {
             Ok(st) => Rows {
-                columns: st.columns.iter().map(column).collect(),
+                columns: {
+                    let nn = self.not_null_of(&st.columns);
+                    st.columns
+                        .iter()
+                        .zip(nn)
+                        .map(|(c, n)| column(c, !n))
+                        .collect()
+                },
                 rows: st
                     .rows
                     .into_iter()

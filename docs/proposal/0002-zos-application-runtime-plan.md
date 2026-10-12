@@ -241,7 +241,17 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
   (DFHEP.CCECONTEXT、DFHEP.NAME.nnnnn、DFHEP.DATA.nnnnn) で START する (START CHANNEL も実装)。
   GenApp のバンドル GENAEV01 (CDEF125 の LGST・SSST) で LGASTAT1 が要求ごとの名前付きカウンターを
   数える (`tools/genapp/events.txt`)。
-  未着手: EBCDIC 照合のデータベース (現在は Db2 CE の既定照合)、DSNTIAUL・LOAD、静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路。
+  Db2 のユーティリティ: DSNTIAUL (TSO の DSN RUN。PARMS('SQL') の問い合わせか表名ごとに SYSRECnn へ
+  Db2 の内部形式の固定長レコード (NULL 可の列の後に標識バイト、NULL は '?')、SYSPUNCH に LOAD 文)。
+  DSNUTILB の LOAD (区切り形式 FORMAT DELIMITED と位置指定形式 POSITION・CHAR・VARCHAR・INTEGER・
+  SMALLINT・BIGINT・DECIMAL PACKED/ZONED/EXTERNAL・FLOAT・DATE/TIME/TIMESTAMP EXTERNAL・NULLIF、
+  REPLACE・RESUME)。CardDemo の TRANEXTR (`tools/carddemo-db2.sh test`) と Bank of Z の IMS 経路の
+  Db2-insert (`tools/bankofz-ims.sh db2`) が動く。
+  EBCDIC 照合: PostgreSQL では `tools/pg.sh start-ebcdic` が ICU の規則 (コードページ 037 の文字を
+  符号順に並べたもの、`tools/pg-ebcdic037.rules`) で照合するデータベース zeusebcdic を作る。
+  Db2 CE (Linux) は EBCDIC_819_037 などの照合を受け付けない (SQL1083N 理由 4) ため、Db2 では
+  バイナリ照合のまま。
+  未着手: 静的 SQL のパッケージ (BIND は何もしない)、GenApp の Web サービス経路。
 
 - 日本語 EBCDIC (2026-10): CCSID 930・939・1390・1399 の変換を、ICU の対応表 (unicode-org/icu-data
   の UCM を `tools/icu-codepages.sh` で取得・変換し、ライセンスとともに同梱) から Zeus 自身のコードで

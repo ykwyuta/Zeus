@@ -24,7 +24,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 13 | M | PL/I の EXEC SQL: FLOAT・PICTURE・BIT のホスト変数、構造体のホスト変数の展開、動的 SQL と SQLDA | 0004 | **済** (動的 SQL は COBOL でも使える) |
 | 14 | M | MQ: MQSET、パブリッシュ/サブスクライブ、メッセージハンドル、MQCB/MQCTL、MQOD・MQPMO 2 以降のフィールド | 0005 | **済** (配布リストを除く) |
 | 15 | M | GenApp のイベント処理 (LGASTAT1) | 0002 Phase 5 | **済** (LINK の捕捉と取引開始アダプター) |
-| 16 | M | Db2 のユーティリティ (DSNTIAUL・LOAD)、EBCDIC 照合のデータベース | 0002 Phase 5 | 未着手 |
+| 16 | M | Db2 のユーティリティ (DSNTIAUL・LOAD)、EBCDIC 照合のデータベース | 0002 Phase 5 | **済** (EBCDIC 照合は PostgreSQL だけ。Db2 CE は非対応) |
 | 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | 未着手 |
 | 18 | S | PL/I からの MQI 呼出し | 0005 | 未着手 |
 | 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | 未着手 |
