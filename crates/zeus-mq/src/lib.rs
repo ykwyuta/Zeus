@@ -16,6 +16,7 @@
 //! Calls with the default connection handle (0, as under CICS) connect
 //! to the queue manager of ZEUS_MQ on first use.
 
+mod callback;
 mod ffi;
 pub mod layout;
 pub mod monitor;
@@ -28,4 +29,6 @@ pub fn register(m: &mut zeus_cobol::vm::Machine) {
     for (name, f) in mqi::CALLS {
         m.add_native(name, *f);
     }
+    m.add_native_machine("MQCB", callback::mqcb);
+    m.add_native_machine("MQCTL", callback::mqctl);
 }

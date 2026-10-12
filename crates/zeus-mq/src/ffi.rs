@@ -39,6 +39,49 @@ type Inq = unsafe extern "C" fn(
     *mut Long,
 );
 
+type Set = unsafe extern "C" fn(
+    Long,
+    Long,
+    Long,
+    *const Long,
+    Long,
+    *const Long,
+    Long,
+    *const u8,
+    *mut Long,
+    *mut Long,
+);
+type Sub = unsafe extern "C" fn(Long, *mut u8, *mut Long, *mut Long, *mut Long, *mut Long);
+type SubRq = unsafe extern "C" fn(Long, Long, Long, *mut u8, *mut Long, *mut Long);
+type CrtMh = unsafe extern "C" fn(Long, *mut u8, *mut i64, *mut Long, *mut Long);
+type DltMh = unsafe extern "C" fn(Long, *mut i64, *mut u8, *mut Long, *mut Long);
+type SetMp = unsafe extern "C" fn(
+    Long,
+    i64,
+    *mut u8,
+    *mut u8,
+    *mut u8,
+    Long,
+    Long,
+    *const u8,
+    *mut Long,
+    *mut Long,
+);
+type InqMp = unsafe extern "C" fn(
+    Long,
+    i64,
+    *mut u8,
+    *mut u8,
+    *mut u8,
+    *mut Long,
+    Long,
+    *mut u8,
+    *mut Long,
+    *mut Long,
+    *mut Long,
+);
+type DltMp = unsafe extern "C" fn(Long, i64, *mut u8, *mut u8, *mut Long, *mut Long);
+
 /// Completion code and reason code of a call.
 pub type Cr = (i32, i32);
 
@@ -55,6 +98,14 @@ pub struct Library {
     cmit: Sync,
     back: Sync,
     inq: Inq,
+    set: Set,
+    sub: Sub,
+    subrq: SubRq,
+    crtmh: CrtMh,
+    dltmh: DltMh,
+    setmp: SetMp,
+    inqmp: InqMp,
+    dltmp: DltMp,
 }
 
 /// Candidate files of the client library: ZEUS_MQ_LIB (the library or
@@ -113,6 +164,14 @@ impl Library {
                 cmit: *lib.get::<Sync>(b"MQCMIT\0")?,
                 back: *lib.get::<Sync>(b"MQBACK\0")?,
                 inq: *lib.get::<Inq>(b"MQINQ\0")?,
+                set: *lib.get::<Set>(b"MQSET\0")?,
+                sub: *lib.get::<Sub>(b"MQSUB\0")?,
+                subrq: *lib.get::<SubRq>(b"MQSUBRQ\0")?,
+                crtmh: *lib.get::<CrtMh>(b"MQCRTMH\0")?,
+                dltmh: *lib.get::<DltMh>(b"MQDLTMH\0")?,
+                setmp: *lib.get::<SetMp>(b"MQSETMP\0")?,
+                inqmp: *lib.get::<InqMp>(b"MQINQMP\0")?,
+                dltmp: *lib.get::<DltMp>(b"MQDLTMP\0")?,
                 _lib: lib,
             })
         }
@@ -234,6 +293,145 @@ impl Library {
                 ints.as_mut_ptr(),
                 chars.len() as i32,
                 chars.as_mut_ptr(),
+                &mut cc,
+                &mut rc,
+            )
+        };
+        (cc, rc)
+    }
+}
+
+impl Library {
+    /// MQSET: the attributes of `selectors` to `ints` and `chars`.
+    pub fn set(&self, h: i32, o: i32, selectors: &[i32], ints: &[i32], chars: &[u8]) -> Cr {
+        let (mut cc, mut rc) = (0, 0);
+        // SAFETY: the counts are the lengths of the slices passed.
+        unsafe {
+            (self.set)(
+                h,
+                o,
+                selectors.len() as i32,
+                selectors.as_ptr(),
+                ints.len() as i32,
+                ints.as_ptr(),
+                chars.len() as i32,
+                chars.as_ptr(),
+                &mut cc,
+                &mut rc,
+            )
+        };
+        (cc, rc)
+    }
+
+    /// MQSUB: `sd` a native MQSD whose strings stay valid during the call;
+    /// the object handle in and out, the subscription handle out.
+    pub fn sub(&self, h: i32, sd: &mut [u8], hobj: &mut i32) -> (i32, Cr) {
+        let (mut hsub, mut cc, mut rc) = (0, 0, 0);
+        // SAFETY: the MQSD buffer has the size of its version.
+        unsafe { (self.sub)(h, sd.as_mut_ptr(), hobj, &mut hsub, &mut cc, &mut rc) };
+        (hsub, (cc, rc))
+    }
+
+    /// MQSUBRQ with a native MQSRO.
+    pub fn subrq(&self, h: i32, hsub: i32, action: i32, sro: &mut [u8]) -> Cr {
+        let (mut cc, mut rc) = (0, 0);
+        // SAFETY: the MQSRO buffer has the size of its version.
+        unsafe { (self.subrq)(h, hsub, action, sro.as_mut_ptr(), &mut cc, &mut rc) };
+        (cc, rc)
+    }
+
+    /// MQCRTMH: a message handle.
+    pub fn crtmh(&self, h: i32, cmho: &mut [u8]) -> (i64, Cr) {
+        let (mut hmsg, mut cc, mut rc) = (0i64, 0, 0);
+        // SAFETY: the MQCMHO buffer has the size of its version.
+        unsafe { (self.crtmh)(h, cmho.as_mut_ptr(), &mut hmsg, &mut cc, &mut rc) };
+        (hmsg, (cc, rc))
+    }
+
+    /// MQDLTMH: the handle becomes MQHM_UNUSABLE_HMSG.
+    pub fn dltmh(&self, h: i32, hmsg: &mut i64, dmho: &mut [u8]) -> Cr {
+        let (mut cc, mut rc) = (0, 0);
+        // SAFETY: the MQDMHO buffer has the size of its version.
+        unsafe { (self.dltmh)(h, hmsg, dmho.as_mut_ptr(), &mut cc, &mut rc) };
+        (cc, rc)
+    }
+
+    /// MQSETMP: `name` a native MQCHARV, `value` the property's value.
+    #[allow(clippy::too_many_arguments)]
+    pub fn setmp(
+        &self,
+        h: i32,
+        hmsg: i64,
+        smpo: &mut [u8],
+        name: &mut [u8],
+        pd: &mut [u8],
+        ty: i32,
+        value: &[u8],
+    ) -> Cr {
+        let (mut cc, mut rc) = (0, 0);
+        // SAFETY: the structures have the sizes of their versions and the
+        // value length is the slice's.
+        unsafe {
+            (self.setmp)(
+                h,
+                hmsg,
+                smpo.as_mut_ptr(),
+                name.as_mut_ptr(),
+                pd.as_mut_ptr(),
+                ty,
+                value.len() as i32,
+                value.as_ptr(),
+                &mut cc,
+                &mut rc,
+            )
+        };
+        (cc, rc)
+    }
+
+    /// MQINQMP: the property's type in and out, its value into `value`;
+    /// returns its length.
+    #[allow(clippy::too_many_arguments)]
+    pub fn inqmp(
+        &self,
+        h: i32,
+        hmsg: i64,
+        impo: &mut [u8],
+        name: &mut [u8],
+        pd: &mut [u8],
+        ty: &mut i32,
+        value: &mut [u8],
+    ) -> (i32, Cr) {
+        let (mut len, mut cc, mut rc) = (0, 0, 0);
+        // SAFETY: the structures have the sizes of their versions and the
+        // value length is the slice's.
+        unsafe {
+            (self.inqmp)(
+                h,
+                hmsg,
+                impo.as_mut_ptr(),
+                name.as_mut_ptr(),
+                pd.as_mut_ptr(),
+                ty,
+                value.len() as i32,
+                value.as_mut_ptr(),
+                &mut len,
+                &mut cc,
+                &mut rc,
+            )
+        };
+        (len, (cc, rc))
+    }
+
+    /// MQDLTMP.
+    pub fn dltmp(&self, h: i32, hmsg: i64, dmpo: &mut [u8], name: &mut [u8]) -> Cr {
+        let (mut cc, mut rc) = (0, 0);
+        // SAFETY: the structures have the sizes of their versions.
+        unsafe {
+            (self.dltmp)(
+                h,
+                hmsg,
+                dmpo.as_mut_ptr(),
+                name.as_mut_ptr(),
                 &mut cc,
                 &mut rc,
             )

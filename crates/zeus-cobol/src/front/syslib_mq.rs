@@ -1,32 +1,71 @@
 //! IBM MQ interface definitions for COBOL (COPY CMQV, CMQODV, CMQMDV,
-//! CMQPMOV, CMQGMOV, CMQTMV and their list forms ...L without initial
-//! values). Written for Zeus from the documented MQI structure layouts
-//! and constant values, with the z/OS values of the platform-dependent
-//! ones (MQENC_NATIVE 785). The structures are those of the versions the
-//! Zeus MQ interface converts: MQOD 1, MQMD 2, MQPMO 1, MQGMO 3, MQTM 1.
+//! CMQPMOV, CMQGMOV, CMQTMV, CMQSDV, CMQSROV, CMQCMHOV, CMQDMHOV,
+//! CMQDMPOV, CMQSMPOV, CMQIMPOV, CMQPDV, CMQCBDV, CMQCBCV, CMQCTLOV and
+//! their list forms ...L without initial values). Written for Zeus from
+//! the documented MQI structure layouts (31-bit: 4-byte pointers) and
+//! constant values, with the z/OS values of the platform-dependent ones
+//! (MQENC_NATIVE 785). The structures are those of the versions the Zeus
+//! MQ interface converts: MQOD 4, MQMD 2, MQPMO 3, MQGMO 4, MQTM 1 and
+//! version 1 of the others.
 
-/// A data item of a member: name, PICTURE (None: a group) and initial
-/// value.
+/// A data item of a member: name, PICTURE (None: a group; "CHARV": an
+/// MQCHARV; "POINTER": a pointer) and initial value.
 type Item = (u8, &'static str, Option<&'static str>, Option<&'static str>);
 
 const L: Option<&str> = Some("S9(9) BINARY");
+/// MQINT64 (message handles).
+const L64: Option<&str> = Some("S9(18) BINARY");
+const P: Option<&str> = Some("POINTER");
+const V: Option<&str> = Some("CHARV");
 
 fn text(items: &[Item], values: bool) -> String {
     let mut s = String::new();
-    for (level, name, pic, value) in items {
-        let indent = " ".repeat(10 + (*level as usize / 5 - 2) * 2);
-        match pic {
-            None => s.push_str(&format!("{indent}{level} {name}.\n")),
-            Some(p) => {
-                s.push_str(&format!("{indent}{level} {name}\n"));
-                match value.filter(|_| values) {
-                    Some(v) => s.push_str(&format!("{indent}    PIC {p} VALUE {v}.\n")),
-                    None => s.push_str(&format!("{indent}    PIC {p}.\n")),
-                }
+    for &(level, name, pic, value) in items {
+        item(&mut s, level, name, pic, value, values);
+    }
+    s
+}
+
+fn item(
+    s: &mut String,
+    level: u8,
+    name: &str,
+    pic: Option<&str>,
+    value: Option<&str>,
+    values: bool,
+) {
+    let indent = " ".repeat(10 + (level as usize / 5 - 2) * 2);
+    match pic {
+        None => s.push_str(&format!("{indent}{level} {name}.\n")),
+        // an MQCHARV
+        Some("CHARV") => {
+            s.push_str(&format!("{indent}{level} {name}.\n"));
+            item(s, level + 5, &format!("{name}-VSPTR"), P, None, values);
+            for (n, v) in [
+                ("VSOFFSET", "0"),
+                ("VSBUFSIZE", "0"),
+                ("VSLENGTH", "0"),
+                ("VSCCSID", "-3"),
+            ] {
+                item(s, level + 5, &format!("{name}-{n}"), L, Some(v), values);
+            }
+        }
+        Some("POINTER") => {
+            s.push_str(&format!("{indent}{level} {name}\n"));
+            if values {
+                s.push_str(&format!("{indent}    POINTER VALUE NULL.\n"));
+            } else {
+                s.push_str(&format!("{indent}    POINTER.\n"));
+            }
+        }
+        Some(p) => {
+            s.push_str(&format!("{indent}{level} {name}\n"));
+            match value.filter(|_| values) {
+                Some(v) => s.push_str(&format!("{indent}    PIC {p} VALUE {v}.\n")),
+                None => s.push_str(&format!("{indent}    PIC {p}.\n")),
             }
         }
     }
-    s
 }
 
 const MQOD: &[Item] = &[
@@ -38,6 +77,29 @@ const MQOD: &[Item] = &[
     (15, "MQOD-OBJECTQMGRNAME", Some("X(48)"), Some("SPACES")),
     (15, "MQOD-DYNAMICQNAME", Some("X(48)"), Some("'CSQ.*'")),
     (15, "MQOD-ALTERNATEUSERID", Some("X(12)"), Some("SPACES")),
+    // version 2
+    (15, "MQOD-RECSPRESENT", L, Some("0")),
+    (15, "MQOD-KNOWNDESTCOUNT", L, Some("0")),
+    (15, "MQOD-UNKNOWNDESTCOUNT", L, Some("0")),
+    (15, "MQOD-INVALIDDESTCOUNT", L, Some("0")),
+    (15, "MQOD-OBJECTRECOFFSET", L, Some("0")),
+    (15, "MQOD-RESPONSERECOFFSET", L, Some("0")),
+    (15, "MQOD-OBJECTRECPTR", P, None),
+    (15, "MQOD-RESPONSERECPTR", P, None),
+    // version 3
+    (
+        15,
+        "MQOD-ALTERNATESECURITYID",
+        Some("X(40)"),
+        Some("LOW-VALUES"),
+    ),
+    (15, "MQOD-RESOLVEDQNAME", Some("X(48)"), Some("SPACES")),
+    (15, "MQOD-RESOLVEDQMGRNAME", Some("X(48)"), Some("SPACES")),
+    // version 4
+    (15, "MQOD-OBJECTSTRING", V, None),
+    (15, "MQOD-SELECTIONSTRING", V, None),
+    (15, "MQOD-RESOBJECTSTRING", V, None),
+    (15, "MQOD-RESOLVEDTYPE", L, Some("0")),
 ];
 
 const MQMD: &[Item] = &[
@@ -90,6 +152,18 @@ const MQPMO: &[Item] = &[
     (15, "MQPMO-INVALIDDESTCOUNT", L, Some("0")),
     (15, "MQPMO-RESOLVEDQNAME", Some("X(48)"), Some("SPACES")),
     (15, "MQPMO-RESOLVEDQMGRNAME", Some("X(48)"), Some("SPACES")),
+    // version 2
+    (15, "MQPMO-RECSPRESENT", L, Some("0")),
+    (15, "MQPMO-PUTMSGRECFIELDS", L, Some("0")),
+    (15, "MQPMO-PUTMSGRECOFFSET", L, Some("0")),
+    (15, "MQPMO-RESPONSERECOFFSET", L, Some("0")),
+    (15, "MQPMO-PUTMSGRECPTR", P, None),
+    (15, "MQPMO-RESPONSERECPTR", P, None),
+    // version 3
+    (15, "MQPMO-ORIGINALMSGHANDLE", L64, Some("0")),
+    (15, "MQPMO-NEWMSGHANDLE", L64, Some("0")),
+    (15, "MQPMO-ACTION", L, Some("0")),
+    (15, "MQPMO-PUBLEVEL", L, Some("9")),
 ];
 
 const MQGMO: &[Item] = &[
@@ -108,6 +182,144 @@ const MQGMO: &[Item] = &[
     (15, "MQGMO-RESERVED1", Some("X"), Some("SPACE")),
     (15, "MQGMO-MSGTOKEN", Some("X(16)"), Some("LOW-VALUES")),
     (15, "MQGMO-RETURNEDLENGTH", L, Some("-1")),
+    // version 4
+    (15, "MQGMO-RESERVED2", L, Some("0")),
+    (15, "MQGMO-MSGHANDLE", L64, Some("0")),
+];
+
+const MQSD: &[Item] = &[
+    (10, "MQSD", None, None),
+    (15, "MQSD-STRUCID", Some("X(4)"), Some("'SD  '")),
+    (15, "MQSD-VERSION", L, Some("1")),
+    (15, "MQSD-OPTIONS", L, Some("0")),
+    (15, "MQSD-OBJECTNAME", Some("X(48)"), Some("SPACES")),
+    (15, "MQSD-ALTERNATEUSERID", Some("X(12)"), Some("SPACES")),
+    (
+        15,
+        "MQSD-ALTERNATESECURITYID",
+        Some("X(40)"),
+        Some("LOW-VALUES"),
+    ),
+    (15, "MQSD-SUBEXPIRY", L, Some("-1")),
+    (15, "MQSD-OBJECTSTRING", V, None),
+    (15, "MQSD-SUBNAME", V, None),
+    (15, "MQSD-SUBUSERDATA", V, None),
+    (15, "MQSD-SUBCORRELID", Some("X(24)"), Some("LOW-VALUES")),
+    (15, "MQSD-PUBPRIORITY", L, Some("-3")),
+    (
+        15,
+        "MQSD-PUBACCOUNTINGTOKEN",
+        Some("X(32)"),
+        Some("LOW-VALUES"),
+    ),
+    (
+        15,
+        "MQSD-PUBAPPLIDENTITYDATA",
+        Some("X(32)"),
+        Some("SPACES"),
+    ),
+    (15, "MQSD-SELECTIONSTRING", V, None),
+    (15, "MQSD-SUBLEVEL", L, Some("1")),
+    (15, "MQSD-RESOBJECTSTRING", V, None),
+];
+
+const MQSRO: &[Item] = &[
+    (10, "MQSRO", None, None),
+    (15, "MQSRO-STRUCID", Some("X(4)"), Some("'SRO '")),
+    (15, "MQSRO-VERSION", L, Some("1")),
+    (15, "MQSRO-OPTIONS", L, Some("0")),
+    (15, "MQSRO-NUMPUBS", L, Some("0")),
+];
+
+const MQCMHO: &[Item] = &[
+    (10, "MQCMHO", None, None),
+    (15, "MQCMHO-STRUCID", Some("X(4)"), Some("'CMHO'")),
+    (15, "MQCMHO-VERSION", L, Some("1")),
+    (15, "MQCMHO-OPTIONS", L, Some("0")),
+];
+
+const MQDMHO: &[Item] = &[
+    (10, "MQDMHO", None, None),
+    (15, "MQDMHO-STRUCID", Some("X(4)"), Some("'DMHO'")),
+    (15, "MQDMHO-VERSION", L, Some("1")),
+    (15, "MQDMHO-OPTIONS", L, Some("0")),
+];
+
+const MQDMPO: &[Item] = &[
+    (10, "MQDMPO", None, None),
+    (15, "MQDMPO-STRUCID", Some("X(4)"), Some("'DMPO'")),
+    (15, "MQDMPO-VERSION", L, Some("1")),
+    (15, "MQDMPO-OPTIONS", L, Some("0")),
+];
+
+const MQSMPO: &[Item] = &[
+    (10, "MQSMPO", None, None),
+    (15, "MQSMPO-STRUCID", Some("X(4)"), Some("'SMPO'")),
+    (15, "MQSMPO-VERSION", L, Some("1")),
+    (15, "MQSMPO-OPTIONS", L, Some("0")),
+    (15, "MQSMPO-VALUEENCODING", L, Some("785")),
+    (15, "MQSMPO-VALUECCSID", L, Some("-3")),
+];
+
+const MQIMPO: &[Item] = &[
+    (10, "MQIMPO", None, None),
+    (15, "MQIMPO-STRUCID", Some("X(4)"), Some("'IMPO'")),
+    (15, "MQIMPO-VERSION", L, Some("1")),
+    (15, "MQIMPO-OPTIONS", L, Some("0")),
+    (15, "MQIMPO-REQUESTEDENCODING", L, Some("785")),
+    (15, "MQIMPO-REQUESTEDCCSID", L, Some("-3")),
+    (15, "MQIMPO-RETURNEDENCODING", L, Some("785")),
+    (15, "MQIMPO-RETURNEDCCSID", L, Some("0")),
+    (15, "MQIMPO-RESERVED1", L, Some("0")),
+    (15, "MQIMPO-RETURNEDNAME", V, None),
+    (15, "MQIMPO-TYPESTRING", Some("X(8)"), Some("SPACES")),
+];
+
+const MQPD: &[Item] = &[
+    (10, "MQPD", None, None),
+    (15, "MQPD-STRUCID", Some("X(4)"), Some("'PD  '")),
+    (15, "MQPD-VERSION", L, Some("1")),
+    (15, "MQPD-OPTIONS", L, Some("0")),
+    (15, "MQPD-SUPPORT", L, Some("1")),
+    (15, "MQPD-CONTEXT", L, Some("0")),
+    (15, "MQPD-COPYOPTIONS", L, Some("22")),
+];
+
+const MQCBD: &[Item] = &[
+    (10, "MQCBD", None, None),
+    (15, "MQCBD-STRUCID", Some("X(4)"), Some("'CBD '")),
+    (15, "MQCBD-VERSION", L, Some("1")),
+    (15, "MQCBD-CALLBACKTYPE", L, Some("1")),
+    (15, "MQCBD-OPTIONS", L, Some("0")),
+    (15, "MQCBD-CALLBACKAREA", P, None),
+    (15, "MQCBD-CALLBACKFUNCTION", P, None),
+    (15, "MQCBD-CALLBACKNAME", Some("X(128)"), Some("SPACES")),
+    (15, "MQCBD-MAXMSGLENGTH", L, Some("-1")),
+];
+
+const MQCBC: &[Item] = &[
+    (10, "MQCBC", None, None),
+    (15, "MQCBC-STRUCID", Some("X(4)"), Some("'CBC '")),
+    (15, "MQCBC-VERSION", L, Some("1")),
+    (15, "MQCBC-CALLTYPE", L, Some("0")),
+    (15, "MQCBC-HOBJ", L, Some("0")),
+    (15, "MQCBC-CALLBACKAREA", P, None),
+    (15, "MQCBC-CONNECTIONAREA", P, None),
+    (15, "MQCBC-COMPCODE", L, Some("0")),
+    (15, "MQCBC-REASON", L, Some("0")),
+    (15, "MQCBC-STATE", L, Some("0")),
+    (15, "MQCBC-DATALENGTH", L, Some("0")),
+    (15, "MQCBC-BUFFERLENGTH", L, Some("0")),
+    (15, "MQCBC-FLAGS", L, Some("0")),
+];
+
+const MQCTLO: &[Item] = &[
+    (10, "MQCTLO", None, None),
+    (15, "MQCTLO-STRUCID", Some("X(4)"), Some("'CTLO'")),
+    (15, "MQCTLO-VERSION", L, Some("1")),
+    (15, "MQCTLO-OPTIONS", L, Some("0")),
+    (15, "MQCTLO-RESERVED", L, Some("-1")),
+    (15, "MQCTLO-CONNECTIONAREA", P, None),
 ];
 
 const MQTM: &[Item] = &[
@@ -168,6 +380,25 @@ const INTS: &[(&str, i32)] = &[
     ("MQRC-CONNECTION-STOPPING", 2203),
     ("MQRC-UNKNOWN-REMOTE-Q-MGR", 2087),
     ("MQRC-CALL-IN-PROGRESS", 2219),
+    ("MQRC-NOT-OPEN-FOR-SET", 2040),
+    ("MQRC-SD-ERROR", 2424),
+    ("MQRC-NO-SUBSCRIPTION", 2428),
+    ("MQRC-SUBSCRIPTION-IN-USE", 2429),
+    ("MQRC-SRO-ERROR", 2438),
+    ("MQRC-PROPERTY-NAME-ERROR", 2442),
+    ("MQRC-CBD-ERROR", 2444),
+    ("MQRC-HMSG-ERROR", 2460),
+    ("MQRC-CMHO-ERROR", 2461),
+    ("MQRC-DMHO-ERROR", 2462),
+    ("MQRC-SMPO-ERROR", 2463),
+    ("MQRC-IMPO-ERROR", 2464),
+    ("MQRC-PROPERTY-VALUE-TOO-BIG", 2469),
+    ("MQRC-PROPERTY-NOT-AVAILABLE", 2471),
+    ("MQRC-DMPO-ERROR", 2481),
+    ("MQRC-PD-ERROR", 2482),
+    ("MQRC-CALLBACK-TYPE-ERROR", 2483),
+    ("MQRC-CALLBACK-LINK-ERROR", 2487),
+    ("MQRC-OPERATION-ERROR", 2488),
     // connection and object handles
     ("MQHC-DEF-HCONN", 0),
     ("MQHC-UNUSABLE-HCONN", -1),
@@ -273,16 +504,143 @@ const INTS: &[(&str, i32)] = &[
     ("MQCCSI-EMBEDDED", -1),
     // structure versions
     ("MQOD-VERSION-1", 1),
-    ("MQOD-CURRENT-VERSION", 1),
+    ("MQOD-VERSION-2", 2),
+    ("MQOD-VERSION-3", 3),
+    ("MQOD-VERSION-4", 4),
+    ("MQOD-CURRENT-VERSION", 4),
     ("MQMD-VERSION-1", 1),
     ("MQMD-VERSION-2", 2),
     ("MQMD-CURRENT-VERSION", 2),
     ("MQPMO-VERSION-1", 1),
-    ("MQPMO-CURRENT-VERSION", 1),
+    ("MQPMO-VERSION-2", 2),
+    ("MQPMO-VERSION-3", 3),
+    ("MQPMO-CURRENT-VERSION", 3),
     ("MQGMO-VERSION-1", 1),
     ("MQGMO-VERSION-2", 2),
     ("MQGMO-VERSION-3", 3),
-    ("MQGMO-CURRENT-VERSION", 3),
+    ("MQGMO-VERSION-4", 4),
+    ("MQGMO-CURRENT-VERSION", 4),
+    ("MQSD-VERSION-1", 1),
+    ("MQSD-CURRENT-VERSION", 1),
+    ("MQSRO-VERSION-1", 1),
+    ("MQCBD-VERSION-1", 1),
+    ("MQCBC-VERSION-1", 1),
+    ("MQCTLO-VERSION-1", 1),
+    ("MQCMHO-VERSION-1", 1),
+    ("MQDMHO-VERSION-1", 1),
+    ("MQSMPO-VERSION-1", 1),
+    ("MQIMPO-VERSION-1", 1),
+    ("MQPD-VERSION-1", 1),
+    ("MQDMPO-VERSION-1", 1),
+    // publish/subscribe
+    ("MQSO-NONE", 0),
+    ("MQSO-NON-DURABLE", 0),
+    ("MQSO-ALTER", 1),
+    ("MQSO-CREATE", 2),
+    ("MQSO-RESUME", 4),
+    ("MQSO-DURABLE", 8),
+    ("MQSO-GROUP-SUB", 16),
+    ("MQSO-MANAGED", 32),
+    ("MQSO-SET-IDENTITY-CONTEXT", 64),
+    ("MQSO-FIXED-USERID", 256),
+    ("MQSO-ANY-USERID", 512),
+    ("MQSO-PUBLICATIONS-ON-REQUEST", 2048),
+    ("MQSO-NEW-PUBLICATIONS-ONLY", 4096),
+    ("MQSO-FAIL-IF-QUIESCING", 8192),
+    ("MQSO-ALTERNATE-USER-AUTHORITY", 262144),
+    ("MQSO-WILDCARD-CHAR", 1048576),
+    ("MQSO-WILDCARD-TOPIC", 2097152),
+    ("MQSO-SET-CORREL-ID", 4194304),
+    ("MQSO-SCOPE-QMGR", 67108864),
+    ("MQSR-ACTION-PUBLICATION", 1),
+    ("MQCO-KEEP-SUB", 4),
+    ("MQCO-REMOVE-SUB", 8),
+    ("MQPMO-SUPPRESS-REPLYTO", 134217728),
+    ("MQPMO-RETAIN", 2097152),
+    ("MQPRI-PRIORITY-AS-PUBLISHED", -3),
+    ("MQOT-NONE", 0),
+    // message handles and properties
+    ("MQHM-NONE", 0),
+    ("MQHM-UNUSABLE-HMSG", -1),
+    ("MQCMHO-DEFAULT-VALIDATION", 0),
+    ("MQCMHO-NO-VALIDATION", 1),
+    ("MQCMHO-VALIDATE", 2),
+    ("MQDMHO-NONE", 0),
+    ("MQDMPO-NONE", 0),
+    ("MQSMPO-NONE", 0),
+    ("MQSMPO-SET-FIRST", 0),
+    ("MQSMPO-SET-PROP-UNDER-CURSOR", 1),
+    ("MQSMPO-SET-PROP-AFTER-CURSOR", 2),
+    ("MQSMPO-APPEND-PROPERTY", 4),
+    ("MQSMPO-SET-PROP-BEFORE-CURSOR", 8),
+    ("MQIMPO-NONE", 0),
+    ("MQIMPO-INQ-FIRST", 0),
+    ("MQIMPO-CONVERT-TYPE", 2),
+    ("MQIMPO-QUERY-LENGTH", 4),
+    ("MQIMPO-INQ-NEXT", 8),
+    ("MQIMPO-INQ-PROP-UNDER-CURSOR", 16),
+    ("MQIMPO-CONVERT-VALUE", 32),
+    ("MQPD-NONE", 0),
+    ("MQPD-SUPPORT-OPTIONAL", 1),
+    ("MQPD-NO-CONTEXT", 0),
+    ("MQPD-USER-CONTEXT", 1),
+    ("MQCOPY-DEFAULT", 22),
+    ("MQTYPE-AS-SET", 0),
+    ("MQTYPE-NULL", 2),
+    ("MQTYPE-BOOLEAN", 4),
+    ("MQTYPE-BYTE-STRING", 8),
+    ("MQTYPE-INT8", 16),
+    ("MQTYPE-INT16", 32),
+    ("MQTYPE-INT32", 64),
+    ("MQTYPE-LONG", 64),
+    ("MQTYPE-INT64", 128),
+    ("MQTYPE-FLOAT32", 256),
+    ("MQTYPE-FLOAT64", 512),
+    ("MQTYPE-STRING", 1024),
+    ("MQVS-NULL-TERMINATED", -1),
+    ("MQCCSI-APPL", -3),
+    ("MQGMO-PROPERTIES-AS-Q-DEF", 0),
+    ("MQGMO-PROPERTIES-FORCE-MQRFH2", 33554432),
+    ("MQGMO-PROPERTIES-COMPATIBILITY", 268435456),
+    ("MQGMO-PROPERTIES-IN-HANDLE", 134217728),
+    ("MQGMO-NO-PROPERTIES", 67108864),
+    // asynchronous consumption
+    ("MQOP-START", 1),
+    ("MQOP-START-WAIT", 2),
+    ("MQOP-STOP", 4),
+    ("MQOP-REGISTER", 256),
+    ("MQOP-DEREGISTER", 512),
+    ("MQOP-SUSPEND", 65536),
+    ("MQOP-RESUME", 131072),
+    ("MQCBT-MESSAGE-CONSUMER", 1),
+    ("MQCBT-EVENT-HANDLER", 2),
+    ("MQCBDO-NONE", 0),
+    ("MQCBDO-START-CALL", 1),
+    ("MQCBDO-STOP-CALL", 4),
+    ("MQCBDO-REGISTER-CALL", 256),
+    ("MQCBDO-DEREGISTER-CALL", 512),
+    ("MQCBDO-FAIL-IF-QUIESCING", 8192),
+    ("MQCBCT-START-CALL", 1),
+    ("MQCBCT-STOP-CALL", 2),
+    ("MQCBCT-REGISTER-CALL", 3),
+    ("MQCBCT-DEREGISTER-CALL", 4),
+    ("MQCBCT-EVENT-CALL", 5),
+    ("MQCBCT-MSG-REMOVED", 6),
+    ("MQCBCT-MSG-NOT-REMOVED", 7),
+    ("MQCBD-FULL-MSG-LENGTH", -1),
+    ("MQCTLO-NONE", 0),
+    // MQSET attributes
+    ("MQIA-TRIGGER-CONTROL", 24),
+    ("MQIA-TRIGGER-MSG-PRIORITY", 26),
+    ("MQIA-TRIGGER-TYPE", 28),
+    ("MQIA-TRIGGER-DEPTH", 29),
+    ("MQCA-TRIGGER-DATA", 2023),
+    ("MQQA-GET-ALLOWED", 0),
+    ("MQQA-GET-INHIBITED", 1),
+    ("MQQA-PUT-ALLOWED", 0),
+    ("MQQA-PUT-INHIBITED", 1),
+    ("MQTC-OFF", 0),
+    ("MQTC-ON", 1),
     ("MQTM-VERSION-1", 1),
     // application types
     ("MQAT-CICS", 1),
@@ -345,6 +703,28 @@ pub fn member(name: &str) -> Option<String> {
         "CMQGMOL" => (MQGMO, false),
         "CMQTMV" => (MQTM, true),
         "CMQTML" => (MQTM, false),
+        "CMQSDV" => (MQSD, true),
+        "CMQSDL" => (MQSD, false),
+        "CMQSROV" => (MQSRO, true),
+        "CMQSROL" => (MQSRO, false),
+        "CMQCMHOV" => (MQCMHO, true),
+        "CMQCMHOL" => (MQCMHO, false),
+        "CMQDMHOV" => (MQDMHO, true),
+        "CMQDMHOL" => (MQDMHO, false),
+        "CMQDMPOV" => (MQDMPO, true),
+        "CMQDMPOL" => (MQDMPO, false),
+        "CMQSMPOV" => (MQSMPO, true),
+        "CMQSMPOL" => (MQSMPO, false),
+        "CMQIMPOV" => (MQIMPO, true),
+        "CMQIMPOL" => (MQIMPO, false),
+        "CMQPDV" => (MQPD, true),
+        "CMQPDL" => (MQPD, false),
+        "CMQCBDV" => (MQCBD, true),
+        "CMQCBDL" => (MQCBD, false),
+        "CMQCBCV" => (MQCBC, true),
+        "CMQCBCL" => (MQCBC, false),
+        "CMQCTLOV" => (MQCTLO, true),
+        "CMQCTLOL" => (MQCTLO, false),
         _ => return None,
     };
     Some(text(items, values))
@@ -356,7 +736,11 @@ mod tests {
 
     #[test]
     fn members_fit_the_source_margins() {
-        for m in ["CMQV", "CMQODV", "CMQMDL", "CMQPMOV", "CMQGMOV", "CMQTML"] {
+        for m in [
+            "CMQV", "CMQODV", "CMQMDL", "CMQPMOV", "CMQGMOV", "CMQTML", "CMQSDV", "CMQSROV",
+            "CMQCMHOV", "CMQDMHOV", "CMQDMPOV", "CMQSMPOV", "CMQIMPOV", "CMQPDV", "CMQCBDV",
+            "CMQCBCL", "CMQCTLOV",
+        ] {
             for l in member(m).unwrap().lines() {
                 assert!(l.len() <= 72, "{m}: {l}");
                 assert!(l.starts_with("          "), "{m}: {l}");

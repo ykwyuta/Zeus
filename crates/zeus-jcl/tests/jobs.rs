@@ -516,6 +516,293 @@ fn mq_calls() {
     );
 }
 
+const MQPS: &str = "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MQPS.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 QMGR            PIC X(48) VALUE SPACES.
+       01 HCONN           PIC S9(9) BINARY VALUE 0.
+       01 HOBJ            PIC S9(9) BINARY VALUE 0.
+       01 HSUB            PIC S9(9) BINARY VALUE 0.
+       01 HPUB            PIC S9(9) BINARY VALUE 0.
+       01 HQ              PIC S9(9) BINARY VALUE 0.
+       01 HMSG1           PIC S9(18) BINARY VALUE 0.
+       01 HMSG2           PIC S9(18) BINARY VALUE 0.
+       01 OPTIONS         PIC S9(9) BINARY.
+       01 CC              PIC S9(9) BINARY.
+       01 RC              PIC S9(9) BINARY.
+       01 BUFLEN          PIC S9(9) BINARY.
+       01 DATALEN         PIC S9(9) BINARY.
+       01 BUFFER          PIC X(100).
+       01 TOPIC           PIC X(4) VALUE 'dev/'.
+       01 TYPE-STRING     PIC S9(9) BINARY.
+       01 TYPE-INT32      PIC S9(9) BINARY.
+       01 VLEN            PIC S9(9) BINARY.
+       01 ONE             PIC S9(9) BINARY VALUE 1.
+       01 ZERO-LEN        PIC S9(9) BINARY VALUE 0.
+       01 PTYPE           PIC S9(9) BINARY.
+       01 PLEN            PIC S9(9) BINARY.
+       01 PSTR            PIC X(20).
+       01 PINT            PIC S9(9) BINARY.
+       01 PNAME1          PIC X(6) VALUE 'Colour'.
+       01 PNAME2          PIC X(5) VALUE 'Count'.
+       01 PNAME.
+          05 PN-VSPTR     POINTER.
+          05 PN-VSOFFSET  PIC S9(9) BINARY VALUE 0.
+          05 PN-VSBUFSIZE PIC S9(9) BINARY VALUE 0.
+          05 PN-VSLENGTH  PIC S9(9) BINARY.
+          05 PN-VSCCSID   PIC S9(9) BINARY VALUE -3.
+       01 SELS            PIC S9(9) BINARY.
+       01 IATTR           PIC S9(9) BINARY.
+       01 CATTR           PIC X(1).
+       01 I               PIC 9.
+       01 OD.
+       COPY CMQODV.
+       01 MD.
+       COPY CMQMDV.
+       01 PMO.
+       COPY CMQPMOV.
+       01 GMO.
+       COPY CMQGMOV.
+       01 SD.
+       COPY CMQSDV.
+       01 CMHO.
+       COPY CMQCMHOV.
+       01 DMHO.
+       COPY CMQDMHOV.
+       01 SMPO.
+       COPY CMQSMPOV.
+       01 IMPO.
+       COPY CMQIMPOV.
+       01 PD.
+       COPY CMQPDV.
+       01 CBD.
+       COPY CMQCBDV.
+       01 CTLO.
+       COPY CMQCTLOV.
+       01 MQC.
+       COPY CMQV.
+       PROCEDURE DIVISION.
+           CALL 'MQCONN' USING QMGR HCONN CC RC
+           DISPLAY 'CONN ' RC
+      *    A SUBSCRIPTION TO A TOPIC, WITH A MANAGED QUEUE
+           SET MQSD-OBJECTSTRING-VSPTR TO ADDRESS OF TOPIC
+           MOVE 4 TO MQSD-OBJECTSTRING-VSLENGTH
+           COMPUTE MQSD-OPTIONS = MQSO-CREATE + MQSO-NON-DURABLE
+                                + MQSO-MANAGED
+           CALL 'MQSUB' USING HCONN SD HOBJ HSUB CC RC
+           DISPLAY 'SUB ' RC
+      *    A PUBLICATION WITH TWO MESSAGE PROPERTIES
+           MOVE MQOT-TOPIC TO MQOD-OBJECTTYPE
+           MOVE MQOD-VERSION-4 TO MQOD-VERSION
+           SET MQOD-OBJECTSTRING-VSPTR TO ADDRESS OF TOPIC
+           MOVE 4 TO MQOD-OBJECTSTRING-VSLENGTH
+           CALL 'MQOPEN' USING HCONN OD MQOO-OUTPUT HPUB CC RC
+           DISPLAY 'OPEN TOPIC ' RC
+           CALL 'MQCRTMH' USING HCONN CMHO HMSG1 CC RC
+           DISPLAY 'CRTMH ' RC
+           SET PN-VSPTR TO ADDRESS OF PNAME1
+           MOVE 6 TO PN-VSLENGTH
+           MOVE 'Blue' TO PSTR
+           MOVE MQTYPE-STRING TO TYPE-STRING
+           MOVE MQTYPE-INT32 TO TYPE-INT32
+           MOVE 4 TO VLEN
+           CALL 'MQSETMP' USING HCONN HMSG1 SMPO PNAME PD
+                TYPE-STRING VLEN PSTR CC RC
+           DISPLAY 'SETMP ' RC
+           SET PN-VSPTR TO ADDRESS OF PNAME2
+           MOVE 5 TO PN-VSLENGTH
+           MOVE 42 TO PINT
+           CALL 'MQSETMP' USING HCONN HMSG1 SMPO PNAME PD
+                TYPE-INT32 VLEN PINT CC RC
+           MOVE MQPMO-VERSION-3 TO MQPMO-VERSION
+           MOVE HMSG1 TO MQPMO-ORIGINALMSGHANDLE
+           MOVE MQFMT-STRING TO MQMD-FORMAT
+           MOVE 'PUBLISHED' TO BUFFER
+           MOVE 9 TO BUFLEN
+           CALL 'MQPUT' USING HCONN HPUB MD PMO BUFLEN BUFFER CC RC
+           DISPLAY 'PUT ' RC
+      *    THE PUBLICATION FROM THE SUBSCRIPTION'S QUEUE
+           CALL 'MQCRTMH' USING HCONN CMHO HMSG2 CC RC
+           MOVE MQGMO-VERSION-4 TO MQGMO-VERSION
+           COMPUTE MQGMO-OPTIONS = MQGMO-WAIT + MQGMO-CONVERT
+                                 + MQGMO-PROPERTIES-IN-HANDLE
+           MOVE 5000 TO MQGMO-WAITINTERVAL
+           MOVE HMSG2 TO MQGMO-MSGHANDLE
+           PERFORM RESET-MD
+           MOVE 100 TO BUFLEN
+           MOVE SPACES TO BUFFER
+           CALL 'MQGET' USING HCONN HOBJ MD GMO BUFLEN BUFFER
+                              DATALEN CC RC
+           DISPLAY 'GOT ' RC ' ' BUFFER(1:DATALEN)
+           SET PN-VSPTR TO ADDRESS OF PNAME1
+           MOVE 6 TO PN-VSLENGTH
+           MOVE SPACES TO PSTR
+           MOVE MQTYPE-AS-SET TO PTYPE
+           MOVE 20 TO VLEN
+           CALL 'MQINQMP' USING HCONN HMSG2 IMPO PNAME PD PTYPE
+                VLEN PSTR PLEN CC RC
+           DISPLAY 'COLOUR ' RC ' ' PSTR(1:PLEN) ' ' PTYPE
+           SET PN-VSPTR TO ADDRESS OF PNAME2
+           MOVE 5 TO PN-VSLENGTH
+           MOVE 0 TO PINT
+           MOVE 4 TO VLEN
+           CALL 'MQINQMP' USING HCONN HMSG2 IMPO PNAME PD PTYPE
+                VLEN PINT PLEN CC RC
+           DISPLAY 'COUNT ' RC ' ' PINT ' ' PLEN
+           CALL 'MQDLTMH' USING HCONN HMSG1 DMHO CC RC
+           CALL 'MQDLTMH' USING HCONN HMSG2 DMHO CC RC
+           DISPLAY 'DLTMH ' RC
+           CALL 'MQCLOSE' USING HCONN HPUB MQCO-NONE CC RC
+           CALL 'MQCLOSE' USING HCONN HSUB MQCO-NONE CC RC
+           DISPLAY 'CLOSE SUB ' RC
+           CALL 'MQCLOSE' USING HCONN HOBJ MQCO-NONE CC RC
+      *    A MESSAGE CONSUMER CALLED BACK BY MQCTL
+           MOVE MQOT-Q TO MQOD-OBJECTTYPE
+           MOVE MQOD-VERSION-1 TO MQOD-VERSION
+           MOVE 'DEV.QUEUE.2' TO MQOD-OBJECTNAME
+           COMPUTE OPTIONS = MQOO-OUTPUT + MQOO-INPUT-SHARED
+           CALL 'MQOPEN' USING HCONN OD OPTIONS HQ CC RC
+           MOVE MQGMO-VERSION-1 TO MQGMO-VERSION
+           MOVE MQGMO-NO-WAIT TO MQGMO-OPTIONS
+           PERFORM UNTIL RC NOT = 0
+               PERFORM RESET-MD
+               MOVE 100 TO BUFLEN
+               CALL 'MQGET' USING HCONN HQ MD GMO BUFLEN BUFFER
+                                  DATALEN CC RC
+           END-PERFORM
+           MOVE MQPMO-VERSION-1 TO MQPMO-VERSION
+           PERFORM VARYING I FROM 1 BY 1 UNTIL I > 2
+               PERFORM RESET-MD
+               MOVE MQFMT-STRING TO MQMD-FORMAT
+               MOVE SPACES TO BUFFER
+               STRING 'ASYNC ' I DELIMITED BY SIZE INTO BUFFER
+               MOVE 7 TO BUFLEN
+               CALL 'MQPUT' USING HCONN HQ MD PMO BUFLEN BUFFER CC RC
+           END-PERFORM
+           MOVE 'MQCBPGM' TO MQCBD-CALLBACKNAME
+           COMPUTE MQCBD-OPTIONS = MQCBDO-STOP-CALL
+           PERFORM RESET-MD
+           COMPUTE MQGMO-OPTIONS = MQGMO-WAIT + MQGMO-CONVERT
+           MOVE 3000 TO MQGMO-WAITINTERVAL
+           CALL 'MQCB' USING HCONN MQOP-REGISTER CBD HQ MD GMO CC RC
+           DISPLAY 'CB ' RC
+           CALL 'MQCTL' USING HCONN MQOP-START-WAIT CTLO CC RC
+           DISPLAY 'CTL ' RC
+           CALL 'MQCB' USING HCONN MQOP-DEREGISTER CBD HQ MD GMO CC RC
+           DISPLAY 'DEREGISTER ' RC
+      *    MQSET OF A QUEUE NOT OPENED FOR SET (2040)
+           MOVE MQIA-INHIBIT-PUT TO SELS
+           MOVE MQQA-PUT-ALLOWED TO IATTR
+           CALL 'MQSET' USING HCONN HQ ONE SELS ONE IATTR ZERO-LEN
+                CATTR CC RC
+           DISPLAY 'SET ' RC
+           CALL 'MQCLOSE' USING HCONN HQ MQCO-NONE CC RC
+           CALL 'MQDISC' USING HCONN CC RC
+           DISPLAY 'DISC ' RC
+           GOBACK.
+       RESET-MD.
+           MOVE MQMI-NONE TO MQMD-MSGID
+           MOVE MQCI-NONE TO MQMD-CORRELID
+           MOVE MQCCSI-Q-MGR TO MQMD-CODEDCHARSETID
+           MOVE MQENC-NATIVE TO MQMD-ENCODING.
+";
+
+const MQCBPGM: &str = "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MQCBPGM.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 N               PIC 9 VALUE 0.
+       01 CC              PIC S9(9) BINARY.
+       01 RC              PIC S9(9) BINARY.
+       01 CTLO.
+       COPY CMQCTLOV.
+       01 MQC.
+       COPY CMQV.
+       LINKAGE SECTION.
+       01 HCONN           PIC S9(9) BINARY.
+       01 MD.
+       COPY CMQMDL.
+       01 GMO.
+       COPY CMQGMOL.
+       01 BUFFER          PIC X(100).
+       01 CBC.
+       COPY CMQCBCL.
+       PROCEDURE DIVISION USING HCONN MD GMO BUFFER CBC.
+           EVALUATE MQCBC-CALLTYPE
+           WHEN MQCBCT-MSG-REMOVED
+               ADD 1 TO N
+               DISPLAY 'CALLBACK ' BUFFER(1:MQCBC-DATALENGTH) ' '
+                       MQMD-FORMAT
+               IF N = 2
+                   CALL 'MQCTL' USING HCONN MQOP-STOP CTLO CC RC
+               END-IF
+           WHEN MQCBCT-STOP-CALL
+               DISPLAY 'STOPPED AFTER ' N
+           WHEN OTHER
+               DISPLAY 'EVENT ' MQCBC-REASON
+               CALL 'MQCTL' USING HCONN MQOP-STOP CTLO CC RC
+           END-EVALUATE
+           GOBACK.
+";
+
+/// Publish/subscribe, message handles and properties, a message consumer
+/// called by MQCTL, and MQSET on the queue manager of ZEUS_MQ (skipped
+/// without it).
+#[test]
+fn mq_pubsub_properties_and_callbacks() {
+    if std::env::var_os("ZEUS_MQ").is_none() {
+        eprintln!("ZEUS_MQ is not set: MQ test skipped");
+        return;
+    }
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let mut job = String::from("//MQPSJOB  JOB (ACCT),'MQ'\n");
+    job.push_str(&compile_step("MQCBPGM", "IGYCRCTL", MQCBPGM));
+    job.push_str(&compile_step("MQPS", "IGYCRCTL", MQPS));
+    job.push_str("//RUN      EXEC PGM=MQPS\n//STEPLIB  DD DSN=ZEUS.LOADLIB,DISP=SHR\n//SYSOUT   DD SYSOUT=*\n");
+    let mut log = Vec::new();
+    let r = run_job(&mut env, &job, &mut log).unwrap();
+    let log = String::from_utf8_lossy(&log);
+    let out: String = std::fs::read_dir(dir.path().join("spool/MQPSJOB"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains("RUN.SYSOUT"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap_or_default())
+        .collect();
+    assert_eq!(
+        outcomes(&r).last(),
+        Some(&("RUN".into(), Outcome::Rc(0))),
+        "{log}\\n{out}"
+    );
+    let lines: Vec<&str> = out.lines().map(str::trim_end).collect();
+    assert_eq!(
+        lines,
+        [
+            "CONN 00000000{",
+            "SUB 00000000{",
+            "OPEN TOPIC 00000000{",
+            "CRTMH 00000000{",
+            "SETMP 00000000{",
+            "PUT 00000000{",
+            "GOT 00000000{ PUBLISHED",
+            "COLOUR 00000000{ Blue 00000102D",
+            "COUNT 00000000{ 00000004B 00000000D",
+            "DLTMH 00000000{",
+            "CLOSE SUB 00000000{",
+            "CB 00000000{",
+            "CALLBACK ASYNC 1 MQSTR",
+            "CALLBACK ASYNC 2 MQSTR",
+            "STOPPED AFTER 2",
+            "CTL 00000000{",
+            "DEREGISTER 00000000{",
+            "SET 00000204{",
+            "DISC 00000000{",
+        ],
+        "{out}"
+    );
+}
+
 const SHOPDBD: &str = "         DBD   NAME=SHOPDB,ACCESS=(HDAM,OSAM),RMNAME=(DFSHDC40,5,10)
          DATASET DD1=SHOPDD
          SEGM  NAME=CUSTOMER,PARENT=0,BYTES=30

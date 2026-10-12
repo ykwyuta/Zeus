@@ -114,6 +114,7 @@ pub struct Machine {
     /// Programs implemented by the host (see [`Machine::add_native`]).
     natives: HashMap<String, NativeFn>,
     natives_ref: HashMap<String, NativeRefFn>,
+    natives_mach: HashMap<String, NativeMachFn>,
     /// Runs EXEC CICS / SQL / DLI statements.
     exec_host: Option<Rc<dyn exec::ExecHost>>,
     /// Programs of other run times (PL/I).
@@ -132,6 +133,10 @@ pub struct Machine {
 /// addresses of the CALL arguments (None: OMITTED) and returns the
 /// return code or an error that ends the run unit.
 pub type NativeFn = fn(&mut [u8], &[Option<usize>]) -> Result<i32, String>;
+
+/// A host implemented program that needs the machine (to call programs
+/// back, as MQCTL calls message consumers).
+pub type NativeMachFn = fn(&mut Machine, &[Option<usize>]) -> Result<i32, String>;
 
 /// A host implemented program called with the lengths of its arguments
 /// (a PL/I caller's arguments: aggregates and pointers differ).
@@ -193,6 +198,7 @@ impl Machine {
             opened: Vec::new(),
             natives: HashMap::new(),
             natives_ref: HashMap::new(),
+            natives_mach: HashMap::new(),
             exec_host: None,
             tick: None,
             ticks: 0,
@@ -327,6 +333,12 @@ impl Machine {
         self.natives.insert(name.to_ascii_uppercase(), f);
     }
 
+    /// Makes `name` callable as a host implemented program that gets the
+    /// machine.
+    pub fn add_native_machine(&mut self, name: &str, f: NativeMachFn) {
+        self.natives_mach.insert(name.to_ascii_uppercase(), f);
+    }
+
     /// Makes `name` callable from other languages (PL/I) as a host
     /// implemented program that sees its arguments' lengths.
     pub fn add_native_ref(&mut self, name: &str, f: NativeRefFn) {
@@ -343,6 +355,10 @@ impl Machine {
         let name = name.to_ascii_uppercase();
         if let Some(f) = self.natives_ref.get(&name).copied() {
             return Some(f(&mut self.mem, args));
+        }
+        if let Some(f) = self.natives_mach.get(&name).copied() {
+            let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
+            return Some(f(self, &addrs));
         }
         let f = self.natives.get(&name).copied()?;
         let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
@@ -612,6 +628,13 @@ impl Machine {
             return Ok(None);
         }
         let Some(callee) = self.resolve_program(cur, &name) else {
+            if let Some(f) = self.natives_mach.get(&name).copied() {
+                let addrs = self.call_args(cur, args)?;
+                let rc = f(self, &addrs).map_err(RunError)?;
+                self.return_code = rc;
+                self.store_rc(cur);
+                return Ok(None);
+            }
             if let Some(f) = self.natives.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
                 self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
