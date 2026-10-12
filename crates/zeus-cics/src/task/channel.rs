@@ -233,7 +233,17 @@ impl Task {
         };
         let names = channel.as_ref().map(|c| c.0.clone());
         let term = Rc::new(std::cell::RefCell::new(Terminal::new("")));
-        let (r, back) = run_task(&self.region, &term, &transid, 0, None, Some(None), channel);
+        let end = run_task(
+            &self.region,
+            &term,
+            &transid,
+            0,
+            None,
+            Some(None),
+            channel,
+            None,
+        );
+        let (r, back) = (end.result, end.channel);
         let token = {
             let mut st = self.st.borrow_mut();
             st.child_count += 1;

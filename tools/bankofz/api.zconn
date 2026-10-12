@@ -1,0 +1,35 @@
+# The Bank of Z REST API on its CICS programs (zconn script), after the
+# 3270 scripts (account.txt changed accounts 1 and 2, customer.txt
+# customer 1 and the customer counter)
+call GET /api/customers/0000000001
+status 200
+expect "lastName":"Lloyd"
+expect "city":"Keswick"
+call GET /api/customers/0000009999
+status 404
+call GET /api/accounts/00000001
+status 200
+expect "sortCode":"987654"
+expect "accountType":"SAVINGS"
+call GET /api/customers/0000000001/accounts
+expect "totalCount":4
+call GET /api/accounts
+expect "totalCount":20
+call GET /api/accounts/00000001/balances
+expect "amount":324373.38
+call POST /api/accounts/00000001/deposit {"amount": 10, "description": "REST deposit"}
+status 201
+expect "availableBalance":324383.38
+call GET /api/accounts/987654-00000001/transactions?limit=10
+expect "transactionInformation":"TRANSFER
+expect "totalCount":3
+call POST /api/customers {"title":"Dr","firstName":"Grace","lastName":"Hopper","dateOfBirth":"1906-12-09","phoneNumber":"555-0100","address":{"addressLine1":"1 Navy Way","addressLine2":"","city":"Arlington","postalCode":"22201","country":"USA"}}
+status 201
+expect "customerId":"202"
+call PUT /api/customers/202 {"title":"Dr","firstName":"Grace","lastName":"Hopper","phoneNumber":"555-0199","address":{"addressLine1":"2 Navy Way","addressLine2":"","city":"Arlington","postalCode":"22201","country":"USA"},"customerStatus":"ACTIVE"}
+status 200
+expect "phoneNumber":"555-0199"
+call DELETE /api/customers/202
+status 204
+call GET /api/customers/202
+status 404

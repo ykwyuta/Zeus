@@ -553,7 +553,26 @@ impl ExecHost for Db2Host {
                 call.line
             )));
         }
-        if let Some(ca) = self.statement(m, call)
+        let ca = self.statement(m, call);
+        // ZEUS_DB2_TRACE: each statement and its result on standard error
+        if std::env::var_os("ZEUS_DB2_TRACE").is_some()
+            && let Some(ca) = &ca
+        {
+            eprintln!(
+                "ZEUS DB2: {} line {}: {} -> SQLCODE {} {}",
+                call.program,
+                call.line,
+                call.sql
+                    .as_deref()
+                    .unwrap_or("")
+                    .split_whitespace()
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                ca.sqlcode,
+                ca.tokens.join(" ")
+            );
+        }
+        if let Some(ca) = ca
             && let Some(ExecArg::Area(a)) = call.arg("SQLCA")
         {
             set_sqlca(m, a, &ca);

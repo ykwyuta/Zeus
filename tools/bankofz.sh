@@ -5,7 +5,9 @@
 # usage: tools/bankofz.sh setup          # Db2 tables and rows, ABNDFILE, programs, maps
 #        tools/bankofz.sh run SCRIPT...  # zcics scripts
 #        tools/bankofz.sh serve [PORT]   # TN3270 server (default 3270)
-#        tools/bankofz.sh test           # setup, then tools/bankofz/*.txt
+#        tools/bankofz.sh test           # setup, then tools/bankofz/*.txt and
+#                                        # the REST API (tools/bankofz/api.zconn)
+#        tools/bankofz.sh api [PORT]     # the REST API (zconn, default 9080)
 #
 # ZEUS_DB2 names the Db2 server (tools/db2ce.sh start prints it); the data
 # sets are in ZEUS_HOME (default work/bankofz). BANKZ_CUSTOMERS (default
@@ -39,7 +41,7 @@ submit() { # template
 
 setup() {
     tools/fetch-bankofz.sh >/dev/null
-    cargo build --release -q -p zeus-cobol -p zeus-bms -p zeus-jcl -p zeus-cics
+    cargo build --release -q -p zeus-cobol -p zeus-bms -p zeus-jcl -p zeus-cics -p zeus-zconnect
     rm -rf "$home"
     mkdir -p "$home/cntl" "$home/loadlib" "$home/maps" "$home/copy"
     for lib in DSN.V13.SDSNLOAD DSN.V13.RUNLIB.LOAD BANKZ.V0R1M0.LOAD; do
@@ -70,6 +72,11 @@ zcics() {
         --mapsets "$home/maps" "$@"
 }
 
+zconn() {
+    $bin/zconn --api $b/src/api --home "$home" --csd tools/bankofz/BANKZ.CSD \
+        --loadlib "$home/loadlib" "$@"
+}
+
 case ${1:-} in
     setup) setup ;;
     run)
@@ -77,6 +84,7 @@ case ${1:-} in
         for s in "$@"; do zcics "$s"; done
         ;;
     serve) zcics --serve "${2:-3270}" ;;
+    api) zconn serve "${2:-9080}" ;;
     test)
         setup >"$home.setup.log" 2>&1 || { cat "$home.setup.log"; exit 1; }
         for s in tools/bankofz/*.txt; do
@@ -84,7 +92,10 @@ case ${1:-} in
             zcics "$s" >"$home/$(basename "$s" .txt).log" ||
                 { cat "$home/$(basename "$s" .txt).log"; exit 1; }
         done
+        echo "=== tools/bankofz/api.zconn"
+        zconn script tools/bankofz/api.zconn >"$home/api.log" 2>&1 ||
+            { cat "$home/api.log"; exit 1; }
         echo "all Bank of Z scripts passed"
         ;;
-    *) echo "usage: $0 setup | run SCRIPT... | serve [PORT] | test" >&2; exit 2 ;;
+    *) echo "usage: $0 setup | run SCRIPT... | serve [PORT] | api [PORT] | test" >&2; exit 2 ;;
 esac

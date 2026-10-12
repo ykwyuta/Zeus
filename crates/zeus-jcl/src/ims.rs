@@ -6,7 +6,9 @@
 //! PSB is the program's name) runs its program with the I/O PCB first;
 //! the program gets the message with GU and inserts its output to the
 //! source LTERM, whose queue `zjob ims receive` reads. The region ends when
-//! no message is left (WFI=N). The message queue is `ims/tmq` next to the
+//! no message is left (WFI=N). A program that ends abnormally leaves its
+//! input message queued and stops its transaction for the rest of the
+//! region (return code 8). The message queue is `ims/tmq` next to the
 //! catalog.
 //!
 //! PARM='DLI|DBB|BMP,program,psb': the program runs with the PSB
@@ -238,9 +240,13 @@ fn message_region(
         .collect();
     let mut rc = 0;
     let mut count = 0;
+    let mut stopped = std::collections::HashSet::new();
     loop {
         let mut ran = false;
         for (tran, program) in transactions(&root) {
+            if stopped.contains(&tran) {
+                continue;
+            }
             let Ok(Some(msg)) = queue.get(name8(&tran), owner) else {
                 continue;
             };
@@ -276,12 +282,21 @@ fn message_region(
                     }
                 }
                 Err(e) => {
-                    // the input message stays queued
+                    // the input message stays queued and the transaction is
+                    // stopped (for this region); the others go on
                     let _ = queue.rollback(owner, &[msg.id]);
+                    let why = match &e {
+                        Outcome::Abend(c) => format!("abend {c}"),
+                        other => format!("{other:?}"),
+                    };
                     if let Ok(mut f) = ctx.sysout("SYSPRINT") {
-                        let _ = writeln!(f, "ZEUS IMS: transaction {tran} ended abnormally");
+                        let _ = writeln!(
+                            f,
+                            "ZEUS IMS: transaction {tran} ended abnormally ({why}); it is stopped"
+                        );
                     }
-                    return Err(e);
+                    stopped.insert(tran.clone());
+                    rc = rc.max(8);
                 }
             }
         }

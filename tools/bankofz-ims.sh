@@ -7,6 +7,8 @@
 # usage: tools/bankofz-ims.sh setup              # libraries, programs, databases
 #        tools/bankofz-ims.sh tran TRAN TEXT     # one message: send, run, receive
 #        tools/bankofz-ims.sh test               # setup, then tools/bankofz-ims/*.txt
+#                                                # and the REST API (api.zconn)
+#        tools/bankofz-ims.sh api [PORT]         # the REST API (zconn, default 9081)
 #
 # A test file has lines `send TRAN TEXT`, `sendhex TRAN HEX` (the message
 # text in hexadecimal) and `expect TEXT` (the output of the last message
@@ -37,7 +39,7 @@ submit() { # template
 
 setup() {
     tools/fetch-bankofz.sh >/dev/null
-    cargo build --release -q -p zeus-cobol -p zeus-pli -p zeus-jcl -p zeus-ims
+    cargo build --release -q -p zeus-cobol -p zeus-pli -p zeus-jcl -p zeus-ims -p zeus-zconnect
     rm -rf "$home"
     mkdir -p "$home/cntl"
     for lib in DBDLIB PSBLIB; do
@@ -77,8 +79,8 @@ setup() {
     submit Ims-spoc.jcl.j2
 }
 
-# A message processing region: runs the queued messages.
-region() {
+# The job of a message processing region.
+region_jcl() {
     cat >"$home/cntl/MPP.jcl" <<JCL
 //BANKZMPP JOB (ZEUS),CLASS=A
 //MPP      EXEC PGM=DFSRRC00,PARM='MSG'
@@ -88,7 +90,17 @@ region() {
 //SYSPRINT DD SYSOUT=*
 //SYSOUT   DD SYSOUT=*
 JCL
+}
+
+# A message processing region: runs the queued messages.
+region() {
+    region_jcl
     $zjob submit "$home/cntl/MPP.jcl" >/dev/null
+}
+
+zconn() {
+    region_jcl >/dev/null
+    $bin/zconn --api $b/src/api --home "$home" --ims-region "$home/cntl/MPP.jcl" "$@"
 }
 
 tran() { # code text [--hex]
@@ -100,6 +112,7 @@ tran() { # code text [--hex]
 case ${1:-} in
     setup) setup ;;
     tran) tran "$2" "$3" ;;
+    api) zconn serve "${2:-9081}" ;;
     test)
         setup >"$home.setup.log" 2>&1 || { cat "$home.setup.log"; exit 1; }
         for s in tools/bankofz-ims/*.txt; do
@@ -129,7 +142,10 @@ case ${1:-} in
                 esac
             done <"$s"
         done
+        echo "=== tools/bankofz-ims/api.zconn"
+        zconn script tools/bankofz-ims/api.zconn >"$home/api.log" 2>&1 ||
+            { cat "$home/api.log"; exit 1; }
         echo "all Bank of Z IMS tests passed"
         ;;
-    *) echo "usage: $0 setup | tran TRAN TEXT | test" >&2; exit 2 ;;
+    *) echo "usage: $0 setup | tran TRAN TEXT | api [PORT] | test" >&2; exit 2 ;;
 esac

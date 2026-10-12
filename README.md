@@ -82,7 +82,13 @@ and debit, transfer). Its IMS path runs too (`tools/bankofz-ims.sh test`). IMS D
 the application's own load programs. The transactions, including the PL/I
 IBLOGIN with CALL PLITDLI, run as messages through a message processing
 region: `zjob ims send`, then `EXEC PGM=DFSRRC00,PARM='MSG'`, then
-`zjob ims receive`. Remaining work, largest first:
+`zjob ims receive`. The Bank of Z REST API runs on `zconn`
+(zeus-zconnect). It reads the z/OS Connect project as it is: the OpenAPI
+paths, the request and response mappings with their JSONata expressions,
+and the data layouts of the z/OS assets. It calls the CICS programs with a
+COMMAREA and the IMS transactions with a message (`tools/bankofz.sh api`;
+details in [docs/proposal/0008-zconnect.md](docs/proposal/0008-zconnect.md)).
+Remaining work, largest first:
 [docs/proposal/0007-remaining-work.md](docs/proposal/0007-remaining-work.md).
 
 Code pages: data stays in EBCDIC; text crosses to the host in the code page
@@ -150,6 +156,7 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
 | `crates/zeus-jcl` | `zjob`: JCL interpreter in Rust: parsing, PROC / INCLUDE expansion, COND and IF/THEN/ELSE/ENDIF, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT / IKJEFT01, compile and bind steps (IGYCRCTL, IBMZPLI, IEWL) |
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
+| `crates/zeus-zconnect` | `zconn`: REST gateway of z/OS Connect API projects to CICS programs and IMS transactions |
 | `crates/zeus-drda` | DRDA client for Db2 (connection, dynamic SQL, queries) |
 | `crates/zeus-db2` | EXEC SQL runtime on Db2: host variables, cursors, SQLCA, z/OS SQL dialect |
 | `crates/zeus-ims` | `zims`: IMS DB (DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I, GSAM, TM queues) and the CBLTDLI / EXEC DLI / DFSRRC00 run-time glue |

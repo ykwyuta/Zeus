@@ -153,7 +153,7 @@ pub fn run(
     aid_byte: u8,
     commarea: Option<Vec<u8>>,
 ) -> Result<(), String> {
-    run_task(region, term, transid, aid_byte, commarea, None, None).0
+    run_task(region, term, transid, aid_byte, commarea, None, None, None).result
 }
 
 /// Runs a transaction started by START (with its FROM data, for
@@ -164,9 +164,42 @@ pub fn run_started(
     transid: &str,
     data: Option<Vec<u8>>,
 ) -> Result<(), String> {
-    run_task(region, term, transid, 0, None, Some(data), None).0
+    run_task(region, term, transid, 0, None, Some(data), None, None).result
 }
 
+/// Runs `program` for a client outside the region (a distributed program
+/// link, as through IPIC): a task without a terminal under `transid` (the
+/// EIBTRNID); returns the COMMAREA as the program left it, or the abend
+/// code.
+pub fn link(
+    region: &Shared<Region>,
+    transid: &str,
+    program: &str,
+    commarea: Vec<u8>,
+) -> Result<Vec<u8>, String> {
+    let term = Rc::new(std::cell::RefCell::new(Terminal::new("")));
+    let end = run_task(
+        region,
+        &term,
+        transid,
+        0,
+        Some(commarea),
+        Some(None),
+        None,
+        Some(program),
+    );
+    end.result.map(|()| end.commarea.unwrap_or_default())
+}
+
+/// How a task ended: its result, the channel it was started with (as it
+/// left it) and its COMMAREA.
+struct TaskEnd {
+    result: Result<(), String>,
+    channel: Option<channel::Channel>,
+    commarea: Option<Vec<u8>>,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn run_task(
     region: &Shared<Region>,
     term: &Shared<Terminal>,
@@ -175,7 +208,8 @@ fn run_task(
     commarea: Option<Vec<u8>>,
     start: Option<Option<Vec<u8>>>,
     channel: Option<(String, channel::Channel)>,
-) -> (Result<(), String>, Option<channel::Channel>) {
+    program: Option<&str>,
+) -> TaskEnd {
     let startcode = match &start {
         None => "TD",
         Some(None) => "S",
@@ -183,7 +217,10 @@ fn run_task(
     };
     let start_data = start.flatten();
     term.borrow_mut().busy = true;
-    let program = region.borrow().csd.transactions[transid].clone();
+    let program = match program {
+        Some(p) => p.to_string(),
+        None => region.borrow().csd.transactions[transid].clone(),
+    };
     let loadlibs = region.borrow().loadlibs.clone();
     let taskn = {
         let mut r = region.borrow_mut();
@@ -245,6 +282,7 @@ fn run_task(
         task.st.borrow_mut().channels.insert(n, c);
     }
     let r = task.run_level(&mut m, &program, ca, chan_name.clone(), true);
+    let commarea_back = ca.map(|(a, l)| m.storage()[a..a + l].to_vec());
     let chan_back = chan_name.and_then(|n| task.st.borrow_mut().channels.remove(&n));
     {
         let mut t = term.borrow_mut();
@@ -285,7 +323,11 @@ fn run_task(
             Err(code)
         }
     };
-    (r, chan_back)
+    TaskEnd {
+        result: r,
+        channel: chan_back,
+        commarea: commarea_back,
+    }
 }
 
 /// The run-time environment of a PL/I program in a task: no files, its
