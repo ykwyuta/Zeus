@@ -108,6 +108,7 @@ fn files() {
             format: Some(RecordFormat::Fixed(80)),
             keys: None,
             sysout: false,
+            relative: false,
         },
     );
     dds.insert(
@@ -117,6 +118,7 @@ fn files() {
             format: Some(RecordFormat::Fixed(80)),
             keys: None,
             sysout: false,
+            relative: false,
         },
     );
     let input = std::fs::read_to_string(dir().join("files.in")).unwrap();
@@ -127,6 +129,38 @@ fn files() {
     let data = std::fs::read(&outfile).unwrap();
     assert_eq!(data.len(), 160);
     assert_eq!(&data[12..16], &[0xE2, 0xC5, 0xC5, 0xD5]);
+}
+
+/// LOCATE, REGIONAL(1) and VSAM RRDS files.
+#[test]
+fn locate_and_numbered_records() {
+    let tmp = tempfile::tempdir().unwrap();
+    let dd = |path: &str, relative: bool| DdInfo {
+        path: tmp.path().join(path),
+        format: Some(RecordFormat::Fixed(80)),
+        keys: None,
+        sysout: false,
+        relative,
+    };
+    let mut dds = HashMap::new();
+    for (name, path, relative) in [
+        ("OUT", "seq.dat", false),
+        ("INP", "seq.dat", false),
+        ("REGO", "reg.dat", false),
+        ("REGU", "reg.dat", false),
+        ("REGS", "reg.dat", false),
+        ("RRO", "rrds.dat", true),
+        ("RRS", "rrds.dat", true),
+    ] {
+        dds.insert(name.to_string(), dd(path, relative));
+    }
+    let (out, msg, end) = run("locate", dds, "");
+    assert_eq!(end, RunEnd::Rc(0), "{msg}");
+    assert_eq!(out, expected("locate"));
+    // six regions: 0 a dummy after the DELETE, 1, 3 and 4 never written
+    let data = std::fs::read(tmp.path().join("reg.dat")).unwrap();
+    assert_eq!(data.len(), 6 * 80);
+    assert_eq!(data[0], 0xFF);
 }
 
 #[test]

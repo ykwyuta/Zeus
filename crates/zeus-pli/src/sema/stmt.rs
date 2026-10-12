@@ -775,7 +775,19 @@ impl Compiler {
             StmtKind::Write(o) => Stmt::Write(self.record(o, pos)?),
             StmtKind::Rewrite(o) => Stmt::Rewrite(self.record(o, pos)?),
             StmtKind::Delete(o) => Stmt::Delete(self.record(o, pos)?),
-            StmtKind::Locate(..) => return Err(self.err(pos, "LOCATE is not supported")),
+            StmtKind::Locate(r, o) => {
+                let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
+                let var = self
+                    .resolve_var(&names)
+                    .ok_or_else(|| self.err(pos, format!("{} is not declared", names.join("."))))?;
+                let root = self.m.vars[var as usize].root;
+                if !matches!(self.m.vars[root as usize].storage, Storage::Based(_)) {
+                    return Err(self.err(pos, "LOCATE needs a BASED variable"));
+                }
+                let rio = self.record(o, pos)?;
+                let set = rio.set.clone();
+                Stmt::Locate((root, set, Vec::new(), None), rio)
+            }
             StmtKind::Allocate(items) => {
                 let mut v = Vec::new();
                 for (r, set, len, area) in items {

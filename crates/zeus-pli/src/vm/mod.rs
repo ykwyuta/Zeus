@@ -35,6 +35,8 @@ pub struct DdInfo {
     pub keys: Option<(u32, u32)>,
     /// A SYSOUT data set (text).
     pub sysout: bool,
+    /// A relative record data set (VSAM RRDS).
+    pub relative: bool,
 }
 
 /// The environment of a run.
@@ -1576,6 +1578,7 @@ impl Machine {
             }
             Stmt::Read(r) => self.read_stmt(r, act),
             Stmt::Write(r) => self.write_stmt(r, act),
+            Stmt::Locate(item, r) => self.locate_stmt(item, r, act),
             Stmt::Rewrite(r) => self.rewrite_stmt(r, act),
             Stmt::Delete(r) => self.delete_stmt(r, act),
             Stmt::Allocate(items) => {

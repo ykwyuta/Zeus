@@ -25,7 +25,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 14 | M | MQ: MQSET、パブリッシュ/サブスクライブ、メッセージハンドル、MQCB/MQCTL、MQOD・MQPMO 2 以降のフィールド | 0005 | **済** (配布リストを除く) |
 | 15 | M | GenApp のイベント処理 (LGASTAT1) | 0002 Phase 5 | **済** (LINK の捕捉と取引開始アダプター) |
 | 16 | M | Db2 のユーティリティ (DSNTIAUL・LOAD)、EBCDIC 照合のデータベース | 0002 Phase 5 | **済** (EBCDIC 照合は PostgreSQL だけ。Db2 CE は非対応) |
-| 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | 未着手 |
+| 17 | M | PL/I: LOCATE、REGIONAL・相対データセット | 0004 | **済** |
 | 18 | S | PL/I からの MQI 呼出し | 0005 | 未着手 |
 | 19 | S | PL/I の CICS の制約 (COBOL から CALL された手続きの RETURN・HANDLE) | 0004 | 未着手 |
 | 20 | S | PL/I のプリプロセッサ: %GO TO、キーワード引数、STATEMENT 形式 | 0004 | 未着手 |
@@ -134,3 +134,9 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
   - 構造体の途中の REFER: REFER のメンバーが今の値で大きさを変え、後のメンバーの位置と構造体の大きさに反映する。
   - CONTROLLED の仮引数: 引数として呼出し側の変数の世代の起点を渡し、呼ばれた手続きの ALLOCATE / FREE がそれに作用する。
   - `crates/zeus-pli/tests/programs.rs` の `areas_isub_refer_and_controlled_parameters`。
+- **#17 PL/I の LOCATE と番号付きのレコード** (2026-10):
+  - LOCATE: BASED 変数を割り当てて位置指定子を設定し、その記憶域を次のレコードにする。前のバッファは次の LOCATE・WRITE か CLOSE で書く。
+  - ENVIRONMENT(REGIONAL(1)): 0 からの領域番号を KEY / KEYFROM / KEYTO にする。DIRECT の WRITE で途中の領域はダミー (先頭が X'FF')、
+    DELETE はダミーにし、順次 READ はダミーを飛ばす。
+  - VSAM RRDS (カタログの NUMBERED のクラスター): JCL がその DD を相対データセットとして渡し、1 からの相対レコード番号をキーにする。
+  - `crates/zeus-pli/tests/programs.rs` の `locate_and_numbered_records`。

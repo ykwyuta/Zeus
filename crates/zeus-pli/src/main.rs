@@ -66,6 +66,7 @@ fn main() -> ExitCode {
                             format: None,
                             keys: None,
                             sysout: true,
+                            relative: false,
                         },
                     );
                 }

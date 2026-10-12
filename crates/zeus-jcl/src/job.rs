@@ -756,12 +756,14 @@ fn pli_env(
                 format: None,
                 keys: None,
                 sysout: true,
+                relative: false,
             },
             DdKind::Sysout => DdInfo {
                 path: dd.path.clone(),
                 format: None,
                 keys: None,
                 sysout: true,
+                relative: false,
             },
             DdKind::Instream(lines) => {
                 if dd.name == "SYSIN" {
@@ -787,18 +789,22 @@ fn pli_env(
                     format: Some(RecordFormat::Fixed(80)),
                     keys: None,
                     sysout: false,
+                    relative: false,
                 }
             }
             DdKind::Dataset { dsn, .. } => {
-                let keys = match ctx.env.catalog.get(dsn).map(|e| &e.kind) {
-                    Some(EntryKind::Cluster { keys, .. }) => *keys,
-                    _ => None,
+                let (keys, relative) = match ctx.env.catalog.get(dsn).map(|e| &e.kind) {
+                    Some(EntryKind::Cluster { keys, org, .. }) => {
+                        (*keys, *org == zeus_ds::catalog::VsamOrg::Rrds)
+                    }
+                    _ => (None, false),
                 };
                 DdInfo {
                     path: dd.path.clone(),
                     format: dd.format.or_else(|| ctx.env.catalog.record_format(dsn)),
                     keys,
                     sysout: false,
+                    relative,
                 }
             }
         };
