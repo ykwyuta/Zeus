@@ -14,6 +14,10 @@
 //! defines a printer terminal (START TERMID(ID)); what it prints is
 //! appended to DIR/print/ID.txt (a form feed after each page).
 //!
+//! `--mq-initq Q` runs the trigger monitor (CKTI) on MQ initiation queue
+//! Q (repeatable): a trigger message starts the transaction its ApplId
+//! names, which RETRIEVEs the MQTM (ZEUS_MQ names the queue manager).
+//!
 //! With `--serve`, zcics is a TN3270 server: 3270 emulators connect to the
 //! port (each connection is a terminal).
 //!
@@ -843,6 +847,7 @@ fn main() -> ExitCode {
     let mut printers: Vec<String> = Vec::new();
     let mut ims_libs: Vec<String> = Vec::new();
     let mut ims_wal: Option<PathBuf> = None;
+    let mut initqs: Vec<String> = Vec::new();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -867,6 +872,7 @@ fn main() -> ExitCode {
             "--printer" => printers.push(it.next().unwrap_or_default().to_ascii_uppercase()),
             "--ims-lib" => ims_libs.push(it.next().unwrap_or_default()),
             "--ims-wal" => ims_wal = it.next().map(PathBuf::from),
+            "--mq-initq" => initqs.push(it.next().unwrap_or_default()),
             _ => script = Some(a),
         }
     }
@@ -937,6 +943,7 @@ fn main() -> ExitCode {
         }
         let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
         region.borrow_mut().ims = ims.clone();
+        region.borrow_mut().initqs = initqs.clone();
         return match server::run(region, &home, ports) {
             Ok(()) => ExitCode::SUCCESS,
             Err(e) => {
@@ -957,6 +964,7 @@ fn main() -> ExitCode {
     };
     let region = Rc::new(RefCell::new(Region::new(csd, catalog, loadlibs, mapsets)));
     region.borrow_mut().ims = ims.clone();
+    region.borrow_mut().initqs = initqs.clone();
     let term = Rc::new(RefCell::new(Terminal::new("T001")));
     if let Some(n) = model {
         let caps = zeus_cics::tn3270::Capabilities::of_type(&format!("IBM-3279-{n}-E"));

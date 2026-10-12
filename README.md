@@ -127,7 +127,9 @@ page; the queue manager converts messages for other platforms), and the
 COPY members CMQV, CMQODV, CMQMDV, CMQPMOV, CMQGMOV and CMQTML are supplied.
 `tools/mq.sh client` downloads the client and `tools/mq.sh start` starts a
 queue manager in a container; ZEUS_MQ names it
-(`mq://user:password@host:port/QMGR/CHANNEL`). Details:
+(`mq://user:password@host:port/QMGR/CHANNEL`). `zcics --mq-initq Q` is the
+trigger monitor (CKTI) of a region, and `zmq put/get` puts and gets text
+messages (`tools/carddemo-mq.sh test`). Details:
 [docs/proposal/0005-ibm-mq.md](docs/proposal/0005-ibm-mq.md).
 
 IMS DB: `zeus-ims` keeps IMS databases defined by their DBD and PSB

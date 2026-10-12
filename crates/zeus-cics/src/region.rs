@@ -109,6 +109,9 @@ pub struct Region {
     /// Db2 connections not in use by a task (each task has its own unit
     /// of work).
     db2_free: Vec<Rc<zeus_db2::Db2Host>>,
+    /// MQ initiation queues the trigger monitor (CKTI) reads.
+    pub initqs: Vec<String>,
+    last_trigger_poll: Option<std::time::Instant>,
 }
 
 pub type Shared<T> = Rc<RefCell<T>>;
@@ -174,6 +177,8 @@ impl Region {
             db2: std::env::var_os("ZEUS_DB2").is_some(),
             ims: None,
             db2_free: Vec::new(),
+            initqs: Vec::new(),
+            last_trigger_poll: None,
         }
     }
 
@@ -476,7 +481,57 @@ fn abended(term: &Shared<Terminal>, transid: String, code: String) -> Event {
 
 /// Runs the started transactions that are due and whose terminal (if any)
 /// is free; their events, with the terminal identifier.
+/// The trigger monitor (CKTI): each trigger message on the initiation
+/// queues starts the transaction its ApplId names, with the message as the
+/// data it RETRIEVEs (at most every half second).
+fn poll_triggers(region: &Shared<Region>) {
+    let queues = {
+        let mut r = region.borrow_mut();
+        let now = std::time::Instant::now();
+        if r.initqs.is_empty()
+            || r.last_trigger_poll
+                .is_some_and(|t| now.duration_since(t) < std::time::Duration::from_millis(500))
+        {
+            return;
+        }
+        r.last_trigger_poll = Some(now);
+        r.initqs.clone()
+    };
+    for q in queues {
+        let msgs = match zeus_mq::monitor::trigger_messages(&q) {
+            Ok(m) => m,
+            Err(e) => {
+                region.borrow_mut().log.push(format!("CKTI {q}: {e}"));
+                continue;
+            }
+        };
+        for m in msgs {
+            let transid = zeus_mq::monitor::transaction(&m);
+            let mut r = region.borrow_mut();
+            if !r.csd.transactions.contains_key(&transid) {
+                r.log.push(format!(
+                    "CKTI {q}: trigger for {} names transaction {transid:?}, not defined",
+                    zeus_mq::monitor::queue(&m)
+                ));
+                continue;
+            }
+            r.log.push(format!(
+                "CKTI {q}: queue {} starts {transid}",
+                zeus_mq::monitor::queue(&m)
+            ));
+            r.starts.push(StartRequest {
+                transid,
+                termid: None,
+                data: Some(m),
+                reqid: None,
+                due: std::time::Instant::now(),
+            });
+        }
+    }
+}
+
 pub fn run_due(region: &Shared<Region>) -> Vec<(String, Event)> {
+    poll_triggers(region);
     let mut events = Vec::new();
     loop {
         let now = std::time::Instant::now();

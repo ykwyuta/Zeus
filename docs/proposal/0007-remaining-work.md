@@ -13,7 +13,7 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
 | 2 | XL | **IMS TM** (メッセージ処理領域): トランザクションの定義と入力メッセージのキュー、I/O PCB の GU/GN/ISRT、MPP として COBOL / PL/I プログラムを実行、端末 (または API) からの入出力。Bank of Z の IMS 経路 (IBLOGIN・IBACSUM・IBGCUDAT・IBSCUDAT・IBLOGOUT) | 0006 | **済** (MPP 領域・I/O PCB。MFS などの残りは 0006) |
 | 3 | L | **PL/I の DL/I 呼出し** (PLITDLI と EXEC DLI): PCB ポインタ、引数の数、SYSTEM(IMS) の主手続き。Bank of Z の IBLOGIN が使う (#2 の前提) | 0004・0006 | **済** (PLITDLI。PL/I の EXEC DLI は未対応) |
 | 4 | L | **z/OS Connect 相当の REST 経路**: HTTP の JSON 要求を COMMAREA / コンテナに写像して CICS / IMS のプログラムを呼ぶ (Bank of Z の API、GenApp の Web サービス経路) | 0002 Phase 5・6 | **済** (Bank of Z の API。GenApp は Web サービス定義がない。0008) |
-| 5 | L | **CICS のトリガーモニター (CKTI)**: 開始キューのトリガーメッセージから取引を START し、RETRIEVE で MQTM を渡す。CardDemo の CODATE01・COACCT01・COPAUA0C | 0005・0006 | 未着手 |
+| 5 | L | **CICS のトリガーモニター (CKTI)**: 開始キューのトリガーメッセージから取引を START し、RETRIEVE で MQTM を渡す。CardDemo の CODATE01・COACCT01・COPAUA0C | 0005・0006 | **済** (`tools/carddemo-mq.sh test`) |
 | 6 | L | zcics のタスクの並行実行 (入力待ちでない処理が他の端末を待たせない) | 0002 Phase 4 | 未着手 |
 | 7 | L | IMS の WAL の共有 (zcics とバッチの同時アクセス、常駐サーバー) | 0006 | 未着手 |
 | 8 | L | PostgreSQL バックエンド (Db2 方言の変換、SQLCODE の対応表) | 0002 Phase 7 | 未着手 |
@@ -72,3 +72,8 @@ M = 数百行、S = 百行前後。状態は解消したら更新する。
     - DRDA: 問合せの行が次のブロックに続く場合。
     - IMS: 異常終了したトランザクションだけを止め、ほかは続ける。
     - zeus-db2: `ZEUS_DB2_TRACE` を追加した。
+- **#5 CICS のトリガーモニター** (2026-10):
+  - zcics の `--mq-initq` が開始キューを 0.5 秒ごとに読み、トリガーメッセージ (MQTM) の ApplId の取引を START する。
+    プログラムは RETRIEVE で MQTM を受け取る。
+  - CardDemo の CODATE01・COACCT01 と、承認モジュールの COPAUA0C (MQ と IMS DB) が `tools/carddemo-mq.sh test` で動く。
+  - 要求と応答のテスト用に `zmq` (put / get) を追加した。

@@ -17,3 +17,7 @@ unsafe_code = "deny"
 
 [lints.clippy]
 all = { level = "warn", priority = -1 }
+
+[[bin]]
+name = "zmq"
+path = "src/zmq.rs"

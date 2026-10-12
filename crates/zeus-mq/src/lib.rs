@@ -18,6 +18,7 @@
 
 mod ffi;
 pub mod layout;
+pub mod monitor;
 pub mod mqi;
 
 pub use mqi::{end_run, syncpoint};

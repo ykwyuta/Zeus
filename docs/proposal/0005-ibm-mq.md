@@ -46,11 +46,11 @@ CardDemo の口座抽出モジュール (app-vsam-mq の CODATE01・COACCT01) �
 | 呼出し | MQCONN、MQCONNX (接続オプションは ZEUS_MQ のもの)、MQDISC、MQOPEN、MQCLOSE、MQPUT、MQPUT1、MQGET、MQINQ、MQCMIT、MQBACK |
 | 作業単位 | バッチ: ステップの終わりにコミット (異常終了ならバックアウト) して切断する。CICS: SYNCPOINT (ROLLBACK) とタスクの終わりに既定の接続の作業単位を確定する。接続はリージョン (スレッド) で使い回す |
 | 実行環境 | zjob (COBOL と PL/I のステップ)、zcics のタスク |
+| トリガーモニター | zcics の `--mq-initq Q` (複数可): CKTI と同じく開始キューのトリガーメッセージ (MQTM) を読み、その ApplId の取引を START する。プログラムは EXEC CICS RETRIEVE で MQTM (z/OS の形、684 バイト) を受け取る |
+| `zmq` | テスト用のコマンド: `zmq put [--reply-to Q] QUEUE TEXT...`、`zmq get [--wait MS] QUEUE` (テキストはコードページで変換) |
 
 ## 5. 未対応 (今後)
 
-- CICS のトリガーモニター (CKTI): 開始キューのトリガーメッセージから取引を START する。CardDemo の CODATE01・COACCT01 は
-  これで起動され、EXEC CICS RETRIEVE で MQTM を受け取る。プログラムのコンパイルと MQI 呼出しはできる。
 - MQSET、MQSUB などのパブリッシュ/サブスクライブ、メッセージハンドル (MQCRTMH)、MQCB/MQCTL。
 - MQOD 2 以降・MQPMO 2 以降のフィールド (配布リスト、ResolvedQName を返す MQOD 3 など)。
 - PL/I からの MQI 呼出し。
@@ -61,5 +61,9 @@ CardDemo の口座抽出モジュール (app-vsam-mq の CODATE01・COACCT01) �
 - `crates/zeus-cobol` の front: コピーメンバーが 72 桁に収まること。
 - `crates/zeus-jcl/tests/jobs.rs` の `mq_calls` (ZEUS_MQ があるときだけ実行): ジョブで COBOL をコンパイルし、キューを空にして
   から、3 件 PUT して MQBACK、2 件 PUT して MQCMIT、CONVERT 付きで GET すると 2 件だけ、最後は 2033 になることを確かめる。
+- `tools/carddemo-mq.sh test`: CardDemo の MQ の取引を、トリガーモニターで起動して確かめる。
+  - CODATE01 (CDRD): 日付と時刻を応答する。
+  - COACCT01 (CDRA): 口座の内容を応答する。
+  - COPAUA0C (CP00): 承認要求を IMS DB の保留中の承認に記録し、承認の応答を返す。
 - 手で確かめたこと: C のアプリケーションが ASCII (CCSID 819) で書いたメッセージを COBOL が EBCDIC で受け取り、COBOL が
   書いた EBCDIC (037) のメッセージを C が ASCII で受け取る。
