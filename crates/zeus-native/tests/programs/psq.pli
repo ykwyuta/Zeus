@@ -1,0 +1,6 @@
+ PSQ: PROC(N, T);
+   DCL N FIXED BIN(31), T CHAR(10);
+   N = N * N;
+   T = 'PL/I';
+   PUT SKIP LIST('IN PL/I', N);
+ END PSQ;

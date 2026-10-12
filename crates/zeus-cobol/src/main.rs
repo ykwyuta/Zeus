@@ -2,6 +2,7 @@
 //!
 //! ```text
 //! zcobc compile [-I <dir>]... [--subprogram] [--cics] -o <artifact> <source>
+//! zcobc compile --native [--target <triple>] [--with <module>]... -o <exe> <source>
 //! zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>   (files: see zeus_ds::dd)
 //! zcobc check [-I <dir>]... [--cics] <source>...   (compile without output)
 //! zcobc inventory [-I <dir>]... <source>...  (statements, functions, EXEC usage)
@@ -11,6 +12,11 @@
 //! of the data a run reads and writes as text: 37 (default), or the
 //! Japanese code pages 930, 939, 1390, 1399. `--nsymbol dbcs` makes N
 //! literals and PICTURE N DBCS data (default NATIONAL: UTF-16).
+//!
+//! `--native` writes an executable for the platform (or for `--target`,
+//! a Rust target triple) instead of a `.zo` module: the Zeus run time
+//! with the module, and the modules of `--with` (separately compiled
+//! COBOL or PL/I subprograms), inside. See [`zeus_cobol::image`].
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -20,6 +26,9 @@ use zeus_cobol::front::FrontOptions;
 fn usage() -> ExitCode {
     eprintln!(
         "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] [--nsymbol dbcs|national] -o <artifact> <source>"
+    );
+    eprintln!(
+        "       zcobc compile --native [--target <triple>] [--with <module.zo>]... [options] -o <executable> <source>"
     );
     eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] <artifact>");
     eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
@@ -41,6 +50,12 @@ struct Args {
     /// `--parm TEXT`: the EXEC PARM of the main program.
     parm: String,
     inputs: Vec<PathBuf>,
+    /// `--native`: an executable instead of a module.
+    native: bool,
+    /// `--target`: the platform of the executable.
+    target: Option<String>,
+    /// `--with`: modules put into the executable.
+    with: Vec<PathBuf>,
 }
 
 fn parse_args(args: &[String]) -> Option<Args> {
@@ -54,6 +69,9 @@ fn parse_args(args: &[String]) -> Option<Args> {
         dds: Vec::new(),
         parm: String::new(),
         inputs: Vec::new(),
+        native: false,
+        target: None,
+        with: Vec::new(),
     };
     let mut it = args.iter();
     while let Some(arg) = it.next() {
@@ -63,6 +81,9 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "--subprogram" => a.subprogram = true,
             "--debugging-lines" => a.debugging_lines = true,
             "--cics" => a.cics = true,
+            "--native" => a.native = true,
+            "--target" => a.target = Some(it.next()?.clone()),
+            "--with" => a.with.push(PathBuf::from(it.next()?)),
             "--nsymbol" => {
                 a.nsymbol_dbcs = match it.next()?.to_ascii_uppercase().as_str() {
                     "DBCS" => true,
@@ -145,6 +166,24 @@ fn compile(args: &Args) -> ExitCode {
         nsymbol_dbcs: args.nsymbol_dbcs,
     };
     match zeus_cobol::compile_file(input, &opts) {
+        Ok(module) if args.native => {
+            let out = args
+                .output
+                .clone()
+                .unwrap_or_else(|| input.with_extension(""));
+            let name = module
+                .programs
+                .first()
+                .map(|p| p.name.clone())
+                .unwrap_or_default();
+            match native(name, zeus_cobol::module_bytes(&module), args, &out) {
+                Ok(()) => ExitCode::SUCCESS,
+                Err(e) => {
+                    eprintln!("zcobc: {e}");
+                    ExitCode::from(16)
+                }
+            }
+        }
         Ok(module) => {
             let out = args
                 .output
@@ -161,6 +200,29 @@ fn compile(args: &Args) -> ExitCode {
             ExitCode::from(d.severity.return_code() as u8)
         }
     }
+}
+
+/// Writes the executable of a module (`--native`).
+fn native(
+    name: String,
+    module: std::io::Result<Vec<u8>>,
+    args: &Args,
+    out: &std::path::Path,
+) -> Result<(), String> {
+    let mut image = zeus_cobol::image::Image::default();
+    image
+        .members
+        .push((name, module.map_err(|e| e.to_string())?));
+    for w in &args.with {
+        let data = std::fs::read(w).map_err(|e| format!("{}: {e}", w.display()))?;
+        image
+            .members
+            .push((zeus_cobol::image::member_name(w), data));
+    }
+    let runtime = zeus_cobol::image::find_runtime(args.target.as_deref())?;
+    image
+        .write_executable(&runtime, out)
+        .map_err(|e| format!("cannot write {}: {e}", out.display()))
 }
 
 fn run(args: &Args) -> ExitCode {

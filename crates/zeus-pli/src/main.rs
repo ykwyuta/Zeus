@@ -4,7 +4,12 @@
 //! zpli compile [-I dir]... [--margins m,n] [--ccsid N] [-o out.zo] source.pli
 //! zpli run [--parm text] [--dd NAME=path]... [-L dir]... module.zo
 //! zpli source.pli            compile and run
+//! zpli compile --native [--target triple] [--with module]... [-o exe] source.pli
 //! ```
+//!
+//! `--native` writes an executable for the platform (or for `--target`)
+//! instead of a module: the Zeus run time with the module and the
+//! `--with` modules inside (see `zeus_cobol::image`).
 //!
 //! SYSPRINT goes to standard output and SYSIN comes from standard input
 //! unless allocated with `--dd`. External procedures of other modules
@@ -21,6 +26,9 @@ use zeus_pli::vm::{DdInfo, RunEnd, RunEnv};
 
 fn usage() -> ExitCode {
     eprintln!("usage: zpli compile [-I dir]... [--margins m,n] [--ccsid N] [-o out] source.pli");
+    eprintln!(
+        "       zpli compile --native [--target triple] [--with module]... [options] [-o exe] source.pli"
+    );
     eprintln!("       zpli run [--parm text] [--dd NAME=path]... [-L dir]... module");
     eprintln!("       zpli [options] source.pli");
     ExitCode::from(2)
@@ -35,6 +43,9 @@ fn main() -> ExitCode {
     let mut files = Vec::new();
     let mut libs: Vec<PathBuf> = Vec::new();
     let mut cmd = None;
+    let mut native = false;
+    let mut target: Option<String> = None;
+    let mut with: Vec<PathBuf> = Vec::new();
     let mut ccsid = std::env::var("ZEUS_CCSID")
         .ok()
         .and_then(|c| c.parse().ok());
@@ -46,6 +57,9 @@ fn main() -> ExitCode {
                 .include_dirs
                 .push(it.next().map(PathBuf::from).unwrap_or_default()),
             "-o" => out = it.next().map(PathBuf::from),
+            "--native" => native = true,
+            "--target" => target = it.next(),
+            "--with" => with.push(it.next().map(PathBuf::from).unwrap_or_default()),
             "-L" => libs.push(it.next().map(PathBuf::from).unwrap_or_default()),
             "--parm" => parm = it.next().unwrap_or_default(),
             "--ccsid" => ccsid = it.next().and_then(|c| c.parse().ok()),
@@ -100,6 +114,29 @@ fn main() -> ExitCode {
         let Some(m) = c.module else {
             return ExitCode::from(rc.clamp(0, 255) as u8);
         };
+        if cmd.as_deref() == Some("compile") && native {
+            let out = out.unwrap_or_else(|| file.with_extension(""));
+            let r = (|| -> Result<(), String> {
+                let mut image = zeus_cobol::image::Image::default();
+                let bytes = zeus_pli::module_bytes(&m).map_err(|e| e.to_string())?;
+                image.members.push((m.name.clone(), bytes));
+                for w in &with {
+                    let data = std::fs::read(w).map_err(|e| format!("{}: {e}", w.display()))?;
+                    image
+                        .members
+                        .push((zeus_cobol::image::member_name(w), data));
+                }
+                let runtime = zeus_cobol::image::find_runtime(target.as_deref())?;
+                image
+                    .write_executable(&runtime, &out)
+                    .map_err(|e| format!("{}: {e}", out.display()))
+            })();
+            if let Err(e) = r {
+                eprintln!("zpli: {e}");
+                return ExitCode::from(16);
+            }
+            return ExitCode::from(rc.clamp(0, 255) as u8);
+        }
         if cmd.as_deref() == Some("compile") {
             let out = out.unwrap_or_else(|| file.with_extension("zo"));
             if let Err(e) = zeus_pli::save_module(&m, &out) {

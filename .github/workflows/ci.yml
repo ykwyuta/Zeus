@@ -21,6 +21,39 @@ jobs:
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --all
 
+  native:
+    # Native executables: the run time for the host, for static musl and
+    # for aarch64 (cross-linked with rust-lld, run under qemu).
+    runs-on: ubuntu-24.04
+    needs: check
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-unknown-linux-musl, aarch64-unknown-linux-musl
+      - uses: Swatinem/rust-cache@v2
+      - run: sudo apt-get update && sudo apt-get install -y qemu-user
+      - run: cargo build --release -p zeus-cobol -p zeus-pli -p zeus-native
+      - run: cargo build --release -p zeus-native --target x86_64-unknown-linux-musl
+      - name: aarch64 run time
+        run: |
+          mkdir -p /tmp/a64 && ar rcs /tmp/a64/libdl.a
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_LINKER=rust-lld \
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="-L /tmp/a64" \
+            cargo build --release -p zeus-native --target aarch64-unknown-linux-musl
+      - name: Programs for each target
+        run: |
+          d=crates/zeus-native/tests/programs
+          target/release/zpli compile -o /tmp/psq.zo $d/psq.pli
+          for t in "" x86_64-unknown-linux-musl aarch64-unknown-linux-musl; do
+            target/release/zcobc compile --native ${t:+--target $t} --with /tmp/psq.zo -o /tmp/hello $d/hello.cbl
+            file /tmp/hello
+            run=""; case $t in aarch64*) run=qemu-aarch64 ;; esac
+            rc=0; echo typed | $run /tmp/hello CI >/tmp/out.txt || rc=$?
+            cat /tmp/out.txt
+            [ $rc = 3 ] && grep -q "IN=typed" /tmp/out.txt
+          done
+
   ccvs85:
     # Runs the NIST CCVS85 suite with GnuCOBOL (comparison baseline) and with
     # zcobc, and publishes both side by side in the job summary. The job

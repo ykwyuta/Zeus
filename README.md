@@ -125,6 +125,18 @@ calls between them pass addresses. PL/I programs run as CICS programs in
 maps from `zbms --pli`. They LINK to and from COBOL programs. Scope and
 limits: [docs/proposal/0004-pli-compiler.md](docs/proposal/0004-pli-compiler.md).
 
+Native executables: `zcobc compile --native` and `zpli compile --native`
+write an executable for the platform instead of a `.zo` module: a copy of
+the Zeus run time (`zeus-rt`, crate `zeus-native`) with the module and the
+`--with` modules (separately compiled COBOL or PL/I subprograms) inside.
+It runs without Zeus installed: `./PROG [--dd NAME=PATH]... [PARM]`.
+`--target <triple>` takes the run time built for another platform
+(`cargo build --release -p zeus-native --target <triple>`), for example
+`x86_64-unknown-linux-musl` (static) or `aarch64-unknown-linux-musl`.
+The programs still run on the Zeus interpreter; compiling them to machine
+code is the next stage. See
+[docs/proposal/0009-native-executables.md](docs/proposal/0009-native-executables.md).
+
 IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,
 MQOPEN, MQPUT, MQPUT1, MQGET, MQINQ, MQCMIT, MQBACK, MQCLOSE, MQDISC) on an
 IBM MQ queue manager through IBM's MQ C client library (libmqic_r, loaded at
@@ -162,6 +174,7 @@ and runs programs and utilities, including the compilers and the binder.
 |---|---|
 | `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
 | `crates/zeus-pli` | `zpli`: PL/I front end (margins, %INCLUDE), semantics, typed IR and interpreter |
+| `crates/zeus-native` | `zeus-rt`: the run time of native executables (`zcobc` / `zpli --native`) |
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |
 | `crates/zeus-jcl` | `zjob`: JCL interpreter in Rust: parsing, PROC / INCLUDE expansion, COND and IF/THEN/ELSE/ENDIF, job execution, IEFBR14 / IEBGENER / IDCAMS / SORT / IKJEFT01, compile and bind steps (IGYCRCTL, IBMZPLI, IEWL) |
 | `crates/zeus-cics` | `zcics`: CICS region, tasks, EXEC CICS commands, BMS on a 3270 screen model |
