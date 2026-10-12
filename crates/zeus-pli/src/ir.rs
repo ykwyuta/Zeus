@@ -34,6 +34,18 @@ pub struct Module {
     pub conditions: Vec<String>,
     /// Source file names (for messages).
     pub sources: Vec<String>,
+    /// `REFER` extents of BASED structures.
+    #[serde(default)]
+    pub refers: Vec<Refer>,
+}
+
+/// An extent `init REFER(object)`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Refer {
+    /// The member holding the extent.
+    pub object: VarId,
+    /// The extent at allocation (evaluated in the declaring block).
+    pub init: Expr,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -71,6 +83,8 @@ pub enum Bound {
     /// From the argument (parameter) or the INITIAL list count.
     Star,
     Slot(u32),
+    /// `REFER`: the module's refer entry n.
+    Refer(u32),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -93,8 +107,10 @@ pub enum Storage {
     Based(Option<Box<Expr>>),
     /// DEFINED on a base reference, POSITION.
     Defined(Box<Ref>, Option<Box<Expr>>),
-    /// CONTROLLED: generations stacked in the variable's slot.
-    Controlled(u32),
+    /// CONTROLLED: the static word at the offset addresses the current
+    /// generation. The extents (`*`: given on ALLOCATE) are evaluated
+    /// into the generation's slots.
+    Controlled(u32, Vec<Option<Expr>>),
     /// A structure member: storage of its level-1 root.
     Member,
 }
@@ -515,7 +531,9 @@ pub enum Stmt {
     Write(RecordIo),
     Rewrite(RecordIo),
     Delete(RecordIo),
-    Allocate(Vec<(VarId, Option<Target>)>),
+    /// Variable, SET target, and extents given on the statement (for a
+    /// CONTROLLED variable: by generation slot).
+    Allocate(Vec<(VarId, Option<Target>, Vec<Option<Expr>>)>),
     Free(Vec<(VarId, Option<Expr>)>),
     Display(Expr, Option<(Target, Ty)>),
     Delay(Expr),

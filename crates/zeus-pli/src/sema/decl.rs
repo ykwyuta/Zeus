@@ -74,6 +74,18 @@ impl Compiler {
     fn extent(&mut self, e: &Extent, block: BlockId, dyn_ok: bool, pos: Pos) -> Result<Ext> {
         match e {
             Extent::Star => Ok(Ext::Star),
+            Extent::Refer(x, r) => {
+                let _ = block;
+                let n = self.m.refers.len() as u32;
+                self.m.refers.push(Refer {
+                    object: VarId::MAX,
+                    init: super::expr::mk(Ek::Fixed(0, 0), Ty::fixed_bin(31, 0)),
+                });
+                self.late_refers.push((n, x.clone()));
+                let name = r.parts.last().map(|p| p.0.clone()).unwrap_or_default();
+                self.pending_refers.push((n, name, pos));
+                Ok(Ext::Refer(n))
+            }
             Extent::Expr(x) => match self.const_int(x) {
                 Some(n) => Ok(Ext::Const(n.max(0) as u32)),
                 None if dyn_ok => {
@@ -107,6 +119,10 @@ impl Compiler {
     ) -> Result<Option<Bound>> {
         match e {
             Extent::Star => Ok(None),
+            Extent::Refer(..) => match self.extent(e, block, dyn_ok, pos)? {
+                Ext::Refer(n) => Ok(Some(Bound::Refer(n))),
+                _ => Ok(None),
+            },
             Extent::Expr(x) => match self.const_int(x) {
                 Some(n) => Ok(Some(Bound::Const(n))),
                 None => match self.extent(e, block, dyn_ok, pos)? {
@@ -330,6 +346,10 @@ impl Compiler {
         for (v, attrs, pos) in late {
             self.late_attrs(v, &attrs, pos)?;
         }
+        for (n, x) in std::mem::take(&mut self.late_refers) {
+            let ex = self.expr(&x)?;
+            self.m.refers[n as usize].init = self.conv(ex, &Ty::fixed_bin(31, 0));
+        }
         Ok(())
     }
 
@@ -482,10 +502,9 @@ impl Compiler {
         } else {
             5
         };
-        if class == 4 {
-            return Err(self.err(pos, "CONTROLLED storage is not supported"));
-        }
-        let dyn_ok = class == 5 && t.children.is_empty();
+        let n_ext0 = self.m.blocks[block as usize].extents.len();
+        self.pending_refers.clear();
+        let dyn_ok = (class == 5 || class == 4) && t.children.is_empty();
         let root = self.m.vars.len() as VarId;
         let mut members = Vec::new();
         let unit = self.map_node(
@@ -499,6 +518,25 @@ impl Compiler {
             &mut members,
             late,
         )?;
+        // REFER objects: members of the same structure
+        for (n, name, p) in std::mem::take(&mut self.pending_refers) {
+            if class != 2 {
+                return Err(self.err(p, "REFER is allowed only in a BASED structure"));
+            }
+            let obj = (root..self.m.vars.len() as VarId).find(|&v| {
+                let x = &self.m.vars[v as usize];
+                x.name == name && x.ty.is_some() && x.dims.is_empty()
+            });
+            let Some(obj) = obj else {
+                return Err(self.err(p, format!("REFER object {name} is not a scalar member of the structure")));
+            };
+            self.m.refers[n as usize].object = obj;
+        }
+        let controlled = if class == 4 {
+            Some(self.controlled_extents(root, block, n_ext0, pos)?)
+        } else {
+            None
+        };
         let size_bytes = unit.len.div_ceil(8) as u32;
         let align = (unit.align / 8).max(1) as u32;
         let residue = (unit.off / 8) as u32 % 8;
@@ -527,6 +565,18 @@ impl Compiler {
                 }),
                 None,
             ),
+            4 => {
+                let shared = if external {
+                    self.externals.get(&it.name).and_then(|&o| match &self.m.vars[o as usize].storage {
+                        Storage::Controlled(a, _) => Some(*a),
+                        _ => None,
+                    })
+                } else {
+                    None
+                };
+                let anchor = shared.unwrap_or_else(|| self.alloc_static(4, 4, 0));
+                Storage::Controlled(anchor, controlled.unwrap_or_default())
+            }
             _ if has_slots => Storage::AutoDyn(self.alloc_auto(block, 4, 4, 0)),
             _ => Storage::Auto(self.alloc_auto(block, size_bytes, align.min(8), residue)),
         };
@@ -551,6 +601,49 @@ impl Compiler {
 
     /// Maps a node: declares its variable (and members) and returns its
     /// mapping unit.
+    /// Moves the adjustable and `*` extents of a CONTROLLED variable from
+    /// the block's entry slots to its generation slots.
+    fn controlled_extents(
+        &mut self,
+        root: VarId,
+        block: BlockId,
+        n_ext0: usize,
+        pos: Pos,
+    ) -> Result<Vec<Option<Expr>>> {
+        let moved = self.m.blocks[block as usize].extents.split_off(n_ext0);
+        if !self.m.vars[root as usize].members.is_empty() {
+            if !moved.is_empty() {
+                return Err(self.err(pos, "extents of a CONTROLLED structure must be constants"));
+            }
+            return Ok(Vec::new());
+        }
+        let mut out: Vec<Option<Expr>> = Vec::new();
+        let mut slot = |e: Option<Expr>| {
+            out.push(e);
+            (out.len() - 1) as u32
+        };
+        let var = self.m.vars[root as usize].clone();
+        let mut dims = var.dims.clone();
+        for d in &mut dims {
+            for b in [&mut d.lb, &mut d.ub] {
+                match *b {
+                    Bound::Slot(s) => *b = Bound::Slot(slot(Some(moved[s as usize - n_ext0].clone()))),
+                    Bound::Star => *b = Bound::Slot(slot(None)),
+                    _ => {}
+                }
+            }
+        }
+        let ty = var.ty.as_ref().map(|t| match t.str_len() {
+            Some(Ext::Slot(s)) => t.with_len(Ext::Slot(slot(Some(moved[s as usize - n_ext0].clone())))),
+            Some(Ext::Star) if !matches!(t, Ty::Pic(_)) => t.with_len(Ext::Slot(slot(None))),
+            _ => t.clone(),
+        });
+        let v = &mut self.m.vars[root as usize];
+        v.dims = dims;
+        v.ty = ty;
+        Ok(out)
+    }
+
     #[allow(clippy::too_many_arguments)]
     fn map_node(
         &mut self,
@@ -788,7 +881,7 @@ impl Compiler {
                     let root = self.m.vars[v as usize].root;
                     match &self.m.vars[root as usize].storage {
                         Storage::Static(_) => self.m.static_inits.push(init),
-                        Storage::Based(_) => self.m.static_inits.push(Init {
+                        Storage::Based(_) | Storage::Controlled(..) => self.m.static_inits.push(Init {
                             var: v,
                             values: init.values,
                             fill: init.fill,
@@ -819,7 +912,7 @@ impl Compiler {
                     let x = self.expr(e)?;
                     out.push(Some(self.conv(x, ty)));
                 }
-                AstInit::Repeat(Extent::Star, inner) => {
+                AstInit::Repeat(Extent::Star | Extent::Refer(..), inner) => {
                     self.init_values(inner, ty, out, fill, pos)?;
                     *fill = true;
                 }

@@ -318,7 +318,14 @@ impl Parser {
             self.bump();
             return Ok(Extent::Star);
         }
-        Ok(Extent::Expr(self.expr()?))
+        let e = self.expr()?;
+        if self.eat_word("REFER") {
+            self.expect_op("(")?;
+            let r = self.basic_ref()?;
+            self.expect_op(")")?;
+            return Ok(Extent::Refer(e, r));
+        }
+        Ok(Extent::Expr(e))
     }
 
     /// Bound pairs after '(' (consumed).
@@ -352,12 +359,6 @@ impl Parser {
     fn opt_extent(&mut self) -> Result<Option<Extent>> {
         if self.eat_op("(") {
             let e = self.extent()?;
-            // CHAR(n REFER(x)): the REFER object is not used
-            if self.eat_word("REFER") {
-                self.expect_op("(")?;
-                self.reference()?;
-                self.expect_op(")")?;
-            }
             self.expect_op(")")?;
             Ok(Some(e))
         } else {
@@ -1574,14 +1575,17 @@ impl Parser {
                     }
                     let r = self.basic_ref()?;
                     let mut set = None;
+                    let mut len = None;
                     while let Tok::Ident(o) = self.tok().clone() {
                         self.bump();
                         let e = self.paren_expr()?;
-                        if o == "SET" {
-                            set = Some(e);
+                        match o.as_str() {
+                            "SET" => set = Some(e),
+                            "CHARACTER" | "CHAR" | "BIT" => len = Some(e),
+                            _ => {}
                         }
                     }
-                    out.push((r, set));
+                    out.push((r, set, len));
                     if self.eat_op(",") {
                         continue;
                     }

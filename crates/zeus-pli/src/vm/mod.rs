@@ -293,7 +293,7 @@ impl Machine {
             if v.block == block
                 && let Storage::AutoDyn(off) = v.storage
             {
-                let size = self.var_size(i as VarId, act)?;
+                let size = self.var_size(i as VarId, act, None)?;
                 let a = self.stack_alloc(size as u32);
                 let fa = self.acts[act].frame + off;
                 self.write(fa, &a.to_be_bytes())?;
@@ -311,10 +311,23 @@ impl Machine {
         self.stack.truncate(mark);
     }
 
-    /// Size in bytes of all elements of a level-1 variable.
-    fn var_size(&self, v: VarId, act: usize) -> R<u64> {
+    /// Size in bytes of all elements of a level-1 variable (`rb`: the bit
+    /// address of the generation, for REFER extents).
+    fn var_size(&self, v: VarId, act: usize, rb: Option<u64>) -> R<u64> {
         let var = &self.module.vars[v as usize];
-        let ty = self.resolve_ty(var.ty.as_ref(), v, act)?;
+        if var.ty.is_none() && self.has_refers(v) {
+            // a structure with REFER extents: up to the end of the last
+            // member (the REFER member)
+            let mut end = u64::from(var.size);
+            for (k, m) in self.module.vars.iter().enumerate() {
+                if m.root == v && m.ty.is_some() && k as VarId != v {
+                    let n = self.var_size(k as VarId, act, rb)?;
+                    end = end.max(m.bit_offset / 8 + n);
+                }
+            }
+            return Ok(end);
+        }
+        let ty = self.resolve_ty(var.ty.as_ref(), v, act, rb)?;
         let elem = match &ty {
             Some(t) => {
                 let aligned = !matches!(t, Ty::Char { .. } | Ty::Bit { .. } | Ty::Pic(_));
@@ -324,32 +337,168 @@ impl Machine {
         };
         let mut n = 1u64;
         for d in &var.dims {
-            let (lb, ub) = (self.bound(d.lb, act)?, self.bound(d.ub, act)?);
+            let (lb, ub) = (self.bound(d.lb, act, v, rb)?, self.bound(d.ub, act, v, rb)?);
             n *= (ub - lb + 1).max(0) as u64;
         }
         Ok(elem * n)
     }
 
-    fn bound(&self, b: Bound, act: usize) -> R<i64> {
+    /// Whether a level-1 variable has REFER extents.
+    fn has_refers(&self, root: VarId) -> bool {
+        self.module
+            .refers
+            .iter()
+            .any(|r| self.module.vars[r.object as usize].root == root)
+    }
+
+    /// The bit address of the generation of a reference's root when the
+    /// variable's own extents need it (REFER).
+    fn refer_base(&mut self, r: &Ref, act: usize) -> R<Option<u64>> {
+        let root = self.module.vars[r.var as usize].root;
+        if self.module.refers.is_empty() || !self.has_refers(root) {
+            return Ok(None);
+        }
+        let rr = Ref {
+            var: root,
+            subs: Vec::new(),
+            locator: r.locator.clone(),
+        };
+        Ok(Some(self.base_of(&rr, act)?.0))
+    }
+
+    /// `refer_base` when the variable's string length is a REFER.
+    fn refer_base_for_len(&mut self, r: &Ref, act: usize) -> R<Option<u64>> {
+        let var = &self.module.vars[r.var as usize];
+        if matches!(var.ty.as_ref().and_then(Ty::str_len), Some(Ext::Refer(_))) {
+            self.refer_base(r, act)
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// The value of a REFER extent.
+    fn refer_value(&self, n: u32, rb: Option<u64>) -> R<i64> {
+        if let Some(v) = REFER_OVERRIDE.with(|o| o.borrow().as_ref().map(|v| v[n as usize])) {
+            return Ok(v);
+        }
+        let obj = &self.module.vars[self.module.refers[n as usize].object as usize];
+        let rb = rb.ok_or_else(|| Intr::Fatal("REFER extent without its structure".into()))?;
+        let loc = Loc {
+            bit: rb + obj.bit_offset,
+            ty: obj.ty.clone().unwrap_or(Ty::fixed_bin(31, 0)),
+        };
+        Ok(self.load(&loc)?.as_i64())
+    }
+
+    /// Pushes a new generation of a CONTROLLED variable: a header (the
+    /// previous generation, the data address, the extent slots) and the
+    /// data, initialised by its INITIAL.
+    fn allocate_controlled(
+        &mut self,
+        v: VarId,
+        anchor: u32,
+        slots: &[Option<Expr>],
+        given: &[Option<Expr>],
+        act: usize,
+    ) -> R<()> {
+        let m = self.module.clone();
+        let var = &m.vars[v as usize];
+        let decl_act = self.act_of(act, var.block).unwrap_or(act);
+        let mut vals = Vec::new();
+        for (k, s) in slots.iter().enumerate() {
+            let x = match (given.get(k).and_then(Option::as_ref), s) {
+                (Some(g), _) => self.eval(g, act)?.as_i64(),
+                (None, Some(e)) => self.eval(e, decl_act)?.as_i64(),
+                (None, None) => {
+                    return err(format!("ALLOCATE of {} needs its extents", var.name));
+                }
+            };
+            vals.push(x);
+        }
+        let prev = self.generation(anchor)?;
+        let h = self.heap_alloc(16 + 8 * vals.len() as u32);
+        let mut hdr = Vec::new();
+        hdr.extend(prev.to_be_bytes());
+        hdr.extend(0u32.to_be_bytes());
+        hdr.extend((vals.len() as u32).to_be_bytes());
+        hdr.extend([0; 4]);
+        for x in &vals {
+            hdr.extend(x.to_be_bytes());
+        }
+        self.write(h, &hdr)?;
+        self.write(STATIC_BASE + anchor, &h.to_be_bytes())?;
+        let size = self.var_size(v, act, None)?;
+        let p = self.heap_alloc(size as u32);
+        self.write(h + 4, &p.to_be_bytes())?;
+        for init in &m.static_inits {
+            if m.vars[init.var as usize].root == v {
+                self.initialize(init, act)?;
+            }
+        }
+        Ok(())
+    }
+
+    /// The number of generations of a CONTROLLED variable.
+    pub fn allocation(&self, v: VarId) -> R<i64> {
+        let root = &self.module.vars[self.module.vars[v as usize].root as usize];
+        let Storage::Controlled(anchor, _) = &root.storage else {
+            return Ok(1);
+        };
+        let mut g = self.generation(*anchor)?;
+        let mut n = 0;
+        while g != 0 {
+            n += 1;
+            g = self.word_at(g)?;
+        }
+        Ok(n)
+    }
+
+    /// The header of the current generation of a CONTROLLED variable.
+    fn generation(&self, anchor: u32) -> R<u32> {
+        let p = self.read(STATIC_BASE + anchor, 4)?;
+        Ok(u32::from_be_bytes([p[0], p[1], p[2], p[3]]))
+    }
+
+    fn word_at(&self, a: u32) -> R<u32> {
+        let p = self.read(a, 4)?;
+        Ok(u32::from_be_bytes([p[0], p[1], p[2], p[3]]))
+    }
+
+    /// Extent slot `s` of a variable: of its CONTROLLED generation or of
+    /// the activation.
+    fn slot(&self, v: VarId, s: u32, act: usize) -> R<i64> {
+        let root = &self.module.vars[self.module.vars[v as usize].root as usize];
+        if let Storage::Controlled(anchor, _) = &root.storage {
+            let g = self.generation(*anchor)?;
+            if g == 0 {
+                return err(format!("{} is not allocated", root.name));
+            }
+            let b = self.read(g + 16 + 8 * s, 8)?;
+            return Ok(i64::from_be_bytes(b.try_into().unwrap()));
+        }
+        let a = self.act_of(act, root.block).unwrap_or(act);
+        self.acts[a]
+            .slots
+            .get(s as usize)
+            .copied()
+            .ok_or_else(|| Intr::Fatal("extent not evaluated".into()))
+    }
+
+    fn bound(&self, b: Bound, act: usize, v: VarId, rb: Option<u64>) -> R<i64> {
         Ok(match b {
             Bound::Const(n) => n,
-            Bound::Slot(s) => *self.acts[act]
-                .slots
-                .get(s as usize)
-                .ok_or_else(|| Intr::Fatal("extent not evaluated".into()))?,
+            Bound::Slot(s) => self.slot(v, s, act)?,
+            Bound::Refer(n) => self.refer_value(n, rb)?,
             Bound::Star => 1,
         })
     }
 
     /// The type of a variable with `*` and adjustable lengths resolved.
-    fn resolve_ty(&self, ty: Option<&Ty>, v: VarId, act: usize) -> R<Option<Ty>> {
+    fn resolve_ty(&self, ty: Option<&Ty>, v: VarId, act: usize, rb: Option<u64>) -> R<Option<Ty>> {
         let Some(ty) = ty else { return Ok(None) };
         let len = match ty.str_len() {
-            Some(Ext::Slot(s)) => {
-                let block = self.module.vars[v as usize].block;
-                let a = self.act_of(act, block)?;
-                Some(self.acts[a].slots[s as usize].max(0) as u32)
-            }
+            Some(Ext::Slot(s)) => Some(self.slot(v, s, act)?.max(0) as u32),
+            Some(Ext::Refer(n)) => Some(self.refer_value(n, rb)?.max(0) as u32),
             Some(Ext::Star) => {
                 let root = self.module.vars[v as usize].root;
                 match &self.module.vars[root as usize].storage {
@@ -447,19 +596,25 @@ impl Machine {
                 };
                 bit + (p - 1) * unit
             }
-            Storage::Controlled(_) => return err("CONTROLLED storage is not supported"),
+            Storage::Controlled(anchor, _) => {
+                let g = self.generation(*anchor)?;
+                if g == 0 {
+                    return err(format!("{} is not allocated", root.name));
+                }
+                u64::from(self.word_at(g + 4)?) * 8
+            }
             Storage::Member => return err("invalid member storage"),
         };
         // dimensions
         let mut dims = Vec::new();
         let nroot = root.dims.len();
-        let dynamic = var
-            .dims
-            .iter()
-            .any(|d| matches!(d.lb, Bound::Slot(_)) || matches!(d.ub, Bound::Slot(_)));
+        let dynamic = var.dims.iter().any(|d| {
+            matches!(d.lb, Bound::Slot(_) | Bound::Refer(_)) || matches!(d.ub, Bound::Slot(_) | Bound::Refer(_))
+        });
+        let rb = Some(base);
         if dynamic {
             // strides from the extents (level-1 arrays of scalars)
-            let ty = self.resolve_ty(var.ty.as_ref(), r.var, act)?;
+            let ty = self.resolve_ty(var.ty.as_ref(), r.var, act, rb)?;
             let elem = match &ty {
                 Some(Ty::Bit {
                     len: Ext::Const(n),
@@ -475,7 +630,7 @@ impl Machine {
             let a = self.act_of(act, var.block)?;
             let mut bounds = Vec::new();
             for d in &var.dims {
-                bounds.push((self.bound(d.lb, a)?, self.bound(d.ub, a)?));
+                bounds.push((self.bound(d.lb, a, r.var, rb)?, self.bound(d.ub, a, r.var, rb)?));
             }
             let mut stride = elem;
             let mut strides = vec![0; bounds.len()];
@@ -496,8 +651,8 @@ impl Machine {
                     continue;
                 }
                 dims.push((
-                    self.bound(d.lb, act)?,
-                    self.bound(d.ub, act)?,
+                    self.bound(d.lb, act, r.var, rb)?,
+                    self.bound(d.ub, act, r.var, rb)?,
                     u64::from(d.stride),
                 ));
             }
@@ -537,9 +692,10 @@ impl Machine {
     /// Location of a scalar reference.
     pub fn locate(&mut self, r: &Ref, act: usize) -> R<Loc> {
         let (bit, _) = self.element_or_start(r, act)?;
+        let rb = self.refer_base_for_len(r, act)?;
         let var = &self.module.vars[r.var as usize];
         let ty = self
-            .resolve_ty(var.ty.as_ref(), r.var, act)?
+            .resolve_ty(var.ty.as_ref(), r.var, act, rb)?
             .ok_or_else(|| Intr::Fatal(format!("{} is a structure", var.name)))?;
         Ok(Loc { bit, ty })
     }
@@ -776,7 +932,8 @@ impl Machine {
             return Ok(out);
         }
         let (base, dims) = self.base_of(r, act)?;
-        let ty = self.resolve_ty(var.ty.as_ref(), r.var, act)?.unwrap();
+        let rb = self.refer_base_for_len(r, act)?;
+        let ty = self.resolve_ty(var.ty.as_ref(), r.var, act, rb)?.unwrap();
         let mut fixed_off: i64 = 0;
         let mut free = Vec::new();
         for (k, s) in r.subs.iter().enumerate() {
@@ -818,12 +975,13 @@ impl Machine {
         }
         // contiguous: from the start for the size of the whole
         let (bit, _) = self.element_or_start(r, act)?;
+        let rb = self.refer_base(r, act)?;
         let size = if var.parent.is_none() {
-            self.var_size(r.var, act)? as usize
+            self.var_size(r.var, act, rb)? as usize
         } else {
             let mut n = u64::from(var.size);
             for d in &var.dims[root_dims.min(var.dims.len())..] {
-                n *= (self.bound(d.ub, act)? - self.bound(d.lb, act)? + 1).max(0) as u64;
+                n *= (self.bound(d.ub, act, r.var, rb)? - self.bound(d.lb, act, r.var, rb)? + 1).max(0) as u64;
             }
             n as usize
         };
@@ -1018,9 +1176,35 @@ impl Machine {
             Stmt::Rewrite(r) => self.rewrite_stmt(r, act),
             Stmt::Delete(r) => self.delete_stmt(r, act),
             Stmt::Allocate(items) => {
-                for (v, set) in items {
-                    let size = self.var_size(*v, act)?;
+                for (v, set, given) in items {
+                    if let Storage::Controlled(anchor, slots) = &self.module.vars[*v as usize].storage {
+                        let (anchor, slots) = (*anchor, slots.clone());
+                        self.allocate_controlled(*v, anchor, &slots, given, act)?;
+                        continue;
+                    }
+                    // REFER extents: their initial values size the generation
+                    let m = self.module.clone();
+                    let refers: Vec<usize> = (0..m.refers.len())
+                        .filter(|&n| m.vars[m.refers[n].object as usize].root == *v)
+                        .collect();
+                    let mut rv = vec![0i64; m.refers.len()];
+                    for &n in &refers {
+                        let a = self.act_of(act, m.vars[*v as usize].block).unwrap_or(act);
+                        rv[n] = self.eval(&m.refers[n].init, a)?.as_i64();
+                    }
+                    REFER_OVERRIDE.with(|o| *o.borrow_mut() = Some(rv.clone()));
+                    let size = self.var_size(*v, act, None);
+                    REFER_OVERRIDE.with(|o| *o.borrow_mut() = None);
+                    let size = size?;
                     let p = self.heap_alloc(size as u32);
+                    for &n in &refers {
+                        let obj = &m.vars[m.refers[n].object as usize];
+                        let loc = Loc {
+                            bit: u64::from(p) * 8 + obj.bit_offset,
+                            ty: obj.ty.clone().unwrap(),
+                        };
+                        self.store(&loc, &Value::int(rv[n]))?;
+                    }
                     let ptr = Value::Ptr(p);
                     match set {
                         Some(t) => {
@@ -1053,7 +1237,20 @@ impl Machine {
                 }
                 Ok(())
             }
-            Stmt::Free(_) => Ok(()),
+            Stmt::Free(items) => {
+                for (v, _) in items {
+                    let root = self.module.vars[*v as usize].root;
+                    if let Storage::Controlled(anchor, _) = self.module.vars[root as usize].storage {
+                        let g = self.generation(anchor)?;
+                        if g == 0 {
+                            return err(format!("FREE of {}, which is not allocated", self.module.vars[root as usize].name));
+                        }
+                        let prev = self.word_at(g)?;
+                        self.write(STATIC_BASE + anchor, &prev.to_be_bytes())?;
+                    }
+                }
+                Ok(())
+            }
             Stmt::Display(v, reply) => {
                 let s = self.eval(v, act)?;
                 let Value::Char(b) = s else {
@@ -1376,8 +1573,9 @@ impl Machine {
                     .filter(|(_, s)| s.is_none())
                     .map(|(k, _)| dims[k])
                     .collect();
+                let rb = self.refer_base_for_len(r, act)?;
                 let var = &m.vars[r.var as usize];
-                let ty = self.resolve_ty(var.ty.as_ref(), r.var, act)?;
+                let ty = self.resolve_ty(var.ty.as_ref(), r.var, act, rb)?;
                 let len = ty.as_ref().and_then(|t| match t.str_len() {
                     Some(Ext::Const(n)) => Some(n),
                     _ => None,
@@ -2068,5 +2266,7 @@ thread_local! {
     static CUR_ENABLED: std::cell::Cell<u16> = const { std::cell::Cell::new(cond::DEFAULT) };
     static CUR_LINE: std::cell::Cell<u32> = const { std::cell::Cell::new(0) };
     static PTR_OVERRIDE: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
+    /// REFER values while ALLOCATE sizes a new generation.
+    static REFER_OVERRIDE: std::cell::RefCell<Option<Vec<i64>>> = const { std::cell::RefCell::new(None) };
     static PENDING_CONV: std::cell::RefCell<Option<(Vec<u8>, u8)>> = const { std::cell::RefCell::new(None) };
 }

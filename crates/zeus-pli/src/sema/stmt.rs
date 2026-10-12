@@ -772,19 +772,48 @@ impl Compiler {
             StmtKind::Locate(..) => return Err(self.err(pos, "LOCATE is not supported")),
             StmtKind::Allocate(items) => {
                 let mut v = Vec::new();
-                for (r, set) in items {
+                for (r, set, len) in items {
                     let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
                     let var = self.resolve_var(&names).ok_or_else(|| {
                         self.err(pos, format!("{} is not declared", names.join(".")))
                     })?;
-                    if !matches!(self.m.vars[var as usize].storage, Storage::Based(_)) {
-                        return Err(self.err(pos, format!("{} is not BASED", names.join("."))));
+                    let mut given: Vec<Option<Expr>> = Vec::new();
+                    match &self.m.vars[var as usize].storage {
+                        Storage::Based(_) => {
+                            if len.is_some() || r.parts.iter().any(|p| !p.1.is_empty()) {
+                                return Err(self.err(pos, "extents on ALLOCATE are allowed only for CONTROLLED variables"));
+                            }
+                        }
+                        Storage::Controlled(_, slots) => {
+                            given = vec![None; slots.len()];
+                            let v = self.m.vars[var as usize].clone();
+                            let bounds: Vec<&crate::ast::Expr> = r.parts.iter().flat_map(|p| p.1.iter().flatten()).collect();
+                            if !bounds.is_empty() && bounds.len() != v.dims.len() {
+                                return Err(self.err(pos, format!("{} needs {} bounds", v.name, v.dims.len())));
+                            }
+                            let fb = Ty::fixed_bin(31, 0);
+                            for (d, e) in v.dims.iter().zip(bounds) {
+                                let Bound::Slot(s) = d.ub else {
+                                    return Err(self.err(pos, format!("the bounds of {} are constants", v.name)));
+                                };
+                                let x = self.expr(e)?;
+                                given[s as usize] = Some(self.conv(x, &fb));
+                            }
+                            if let Some(l) = len {
+                                let Some(crate::types::Ext::Slot(s)) = v.ty.as_ref().and_then(Ty::str_len) else {
+                                    return Err(self.err(pos, format!("the length of {} is a constant", v.name)));
+                                };
+                                let x = self.expr(l)?;
+                                given[s as usize] = Some(self.conv(x, &fb));
+                            }
+                        }
+                        _ => return Err(self.err(pos, format!("{} is not BASED or CONTROLLED", names.join(".")))),
                     }
                     let set = match set {
                         Some(e) => Some(self.target(e)?.0),
                         None => None,
                     };
-                    v.push((var, set));
+                    v.push((var, set, given));
                 }
                 Stmt::Allocate(v)
             }

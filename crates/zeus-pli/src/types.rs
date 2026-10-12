@@ -16,8 +16,11 @@ pub const MAX_FLOAT_BIN: u8 = 109;
 pub enum Ext {
     Const(u32),
     Star,
-    /// The value computed into the activation's extent slot n.
+    /// The value computed into the activation's extent slot n (for a
+    /// CONTROLLED variable: the slot of its current generation).
     Slot(u32),
+    /// `REFER`: the value of the module's refer entry n.
+    Refer(u32),
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -158,6 +161,19 @@ impl Ty {
             Ty::Char { len, .. } | Ty::Bit { len, .. } => Some(*len),
             Ty::Pic(p) => Some(Ext::Const(p.len as u32)),
             _ => None,
+        }
+    }
+
+    /// The type with another string length.
+    pub fn with_len(&self, l: Ext) -> Ty {
+        match self {
+            Ty::Char { var, .. } => Ty::Char { len: l, var: *var },
+            Ty::Bit { var, aligned, .. } => Ty::Bit {
+                len: l,
+                var: *var,
+                aligned: *aligned,
+            },
+            t => t.clone(),
         }
     }
 

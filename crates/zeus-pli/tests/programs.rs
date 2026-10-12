@@ -124,3 +124,10 @@ fn preprocessor() {
     assert_eq!(end, RunEnd::Rc(0), "{msg}");
     assert_eq!(out, expected("macros"));
 }
+
+#[test]
+fn controlled_and_refer() {
+    let (out, msg, end) = run("storage", HashMap::new(), "");
+    assert_eq!(end, RunEnd::Rc(0), "{msg}");
+    assert_eq!(out, expected("storage"));
+}

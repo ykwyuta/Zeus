@@ -66,6 +66,8 @@ impl Expr {
 pub enum Extent {
     Expr(Expr),
     Star,
+    /// `n REFER(member)`: n at allocation, then the member's value.
+    Refer(Expr, Ref),
 }
 
 /// Dimension bound pair `[lower:]upper`.
@@ -337,7 +339,9 @@ pub enum StmtKind {
     Rewrite(RecordOpts),
     Delete(RecordOpts),
     Locate(Ref, RecordOpts),
-    Allocate(Vec<(Ref, Option<Expr>)>),
+    /// Variable (with bounds for a CONTROLLED array), SET, and a string
+    /// length (`CHAR(n)` / `BIT(n)`).
+    Allocate(Vec<(Ref, Option<Expr>, Option<Expr>)>),
     Free(Vec<Ref>),
     Display {
         value: Expr,

@@ -1,0 +1,70 @@
+ STG: PROC OPTIONS(MAIN);
+   DCL N FIXED BIN(31) INIT(3);
+   DCL X FIXED DEC(5) CONTROLLED INIT(0);
+   DCL A(N) FIXED BIN(31) CTL;
+   DCL B(*) FIXED BIN(31) CTL;
+   DCL S CHAR(*) VARYING CTL;
+   DCL I FIXED BIN(31);
+   DCL (ALLOCATION, HBOUND, SUM, LENGTH) BUILTIN;
+   DCL P POINTER;
+   DCL 1 MSG BASED(P),
+         2 LEN FIXED BIN(15),
+         2 TEXT CHAR(L REFER(LEN));
+   DCL L FIXED BIN(31) INIT(5);
+   DCL 1 TAB BASED,
+         2 CNT FIXED BIN(31),
+         2 ITEM(K REFER(CNT)) FIXED DEC(3);
+   DCL K FIXED BIN(31) INIT(4);
+   DCL Q POINTER;
+
+   /* a stack of generations */
+   PUT SKIP LIST('ALLOC', ALLOCATION(X));
+   DO I = 1 TO 3;
+     ALLOCATE X;
+     X = I * 10;
+   END;
+   PUT SKIP LIST('ALLOC', ALLOCATION(X), 'TOP', X);
+   FREE X;
+   PUT SKIP LIST('ALLOC', ALLOCATION(X), 'TOP', X);
+   FREE X;
+   FREE X;
+   PUT SKIP LIST('ALLOC', ALLOCATION(X));
+
+   /* extents from the declaration and from ALLOCATE */
+   ALLOCATE A;
+   N = 5;
+   DO I = 1 TO HBOUND(A, 1);
+     A(I) = I;
+   END;
+   PUT SKIP LIST('A', HBOUND(A, 1), SUM(A));
+   ALLOCATE A;
+   DO I = 1 TO HBOUND(A, 1);
+     A(I) = I;
+   END;
+   PUT SKIP LIST('A', HBOUND(A, 1), SUM(A));
+   FREE A;
+   PUT SKIP LIST('A', HBOUND(A, 1), SUM(A));
+   ALLOCATE B(7);
+   B = 2;
+   PUT SKIP LIST('B', HBOUND(B, 1), SUM(B));
+   ALLOCATE S CHAR(20);
+   S = 'CONTROLLED';
+   PUT SKIP LIST('S', S, LENGTH(S));
+   CALL SHOW(B);
+
+   /* REFER */
+   ALLOCATE MSG;
+   TEXT = 'HELLO WORLD';
+   PUT SKIP LIST('MSG', LEN, TEXT, STORAGE(MSG));
+   ALLOCATE TAB SET(Q);
+   Q->ITEM = 7;
+   PUT SKIP LIST('TAB', Q->CNT, HBOUND(Q->ITEM, 1), SUM(Q->ITEM),
+                 STORAGE(Q->TAB));
+   Q->CNT = 2;
+   PUT SKIP LIST('TAB', HBOUND(Q->ITEM, 1), SUM(Q->ITEM));
+
+ SHOW: PROC(V);
+   DCL V(*) FIXED BIN(31);
+   PUT SKIP LIST('SHOW', HBOUND(V, 1), V(7));
+ END SHOW;
+ END STG;

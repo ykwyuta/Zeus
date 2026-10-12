@@ -73,6 +73,10 @@ pub struct Compiler {
     /// Enclosing DO groups: their labels and loop ids.
     pub loops: Vec<(Vec<String>, LoopId)>,
     pub externals: HashMap<String, VarId>,
+    /// REFER entries of the declaration being mapped: index, object name.
+    pub pending_refers: Vec<(u32, String, Pos)>,
+    /// REFER initial extents, compiled after the block's declarations.
+    pub late_refers: Vec<(u32, crate::ast::Expr)>,
     /// Declarations of level-1 variables (for LIKE).
     pub decl_ast: HashMap<VarId, Vec<DeclItem>>,
     /// The outermost procedure block (implicit declarations).
@@ -100,6 +104,7 @@ impl Compiler {
                 main: None,
                 conditions: Vec::new(),
                 sources: Vec::new(),
+                refers: Vec::new(),
             },
             diags: Vec::new(),
             scopes: Vec::new(),
@@ -110,6 +115,8 @@ impl Compiler {
             loop_seq: 0,
             loops: Vec::new(),
             externals: HashMap::new(),
+            pending_refers: Vec::new(),
+            late_refers: Vec::new(),
             decl_ast: HashMap::new(),
             outer: 0,
             index_rank: 0,

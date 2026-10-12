@@ -602,7 +602,7 @@ impl Machine {
                 }
                 Value::int(n)
             }
-            Allocation => Value::int(1),
+            Allocation => Value::int(self.allocation(r.var)?),
             Present => Value::bit1(true),
             Omitted => Value::bit1(false),
             String => {
