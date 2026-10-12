@@ -876,6 +876,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "zeus-native"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "zeus-cobol",
+ "zeus-db2",
+ "zeus-ds",
+ "zeus-mq",
+ "zeus-pli",
+]
+
+[[package]]
 name = "zeus-pg"
 version = "0.1.0"
 dependencies = [

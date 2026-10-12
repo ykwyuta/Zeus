@@ -1,0 +1,25 @@
+[package]
+name = "zeus-native"
+description = "Zeus run time of native executables (zcobc / zpli --native)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-cobol = { path = "../zeus-cobol" }
+zeus-db2 = { path = "../zeus-db2" }
+zeus-ds = { path = "../zeus-ds" }
+zeus-mq = { path = "../zeus-mq" }
+zeus-pli = { path = "../zeus-pli" }
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "zeus-rt"
+path = "src/main.rs"
+
+[lints]
+workspace = true

@@ -1,0 +1,19 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. HELLO.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 N    PIC S9(9) COMP VALUE 5.
+       01 T    PIC X(10) VALUE 'COBOL'.
+       01 LINE-IN PIC X(20).
+       LINKAGE SECTION.
+       01 PARM.
+          05 PARM-LEN PIC S9(4) COMP.
+          05 PARM-TXT PIC X(20).
+       PROCEDURE DIVISION USING PARM.
+           DISPLAY 'PARM=' PARM-TXT(1:PARM-LEN)
+           CALL 'PSQ' USING N T
+           DISPLAY 'N=' N ' T=' T
+           ACCEPT LINE-IN
+           DISPLAY 'IN=' LINE-IN
+           MOVE 3 TO RETURN-CODE
+           GOBACK.

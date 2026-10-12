@@ -8,6 +8,7 @@ pub mod codepage;
 pub mod diag;
 pub mod ebcdic;
 pub mod front;
+pub mod image;
 pub mod interlang;
 pub mod inventory;
 pub mod sema;
@@ -33,15 +34,23 @@ pub fn compile_file(path: &Path, opts: &FrontOptions) -> Result<zir::Module, Dia
 
 /// Serialised form of a module (`.zo` file).
 pub fn save_module(module: &zir::Module, path: &Path) -> std::io::Result<()> {
-    let data = serde_json::to_vec(module).map_err(std::io::Error::other)?;
-    std::fs::write(path, data)
+    std::fs::write(path, module_bytes(module)?)
+}
+
+/// The contents of a module's `.zo` file.
+pub fn module_bytes(module: &zir::Module) -> std::io::Result<Vec<u8>> {
+    serde_json::to_vec(module).map_err(std::io::Error::other)
+}
+
+/// A module from the contents of its `.zo` file.
+pub fn load_module_bytes(data: &[u8]) -> std::io::Result<zir::Module> {
+    use serde::Deserialize;
+    // long condition chains nest deeply
+    let mut de = serde_json::Deserializer::from_slice(data);
+    de.disable_recursion_limit();
+    zir::Module::deserialize(&mut de).map_err(std::io::Error::other)
 }
 
 pub fn load_module(path: &Path) -> std::io::Result<zir::Module> {
-    use serde::Deserialize;
-    let data = std::fs::read(path)?;
-    // long condition chains nest deeply
-    let mut de = serde_json::Deserializer::from_slice(&data);
-    de.disable_recursion_limit();
-    zir::Module::deserialize(&mut de).map_err(std::io::Error::other)
+    load_module_bytes(&std::fs::read(path)?)
 }
