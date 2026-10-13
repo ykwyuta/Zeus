@@ -69,11 +69,24 @@ zpli  compile --native [--target <triple>] [--with <module.zo>]... [options] -o 
 
 - プログラムごとに 1 つの関数 `fn(ctx, pc) -> u32` を Cranelift (0.127) で作る。ZIR の命令ごとに基本ブロックを作り、
   GO TO は分岐、IF・PERFORM・段落の終わり・CALL の後は、次の命令か計算した番地のブロックへ (番地の表の分岐) 進む。
-- 機械語にした命令 (第 1 段): WORKING-STORAGE の添字・部分参照のない項目について
-  - 2 進 (COMP の 2・4・8 バイト) とパック 10 進 (9 バイトまで) の整数の COMPUTE / ADD / SUBTRACT / MULTIPLY、SET、
+- 機械語にした命令: WORKING-STORAGE の項目について
+  - 2 進 (COMP の 2・4・8 バイト)、パック 10 進 (9 バイトまで)、ゾーン 10 進 (DISPLAY、18 桁まで) の整数の COMPUTE / ADD / SUBTRACT / MULTIPLY、数値 MOVE、SET、
     PERFORM VARYING の更新 (加減乗算は 64 ビットの桁あふれ検査付き)
+  - DISPLAY の符号なし・先頭/末尾の符号・先頭/末尾の分離符号。数値 MOVE はこれらと COMP・COMP-3 の間の変換も行う
   - 条件の数値比較 (AND・OR・NOT を含む)
-  - 英数字の MOVE (定数から・項目から。空白の詰め物)
+  - 整数の IS POSITIVE / NEGATIVE / ZERO 条件
+  - 英数字・英字・集団項目と文字定数の比較 (256 バイトまで)。短い側を空白で補完し、
+    PROGRAM COLLATING SEQUENCE の重みで比較する (同順位の文字も扱う)
+  - 英数字の MOVE (定数から・項目から。空白の詰め物、JUSTIFIED RIGHT の右寄せと左側の切捨て)
+  - 英字項目への MOVE、SPACES / ZEROES / QUOTES / HIGH-VALUES / LOW-VALUES / ALL 定数からの MOVE。
+    HIGH/LOW-VALUES はプログラムの照合順序に合わせた文字を使う
+  - 数値テーブルの参照・更新: 整数の変数や加減乗算式を添字に使える (多次元も対応)。
+    宣言した OCCURS 範囲を超える添字は、読み書きの前に `step` に戻す。
+    1 未満の添字はインタプリタと同じく 1 として扱う
+  - 文字 MOVE・比較の添字と部分参照 (`ITEM(I)(START:LEN)`、`ITEM(START:)` など、項目長 256 バイトまで)。
+    整数の変数・加減乗算式を添字、開始位置、長さに使える。JUSTIFIED RIGHT と ALL 定数も対応。
+    部分参照が項目の範囲を超える場合は読み書き前に `step` に戻す。
+    数値項目の部分参照は英数字として扱う。重なりのある MOVE は `step` に任せる
 - それ以外の命令は、実行時の `step` (インタプリタのその命令の処理) を呼ぶ。値が絵の桁数に収まらない (サイズエラー)、
   64 ビットを超える、などのときも、何も書き込まずに `step` に任せるので、結果はインタプリタと同じになる。
 - 機械語は再配置のない位置独立のコード: 実行時の関数は文脈 (`step` の番地、記憶域の番地、プログラムの静的領域の位置) の
@@ -89,12 +102,24 @@ zpli  compile --native [--target <triple>] [--with <module.zo>]... [options] -o 
   インタプリタと同じ (必須モジュール 8/8、9572/9719 件)。
 - `crates/zeus-native/tests/native.rs` の `machine_code_matches_the_interpreter`: 負の数、符号なし、パック 10 進の符号、
   サイズエラーの切捨て、64 ビットを超える値、JUSTIFIED の MOVE で、機械語とインタプリタの出力が同じ。
+- `display_integers_and_justified_moves_match_the_interpreter`: Windows x86-64 で DISPLAY の各符号形式、18 桁の整数、
+  COMP・COMP-3 との MOVE、ループ、サイズエラー、右寄せ MOVE の出力・終了コードがインタプリタと一致。
+  実行時の単体テストでは、数値演算・比較・MOVE が機械語で動くことも確認 (サイズエラーフラグの初期化は実行時に任せる)。
+- `text_comparisons_constants_and_signs_match_the_interpreter`: 標準 EBCDIC・逆順・同順位を含む照合順序で、
+  空白補完・各比較演算・定数 MOVE・符号条件の出力と終了コードが一致。
+  直接実行の単体テストと x86-64 / AArch64 のコード生成テストでも独自の照合順序を確認。
+- `tables_and_fixed_reference_modification_match_the_interpreter`: 数値テーブルのループ・多次元・添字式、
+  1 未満の添字、宣言範囲外から隣の項目への参照、定数添字・部分参照・重なる MOVE がインタプリタと一致。
+  直接実行の単体テストでも添字付き演算と固定部分参照の機械語化を確認。
+- `dynamic_text_references_match_the_interpreter`: 文字テーブルの変数添字、可変開始位置・長さ、長さ省略、
+  空の部分参照・負の長さ、右寄せ、重なる MOVE、範囲外添字が標準・逆順照合でインタプリタと一致。
+  直接実行の単体テストと 4 プラットフォームのコード生成テストでも可変参照を確認。
 - 速さ: 2 進とパック 10 進の 2 重ループ (200 万回) が x86-64 で 0.88 秒 (インタプリタ) から 0.15 秒。
   起動は約 30 ミリ秒。
 
 ### これから
 
-- 機械語にする命令を増やす: ゾーン 10 進 (DISPLAY の数字項目)、小数点付きの値、英数字の比較 (照合順序)、
-  添字付きの参照、INITIALIZE・INSPECT など。
+- 機械語にする命令を増やす: 小数点付きの値、数値項目を英数字として比較する場合、
+  OCCURS DEPENDING ON の可変長集団項目、INITIALIZE・INSPECT など。
 - PL/I の IR の機械語。
 - `zjob` と `zcics` の中のプログラムにも機械語を使う。
