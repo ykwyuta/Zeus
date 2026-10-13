@@ -173,7 +173,7 @@ jobs:
       - name: Start Db2 CE
         run: echo "ZEUS_DB2=$(tools/db2ce.sh start)" >> "$GITHUB_ENV"
       - run: cargo test -p zeus-drda -p zeus-db2
-      - run: tools/carddemo.sh setup
+      - run: tools/carddemo.sh init
       - run: tools/carddemo-db2.sh test
       - uses: actions/cache@v4
         with:
@@ -213,7 +213,7 @@ jobs:
       - name: Start PostgreSQL
         run: echo "ZEUS_DB2=$(tools/pg.sh start)" >> "$GITHUB_ENV"
       - run: cargo test -p zeus-pg -p zeus-db2
-      - run: tools/carddemo.sh setup
+      - run: tools/carddemo.sh init
       - run: tools/carddemo-db2.sh test
       - uses: actions/cache@v4
         with:

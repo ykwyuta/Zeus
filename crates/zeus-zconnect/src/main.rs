@@ -150,7 +150,9 @@ fn show(r: &Response) -> String {
 }
 
 fn serve(api: &Api, zeus: &Zeus, port: u16) -> std::io::Result<()> {
-    let listener = std::net::TcpListener::bind(("0.0.0.0", port))?;
+    // IPv6 and IPv4 (localhost may name ::1), else IPv4 only
+    let listener = std::net::TcpListener::bind(("::", port))
+        .or_else(|_| std::net::TcpListener::bind(("0.0.0.0", port)))?;
     eprintln!("zconn: listening on port {port}");
     for conn in listener.incoming() {
         let Ok(mut conn) = conn else { continue };

@@ -430,8 +430,13 @@ pub fn translate(sql: &str) -> String {
             i = n + 1;
             continue;
         }
-        // functions
+        // functions (not a type after AS: CAST(x AS CHAR(50)))
+        let type_name = (0..i)
+            .rev()
+            .find(|&k| !matches!(t[k], Tok::Space(_)))
+            .is_some_and(|k| upper(&t[k]) == "AS");
         if let Tok::Word(_) = &t[i]
+            && !type_name
             && let Some(open) = next(&t, i + 1).filter(|&n| t[n] == Tok::Punct('('))
             && let Some(close) = close_paren(&t, open)
         {
@@ -933,6 +938,11 @@ mod tests {
         assert_eq!(
             norm(&translate("SELECT CHAR(D, ISO), YEAR(D) FROM T")),
             "SELECT to_char(D, 'YYYY-MM-DD'), CAST(EXTRACT(YEAR FROM D) AS INTEGER) FROM T"
+        );
+        // a type after AS is not the CHAR function
+        assert_eq!(
+            norm(&translate("SELECT CAST(CHAR(A) AS CHAR(50)) FROM T")),
+            "SELECT CAST(CAST(A AS VARCHAR) AS CHAR(50)) FROM T"
         );
         assert_eq!(
             norm(&translate("VALUES (IDENTITY_VAL_LOCAL())")),

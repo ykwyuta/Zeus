@@ -8,15 +8,12 @@ item (occurrences in parentheses).
 
 | Application | Programs | Compiled by zcobc |
 |---|---|---|
-| carddemo | 41 | 38 |
+| carddemo | 41 | 41 |
 | genapp | 31 | 31 |
 | bankofz | 43 | 42 |
 
 Not compiled:
 
-- carddemo COPAUA0C: COPY member CMQODV not found
-- carddemo COACCT01: COPY member CMQGMOV not found
-- carddemo CODATE01: COPY member CMQGMOV not found
 - bankofz IBTRAN: IDENTIFICATION DIVISION expected (found REPOSITORY)
 
 ## statement
@@ -24,33 +21,33 @@ Not compiled:
 | Item | CardDemo | GenApp | Bank of Z |
 |---|---|---|---|
 | ACCEPT | 6 (12) | | |
-| ADD | 19 (91) | 10 (33) | 17 (30) |
+| ADD | 22 (99) | 10 (33) | 17 (30) |
 | ALTER | 1 (4) | | |
-| CALL | 20 (42) | | 13 (44) |
+| CALL | 23 (64) | | 13 (44) |
 | CLOSE | 15 (50) | | 5 (5) |
-| COMPUTE | 15 (53) | 2 (50) | 29 (179) |
-| CONTINUE | 29 (281) | | 14 (87) |
-| DISPLAY | 25 (387) | | 39 (472) |
+| COMPUTE | 18 (84) | 2 (50) | 29 (179) |
+| CONTINUE | 30 (284) | | 14 (87) |
+| DISPLAY | 27 (391) | | 39 (472) |
 | DIVIDE | 1 (1) | | 2 (4) |
 | ENTRY | 3 (3) | | 10 (10) |
-| EVALUATE | 28 (172) | 13 (21) | 19 (39) |
-| EXIT | 23 (362) | 27 (78) | 30 (245) |
+| EVALUATE | 31 (194) | 13 (21) | 19 (39) |
+| EXIT | 24 (383) | 27 (78) | 30 (245) |
 | GO | 10 (200) | 6 (79) | 21 (155) |
-| GOBACK | 16 (20) | 10 (10) | 14 (17) |
-| IF | 39 (1123) | 31 (188) | 41 (578) |
-| INITIALIZE | 22 (79) | 22 (70) | 27 (266) |
+| GOBACK | 18 (22) | 10 (10) | 14 (17) |
+| IF | 42 (1162) | 31 (188) | 41 (578) |
+| INITIALIZE | 25 (86) | 22 (70) | 27 (266) |
 | INSPECT | 7 (15) | 1 (2) | 5 (35) |
-| MOVE | 41 (3759) | 31 (1114) | 43 (3876) |
+| MOVE | 44 (4135) | 31 (1114) | 43 (3876) |
 | OPEN | 15 (53) | | 5 (5) |
-| PERFORM | 40 (1151) | 23 (114) | 41 (546) |
+| PERFORM | 43 (1248) | 23 (114) | 41 (546) |
 | READ | 13 (34) | | 5 (10) |
 | REWRITE | 2 (3) | | |
 | SEARCH | 1 (1) | | |
-| SET | 26 (1043) | 15 (15) | 25 (70) |
+| SET | 29 (1106) | 15 (15) | 25 (70) |
 | STOP | 2 (2) | | 11 (11) |
-| STRING | 20 (129) | 1 (25) | 27 (369) |
+| STRING | 23 (135) | 1 (25) | 27 (369) |
 | SUBTRACT | 10 (17) | 5 (7) | 4 (4) |
-| UNSTRING | | | 9 (11) |
+| UNSTRING | 1 (1) | | 9 (11) |
 | WRITE | 8 (117) | | |
 
 ## function
@@ -64,7 +61,7 @@ Not compiled:
 | LENGTH | 4 (26) | | |
 | LOWER-CASE | 1 (2) | | |
 | MOD | 1 (1) | | 8 (21) |
-| NUMVAL | 3 (7) | | 15 (30) |
+| NUMVAL | 4 (8) | | 15 (30) |
 | NUMVAL-C | 3 (13) | | |
 | RANDOM | | 1 (1) | 8 (40) |
 | REVERSE | | | 3 (3) |
@@ -77,20 +74,20 @@ Not compiled:
 
 | Item | CardDemo | GenApp | Bank of Z |
 |---|---|---|---|
-| BINARY | 12 (38) | 2 (2) | 16 (68) |
-| COMP | 39 (751) | 31 (761) | 41 (374) |
+| BINARY | 15 (1202) | 2 (2) | 16 (68) |
+| COMP | 42 (767) | 31 (761) | 41 (374) |
 | COMP-1 | | | 2 (2) |
 | COMP-2 | | | 4 (5) |
-| COMP-3 | 17 (108) | | 34 (103) |
+| COMP-3 | 20 (124) | | 34 (103) |
 | COMP-5 | 7 (19) | 8 (32) | 26 (121) |
 | DEPENDING | 23 (24) | | 10 (18) |
 | FUNCTION-POINTER | | | 1 (229) |
 | INDEXED | 1 (1) | | |
 | JUST | 2 (2) | | |
 | LOCAL-STORAGE | | | 9 (9) |
-| OCCURS | 32 (62) | 8 (8) | 18 (41) |
-| POINTER | 1 (4) | 15 (15) | 21 (92) |
-| REDEFINES | 34 (805) | 28 (667) | 41 (374) |
+| OCCURS | 33 (63) | 8 (8) | 18 (41) |
+| POINTER | 4 (30) | 15 (15) | 21 (92) |
+| REDEFINES | 36 (809) | 28 (667) | 41 (374) |
 | SEPARATE | | | 30 (110) |
 | SYNC | | 1 (1) | |
 
@@ -99,7 +96,7 @@ Not compiled:
 | Item | CardDemo | GenApp | Bank of Z |
 |---|---|---|---|
 | ABEND | 5 (5) | 18 (24) | 26 (64) |
-| ASKTIME | 2 (2) | 22 (22) | 28 (36) |
+| ASKTIME | 4 (5) | 22 (22) | 28 (36) |
 | ASSIGN | 1 (2) | 4 (9) | 26 (263) |
 | BIF | | | 5 (7) |
 | DEFINE | | 1 (37) | |
@@ -110,28 +107,29 @@ Not compiled:
 | ENDBR | 5 (6) | | |
 | ENQ | | 2 (2) | 2 (2) |
 | FETCH | | | 1 (1) |
-| FORMATTIME | 2 (2) | 22 (22) | 28 (36) |
+| FORMATTIME | 4 (5) | 22 (22) | 28 (36) |
 | GET | | 2 (4) | 6 (6) |
 | HANDLE | 6 (11) | 5 (10) | 10 (12) |
 | INQUIRE | 1 (1) | | 3 (5) |
 | LINK | 1 (1) | 25 (95) | 25 (145) |
 | PUT | | | 6 (6) |
 | QUERY | | 1 (36) | |
-| READ | 11 (23) | 4 (4) | |
+| READ | 13 (27) | 4 (4) | |
 | READNEXT | 3 (4) | | |
 | READPREV | 5 (6) | | |
 | READQ | | 4 (7) | |
 | RECEIVE | 21 (21) | 9 (13) | 9 (9) |
-| RETURN | 22 (34) | 31 (84) | 30 (73) |
+| RETRIEVE | 3 (3) | | |
+| RETURN | 25 (38) | 31 (84) | 30 (73) |
 | REWRITE | 4 (5) | 2 (2) | |
 | RUN | | | 1 (1) |
 | SEND | 21 (40) | 9 (52) | 9 (45) |
 | SET | | | 2 (7) |
 | START | | 1 (1) | |
 | STARTBR | 5 (6) | | |
-| SYNCPOINT | 6 (13) | 6 (10) | 6 (20) |
+| SYNCPOINT | 9 (16) | 6 (10) | 6 (20) |
 | WRITE | 3 (3) | 2 (2) | 1 (1) |
-| WRITEQ | 1 (1) | 6 (18) | |
+| WRITEQ | 2 (2) | 6 (18) | |
 | XCTL | 21 (32) | | |
 
 ## EXEC CICS option
@@ -141,8 +139,8 @@ Not compiled:
 | ABEND ABCODE | 5 (5) | 18 (24) | 26 (64) |
 | ABEND CANCEL | | | 10 (31) |
 | ABEND NODUMP | | 18 (24) | 20 (41) |
-| ASKTIME ABSTIME | 2 (2) | 22 (22) | 28 (36) |
-| ASKTIME NOHANDLE | 1 (2) | | |
+| ASKTIME ABSTIME | 4 (5) | 22 (22) | 28 (36) |
+| ASKTIME NOHANDLE | 2 (4) | | |
 | ASSIGN ABCODE | | | 7 (7) |
 | ASSIGN APPLID | 1 (1) | 1 (1) | 25 (128) |
 | ASSIGN INVOKINGPROG | | 3 (3) | |
@@ -188,14 +186,17 @@ Not compiled:
 | FETCH NOSUSPEND | | | 1 (1) |
 | FETCH RESP | | | 1 (1) |
 | FETCH RESP2 | | | 1 (1) |
-| FORMATTIME ABSTIME | 2 (2) | 22 (22) | 28 (36) |
-| FORMATTIME DATESEP | 2 (2) | | 28 (36) |
+| FORMATTIME ABSTIME | 4 (5) | 22 (22) | 28 (36) |
+| FORMATTIME DATESEP | 3 (3) | | 28 (36) |
 | FORMATTIME DDMMYYYY | | 1 (1) | 28 (36) |
+| FORMATTIME MILLISECONDS | 1 (1) | | |
 | FORMATTIME MMDDYY | 1 (1) | | |
-| FORMATTIME MMDDYYYY | | 21 (21) | |
+| FORMATTIME MMDDYYYY | 1 (1) | 21 (21) | |
 | FORMATTIME NOHANDLE | 1 (1) | | |
-| FORMATTIME TIME | 1 (1) | 22 (22) | 28 (36) |
-| FORMATTIME TIMESEP | 1 (1) | | |
+| FORMATTIME TIME | 3 (4) | 22 (22) | 28 (36) |
+| FORMATTIME TIMESEP | 2 (2) | | |
+| FORMATTIME YYDDD | 1 (1) | | |
+| FORMATTIME YYMMDD | 1 (1) | | |
 | FORMATTIME YYYYMMDD | 1 (1) | | |
 | GET CHANNEL | | | 6 (6) |
 | GET CONTAINER | | 1 (2) | 6 (6) |
@@ -244,16 +245,16 @@ Not compiled:
 | QUERY POOL | | 1 (36) | |
 | QUERY RESP | | 1 (36) | |
 | QUERY VALUE | | 1 (36) | |
-| READ DATASET | 9 (17) | | |
+| READ DATASET | 11 (21) | | |
 | READ FILE | 3 (6) | 4 (4) | |
 | READ GENERIC | | 1 (1) | |
 | READ GTEQ | | 2 (2) | |
-| READ INTO | 11 (23) | 4 (4) | |
-| READ KEYLENGTH | 11 (23) | 4 (4) | |
-| READ LENGTH | 11 (23) | 4 (4) | |
-| READ RESP | 11 (23) | 4 (4) | |
-| READ RESP2 | 11 (23) | | |
-| READ RIDFLD | 11 (23) | 4 (4) | |
+| READ INTO | 13 (27) | 4 (4) | |
+| READ KEYLENGTH | 13 (27) | 4 (4) | |
+| READ LENGTH | 13 (27) | 4 (4) | |
+| READ RESP | 13 (27) | 4 (4) | |
+| READ RESP2 | 13 (27) | | |
+| READ RIDFLD | 13 (27) | 4 (4) | |
 | READ UPDATE | 6 (7) | 2 (2) | |
 | READNEXT DATASET | 3 (4) | | |
 | READNEXT INTO | 3 (4) | | |
@@ -285,6 +286,10 @@ Not compiled:
 | RECEIVE RESP | 20 (20) | 4 (4) | 9 (9) |
 | RECEIVE RESP2 | 18 (18) | | 9 (9) |
 | RECEIVE TERMINAL | | | 2 (2) |
+| RETRIEVE INTO | 3 (3) | | |
+| RETRIEVE NOHANDLE | 1 (1) | | |
+| RETRIEVE RESP | 2 (2) | | |
+| RETRIEVE RESP2 | 2 (2) | | |
 | RETURN COMMAREA | 21 (24) | 5 (10) | 9 (10) |
 | RETURN IMMEDIATE | | | 9 (16) |
 | RETURN LENGTH | 8 (8) | | 9 (9) |
@@ -343,15 +348,16 @@ Not compiled:
 | WRITE RESP | 3 (3) | 2 (2) | 1 (1) |
 | WRITE RESP2 | 3 (3) | | 1 (1) |
 | WRITE RIDFLD | 3 (3) | 2 (2) | 1 (1) |
-| WRITEQ FROM | 1 (1) | 6 (18) | |
+| WRITEQ FROM | 2 (2) | 6 (18) | |
 | WRITEQ ITEM | | 1 (1) | |
-| WRITEQ LENGTH | 1 (1) | 6 (18) | |
+| WRITEQ LENGTH | 2 (2) | 6 (18) | |
+| WRITEQ NOHANDLE | 1 (1) | | |
 | WRITEQ NOSUSPEND | | 4 (10) | |
-| WRITEQ QUEUE | 1 (1) | 6 (18) | |
+| WRITEQ QUEUE | 2 (2) | 6 (18) | |
 | WRITEQ RESP | 1 (1) | 6 (18) | |
 | WRITEQ RESP2 | 1 (1) | | |
 | WRITEQ REWRITE | | 1 (1) | |
-| WRITEQ TD | 1 (1) | 1 (1) | |
+| WRITEQ TD | 2 (2) | 1 (1) | |
 | WRITEQ TS | | 6 (17) | |
 | XCTL COMMAREA | 21 (30) | | |
 | XCTL PROGRAM | 21 (32) | | |
@@ -379,38 +385,57 @@ Not compiled:
 | DLET | 1 (2) | | |
 | GN | 1 (1) | | |
 | GNP | 3 (5) | | |
-| GU | 2 (2) | | |
-| REPL | 1 (1) | | |
-| SCHD | 2 (4) | | |
-| TERM | 2 (2) | | |
+| GU | 3 (3) | | |
+| ISRT | 1 (2) | | |
+| REPL | 2 (2) | | |
+| SCHD | 3 (6) | | |
+| TERM | 3 (4) | | |
 
 ## EXEC DLI option
 
 | Item | CardDemo | GenApp | Bank of Z |
 |---|---|---|---|
+| CHKP DIB | 1 (1) | | |
 | CHKP ID | 1 (1) | | |
+| DLET DIB | 1 (2) | | |
 | DLET FROM | 1 (2) | | |
 | DLET PCB | 1 (2) | | |
 | DLET SEGMENT | 1 (2) | | |
 | DLET USING | 1 (2) | | |
+| GN DIB | 1 (1) | | |
 | GN INTO | 1 (1) | | |
 | GN PCB | 1 (1) | | |
 | GN SEGMENT | 1 (1) | | |
 | GN USING | 1 (1) | | |
+| GNP DIB | 3 (5) | | |
 | GNP INTO | 3 (5) | | |
 | GNP PCB | 3 (5) | | |
 | GNP SEGMENT | 3 (5) | | |
 | GNP USING | 3 (5) | | |
 | GNP WHERE | 2 (2) | | |
-| GU INTO | 2 (2) | | |
-| GU PCB | 2 (2) | | |
-| GU SEGMENT | 2 (2) | | |
-| GU USING | 2 (2) | | |
-| GU WHERE | 2 (2) | | |
-| REPL FROM | 1 (1) | | |
-| REPL PCB | 1 (1) | | |
-| REPL SEGMENT | 1 (1) | | |
-| REPL USING | 1 (1) | | |
-| SCHD NODHABEND | 2 (4) | | |
-| SCHD PSB | 2 (4) | | |
+| GNP WHEREVAL | 2 (2) | | |
+| GU DIB | 3 (3) | | |
+| GU INTO | 3 (3) | | |
+| GU PCB | 3 (3) | | |
+| GU SEGMENT | 3 (3) | | |
+| GU USING | 3 (3) | | |
+| GU WHERE | 3 (3) | | |
+| GU WHEREVAL | 3 (3) | | |
+| ISRT DIB | 1 (2) | | |
+| ISRT FROM | 1 (2) | | |
+| ISRT PCB | 1 (2) | | |
+| ISRT SEGLENGTH | 1 (1) | | |
+| ISRT SEGMENT | 1 (3) | | |
+| ISRT USING | 1 (2) | | |
+| ISRT WHERE | 1 (1) | | |
+| ISRT WHEREVAL | 1 (1) | | |
+| REPL DIB | 2 (2) | | |
+| REPL FROM | 2 (2) | | |
+| REPL PCB | 2 (2) | | |
+| REPL SEGMENT | 2 (2) | | |
+| REPL USING | 2 (2) | | |
+| SCHD DIB | 3 (6) | | |
+| SCHD NODHABEND | 3 (6) | | |
+| SCHD PSB | 3 (6) | | |
+| TERM DIB | 3 (4) | | |
 

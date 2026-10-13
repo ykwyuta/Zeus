@@ -3,6 +3,8 @@
 #
 # usage: tools/carddemo.sh setup    # catalog the sample data, libraries,
 #                                   # compile the batch programs
+#        tools/carddemo.sh init     # setup and the initialization jobs
+#                                   # (VSAM files such as USRSEC)
 #        tools/carddemo.sh run JOB... # submit jobs from app/jcl
 #        tools/carddemo.sh all      # setup, initialization, batch and
 #                                   # report jobs; fails unless all end RC 0
@@ -97,6 +99,15 @@ failed=
 case ${1:-} in
     setup) setup ;;
     run) shift; run "$@" ;;
+    init)
+        setup
+        # shellcheck disable=SC2086
+        run $init_jobs
+        if [ -n "$failed" ]; then
+            echo "failed jobs:$failed" >&2
+            exit 1
+        fi
+        ;;
     all)
         setup
         # shellcheck disable=SC2086
@@ -107,5 +118,5 @@ case ${1:-} in
         fi
         echo "all CardDemo batch jobs ended with their expected return codes"
         ;;
-    *) echo "usage: $0 setup | run JOB... | all" >&2; exit 2 ;;
+    *) echo "usage: $0 setup | init | run JOB... | all" >&2; exit 2 ;;
 esac
