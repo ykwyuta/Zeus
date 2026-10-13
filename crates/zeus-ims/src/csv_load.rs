@@ -122,8 +122,10 @@ fn packed(value: &str, width: usize, datatype: &str) -> Result<Vec<u8>, String> 
     nibbles.extend(digits.bytes().map(|digit| digit - b'0'));
     nibbles.push(if negative { 0x0d } else { 0x0c });
     Ok(nibbles
-        .chunks_exact(2)
-        .map(|pair| pair[0] << 4 | pair[1])
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|&[hi, lo]| hi << 4 | lo)
         .collect())
 }
 
