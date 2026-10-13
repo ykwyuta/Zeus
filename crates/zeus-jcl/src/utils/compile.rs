@@ -95,10 +95,10 @@ pub fn cobol(ctx: &mut StepCtx) -> ProgramResult {
             return Ok(16);
         }
     };
-    let src = tmp.join(source_file(&name, "cbl"));
+    let src = tmp.path().join(source_file(&name, "cbl"));
     std::fs::write(&src, text).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
     let fo = zeus_cobol::front::FrontOptions {
-        copy_dirs: syslib(ctx, &tmp),
+        copy_dirs: syslib(ctx, tmp.path()),
         cics: opts.iter().any(|o| o == "CICS" || o.starts_with("CICS(")),
         nsymbol_dbcs: opts.iter().any(|o| o == "NSYMBOL(DBCS)" || o == "NS(DBCS)"),
         ..Default::default()
@@ -106,7 +106,7 @@ pub fn cobol(ctx: &mut StepCtx) -> ProgramResult {
     let _ = writeln!(print, "ZEUS COBOL COMPILER (IGYCRCTL)  SOURCE {name}");
     let rc = match zeus_cobol::compile_file(&src, &fo) {
         Ok(module) => {
-            let out = tmp.join("module.zo");
+            let out = tmp.path().join("module.zo");
             zeus_cobol::save_module(&module, &out)
                 .map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
             let data = std::fs::read(&out).unwrap_or_default();
@@ -123,7 +123,6 @@ pub fn cobol(ctx: &mut StepCtx) -> ProgramResult {
             12
         }
     };
-    let _ = std::fs::remove_dir_all(&tmp);
     Ok(rc)
 }
 
@@ -139,10 +138,10 @@ pub fn pli(ctx: &mut StepCtx) -> ProgramResult {
             return Ok(16);
         }
     };
-    let src = tmp.join(source_file(&name, "pli"));
+    let src = tmp.path().join(source_file(&name, "pli"));
     std::fs::write(&src, text).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
     let opts = zeus_pli::Options {
-        include_dirs: syslib(ctx, &tmp),
+        include_dirs: syslib(ctx, tmp.path()),
         ..Default::default()
     };
     let _ = writeln!(print, "ZEUS PL/I COMPILER (IBMZPLI)  SOURCE {name}");
@@ -160,7 +159,6 @@ pub fn pli(ctx: &mut StepCtx) -> ProgramResult {
         }
     }
     let _ = writeln!(print, "END OF COMPILATION, RETURN CODE {rc}");
-    let _ = std::fs::remove_dir_all(&tmp);
     Ok(rc)
 }
 
@@ -237,14 +235,11 @@ fn source_file(name: &str, ext: &str) -> String {
     format!("{base}.{ext}")
 }
 
-fn tempdir() -> Result<PathBuf, crate::job::Outcome> {
-    let d = std::env::temp_dir().join(format!(
-        "zeus-compile-{}-{}",
-        std::process::id(),
-        std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map_or(0, |d| d.as_nanos())
-    ));
-    std::fs::create_dir_all(&d).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
-    Ok(d)
+fn tempdir() -> Result<tempfile::TempDir, crate::job::Outcome> {
+    // Exclusive creation avoids clock-resolution collisions between parallel
+    // compiler steps. TempDir also cleans up on every early return.
+    tempfile::Builder::new()
+        .prefix("zeus-compile-")
+        .tempdir()
+        .map_err(|e| crate::job::Outcome::JclError(e.to_string()))
 }

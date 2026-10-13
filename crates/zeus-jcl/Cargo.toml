@@ -15,8 +15,6 @@ zeus-db2 = { path = "../zeus-db2" }
 zeus-mq = { path = "../zeus-mq" }
 zeus-ims = { path = "../zeus-ims" }
 zeus-decimal = { path = "../zeus-decimal" }
-
-[dev-dependencies]
 tempfile.workspace = true
 
 [[bin]]
