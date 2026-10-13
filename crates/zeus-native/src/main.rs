@@ -20,6 +20,9 @@
 
 mod machine_code;
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::ExitCode;
@@ -85,6 +88,12 @@ impl Drop for Library {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zeus-rt.txt"),
+        &["--dd", "--parm", "--ccsid"],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let Some(image) = Image::of_current_exe().filter(|i| !i.members.is_empty()) else {
         eprintln!(
             "zeus-rt: this is the Zeus run time without a program; make an executable with `zcobc compile --native` or `zpli compile --native`"

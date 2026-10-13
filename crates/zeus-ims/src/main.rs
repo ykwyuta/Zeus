@@ -4,6 +4,9 @@ use zeus_ims::csv_load::encode_root_csv;
 use zeus_ims::unload::parse_dfsurgu0;
 use zeus_ims::{Database, Dbd, Psb};
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn load_dbds(path: &str) -> Result<Vec<Dbd>, String> {
     let path = Path::new(path);
     if path.is_file() {
@@ -298,13 +301,16 @@ fn run() -> Result<(), String> {
             file.sync_all().map_err(|e| e.to_string())?;
             println!("exported {} records", records.len());
         }
-        _ => return Err("usage: imsdbctl tm-enqueue QUEUE DEST SOURCE LLZZ_BODY_HEX | tm-list QUEUE DEST | inspect DBD... [PSB...] | put-root WAL DBD SEGMENT RECORD_HEX | get-root WAL DBD SEGMENT KEY_HEX | get-secondary WAL DBD_DIR INDEX_DBD KEY_HEX | count WAL DBD | latest-checkpoint WAL DBD | import-fixed WAL DBD SEGMENT FILE | import-dfsurgu0 WAL DBD FILE | split-dfsurgu0 DBD FILE ROOT_OUT CHILD_OUT | import-csv WAL DBD SEGMENT FILE | import-csv-bundle WAL DBD_DIR DATA_DIR | export-fixed WAL DBD SEGMENT FILE".into()),
+        _ => return Err("usage: zims tm-enqueue QUEUE DEST SOURCE LLZZ_BODY_HEX | tm-list QUEUE DEST | inspect DBD... [PSB...] | put-root WAL DBD SEGMENT RECORD_HEX | get-root WAL DBD SEGMENT KEY_HEX | get-secondary WAL DBD_DIR INDEX_DBD KEY_HEX | count WAL DBD | latest-checkpoint WAL DBD | import-fixed WAL DBD SEGMENT FILE | import-dfsurgu0 WAL DBD FILE | split-dfsurgu0 DBD FILE ROOT_OUT CHILD_OUT | import-csv WAL DBD SEGMENT FILE | import-csv-bundle WAL DBD_DIR DATA_DIR | export-fixed WAL DBD SEGMENT FILE".into()),
     }
     Ok(())
 }
 fn main() {
+    if cli_help::show(include_str!("../../../docs/help/zims.txt"), &[]) {
+        return;
+    }
     if let Err(e) = run() {
-        eprintln!("imsdbctl: {e}");
+        eprintln!("zims: {e}");
         std::process::exit(1);
     }
 }

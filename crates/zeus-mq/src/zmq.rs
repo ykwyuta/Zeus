@@ -14,6 +14,18 @@ use zeus_mq::monitor::{get_messages, put_message};
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    // After the queue name, --help can be message text. Only interpret help
+    // in the command/option prefix, so putting that text still works.
+    if args
+        .first()
+        .is_some_and(|a| matches!(a.as_str(), "--help" | "-h"))
+        || args
+            .get(1)
+            .is_some_and(|a| matches!(a.as_str(), "--help" | "-h"))
+    {
+        print!("{}", include_str!("../../../docs/help/zmq.txt"));
+        return ExitCode::SUCCESS;
+    }
     let a: Vec<&str> = args.iter().map(String::as_str).collect();
     let r = match a.as_slice() {
         ["put", "--reply-to", r, q, texts @ ..] if !texts.is_empty() => texts

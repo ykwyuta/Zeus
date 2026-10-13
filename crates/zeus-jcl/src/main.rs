@@ -35,6 +35,9 @@ use zeus_cobol::ebcdic;
 use zeus_ds::catalog::{Catalog, Entry, EntryKind, Recfm};
 use zeus_jcl::job::{Env, job_completion, run_job};
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn usage() -> ExitCode {
     eprintln!("usage: zjob [--home DIR] [--proclib DIR]... [--loadlib DIR]... submit <job.jcl>...");
     eprintln!(
@@ -270,6 +273,20 @@ fn ims_cmd(o: &Opts, cat: &Catalog) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zjob.txt"),
+        &[
+            "--home",
+            "--proclib",
+            "--loadlib",
+            "--recfm",
+            "--lrecl",
+            "--lterm",
+            "--ccsid",
+        ],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let Some(o) = parse_opts(std::env::args().skip(1).collect()) else {
         return usage();
     };

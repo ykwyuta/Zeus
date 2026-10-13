@@ -24,6 +24,9 @@ use std::process::ExitCode;
 
 use zeus_pli::vm::{DdInfo, RunEnd, RunEnv};
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn usage() -> ExitCode {
     eprintln!("usage: zpli compile [-I dir]... [--margins m,n] [--ccsid N] [-o out] source.pli");
     eprintln!(
@@ -37,6 +40,23 @@ fn usage() -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zpli.txt"),
+        &[
+            "-I",
+            "-o",
+            "-L",
+            "--coverage",
+            "--target",
+            "--with",
+            "--margins",
+            "--parm",
+            "--ccsid",
+            "--dd",
+        ],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut opts = zeus_pli::Options::default();
     let mut out: Option<PathBuf> = None;

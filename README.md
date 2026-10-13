@@ -21,6 +21,13 @@ and zeus-rt (the run time `--native` executables are made from, found next
 to zcobc and zpli). Artifacts are kept for the repository's retention
 period (90 days by default).
 
+Every command embeds a detailed English usage guide: run `COMMAND --help`
+or `COMMAND -h`. Subcommands also accept `--help` (for example,
+`zjob catalog --help`). Help includes options, defaults, examples, relevant
+environment variables and exit statuses; no documentation files or network
+access are needed. Generated native executables also support `--help`.
+The editable source manuals are in [docs/help](docs/help).
+
 ## Status
 
 Phase 1 (COBOL compiler): `zcobc` compiles COBOL-85 to ZIR and runs it in a

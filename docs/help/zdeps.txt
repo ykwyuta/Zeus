@@ -1,0 +1,37 @@
+zdeps - Analyze application dependencies and export CSV graphs
+
+USAGE
+  zdeps analyze [options] ROOT...
+  zdeps masters [--out DIR] [--bom]
+  zdeps --help | zdeps analyze --help
+
+COMMANDS
+  analyze  Start from source files or directories and recursively follow
+           dependencies in COBOL, PL/I, JCL, BMS, CSD and IMS definitions.
+           Directory roots contribute their source files. Resolve libraries
+           and check COBOL/PL/I compilations unless --no-compile is supplied.
+  masters  Write only the CSV master tables describing node/edge types,
+           attributes and assets supplied by Zeus. No roots are required.
+
+OPTIONS
+  --lib DIR, -I DIR, -L DIR  Add a library search directory; repeatable.
+  --out DIR, -o DIR         Output directory (default: deps).
+  --no-compile              Skip compiler validation during analyze.
+  --bom                     Prefix CSV files with a UTF-8 BOM for spreadsheets.
+
+OUTPUT
+  Both commands write master CSV tables. analyze also writes nodes.csv,
+  edges.csv, node_attributes.csv, edge_attributes.csv, edge_locations.csv
+  and missing_assets.csv. Existing report files are replaced.
+  References include COPY, %INCLUDE, SQL INCLUDE, CALL/FETCH, EXEC CICS,
+  EXEC DLI, JCL programs/procedures and IMS/CSD resource relationships.
+  Unresolved dynamic targets are reported; the tool does not run applications.
+
+EXAMPLES
+  zdeps analyze --lib copybooks --lib loadsrc --out graph src jobs
+  zdeps analyze --no-compile --bom --out graph jobs/nightly.jcl
+  zdeps masters --bom --out graph-schema
+
+EXIT STATUS
+  0 no missing assets (compiler diagnostics can still appear in CSV);
+  4 missing assets; 2 invalid usage; 8 file/output failure.

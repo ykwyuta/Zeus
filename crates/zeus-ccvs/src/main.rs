@@ -19,7 +19,7 @@ use clap::{Parser, Subcommand, ValueEnum};
 use zeus_ccvs::{exec85, extract, population, runner, summary, toolchain::Toolchain};
 
 #[derive(Parser)]
-#[command(version, about = "NIST CCVS85 COBOL-85 test suite harness")]
+#[command(version, about = "NIST CCVS85 COBOL-85 test suite harness", after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -36,6 +36,7 @@ enum ToolchainKind {
 #[derive(Subcommand)]
 enum Cmd {
     /// Extract the test programs from the population file.
+    #[command(after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
     Extract {
         #[arg(long)]
         newcob: PathBuf,
@@ -53,6 +54,7 @@ enum Cmd {
         verify: Option<PathBuf>,
     },
     /// Compile and run the extracted suite.
+    #[command(after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
     Run {
         #[arg(long)]
         suite: PathBuf,
@@ -81,6 +83,7 @@ enum Cmd {
         out: PathBuf,
     },
     /// Print a summary of a results file.
+    #[command(after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
     Report {
         #[arg(long)]
         results: PathBuf,
@@ -92,6 +95,7 @@ enum Cmd {
         programs: bool,
     },
     /// Build a reference manifest from EXEC85 output files.
+    #[command(after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
     Manifest {
         #[arg(long)]
         out: PathBuf,

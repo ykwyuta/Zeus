@@ -255,3 +255,31 @@ fn dynamic_text_references_match_the_interpreter() {
         );
     }
 }
+
+#[test]
+fn generated_executable_includes_help_without_running_the_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let module =
+        zeus_cobol::compile_file(&programs().join("arith.cbl"), &Default::default()).unwrap();
+    let image = Image {
+        members: vec![("ARITH".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "help-program", &image);
+    for flag in ["--help", "-h"] {
+        let result = Command::new(&exe)
+            .arg(flag)
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        assert!(result.stderr.is_empty());
+        let help = String::from_utf8(result.stdout).unwrap();
+        assert!(help.contains("--dd NAME=PATH"));
+        assert!(help.contains("EXAMPLES"));
+        assert!(help.contains("EXIT STATUS"));
+        assert!(
+            !help.contains("P=000000"),
+            "main program ran while requesting help"
+        );
+    }
+}

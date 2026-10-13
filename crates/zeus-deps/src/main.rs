@@ -20,6 +20,9 @@ use std::process::ExitCode;
 
 use zeus_deps::{graph, report};
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn usage() -> ExitCode {
     eprintln!("usage: zdeps analyze [--lib DIR]... [--out DIR] [--no-compile] [--bom] ROOT...");
     eprintln!("       zdeps masters [--out DIR] [--bom]");
@@ -27,6 +30,12 @@ fn usage() -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zdeps.txt"),
+        &["--lib", "-I", "-L", "--out", "-o"],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = args.first().cloned() else {
         return usage();

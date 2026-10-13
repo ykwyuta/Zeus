@@ -1,0 +1,49 @@
+DETAILED USAGE - zeus-ccvs
+
+Run the NIST CCVS85 COBOL-85 suite through GnuCOBOL, the Zeus interpreter or
+standalone Zeus native executables. Extraction, execution and reporting are
+separate commands. No external documentation is needed for this help.
+
+EXTRACT
+  zeus-ccvs extract --newcob newcob.val --out work/suite [options]
+  --config FILE   EXEC85 X-card configuration (default ccvs85/exec85.conf).
+  --overlay FILE  Apply additional X-card values afterward; repeatable.
+  --verify FILE   Compare extraction with a reference manifest.
+  The population file is expanded into test sources and their associated
+  input files under --out; the reference manifest checks the extracted set.
+
+RUN
+  zeus-ccvs run --suite work/suite --toolchain KIND --out results.json [options]
+  --toolchain KIND  gnucobol, zeus or zeus-native.
+  --cobc FILE       GnuCOBOL compiler path (gnucobol).
+  --zcobc FILE      Zeus compiler path (otherwise next to this executable).
+  --work DIR        Working directory (default work/run); toolchain-specific
+                    build/run files are written beneath it.
+  --modules LIST    Comma-separated suite modules, e.g. NC,SM,IC. Defaults to
+                    all supported modules present in the extracted suite.
+  --programs LIST   Comma-separated program names; default all programs.
+  --jobs N          Parallel workers (default 4).
+  --timeout N       Per-step timeout in seconds (default 120).
+  --out FILE        Required JSON results file; existing file is replaced.
+  Native runs need zeus-rt available to zcobc. The harness prints a summary;
+  inspect the result counts rather than assuming exit 0 means every test passed.
+
+REPORT
+  zeus-ccvs report --results results.json [--baseline baseline.json] [--programs]
+  --baseline FILE  Compare counts with another recorded run.
+  --programs       Include the detailed per-program results in the report.
+
+MANIFEST
+  zeus-ccvs manifest --out manifest.txt EXEC85_OUTPUT...
+  Build a reference extraction manifest from EXEC85 output files.
+
+EXAMPLES
+  zeus-ccvs extract --newcob newcob.val --out work/suite --overlay ccvs85/exec85-zeus.conf
+  zeus-ccvs run --suite work/suite --toolchain zeus --out results.json
+  zeus-ccvs run --suite work/suite --toolchain zeus-native --modules NC,SM --out native.json
+  zeus-ccvs report --results native.json --baseline results.json --programs
+
+EXIT STATUS
+  0 command completed; 2 invalid usage or harness failure. Test failures and
+  compiler/runtime outcomes are recorded in JSON and summarized in reports.
+  Use --help/-h for any command; --version prints the harness version.
