@@ -17,12 +17,34 @@ OPTIONS
   --lib DIR, -I DIR, -L DIR  Add a library search directory; repeatable.
   --out DIR, -o DIR         Output directory (default: deps).
   --no-compile              Skip compiler validation during analyze.
+                           Syntax/diagnostic reports contain headers only.
   --bom                     Prefix CSV files with a UTF-8 BOM for spreadsheets.
 
 OUTPUT
   Both commands write master CSV tables. analyze also writes nodes.csv,
   edges.csv, node_attributes.csv, edge_attributes.csv, edge_locations.csv
   and missing_assets.csv. Existing report files are replaced.
+  It also writes:
+    unsupported_syntax.csv            One row per language/syntax/stage;
+                                      occurrences, program and file counts.
+    unsupported_syntax_locations.csv  Each use: program, main source path,
+                                      actual source/COPY/include path, line,
+                                      source line and diagnostic message.
+    compile_diagnostics.csv           All collected compiler diagnostics,
+                                      including ordinary errors and warnings.
+  syntax_id joins the syntax summary to its locations. COMPILE means the
+  compiler explicitly rejected an unsupported construct; RUNTIME means the
+  compiler accepted a statement that Zeus cannot execute. An ordinary syntax
+  error or missing COPY is an error, not unsupported syntax. The console
+  prints unsupported syntax kind and occurrence counts.
+
+  Detection uses compiler results, not a keyword guess. A fatal parse/compile
+  error can stop inspection of the rest of that program; a zero count does
+  not certify full language/runtime support. With --no-compile, checks are
+  disabled. Unknown positions are blank; column numbers are not available.
+  A shared COPY statement is counted for each compiled program using it.
+  This is source analysis; host-specific EXEC behavior is not validated by
+  running the application. Exit status behavior is unchanged by syntax counts.
   References include COPY, %INCLUDE, SQL INCLUDE, CALL/FETCH, EXEC CICS,
   EXEC DLI, JCL programs/procedures and IMS/CSD resource relationships.
   Unresolved dynamic targets are reported; the tool does not run applications.

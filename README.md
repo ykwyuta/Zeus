@@ -173,6 +173,12 @@ dynamic calls), checks the programs with the Zeus compilers, and writes
 the masters (node types, edge types, attribute types per node and edge
 type, assets Zeus supplies) and the lists of nodes, edges, node
 attributes, edge attributes, edge locations and missing assets as CSV.
+It also reports compiler-confirmed unsupported syntax in
+`unsupported_syntax.csv` (counts by construct) and
+`unsupported_syntax_locations.csv` (program, source/include file, line and
+source text). `compile_diagnostics.csv` keeps general compiler errors and
+warnings separate. These checks require compilation (the default); fatal
+compiler errors may prevent inspection of later constructs in a program.
 See [docs/proposal/0011-dependency-analysis.md](docs/proposal/0011-dependency-analysis.md).
 
 IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,

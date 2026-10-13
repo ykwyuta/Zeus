@@ -103,6 +103,26 @@ fn main() -> ExitCode {
                 g.edges.len(),
                 out.display()
             );
+            if opts.compile {
+                let unsupported: Vec<_> = g
+                    .diagnostics
+                    .iter()
+                    .filter(|d| d.category == "UNSUPPORTED")
+                    .collect();
+                let kinds: std::collections::BTreeSet<_> = unsupported
+                    .iter()
+                    .map(|d| (d.language, &d.syntax, d.stage))
+                    .collect();
+                println!(
+                    "zdeps: {} unsupported syntax kinds, {} occurrences; see unsupported_syntax.csv and unsupported_syntax_locations.csv; all diagnostics: compile_diagnostics.csv",
+                    kinds.len(),
+                    unsupported.len()
+                );
+            } else {
+                println!(
+                    "zdeps: syntax checks disabled (--no-compile); syntax and diagnostic reports contain headers only"
+                );
+            }
             if missing > 0 {
                 ExitCode::from(4)
             } else {
