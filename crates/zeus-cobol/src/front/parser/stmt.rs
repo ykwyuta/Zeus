@@ -27,6 +27,7 @@ impl Parser {
     pub(super) fn statements(&mut self) -> Result<Vec<Stmt>> {
         let mut out = Vec::new();
         while self.is_verb() {
+            out.push(Stmt::Line(self.pos()));
             out.push(self.statement()?);
         }
         Ok(out)

@@ -139,6 +139,14 @@ alphanumeric MOVE; the other statements call the interpreter's code); PL/I
 programs are interpreted. See
 [docs/proposal/0009-native-executables.md](docs/proposal/0009-native-executables.md).
 
+Coverage: with `ZEUS_COVERAGE=DIR` (or `zcobc run --coverage DIR`, `zpli
+--coverage DIR`) the interpreters record which COBOL and PL/I statements
+ran, which way each branch went and which paragraphs or procedures were
+entered, in programs run by `zcobc`, `zpli`, `zjob`, `zcics` and native
+executables. `zcov report [--detail] [--lcov FILE] [--html DIR] DIR`
+prints a summary per program and writes LCOV or an HTML page per source
+file. See [docs/proposal/0010-coverage.md](docs/proposal/0010-coverage.md).
+
 IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,
 MQOPEN, MQPUT, MQPUT1, MQGET, MQINQ, MQCMIT, MQBACK, MQCLOSE, MQDISC) on an
 IBM MQ queue manager through IBM's MQ C client library (libmqic_r, loaded at
@@ -174,7 +182,7 @@ and runs programs and utilities, including the compilers and the binder.
 
 | Path | Content |
 |---|---|
-| `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter |
+| `crates/zeus-cobol` | `zcobc`: COBOL front end, semantics, ZIR code generator and interpreter; `zcov`: coverage reports |
 | `crates/zeus-pli` | `zpli`: PL/I front end (margins, %INCLUDE), semantics, typed IR and interpreter |
 | `crates/zeus-native` | `zeus-rt`: the run time of native executables (`zcobc` / `zpli --native`) |
 | `crates/zeus-ds` | Data set layer: DD allocation, record formats, sequential, relative and keyed (KSDS + AIX style) data sets, catalog with GDGs |

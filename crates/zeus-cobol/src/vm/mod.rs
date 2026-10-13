@@ -71,6 +71,38 @@ struct Frame {
     pc: u32,
 }
 
+/// A program's coverage counts: executions of each instruction, and the
+/// times each conditional jump went to its target.
+struct CovCounts {
+    code: Rc<ProgramCode>,
+    module: Rc<Module>,
+    hits: Vec<u64>,
+    jumped: Vec<u64>,
+}
+
+impl Drop for Machine {
+    fn drop(&mut self) {
+        self.flush_coverage();
+    }
+}
+
+impl Machine {
+    /// The coverage counts so far go to the process's totals (counting
+    /// goes on afresh).
+    pub fn flush_coverage(&mut self) {
+        if let Some(cov) = self.cov.as_mut().map(std::mem::take) {
+            for c in cov.into_values() {
+                crate::coverage::add(crate::coverage::cobol_program(
+                    &c.code,
+                    &c.module.sources,
+                    &c.hits,
+                    &c.jumped,
+                ));
+            }
+        }
+    }
+}
+
 /// Programs compiled to machine code: `run` runs the program of
 /// instance `s.cur` from `s.pc` until it leaves that program or the run
 /// ends; None when that program has no machine code (the interpreter
@@ -146,6 +178,8 @@ pub struct Machine {
     tick: Option<fn()>,
     /// Machine code of programs (native executables).
     native: Option<Rc<dyn NativeCode>>,
+    /// Coverage counts (ZEUS_COVERAGE) by program code.
+    cov: Option<HashMap<*const ProgramCode, CovCounts>>,
     ticks: u32,
 }
 
@@ -222,6 +256,7 @@ impl Machine {
             exec_host: None,
             tick: None,
             native: None,
+            cov: crate::coverage::enabled().then(HashMap::new),
             ticks: 0,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
@@ -528,6 +563,7 @@ impl Machine {
 
     /// Closes the files of all programs (the end of the run unit).
     pub fn finish(&mut self) {
+        self.flush_coverage();
         self.close_all();
         let _ = self.stdout.flush();
     }
@@ -789,6 +825,60 @@ impl Machine {
     /// Runs the instruction at `s.pc` of program instance `s.cur`; the
     /// end of the run unit's main program or of a called one.
     pub fn exec_step(&mut self, s: &mut RunState) -> RResult<Option<Exit>> {
+        if self.cov.is_none() {
+            return self.exec_instr(s);
+        }
+        let (cur, pc) = (s.cur, s.pc);
+        let r = self.exec_instr(s);
+        let jumped = s.cur == cur && s.pc != pc + 1;
+        self.cov_count(cur, pc, jumped);
+        r
+    }
+
+    /// Counts an execution of instruction `pc` of instance `cur` (and
+    /// whether a conditional jump there went to its target).
+    fn cov_count(&mut self, cur: usize, pc: u32, jumped: bool) {
+        let Some(cov) = self.cov.as_mut() else {
+            return;
+        };
+        let inst = &self.instances[cur];
+        let c = cov
+            .entry(Rc::as_ptr(&inst.code))
+            .or_insert_with(|| CovCounts {
+                code: inst.code.clone(),
+                module: inst.module.clone(),
+                hits: vec![0; inst.code.code.len()],
+                jumped: vec![0; inst.code.code.len()],
+            });
+        let pc = pc as usize;
+        if pc < c.hits.len() {
+            c.hits[pc] += 1;
+            if jumped
+                && matches!(
+                    inst.code.code[pc],
+                    Instr::JumpIf(..) | Instr::JumpUnless(..)
+                )
+            {
+                c.jumped[pc] += 1;
+            }
+        }
+    }
+
+    /// Counts a conditional jump to its target (the instruction itself
+    /// was counted).
+    fn cov_jumped(&mut self, cur: usize, pc: u32, jumped: bool) {
+        if jumped
+            && let Some(c) = self
+                .cov
+                .as_mut()
+                .and_then(|m| m.get_mut(&Rc::as_ptr(&self.instances[cur].code)))
+            && let Some(j) = c.jumped.get_mut(pc as usize)
+        {
+            *j += 1;
+        }
+    }
+
+    fn exec_instr(&mut self, s: &mut RunState) -> RResult<Option<Exit>> {
         let cur = s.cur;
         let code = self.instances[cur].code.clone();
         let Some(ins) = code.code.get(s.pc as usize) else {
@@ -1154,6 +1244,7 @@ impl Machine {
             let Some(ins) = code.code.get(pc as usize) else {
                 return err("procedure ran past the end of the program");
             };
+            self.cov_count(cur, pc, false);
             // Only a subset of control is needed inside procedures; reuse
             // the main loop by single-stepping.
             match ins {
@@ -1180,11 +1271,15 @@ impl Machine {
                     continue;
                 }
                 Instr::JumpIf(c, t) => {
-                    pc = if self.eval_cx(cur, c)? { *t } else { pc + 1 };
+                    let jump = self.eval_cx(cur, c)?;
+                    self.cov_jumped(cur, pc, jump);
+                    pc = if jump { *t } else { pc + 1 };
                     continue;
                 }
                 Instr::JumpUnless(c, t) => {
-                    pc = if !self.eval_cx(cur, c)? { *t } else { pc + 1 };
+                    let jump = !self.eval_cx(cur, c)?;
+                    self.cov_jumped(cur, pc, jump);
+                    pc = if jump { *t } else { pc + 1 };
                     continue;
                 }
                 Instr::AlterableGo(slot) => {

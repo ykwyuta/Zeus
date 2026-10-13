@@ -126,6 +126,8 @@ impl Compiler {
                 main: None,
                 conditions: Vec::new(),
                 sources: Vec::new(),
+                source_paths: Vec::new(),
+                stmt_lines: Vec::new(),
                 refers: Vec::new(),
             },
             diags: Vec::new(),
@@ -636,9 +638,22 @@ pub fn compile(
     sources: Vec<String>,
 ) -> (Option<Module>, Vec<Diag>) {
     let mut c = Compiler::new(ccsid);
+    c.m.source_paths = sources
+        .iter()
+        .map(|n| {
+            std::fs::canonicalize(n)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| n.clone())
+        })
+        .collect();
     c.m.sources = sources;
     match c.program(stmts) {
-        Ok(()) => (Some(c.m), c.diags),
+        Ok(()) => {
+            let mut m = c.m;
+            m.stmt_lines.sort_unstable();
+            m.stmt_lines.dedup();
+            (Some(m), c.diags)
+        }
         Err(d) => {
             c.diags.push(d);
             (None, c.diags)

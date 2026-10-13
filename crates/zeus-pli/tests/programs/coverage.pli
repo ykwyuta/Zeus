@@ -1,0 +1,14 @@
+ PCOV: PROC OPTIONS(MAIN);
+   DCL (I, N) FIXED BIN(31) INIT(0);
+   DO I = 1 TO 5;
+     IF I > 3 THEN
+       N = N + 1;
+     ELSE
+       N = N - 1;
+   END;
+   IF N > 100 THEN CALL NEVER;
+   PUT SKIP LIST('N', N);
+ NEVER: PROC;
+   PUT SKIP LIST('NEVER');
+ END NEVER;
+ END PCOV;

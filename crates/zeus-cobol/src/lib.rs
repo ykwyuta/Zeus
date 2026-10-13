@@ -5,6 +5,7 @@
 //! interpreter ([`vm`]).
 
 pub mod codepage;
+pub mod coverage;
 pub mod diag;
 pub mod ebcdic;
 pub mod front;
@@ -30,7 +31,18 @@ pub fn compile_file(path: &Path, opts: &FrontOptions) -> Result<zir::Module, Dia
         d
     };
     let programs = front::parse_file(path, opts, &mut files).map_err(|d| name(d, &files))?;
-    sema::codegen::compile(&programs).map_err(|d| name(d, &files))
+    let mut module = sema::codegen::compile(&programs).map_err(|d| name(d, &files))?;
+    // the source files, as absolute paths (coverage reports)
+    module.sources = files
+        .names
+        .iter()
+        .map(|n| {
+            std::fs::canonicalize(n)
+                .map(|p| p.display().to_string())
+                .unwrap_or_else(|_| n.clone())
+        })
+        .collect();
+    Ok(module)
 }
 
 /// Serialised form of a module (`.zo` file).

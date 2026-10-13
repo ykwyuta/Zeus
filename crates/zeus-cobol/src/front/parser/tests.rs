@@ -10,6 +10,14 @@ fn parse_src(body: &str) -> Program {
     parse(toks).unwrap().remove(0)
 }
 
+/// The statements of a list without their position markers.
+fn bare(stmts: &[Stmt]) -> Vec<&Stmt> {
+    stmts
+        .iter()
+        .filter(|s| !matches!(s, Stmt::Line(_)))
+        .collect()
+}
+
 #[test]
 fn minimal_program() {
     let p = parse_src(
@@ -37,7 +45,7 @@ SUB-PARA.
     assert_eq!(paras.len(), 2);
     assert_eq!(paras[0].name.as_deref(), Some("MAIN-PARA"));
     assert_eq!(paras[0].sentences.len(), 4);
-    assert!(matches!(paras[0].sentences[1][1], Stmt::If { .. }));
+    assert!(matches!(bare(&paras[0].sentences[1])[1], Stmt::If { .. }));
 }
 
 #[test]
@@ -48,7 +56,7 @@ PROGRAM-ID. C.
 PROCEDURE DIVISION.
     IF A = 1 OR 2 AND NOT > 3 MOVE 1 TO B.",
     );
-    let s = &p.procedure.sections[0].paragraphs[0].sentences[0][0];
+    let s = bare(&p.procedure.sections[0].paragraphs[0].sentences[0])[0];
     let Stmt::If { cond, .. } = s else { panic!() };
     // A = 1 OR (A = 2 AND A <= 3)
     let Cond::Or(_, rhs) = cond else {
@@ -77,7 +85,7 @@ SECOND-SEC SECTION.
     GO TO P1.",
     );
     assert_eq!(p.procedure.sections.len(), 2);
-    let s = &p.procedure.sections[0].paragraphs[0].sentences[0][0];
+    let s = bare(&p.procedure.sections[0].paragraphs[0].sentences[0])[0];
     let Stmt::Perform {
         kind: PerformKind::Varying { loops, .. },
         ..
@@ -102,21 +110,21 @@ PROCEDURE DIVISION.
     DIVIDE A INTO B GIVING C REMAINDER D
     COMPUTE X ROUNDED = (A + B) * -1 ** 2 / C.",
     );
-    let st = &p.procedure.sections[0].paragraphs[0].sentences[0];
+    let st = bare(&p.procedure.sections[0].paragraphs[0].sentences[0]);
     assert_eq!(st.len(), 5);
     let Stmt::Add {
         from,
         to,
         size_error,
         ..
-    } = &st[0]
+    } = st[0]
     else {
         panic!()
     };
     assert_eq!(from.len(), 2);
     assert_eq!(to.len(), 2);
     assert!(to[0].rounded && size_error.on.is_some() && size_error.not_on.is_some());
-    let Stmt::Subtract { from, giving, .. } = &st[1] else {
+    let Stmt::Subtract { from, giving, .. } = st[1] else {
         panic!()
     };
     assert_eq!((from.len(), giving.len()), (2, 1));
@@ -139,7 +147,7 @@ WORKING-STORAGE SECTION.
 PROCEDURE DIVISION.
     COMPUTE N = FUNCTION MAX(B, (C + 1) / 2, T (2)).",
     );
-    let s = &p.procedure.sections[0].paragraphs[0].sentences[0][0];
+    let s = bare(&p.procedure.sections[0].paragraphs[0].sentences[0])[0];
     let Stmt::Compute { expr, .. } = s else {
         panic!("{s:?}")
     };

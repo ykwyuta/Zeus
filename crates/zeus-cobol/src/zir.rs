@@ -18,6 +18,10 @@ pub struct Module {
     /// for).
     #[serde(default = "default_ccsid")]
     pub ccsid: u32,
+    /// The source files (the program and its copy members), indexed by
+    /// the file numbers of `ProgramCode::stmt_pos` (for coverage).
+    #[serde(default)]
+    pub sources: Vec<String>,
 }
 
 fn default_ccsid() -> u32 {
@@ -83,6 +87,13 @@ pub struct ProgramCode {
     /// Descriptor of the RETURN-CODE special register.
     #[serde(default)]
     pub return_code: Option<u32>,
+    /// The statements of the procedure division: source file and line.
+    #[serde(default)]
+    pub stmt_pos: Vec<(u32, u32)>,
+    /// The statement of each instruction (an index into `stmt_pos`, or
+    /// `u32::MAX`).
+    #[serde(default)]
+    pub instr_stmt: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -265,6 +276,9 @@ pub struct Paragraph {
     pub name: String,
     pub section: Option<String>,
     pub start: u32,
+    /// Where it is in the source: file and line.
+    #[serde(default)]
+    pub pos: (u32, u32),
 }
 
 /// Where a data item lives.

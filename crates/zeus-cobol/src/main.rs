@@ -3,7 +3,7 @@
 //! ```text
 //! zcobc compile [-I <dir>]... [--subprogram] [--cics] -o <artifact> <source>
 //! zcobc compile --native [--target <triple>] [--with <module>]... -o <exe> <source>
-//! zcobc run [--dd NAME=PATH]... [--parm TEXT] <artifact>   (files: see zeus_ds::dd)
+//! zcobc run [--dd NAME=PATH]... [--parm TEXT] [--coverage DIR] <artifact>   (files: see zeus_ds::dd)
 //! zcobc check [-I <dir>]... [--cics] <source>...   (compile without output)
 //! zcobc inventory [-I <dir>]... <source>...  (statements, functions, EXEC usage)
 //! ```
@@ -32,7 +32,9 @@ fn usage() -> ExitCode {
     eprintln!(
         "       zcobc compile --native [--target <triple>] [--with <module.zo>]... [--no-machine-code] [options] -o <executable> <source>"
     );
-    eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] <artifact>");
+    eprintln!(
+        "       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] [--coverage DIR] <artifact>"
+    );
     eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
     eprintln!("       zcobc inventory [-I <dir>]... <source>...");
     ExitCode::from(2)
@@ -87,6 +89,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "--debugging-lines" => a.debugging_lines = true,
             "--cics" => a.cics = true,
             "--native" => a.native = true,
+            "--coverage" => zeus_cobol::coverage::set_dir(std::path::Path::new(it.next()?)),
             "--no-machine-code" => a.no_machine_code = true,
             "--target" => a.target = Some(it.next()?.clone()),
             "--with" => a.with.push(PathBuf::from(it.next()?)),
@@ -271,7 +274,13 @@ fn run(args: &Args) -> ExitCode {
         parm: args.parm.clone(),
         ..Default::default()
     });
-    match machine.run_main(module) {
+    let r = machine.run_main(module);
+    // the coverage counts (ZEUS_COVERAGE, --coverage)
+    drop(machine);
+    if let Err(e) = zeus_cobol::coverage::save() {
+        eprintln!("zcobc: coverage: {e}");
+    }
+    match r {
         Ok(code) => ExitCode::from((code & 0xFF) as u8),
         Err(e) => match e.abend() {
             Some(code) => {

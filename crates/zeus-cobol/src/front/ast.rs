@@ -770,6 +770,9 @@ pub enum Stmt {
         output: SortIo,
     },
     NextSentence,
+    /// The source position of the statement that follows in its list (the
+    /// parser puts one before each statement).
+    Line(Pos),
     Move {
         from: Operand,
         to: Vec<DataRef>,
