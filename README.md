@@ -147,6 +147,17 @@ executables. `zcov report [--detail] [--lcov FILE] [--html DIR] DIR`
 prints a summary per program and writes LCOV or an HTML page per source
 file. See [docs/proposal/0010-coverage.md](docs/proposal/0010-coverage.md).
 
+Dependency analysis: `zdeps analyze [--lib DIR]... [--out DIR] ROOT...`
+follows COPY / %INCLUDE / EXEC SQL INCLUDE, CALL / FETCH, EXEC CICS LINK /
+XCTL / LOAD / START / SEND MAP, EXEC DLI SCHD, JCL EXEC PGM= / procedures /
+INCLUDE, DSN RUN PROGRAM, DFSRRC00 PARM, PSB PCBs and CSD definitions
+recursively from the root files (constants put in variables resolve
+dynamic calls), checks the programs with the Zeus compilers, and writes
+the masters (node types, edge types, attribute types per node and edge
+type, assets Zeus supplies) and the lists of nodes, edges, node
+attributes, edge attributes, edge locations and missing assets as CSV.
+See [docs/proposal/0011-dependency-analysis.md](docs/proposal/0011-dependency-analysis.md).
+
 IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,
 MQOPEN, MQPUT, MQPUT1, MQGET, MQINQ, MQCMIT, MQBACK, MQCLOSE, MQDISC) on an
 IBM MQ queue manager through IBM's MQ C client library (libmqic_r, loaded at
@@ -195,6 +206,7 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-ims` | `zims`: IMS DB (DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I, GSAM, TM queues) and the CBLTDLI / EXEC DLI / DFSRRC00 run-time glue |
 | `crates/zeus-mq` | MQI calls of COBOL programs on IBM MQ through the IBM MQ C client library; z/OS structure conversion |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL and PL/I symbolic maps |
+| `crates/zeus-deps` | `zdeps`: dependency analysis of COBOL, PL/I, JCL, BMS, IMS and CSD sources; masters, nodes, edges, locations and missing assets as CSV |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
 | `crates/zeus-hercdiff` | Records Hercules results for packed-decimal instructions (oracle for the decimal arithmetic) |

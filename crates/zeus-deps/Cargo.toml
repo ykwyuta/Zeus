@@ -1,0 +1,22 @@
+[package]
+name = "zeus-deps"
+description = "Zeus dependency analysis of COBOL, PL/I and JCL sources (zdeps): nodes, edges and missing assets as CSV"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-bms = { path = "../zeus-bms" }
+zeus-cobol = { path = "../zeus-cobol" }
+zeus-jcl = { path = "../zeus-jcl" }
+zeus-pli = { path = "../zeus-pli" }
+tempfile.workspace = true
+
+[[bin]]
+name = "zdeps"
+path = "src/main.rs"
+
+[lints]
+workspace = true
