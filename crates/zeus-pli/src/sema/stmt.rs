@@ -28,6 +28,10 @@ impl Compiler {
             self.enabled = apply_prefixes(self.enabled, &s.prefixes);
             self.file = s.pos.file;
             let stmt = self.statement(s)?;
+            // declarations and procedure definitions do nothing when run
+            if !matches!(stmt, Stmt::Null) {
+                self.m.stmt_lines.push((s.pos.file, s.pos.line));
+            }
             out.push(Node {
                 labels,
                 line: s.pos.line,

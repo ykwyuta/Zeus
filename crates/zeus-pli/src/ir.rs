@@ -41,6 +41,12 @@ pub struct Module {
     pub conditions: Vec<String>,
     /// Source file names (for messages).
     pub sources: Vec<String>,
+    /// The source files as absolute paths, and the lines of the
+    /// statements (file, line): for coverage.
+    #[serde(default)]
+    pub source_paths: Vec<String>,
+    #[serde(default)]
+    pub stmt_lines: Vec<(u16, u32)>,
     /// `REFER` extents of BASED structures.
     #[serde(default)]
     pub refers: Vec<Refer>,

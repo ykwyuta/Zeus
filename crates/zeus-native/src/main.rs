@@ -162,8 +162,10 @@ fn run(name: &str, main: &[u8], args: &Args, libs: Vec<PathBuf>, image: &Image) 
         sys.set_exec_host(h.clone());
     }
     zeus_mq::register(&mut sys);
-    // the machine code of the COBOL programs (ZEUS_INTERPRET=1: without)
+    // the machine code of the COBOL programs (ZEUS_INTERPRET=1, and
+    // coverage, which the interpreter records: without)
     if std::env::var_os("ZEUS_INTERPRET").is_none()
+        && !zeus_cobol::coverage::enabled()
         && let Err(e) = machine_code::install(&mut sys, image)
     {
         eprintln!("zeus-rt: {e}");

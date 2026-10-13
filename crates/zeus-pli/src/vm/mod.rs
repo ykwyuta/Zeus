@@ -131,6 +131,9 @@ pub struct Loc {
 }
 
 pub struct Machine {
+    /// Coverage counts (ZEUS_COVERAGE), and the statement running.
+    cov: Option<PliCov>,
+    cov_at: (u16, u32),
     /// Static storage initialised (by `run` or the first `call_entry`).
     started: bool,
     module: Rc<Module>,
@@ -211,6 +214,8 @@ impl Machine {
             cics_instance: 0,
             titles: std::collections::HashMap::new(),
             isubs: Vec::new(),
+            cov: zeus_cobol::coverage::enabled().then(PliCov::default),
+            cov_at: (0, 0),
         }
     }
 
@@ -1397,6 +1402,12 @@ impl Machine {
             let node = &list.stmts[i];
             CUR_ENABLED.with(|e| e.set(node.enabled));
             CUR_LINE.with(|e| e.set(node.line));
+            if let Some(c) = self.cov.as_mut()
+                && !matches!(node.stmt, Stmt::Null)
+            {
+                *c.lines.entry((node.file, node.line)).or_default() += 1;
+                self.cov_at = (node.file, node.line);
+            }
             match self.exec(&node.stmt, act) {
                 Ok(()) => i += 1,
                 Err(Intr::Goto(l, a))
@@ -1457,7 +1468,17 @@ impl Machine {
                 Ok(())
             }
             Stmt::If(c, t, e) => {
-                if self.eval(c, act)?.truth() {
+                let at = self.cov_at;
+                let truth = self.eval(c, act)?.truth();
+                if let Some(cov) = self.cov.as_mut() {
+                    let b = cov.branches.entry(at).or_default();
+                    if truth {
+                        b.0 += 1;
+                    } else {
+                        b.1 += 1;
+                    }
+                }
+                if truth {
                     self.run_list(t, act)
                 } else {
                     self.run_list(e, act)
@@ -2432,6 +2453,7 @@ impl Machine {
 
     /// Ends a module used through `call_entry`: closes its files.
     pub fn finish(&mut self) {
+        self.flush_coverage();
         self.close_all();
         let _ = self.env.stdout.flush();
         let _ = self.env.msgout.flush();
@@ -3097,4 +3119,87 @@ thread_local! {
     /// REFER values while ALLOCATE sizes a new generation.
     static REFER_OVERRIDE: std::cell::RefCell<Option<Vec<i64>>> = const { std::cell::RefCell::new(None) };
     static PENDING_CONV: std::cell::RefCell<Option<(Vec<u8>, u8)>> = const { std::cell::RefCell::new(None) };
+}
+
+/// A module's coverage counts: runs of the statements on each line, and
+/// the THEN / ELSE outcomes of the IF statements of each line.
+#[derive(Default)]
+struct PliCov {
+    lines: HashMap<(u16, u32), u64>,
+    branches: HashMap<(u16, u32), (u64, u64)>,
+}
+
+impl Drop for Machine {
+    fn drop(&mut self) {
+        self.flush_coverage();
+    }
+}
+
+impl Machine {
+    /// The coverage counts so far go to the process's totals.
+    pub fn flush_coverage(&mut self) {
+        let Some(cov) = self.cov.take() else {
+            return;
+        };
+        let m = &self.module;
+        let mut lines: Vec<_> = m
+            .stmt_lines
+            .iter()
+            .map(|&(f, l)| zeus_cobol::coverage::LineCount {
+                file: u32::from(f),
+                line: l,
+                count: cov.lines.get(&(f, l)).copied().unwrap_or(0),
+            })
+            .collect();
+        lines.sort_by_key(|l| (l.file, l.line));
+        let mut branches: Vec<_> = cov
+            .branches
+            .iter()
+            .map(|(&(f, l), &(t, e))| zeus_cobol::coverage::BranchCount {
+                file: u32::from(f),
+                line: l,
+                id: 0,
+                taken: t,
+                not_taken: e,
+            })
+            .collect();
+        branches.sort_by_key(|b| (b.file, b.line));
+        // procedures: entered as often as their first statement ran
+        let functions = m
+            .procs
+            .iter()
+            .filter_map(|p| {
+                let first = m
+                    .blocks
+                    .get(p.block as usize)?
+                    .body
+                    .stmts
+                    .iter()
+                    .find(|n| !matches!(n.stmt, Stmt::Null))?;
+                Some(zeus_cobol::coverage::FnCount {
+                    name: p.name.clone(),
+                    file: u32::from(first.file),
+                    line: first.line,
+                    count: cov
+                        .lines
+                        .get(&(first.file, first.line))
+                        .copied()
+                        .unwrap_or(0),
+                })
+            })
+            .collect();
+        let sources = if m.source_paths.is_empty() {
+            m.sources.clone()
+        } else {
+            m.source_paths.clone()
+        };
+        zeus_cobol::coverage::add(zeus_cobol::coverage::ProgramCov {
+            language: "PL/I".into(),
+            name: m.name.clone(),
+            sources,
+            lines,
+            branches,
+            functions,
+        });
+    }
 }

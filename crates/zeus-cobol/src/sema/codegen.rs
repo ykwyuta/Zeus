@@ -26,6 +26,16 @@ pub struct Gen<'a> {
     labels: Vec<Option<u32>>,
     /// Paragraphs in code order: (name, section, start label).
     paras: Vec<(String, Option<String>, Label)>,
+    /// Source position of each paragraph (file, line).
+    para_pos: Vec<(u32, u32)>,
+    /// Statements (file, line), the statement of each instruction, and
+    /// the statement being generated.
+    stmt_pos: Vec<(u32, u32)>,
+    instr_stmt: Vec<u32>,
+    cur_stmt: u32,
+    /// The statement before the last position marker (the one containing
+    /// the marked statement).
+    marker_outer: u32,
     /// Section name -> (first paragraph, last paragraph).
     sections: HashMap<String, (u32, u32)>,
     /// Entry label of each named section with paragraphs (by first
@@ -117,6 +127,11 @@ impl<'a> Gen<'a> {
             code: Vec::new(),
             labels: Vec::new(),
             paras: Vec::new(),
+            para_pos: Vec::new(),
+            stmt_pos: Vec::new(),
+            instr_stmt: Vec::new(),
+            cur_stmt: u32::MAX,
+            marker_outer: u32::MAX,
             sections: HashMap::new(),
             para_end_labels: Vec::new(),
             section_labels: HashMap::new(),
@@ -351,8 +366,10 @@ impl<'a> Gen<'a> {
         if matches!(i, Instr::Perform { .. }) && !self.in_decl && self.dbg.procs() {
             self.code
                 .push(Instr::DebugCause(zir::debug_cause::PERFORM, self.pos.line));
+            self.instr_stmt.push(self.cur_stmt);
         }
         self.code.push(i);
+        self.instr_stmt.push(self.cur_stmt);
     }
 
     fn temp(&mut self) -> u32 {
@@ -376,7 +393,7 @@ impl<'a> Gen<'a> {
             for p in &sec.paragraphs {
                 // A paragraph consisting of a single GO TO can be ALTERed.
                 let alterable = p.sentences.len() == 1
-                    && matches!(p.sentences[0].as_slice(), [Stmt::GoTo { targets, depending: None, .. }] if targets.len() <= 1);
+                    && matches!(p.sentences[0].as_slice(), [Stmt::Line(_), Stmt::GoTo { targets, depending: None, .. }] if targets.len() <= 1);
                 if alterable {
                     let slot = self.alter_init.len() as u32;
                     self.alter_init.push(u32::MAX);
@@ -385,12 +402,14 @@ impl<'a> Gen<'a> {
                 let l = self.label();
                 let name = p.name.clone().unwrap_or_default();
                 self.paras.push((name, sec.name.clone(), l));
+                self.para_pos.push((p.pos.file, p.pos.line));
                 let e = self.label();
                 self.para_end_labels.push(e);
             }
             if sec.paragraphs.is_empty() {
                 let l = self.label();
                 self.paras.push((String::new(), sec.name.clone(), l));
+                self.para_pos.push((sec.pos.file, sec.pos.line));
                 let e = self.label();
                 self.para_end_labels.push(e);
             }
@@ -799,10 +818,12 @@ impl<'a> Gen<'a> {
         let paragraphs = self
             .paras
             .iter()
-            .map(|(n, s, l)| zir::Paragraph {
+            .zip(&self.para_pos)
+            .map(|((n, s, l), &pos)| zir::Paragraph {
                 name: n.clone(),
                 section: s.clone(),
                 start: res(*l),
+                pos,
             })
             .collect();
         let segments = if self.segmented {
@@ -912,6 +933,8 @@ impl<'a> Gen<'a> {
                 .flatten()
                 .find(|&&id| self.dm.items[id].area == super::data::Area::Special)
                 .map(|&id| self.dm.items[id].desc),
+            stmt_pos: self.stmt_pos,
+            instr_stmt: self.instr_stmt,
         })
     }
 
@@ -1437,7 +1460,7 @@ impl<'a> Gen<'a> {
             }
             self.pos = p.pos;
             if let Some(&slot) = self.alter_slots.get(&para_idx) {
-                let Stmt::GoTo { targets, .. } = &p.sentences[0][0] else {
+                let Stmt::GoTo { targets, .. } = &p.sentences[0][1] else {
                     unreachable!()
                 };
                 let target = match targets.first() {
@@ -1607,6 +1630,23 @@ impl<'a> Gen<'a> {
     }
 
     fn stmt(&mut self, s: &Stmt) -> Result<()> {
+        // a statement's position: its instructions belong to it
+        if let Stmt::Line(pos) = s {
+            self.pos = *pos;
+            self.marker_outer = self.cur_stmt;
+            self.cur_stmt = self.stmt_pos.len() as u32;
+            self.stmt_pos.push((pos.file, pos.line));
+            return Ok(());
+        }
+        // after the statement, instructions belong to the statement that
+        // contains it again
+        let outer = self.marker_outer;
+        let r = self.stmt_debug(s);
+        self.cur_stmt = outer;
+        r
+    }
+
+    fn stmt_debug(&mut self, s: &Stmt) -> Result<()> {
         if self.dbg.items.is_empty() || self.in_decl {
             return self.stmt_code(s);
         }
@@ -1927,6 +1967,9 @@ impl<'a> Gen<'a> {
                     self.stmts(e)?;
                 }
                 self.bind(end);
+            }
+            Stmt::Line(pos) => {
+                self.pos = *pos;
             }
             Stmt::NextSentence => {
                 let l = self
@@ -3235,6 +3278,7 @@ pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
     Ok(zir::Module {
         programs: out,
         ccsid: crate::codepage::active().ccsid,
+        sources: Vec::new(),
     })
 }
 

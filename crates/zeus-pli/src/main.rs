@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! zpli compile [-I dir]... [--margins m,n] [--ccsid N] [-o out.zo] source.pli
-//! zpli run [--parm text] [--dd NAME=path]... [-L dir]... module.zo
+//! zpli run [--parm text] [--dd NAME=path]... [-L dir]... [--coverage dir] module.zo
 //! zpli source.pli            compile and run
 //! zpli compile --native [--target triple] [--with module]... [-o exe] source.pli
 //! ```
@@ -29,7 +29,9 @@ fn usage() -> ExitCode {
     eprintln!(
         "       zpli compile --native [--target triple] [--with module]... [options] [-o exe] source.pli"
     );
-    eprintln!("       zpli run [--parm text] [--dd NAME=path]... [-L dir]... module");
+    eprintln!(
+        "       zpli run [--parm text] [--dd NAME=path]... [-L dir]... [--coverage dir] module"
+    );
     eprintln!("       zpli [options] source.pli");
     ExitCode::from(2)
 }
@@ -59,6 +61,11 @@ fn main() -> ExitCode {
                 .push(it.next().map(PathBuf::from).unwrap_or_default()),
             "-o" => out = it.next().map(PathBuf::from),
             "--native" => native = true,
+            "--coverage" => {
+                if let Some(d) = it.next() {
+                    zeus_cobol::coverage::set_dir(std::path::Path::new(&d));
+                }
+            }
             "--no-machine-code" => no_machine_code = true,
             "--target" => target = it.next(),
             "--with" => with.push(it.next().map(PathBuf::from).unwrap_or_default()),
