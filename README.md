@@ -11,6 +11,16 @@ Plans and design decisions are in [docs/proposal](docs/proposal):
 - [0003](docs/proposal/0003-cobol-compiler.md) - the COBOL compiler; first
   milestone: passing the NIST CCVS85 COBOL-85 suite
 
+## Binaries
+
+Each CI run publishes the commands built for Linux (x86-64, glibc 2.35 or
+later) and Windows (x86-64) as the artifacts `zeus-linux-x86_64` and
+`zeus-windows-x86_64` (zip files on the run's page in GitHub Actions):
+`bin/` holds zcobc, zcov, zpli, zjob, zcics, zbms, zims, zmq, zconn, zdeps
+and zeus-rt (the run time `--native` executables are made from, found next
+to zcobc and zpli). Artifacts are kept for the repository's retention
+period (90 days by default).
+
 ## Status
 
 Phase 1 (COBOL compiler): `zcobc` compiles COBOL-85 to ZIR and runs it in a

@@ -54,6 +54,60 @@ jobs:
             [ $rc = 3 ] && grep -q "IN=typed" /tmp/out.txt
           done
 
+  dist:
+    # The Zeus commands for Linux and Windows (x86-64), downloadable as a
+    # zip artifact of each run: zcobc, zcov, zpli, zjob, zcics, zbms, zims,
+    # zmq, zconn, zdeps and the native run time zeus-rt. A program made a
+    # native executable with them runs as the check of each package.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # the oldest supported runner, for the glibc the binaries need
+          - os: ubuntu-22.04
+            name: zeus-linux-x86_64
+            exe: ""
+          - os: windows-2022
+            name: zeus-windows-x86_64
+            exe: .exe
+    runs-on: ${{ matrix.os }}
+    needs: check
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Build
+        run: >
+          cargo build --release --bins -p zeus-cobol -p zeus-pli -p zeus-jcl
+          -p zeus-cics -p zeus-bms -p zeus-ims -p zeus-mq -p zeus-zconnect
+          -p zeus-deps -p zeus-native
+      - name: Package
+        run: |
+          d=dist/${{ matrix.name }}
+          mkdir -p $d/bin
+          for b in zcobc zcov zpli zjob zcics zbms zims zmq zconn zdeps zeus-rt; do
+            cp target/release/$b${{ matrix.exe }} $d/bin/
+          done
+          cp README.md LICENSE $d/
+          echo "${{ github.sha }}" >$d/VERSION
+      - name: A native executable made with the package
+        run: |
+          bin=dist/${{ matrix.name }}/bin
+          p=crates/zeus-native/tests/programs
+          $bin/zpli${{ matrix.exe }} compile -o psq.zo $p/psq.pli
+          $bin/zcobc${{ matrix.exe }} compile --native --with psq.zo -o hello${{ matrix.exe }} $p/hello.cbl
+          rc=0; echo typed | ./hello${{ matrix.exe }} CI >out.txt || rc=$?
+          cat out.txt
+          [ $rc = 3 ] && grep -q "IN=typed" out.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.name }}
+          path: dist
+          if-no-files-found: error
+
   ccvs85:
     # Runs the NIST CCVS85 suite with GnuCOBOL (comparison baseline) and with
     # zcobc, and publishes both side by side in the job summary. The job
