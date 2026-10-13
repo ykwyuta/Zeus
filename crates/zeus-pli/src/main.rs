@@ -44,6 +44,7 @@ fn main() -> ExitCode {
     let mut libs: Vec<PathBuf> = Vec::new();
     let mut cmd = None;
     let mut native = false;
+    let mut no_machine_code = false;
     let mut target: Option<String> = None;
     let mut with: Vec<PathBuf> = Vec::new();
     let mut ccsid = std::env::var("ZEUS_CCSID")
@@ -58,6 +59,7 @@ fn main() -> ExitCode {
                 .push(it.next().map(PathBuf::from).unwrap_or_default()),
             "-o" => out = it.next().map(PathBuf::from),
             "--native" => native = true,
+            "--no-machine-code" => no_machine_code = true,
             "--target" => target = it.next(),
             "--with" => with.push(it.next().map(PathBuf::from).unwrap_or_default()),
             "-L" => libs.push(it.next().map(PathBuf::from).unwrap_or_default()),
@@ -125,6 +127,13 @@ fn main() -> ExitCode {
                     image
                         .members
                         .push((zeus_cobol::image::member_name(w), data));
+                }
+                if !no_machine_code {
+                    // the COBOL subprograms' machine code
+                    let triple = target
+                        .clone()
+                        .unwrap_or_else(zeus_cobol::native::host_triple);
+                    image.add_machine_code(&triple)?;
                 }
                 let runtime = zeus_cobol::image::find_runtime(target.as_deref())?;
                 image

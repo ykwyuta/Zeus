@@ -8,6 +8,8 @@ license.workspace = true
 repository.workspace = true
 
 [dependencies]
+memmap2 = "0.9.11"
+wasmtime-jit-icache-coherence = "34.0.2"
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-db2 = { path = "../zeus-db2" }
 zeus-ds = { path = "../zeus-ds" }
@@ -21,5 +23,9 @@ tempfile.workspace = true
 name = "zeus-rt"
 path = "src/main.rs"
 
-[lints]
-workspace = true
+# the loader of machine code (src/machine_code.rs) needs unsafe code
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -84,6 +84,19 @@ jobs:
           --overlay ccvs85/exec85-zeus.conf --out work/suite-zeus
       - name: Run with zcobc
         run: target/release/zeus-ccvs run --suite work/suite-zeus --toolchain zeus --out work/zeus.json > /dev/null
+      - name: Run as native executables (machine code)
+        run: |
+          target/release/zeus-ccvs run --suite work/suite-zeus --toolchain zeus-native --work work/run-native --out work/zeus-native.json > /dev/null
+          python3 - <<'PY'
+          import json
+          def flat(f):
+              r = json.load(open(f))
+              return {p['program']: (p['status'], p.get('counts')) for m in r['modules'] for p in m['programs']}
+          a, b = flat('work/zeus.json'), flat('work/zeus-native.json')
+          d = [k for k in a if a[k] != b.get(k)]
+          print(len(a), 'programs,', len(d), 'differ from the interpreter:', d)
+          raise SystemExit(1 if d else 0)
+          PY
       - name: Summary
         run: >
           target/release/zeus-ccvs report --results work/zeus.json
