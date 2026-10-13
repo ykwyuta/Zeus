@@ -825,7 +825,7 @@ impl Session {
         let last_of = |found: Option<Record>| {
             let mut found = found?;
             if last_code('L') {
-                while let Some(n) = tx.next_sibling(&found).filter(&fits) {
+                while let Some(n) = tx.next_sibling(&found).filter(fits) {
                     found = n;
                 }
             }

@@ -256,7 +256,7 @@ pub fn parse(text: &str) -> Result<Mapset, String> {
                 let m = ms
                     .as_mut()
                     .ok_or_else(|| err("DFHMDI before DFHMSD".into()))?;
-                let size = get("SIZE").map(pair).transpose().map_err(&err)?;
+                let size = get("SIZE").map(pair).transpose().map_err(err)?;
                 let map = Map {
                     name: st
                         .label
@@ -289,7 +289,7 @@ pub fn parse(text: &str) -> Result<Mapset, String> {
                 let pos = get("POS")
                     .map(pair)
                     .transpose()
-                    .map_err(&err)?
+                    .map_err(err)?
                     .unwrap_or((0, 0));
                 // POS=n: an offset from the start of the map
                 let pos = if pos.0 == 0 {
