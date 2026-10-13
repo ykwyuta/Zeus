@@ -3,17 +3,38 @@
 //!
 //! Each TLS connection gets a relay thread between the network socket and
 //! one end of a socket pair; the server reads and writes plain text at the
-//! other end, as it does for a connection without TLS.
+//! other end, as it does for a connection without TLS. (Elsewhere than
+//! Unix the pair is two connected loopback TCP sockets.)
 
 use std::io::{self, Read, Write};
 use std::net::{Shutdown, TcpStream};
-use std::os::unix::net::UnixStream;
+#[cfg(unix)]
+use std::os::unix::net::UnixStream as Pipe;
 use std::sync::Arc;
 use std::time::Duration;
 
 use rustls::{ServerConfig, ServerConnection};
 use rustls_pki_types::pem::PemObject;
 use rustls_pki_types::{CertificateDer, PrivateKeyDer};
+
+#[cfg(not(unix))]
+type Pipe = TcpStream;
+
+/// Two connected sockets.
+#[cfg(unix)]
+fn pair() -> io::Result<(Pipe, Pipe)> {
+    Pipe::pair()
+}
+
+#[cfg(not(unix))]
+fn pair() -> io::Result<(Pipe, Pipe)> {
+    let l = std::net::TcpListener::bind(("127.0.0.1", 0))?;
+    let a = TcpStream::connect(l.local_addr()?)?;
+    let (b, _) = l.accept()?;
+    a.set_nodelay(true)?;
+    b.set_nodelay(true)?;
+    Ok((a, b))
+}
 
 /// The server configuration of a certificate chain and its private key
 /// (PEM files).
@@ -38,7 +59,7 @@ pub fn config(cert: &str, key: &str) -> io::Result<Arc<ServerConfig>> {
 /// TLS relay.
 pub enum Conn {
     Tcp(TcpStream),
-    Relay(UnixStream),
+    Relay(Pipe),
 }
 
 impl Conn {
@@ -103,7 +124,7 @@ fn write_all(s: &mut impl Write, mut data: &[u8]) -> io::Result<()> {
 
 /// Accepts TLS on `tcp`: the plain-text end of the connection.
 pub fn accept(tcp: TcpStream, cfg: Arc<ServerConfig>) -> io::Result<Conn> {
-    let (app, mut inner) = UnixStream::pair()?;
+    let (app, mut inner) = pair()?;
     let mut conn = ServerConnection::new(cfg).map_err(|e| io::Error::other(e.to_string()))?;
     let mut tcp = tcp;
     tcp.set_nonblocking(true)?;
