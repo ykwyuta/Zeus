@@ -1077,6 +1077,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "zeus-deps"
+version = "0.1.0"
+dependencies = [
+ "tempfile",
+ "zeus-bms",
+ "zeus-cobol",
+ "zeus-jcl",
+ "zeus-pli",
+]
+
+[[package]]
 name = "zeus-drda"
 version = "0.1.0"
 dependencies = [
