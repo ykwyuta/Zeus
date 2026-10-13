@@ -1,0 +1,46 @@
+zeus-rt / generated PROGRAM - Run a standalone Zeus application
+
+USAGE
+  PROGRAM [--dd NAME=PATH]... [--parm TEXT | TEXT] [--ccsid N]
+  PROGRAM --help
+  zeus-rt --help
+
+DESCRIPTION
+  zeus-rt is the runtime template used by zcobc compile --native and zpli
+  compile --native. The template itself has no main program. Compile an
+  application first, then run the resulting PROGRAM directly; no Zeus
+  installation is required. This help is included in generated executables.
+  The first embedded module is the main program. Bundled modules and .zo
+  files alongside the executable provide subprograms.
+
+OPTIONS
+  --dd NAME=PATH  Allocate a DD to a dataset file; repeatable.
+  --parm TEXT     Supply the EXEC PARM. A positional TEXT also sets PARM;
+                  quote spaces. The last supplied PARM value wins.
+  --ccsid N       Text code page: 37, 930, 939, 1390 or 1399.
+  --help, -h      Print this help without running the embedded program.
+
+INPUT, OUTPUT AND ENVIRONMENT
+  COBOL DISPLAY and PL/I SYSPRINT use stdout; ACCEPT and SYSIN use stdin.
+  DD files retain Zeus/z/OS dataset record formats, including EBCDIC.
+  DD_NAME and ZEUS_DD_CONFIG (NAME=path lines) provide DD allocations.
+  ZEUS_CCSID supplies the default text code page.
+  ZEUS_INTERPRET, when present, disables COBOL machine-code execution.
+  ZEUS_COVERAGE=DIR records coverage and selects interpreter execution.
+  ZEUS_DB2 selects SQL: db2://user:password@host:port/DB or
+  postgres://user:password@host:port/db. ZEUS_MQ selects the MQ queue manager.
+  Embedded modules are extracted to a temporary load library for the run;
+  this temporary directory is removed when execution finishes normally.
+
+EXAMPLES
+  zcobc compile --native --with helper.zo -o report.exe report.cbl
+  report.exe --help
+  report.exe --dd INPUT=input.dat --dd OUTPUT=output.dat --parm NIGHTLY
+  report.exe NIGHTLY
+  zpli compile --native -o hello.exe hello.pli
+  hello.exe --parm WORLD
+
+EXIT STATUS
+  Program return code (COBOL: low byte; PL/I: clamped to 0..255).
+  2 invalid usage or runtime template without an embedded program;
+  12 COBOL ABEND; 16 runtime failure or PL/I abnormal end.

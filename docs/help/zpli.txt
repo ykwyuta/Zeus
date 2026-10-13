@@ -1,0 +1,53 @@
+zpli - Compile and run Enterprise PL/I programs
+
+USAGE
+  zpli compile [options] SOURCE.pli
+  zpli compile --native [options] SOURCE.pli
+  zpli run [options] MODULE.zo
+  zpli [options] SOURCE.pli
+  zpli --help | zpli compile --help | zpli run --help
+
+COMMANDS
+  compile  Compile one source to a .zo module, or to a standalone executable
+           with --native. Default output: source.zo, or source without its
+           extension for --native.
+  run      Load and interpret a .zo module.
+  With no command, compile the source and immediately run it.
+
+OPTIONS
+  -I DIR              Add a %INCLUDE search directory; repeat as needed.
+  -o FILE             Output module or executable (compile).
+  --margins FIRST,LAST Restrict source columns, e.g. --margins 2,72.
+  --ccsid N           EBCDIC code page: 37, 930, 939, 1390 or 1399.
+  -L DIR              Add a load library for external procedures; repeatable.
+                      The module/source directory is also searched.
+  --parm TEXT         Supply the main procedure's PARM.
+  --dd NAME=PATH      Allocate a DD; repeat for multiple files.
+  --coverage DIR      Record coverage for zcov report.
+  --native            Bundle the runtime and modules in an executable.
+  --with MODULE       Include another COBOL or PL/I .zo module; repeatable.
+  --target TRIPLE     Target platform; requires a matching zeus-rt runtime.
+  --no-machine-code   Omit machine code for bundled COBOL subprograms.
+
+RUNTIME AND ENVIRONMENT
+  PL/I executes through the interpreter, including inside --native binaries.
+  SYSPRINT is stdout and SYSIN is stdin unless assigned with --dd. Messages
+  go to stderr. Data retains z/OS representations (including EBCDIC).
+  ZEUS_CCSID sets the default code page; ZEUS_COVERAGE sets coverage output.
+  ZEUS_DB2 selects SQL: db2://user:password@host:port/DB or
+  postgres://user:password@host:port/db.
+  Native compilation finds zeus-rt beside zpli, or uses ZEUS_RUNTIME (file)
+  and ZEUS_RUNTIME_DIR/TRIPLE/zeus-rt for a target runtime.
+
+EXAMPLES
+  zpli -I includes hello.pli
+  zpli compile --margins 2,72 -I includes -o hello.zo hello.pli
+  zpli run -L loadlib --dd INPUT=input.dat --parm NIGHTLY hello.zo
+  zpli run --coverage coverage hello.zo
+  zpli compile --native --with helper.zo -o hello.exe hello.pli
+  hello.exe --parm NIGHTLY
+
+EXIT STATUS
+  Compilation returns the compiler diagnostic status. Execution returns
+  PLIRETC clamped to 0..255, or 16 on abnormal end/runtime failure.
+  Invalid usage returns 2.

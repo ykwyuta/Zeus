@@ -1,0 +1,70 @@
+zims - Inspect IMS definitions, load databases and inspect message queues
+
+USAGE
+  zims inspect DBD_OR_PSB_FILE...
+  zims put-root WAL DBD SEGMENT RECORD_HEX
+  zims get-root WAL DBD SEGMENT KEY_HEX
+  zims get-secondary WAL DBD_DIR INDEX_DBD KEY_HEX
+  zims count WAL DBD_OR_DIR
+  zims latest-checkpoint WAL DBD_OR_DIR
+  zims import-fixed WAL DBD SEGMENT FILE
+  zims import-dfsurgu0 WAL DBD FILE
+  zims split-dfsurgu0 DBD FILE ROOT_OUT CHILD_OUT
+  zims import-csv WAL DBD SEGMENT FILE
+  zims import-csv-bundle WAL DBD_DIR DATA_DIR
+  zims export-fixed WAL DBD SEGMENT FILE
+  zims tm-enqueue QUEUE DEST SOURCE LLZZ_BODY_HEX
+  zims tm-list QUEUE DEST
+  zims --help | zims SUBCOMMAND --help
+
+ARGUMENTS
+  WAL          Database write-ahead-log file; commands open the database
+               represented by this store and the supplied definitions.
+  DBD          DBD assembler source file.
+  DBD_DIR      Directory containing .dbd/.asm definitions, including indexes.
+  DBD_OR_DIR   One definition file or a directory of definitions.
+  SEGMENT      Segment name from the DBD; root loaders require a root segment.
+  *_HEX        Even-length hexadecimal bytes, without spaces or a 0x prefix.
+               Supply raw EBCDIC record/key bytes, not decoded host text.
+  QUEUE        IMS persistent transaction-message queue path.
+  DEST/SOURCE  1..8 uppercase ASCII letters/digits (transaction/LTERM names).
+
+DATABASE COMMANDS
+  inspect            Print DBD segments and PSBs; validate supplied PSBs
+                     against the supplied DBDs. Does not run a region.
+  put-root           Insert one root segment and commit the transaction.
+  get-root           Find a root by key; print its ID and record hex.
+  get-secondary      Find through an index DBD; print ID and record hex.
+  count              Print the store's record count.
+  latest-checkpoint  Print the most recent checkpoint ID, or none.
+  import-fixed       Load concatenated raw records into a fixed-length root
+                     segment. Input size must be a multiple of record length.
+  import-dfsurgu0    Load a DFSURGU0 unload, preserving parent relationships.
+  split-dfsurgu0     Split an unload with one root and one direct child into
+                     raw root records and child records prefixed by root key.
+                     Output files must differ; existing files are replaced.
+  import-csv         Encode root CSV fields using the DBD field definitions,
+                     sort by key, insert and commit.
+  import-csv-bundle  Load each DBD's root CSV from DATA_DIR/DBDNAME.data;
+                     DBD_DIR needs .dbd/.asm files with one root per database.
+  export-fixed       Write fixed-length root records as raw binary records;
+                     existing FILE is replaced.
+  Import commands insert records into the store; they do not erase it.
+
+MESSAGE COMMANDS
+  tm-enqueue  Enqueue the supplied message bytes and print the message ID.
+              LLZZ_BODY_HEX includes the application segment framing.
+  tm-list     Print pending message IDs, source names and bytes for DEST.
+              Listing does not consume the messages. Use zjob IMS commands
+              and a DFSRRC00 MSG job to run transactions.
+
+EXAMPLES
+  zims inspect dbd/CUSTOMER.dbd psb/INQUIRY.psb
+  zims import-fixed data/ims.wal dbd/CUSTOMER.dbd CUSTOMER customers.bin
+  zims get-root data/ims.wal dbd/CUSTOMER.dbd CUSTOMER F0F0F0F1
+  zims count data/ims.wal dbd
+  zims import-csv-bundle data/ims.wal dbd sample-data
+  zims tm-list data/messages.queue TERM01
+
+EXIT STATUS
+  0 success/help; 1 invalid arguments, definition errors or database/I/O failure.

@@ -1,0 +1,35 @@
+DETAILED USAGE - zeus-hercdiff
+
+Record packed-decimal instruction behavior in the Hercules mainframe emulator
+and compare the recorded oracle with Zeus's decimal implementation.
+
+RUN
+  zeus-hercdiff run --out oracle.json [options]
+  --count N                      Cases per instruction (default 200).
+  --seed N                       Deterministic generator seed (default 1).
+  --decimal-overflow-interrupt   Enable the decimal-overflow program mask,
+                                 requesting an interrupt instead of CC3.
+  --hercules FILE                Hercules executable (default hercules).
+  --work DIR                     Generated images/configuration and emulator
+                                 output directory (default work/hercules).
+  --run-seconds N                Emulator run interval (default 2 seconds).
+  --out FILE                     Required oracle JSON output; replaces FILE.
+  --compare                      Also compare with zeus-decimal immediately.
+  Hercules must be installed and runnable. This command generates a mainframe
+  test image and runs the emulator; it does not run application COBOL or JCL.
+  Retain the seed and recorded JSON to reproduce a discrepancy.
+
+COMPARE
+  zeus-hercdiff compare --oracle oracle.json [--show N]
+  --oracle FILE  Previously recorded oracle JSON.
+  --show N       Maximum number of mismatches to print (default 20).
+  Compare reuses recorded data and does not need to start Hercules.
+
+EXAMPLES
+  zeus-hercdiff run --count 2000 --seed 1 --out decimal-oracle.json
+  zeus-hercdiff run --hercules hercules --out decimal-oracle.json --compare
+  zeus-hercdiff compare --oracle decimal-oracle.json --show 50
+
+EXIT STATUS
+  0 success/agreement; 1 comparison mismatch; 2 invalid usage or execution/I/O
+  failure. Use --help/-h for any command; --version prints the tool version.

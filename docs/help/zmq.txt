@@ -1,0 +1,34 @@
+zmq - Put and consume text messages on IBM MQ queues
+
+USAGE
+  zmq put [--reply-to QUEUE] QUEUE TEXT...
+  zmq get [--wait MILLISECONDS] QUEUE
+  zmq --help | zmq put --help | zmq get --help
+
+COMMANDS AND OPTIONS
+  put        Send one message for each TEXT argument, converted to EBCDIC.
+             Quote text containing spaces to send it as one message.
+  --reply-to Name the reply queue in the message descriptor. Place this
+             option immediately after put, before the destination queue.
+  get        Retrieve and remove messages, printing decoded text one per line.
+             Without --wait, drain messages currently available.
+  --wait     Wait for additional messages until no message arrives for the
+             specified interval. Place the option immediately after get.
+             get consumes messages; it is not a browse operation.
+
+ENVIRONMENT
+  ZEUS_MQ      mq://user:password@host:port/QMGR/CHANNEL
+               The default channel is SYSTEM.DEF.SVRCONN if omitted.
+  ZEUS_MQ_LIB  MQ client library file or directory. The runtime can also use
+               MQ_INSTALLATION_PATH and the system loader search path.
+  ZEUS_CCSID   Code page used for text (default 37).
+  An accessible MQ server and installed MQ client library are required.
+
+EXAMPLES
+  zmq put APP.INPUT "first message" "second message"
+  zmq put --reply-to APP.REPLY APP.INPUT "request"
+  zmq get APP.REPLY
+  zmq get --wait 5000 APP.REPLY
+
+EXIT STATUS
+  0 success; 2 invalid usage; 12 MQ/connection/argument failure.

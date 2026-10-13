@@ -150,3 +150,136 @@ fn machine_code_matches_the_interpreter() {
          OK"
     );
 }
+
+#[test]
+fn display_integers_and_justified_moves_match_the_interpreter() {
+    let dir = tempfile::tempdir().unwrap();
+    let module =
+        zeus_cobol::compile_file(&programs().join("display.cbl"), &Default::default()).unwrap();
+    let image = Image {
+        members: vec![("ZONED".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "zoned", &image);
+    let native = run_env(&exe, &[], "", false);
+    let interpreted = run_env(&exe, &[], "", true);
+    assert_eq!(native, interpreted);
+    assert_eq!(native.1, 0, "{}", native.0);
+    assert!(!native.0.contains("BAD"), "{}", native.0);
+    assert!(native.0.contains("[DEF][ ABCDEF]"), "{}", native.0);
+    assert!(native.0.contains("[GER][ XY]"), "{}", native.0);
+    assert!(native.0.contains("SIZE ERROR"), "{}", native.0);
+}
+
+#[test]
+fn text_comparisons_constants_and_signs_match_the_interpreter() {
+    let module =
+        zeus_cobol::compile_file(&programs().join("text.cbl"), &Default::default()).unwrap();
+    for order in ["ebcdic", "reverse", "equal"] {
+        let mut module = module.clone();
+        if order != "ebcdic" {
+            let p = &mut module.programs[0];
+            let mut weights: Vec<u16> = (0..256).map(|b| 255 - b).collect();
+            if order == "equal" {
+                weights[0xC2] = weights[0xC1];
+            }
+            p.collating = Some(weights);
+            p.high_value = 0;
+            p.low_value = 255;
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let image = Image {
+            members: vec![(
+                "TEXT-NATIVE".into(),
+                zeus_cobol::module_bytes(&module).unwrap(),
+            )],
+        };
+        let exe = executable(dir.path(), "text", &image);
+        let native = run_env(&exe, &[], "", false);
+        let interpreted = run_env(&exe, &[], "", true);
+        assert_eq!(native, interpreted, "{order}");
+        assert_eq!(native.1, 0, "{order}: {}", native.0);
+        let expected = match order {
+            "ebcdic" => "NE\nLT\nLE\nNOT GT\nNOT GE\nPREFIX LT\nDONE",
+            "reverse" => "NE\nNOT LT\nNOT LE\nGT\nGE\nPREFIX NOT LT\nDONE",
+            _ => "EQ\nNOT LT\nLE\nNOT GT\nGE\nPREFIX LT\nDONE",
+        };
+        assert_eq!(native.0, expected, "{order}");
+    }
+}
+
+#[test]
+fn tables_and_fixed_reference_modification_match_the_interpreter() {
+    let dir = tempfile::tempdir().unwrap();
+    let module =
+        zeus_cobol::compile_file(&programs().join("table.cbl"), &Default::default()).unwrap();
+    let image = Image {
+        members: vec![(
+            "TABLE-NATIVE".into(),
+            zeus_cobol::module_bytes(&module).unwrap(),
+        )],
+    };
+    let exe = executable(dir.path(), "table", &image);
+    let native = run_env(&exe, &[], "", false);
+    let interpreted = run_env(&exe, &[], "", true);
+    assert_eq!(native, interpreted);
+    assert_eq!(native.1, 0, "{}", native.0);
+    assert_eq!(native.0, "TOTAL=00004B\n[BCXYZ ]\n[AABCDF]\nDONE");
+}
+
+#[test]
+fn dynamic_text_references_match_the_interpreter() {
+    let initial =
+        zeus_cobol::compile_file(&programs().join("dynamic-text.cbl"), &Default::default())
+            .unwrap();
+    for reverse in [false, true] {
+        let mut module = initial.clone();
+        if reverse {
+            module.programs[0].collating = Some((0..256).map(|b| 255 - b).collect());
+        }
+        let dir = tempfile::tempdir().unwrap();
+        let image = Image {
+            members: vec![(
+                "DYNAMIC-TEXT".into(),
+                zeus_cobol::module_bytes(&module).unwrap(),
+            )],
+        };
+        let exe = executable(dir.path(), "dynamic-text", &image);
+        let native = run_env(&exe, &[], "", false);
+        let interpreted = run_env(&exe, &[], "", true);
+        assert_eq!(native, interpreted, "reverse={reverse}");
+        assert_eq!(native.1, 0, "{}", native.0);
+        let rel = if reverse { "NOT LT" } else { "LT" };
+        assert_eq!(
+            native.0,
+            format!("[ BCD]\n[DUVW ]\n{rel}\n[ABCCDFGH]\nDONE")
+        );
+    }
+}
+
+#[test]
+fn generated_executable_includes_help_without_running_the_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let module =
+        zeus_cobol::compile_file(&programs().join("arith.cbl"), &Default::default()).unwrap();
+    let image = Image {
+        members: vec![("ARITH".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "help-program", &image);
+    for flag in ["--help", "-h"] {
+        let result = Command::new(&exe)
+            .arg(flag)
+            .current_dir(dir.path())
+            .output()
+            .unwrap();
+        assert!(result.status.success());
+        assert!(result.stderr.is_empty());
+        let help = String::from_utf8(result.stdout).unwrap();
+        assert!(help.contains("--dd NAME=PATH"));
+        assert!(help.contains("EXAMPLES"));
+        assert!(help.contains("EXIT STATUS"));
+        assert!(
+            !help.contains("P=000000"),
+            "main program ran while requesting help"
+        );
+    }
+}
