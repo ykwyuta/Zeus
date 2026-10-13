@@ -135,6 +135,7 @@ case ${1:-} in
     api) zconn serve "${2:-9081}" ;;
     db2) db2 ;;
     test)
+        mkdir -p "$(dirname "$home")"
         setup >"$home.setup.log" 2>&1 || { cat "$home.setup.log"; exit 1; }
         for s in tools/bankofz-ims/*.txt; do
             echo "=== $s"

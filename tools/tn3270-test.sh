@@ -64,7 +64,11 @@ EOS
 (cat "$work/display.s3270" | sed -n 1,2p; sleep 4; sed 1,2d "$work/display.s3270"; sleep 2) |
     timeout 60 s3270 -model 3279-5-E >"$work/display.log" 2>&1 &
 display=$!
-sleep 2
+# the printer associates once the display is connected
+for _ in $(seq 50); do
+    grep -q "terminal T001 connected" "$work/server.log" && break
+    sleep 0.1
+done
 (exec pr3287 -assoc ZEUSLU01 -command "cat >>$work/printed.txt" localhost:$port \
     >"$work/printer.log" 2>&1) &
 printer=$!

@@ -881,7 +881,9 @@ mod server {
         let (tx, rx) = mpsc::channel();
         let ids = Arc::new(AtomicU32::new(1));
         for l in ports {
-            let listener = TcpListener::bind(("0.0.0.0", l.port))?;
+            // IPv6 and IPv4 (localhost may name ::1), else IPv4 only
+            let listener = TcpListener::bind(("::", l.port))
+                .or_else(|_| TcpListener::bind(("0.0.0.0", l.port)))?;
             eprintln!(
                 "zcics: TN3270 server listening on port {}{}",
                 l.port,
