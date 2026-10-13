@@ -29,6 +29,8 @@ struct Cli {
 enum ToolchainKind {
     Gnucobol,
     Zeus,
+    /// zcobc compile --native: native executables with machine code
+    ZeusNative,
 }
 
 #[derive(Subcommand)]
@@ -168,12 +170,17 @@ fn real_main() -> Result<ExitCode> {
         } => {
             let tc = match toolchain {
                 ToolchainKind::Gnucobol => Toolchain::gnucobol(cobc),
-                ToolchainKind::Zeus => {
+                ToolchainKind::Zeus | ToolchainKind::ZeusNative => {
                     let zcobc = match zcobc {
                         Some(p) => p,
                         None => std::env::current_exe()?.with_file_name("zcobc"),
                     };
-                    Toolchain::zeus(zcobc.canonicalize().context("locating zcobc")?)
+                    let zcobc = zcobc.canonicalize().context("locating zcobc")?;
+                    if matches!(toolchain, ToolchainKind::Zeus) {
+                        Toolchain::zeus(zcobc)
+                    } else {
+                        Toolchain::zeus_native(zcobc)
+                    }
                 }
             };
             let modules = if modules.is_empty() {

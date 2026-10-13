@@ -11,6 +11,7 @@ pub mod front;
 pub mod image;
 pub mod interlang;
 pub mod inventory;
+pub mod native;
 pub mod sema;
 pub mod vm;
 pub mod zir;

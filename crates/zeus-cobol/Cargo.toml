@@ -12,6 +12,8 @@ zeus-decimal = { path = "../zeus-decimal", features = ["serde"] }
 zeus-ds = { path = "../zeus-ds" }
 serde.workspace = true
 serde_json = { workspace = true, features = ["unbounded_depth"] }
+cranelift-codegen = { version = "0.127.4", default-features = false, features = ["std", "x86", "arm64", "unwind"] }
+cranelift-frontend = "0.127.4"
 
 [dev-dependencies]
 tempfile.workspace = true

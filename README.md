@@ -133,8 +133,10 @@ It runs without Zeus installed: `./PROG [--dd NAME=PATH]... [PARM]`.
 `--target <triple>` takes the run time built for another platform
 (`cargo build --release -p zeus-native --target <triple>`), for example
 `x86_64-unknown-linux-musl` (static) or `aarch64-unknown-linux-musl`.
-The programs still run on the Zeus interpreter; compiling them to machine
-code is the next stage. See
+COBOL programs are compiled to machine code for the target with Cranelift
+(control flow, binary and packed decimal arithmetic, numeric comparisons,
+alphanumeric MOVE; the other statements call the interpreter's code); PL/I
+programs are interpreted. See
 [docs/proposal/0009-native-executables.md](docs/proposal/0009-native-executables.md).
 
 IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,

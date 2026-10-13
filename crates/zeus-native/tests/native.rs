@@ -1,6 +1,7 @@
 //! Native executables: the run time (`zeus-rt`) with modules appended runs
 //! them on its own. A COBOL main program calling a PL/I procedure (PARM,
-//! ACCEPT, the return code), and a PL/I main program reading a DD.
+//! ACCEPT, the return code), a PL/I main program reading a DD, and COBOL
+//! machine code giving the interpreter's results.
 
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -25,6 +26,10 @@ fn pli(name: &str) -> (String, Vec<u8>) {
 
 fn executable(dir: &Path, name: &str, image: &Image) -> PathBuf {
     let exe = dir.join(name);
+    let mut image = image.clone();
+    image
+        .add_machine_code(&zeus_cobol::native::host_triple())
+        .unwrap();
     image
         .write_executable(Path::new(env!("CARGO_BIN_EXE_zeus-rt")), &exe)
         .unwrap();
@@ -32,7 +37,17 @@ fn executable(dir: &Path, name: &str, image: &Image) -> PathBuf {
 }
 
 fn run(exe: &Path, args: &[&str], stdin: &str) -> (String, i32) {
-    let mut child = Command::new(exe)
+    run_env(exe, args, stdin, false)
+}
+
+fn run_env(exe: &Path, args: &[&str], stdin: &str, interpret: bool) -> (String, i32) {
+    let mut cmd = Command::new(exe);
+    if interpret {
+        cmd.env("ZEUS_INTERPRET", "1");
+    } else {
+        cmd.env_remove("ZEUS_INTERPRET");
+    }
+    let mut child = cmd
         .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -105,4 +120,33 @@ fn pli_main_with_a_file() {
     // the run time alone has no program
     let (_, rc) = run(Path::new(env!("CARGO_BIN_EXE_zeus-rt")), &[], "");
     assert_eq!(rc, 2);
+}
+
+#[test]
+fn machine_code_matches_the_interpreter() {
+    let dir = tempfile::tempdir().unwrap();
+    let module = zeus_cobol::compile_file(
+        &programs().join("arith.cbl"),
+        &zeus_cobol::front::FrontOptions::default(),
+    )
+    .unwrap();
+    let image = Image {
+        members: vec![("ARITH".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "arith", &image);
+    let (native, rc) = run_env(&exe, &[], "", false);
+    assert_eq!(rc, 0, "{native}");
+    let (interp, _) = run_env(&exe, &[], "", true);
+    assert_eq!(native, interp);
+    assert_eq!(
+        native,
+        // P = 0, J = 8, R = -33, N = 4 (zoned signs as overpunches); the
+        // size errors truncate (H = 004, R = 8765); L leaves 64 bits
+        "P=000000{ J=000H R=003L N=00000000D\n\
+         U=1234 Q=54321\n\
+         H=00D R=876E\n\
+         L=99999999999999999I\n\
+         V=STAR W=START JR= XY\n\
+         OK"
+    );
 }

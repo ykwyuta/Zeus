@@ -2,6 +2,9 @@
 //!
 //! * `GnuCobol` - the comparison oracle (`cobc`), never part of Zeus itself.
 //! * `Zeus` - the Zeus compiler driver `zcobc` (docs/proposal/0003).
+//! * `ZeusNative` - `zcobc compile --native`: the main programs as native
+//!   executables with machine code (docs/proposal/0009); called
+//!   subprograms are modules as for `Zeus`.
 //!
 //! Both are invoked from inside a module directory (e.g. `work/NC`), with the
 //! COPY library in `../copy`. Files are mapped to DD names through
@@ -16,6 +19,7 @@ use crate::special::Need;
 pub enum Toolchain {
     GnuCobol { cobc: PathBuf },
     Zeus { zcobc: PathBuf },
+    ZeusNative { zcobc: PathBuf },
 }
 
 impl Toolchain {
@@ -29,10 +33,15 @@ impl Toolchain {
         Toolchain::Zeus { zcobc }
     }
 
+    pub fn zeus_native(zcobc: PathBuf) -> Self {
+        Toolchain::ZeusNative { zcobc }
+    }
+
     pub fn name(&self) -> &'static str {
         match self {
             Toolchain::GnuCobol { .. } => "gnucobol",
             Toolchain::Zeus { .. } => "zeus",
+            Toolchain::ZeusNative { .. } => "zeus-native",
         }
     }
 
@@ -40,7 +49,9 @@ impl Toolchain {
     pub fn version(&self) -> String {
         let out = match self {
             Toolchain::GnuCobol { cobc } => Command::new(cobc).arg("--version").output(),
-            Toolchain::Zeus { zcobc } => Command::new(zcobc).arg("--version").output(),
+            Toolchain::Zeus { zcobc } | Toolchain::ZeusNative { zcobc } => {
+                Command::new(zcobc).arg("--version").output()
+            }
         };
         out.ok()
             .and_then(|o| String::from_utf8(o.stdout).ok())
@@ -70,6 +81,15 @@ impl Toolchain {
                     .arg(source);
                 cmd
             }
+            Toolchain::ZeusNative { zcobc } => {
+                let mut cmd = Command::new(zcobc);
+                cmd.args(["compile", "--native"]);
+                if needs.contains(&Need::DebuggingLines) {
+                    cmd.arg("--debugging-lines");
+                }
+                cmd.args(["-I", "../copy", "-o"]).arg(program).arg(source);
+                cmd
+            }
         }
     }
 
@@ -82,7 +102,7 @@ impl Toolchain {
                 cmd.arg("-m").arg(source);
                 cmd
             }
-            Toolchain::Zeus { zcobc } => {
+            Toolchain::Zeus { zcobc } | Toolchain::ZeusNative { zcobc } => {
                 let mut cmd = Command::new(zcobc);
                 cmd.args(["compile", "--subprogram", "-I", "../copy", "-o"])
                     .arg(format!("{program}.zo"))
@@ -112,6 +132,11 @@ impl Toolchain {
                     .env("ZEUS_SWITCH_2", "OFF");
                 cmd
             }
+            Toolchain::ZeusNative { .. } => {
+                let mut cmd = Command::new(format!("./{program}"));
+                cmd.env("ZEUS_SWITCH_1", "ON").env("ZEUS_SWITCH_2", "OFF");
+                cmd
+            }
         }
     }
 
@@ -120,7 +145,7 @@ impl Toolchain {
         let v = if on { "Y" } else { "N" };
         match self {
             Toolchain::GnuCobol { .. } => cmd.env("COB_SET_DEBUG", v),
-            Toolchain::Zeus { .. } => cmd.env("ZEUS_DEBUG", v),
+            Toolchain::Zeus { .. } | Toolchain::ZeusNative { .. } => cmd.env("ZEUS_DEBUG", v),
         };
     }
 
@@ -129,6 +154,7 @@ impl Toolchain {
         match self {
             Toolchain::GnuCobol { .. } => vec![program.to_string(), format!("{program}.so")],
             Toolchain::Zeus { .. } => vec![format!("{program}.zo")],
+            Toolchain::ZeusNative { .. } => vec![program.to_string(), format!("{program}.zo")],
         }
     }
 }

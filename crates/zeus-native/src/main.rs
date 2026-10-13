@@ -13,6 +13,12 @@
 //! SYSIN and ACCEPT come from standard input. EXEC SQL runs on ZEUS_DB2,
 //! the MQI on ZEUS_MQ. The exit status is the return code; 12 after an
 //! abend (16 for PL/I), 16 after a run-time error.
+//!
+//! COBOL programs with machine code in the executable (`.zx` members,
+//! see `zeus_cobol::native`) run it; ZEUS_INTERPRET=1 runs them on the
+//! interpreter instead.
+
+mod machine_code;
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -109,12 +115,12 @@ fn main() -> ExitCode {
         libs.push(dir);
     }
     let (name, main) = &image.members[0];
-    let code = run(name, main, &args, libs);
+    let code = run(name, main, &args, libs, &image);
     drop(lib);
     code
 }
 
-fn run(name: &str, main: &[u8], args: &Args, libs: Vec<PathBuf>) -> ExitCode {
+fn run(name: &str, main: &[u8], args: &Args, libs: Vec<PathBuf>, image: &Image) -> ExitCode {
     let pli = zeus_pli::is_module(main);
     let explicit_ccsid = std::env::var_os("ZEUS_CCSID").is_some();
     // EXEC SQL on ZEUS_DB2, the MQI on ZEUS_MQ
@@ -156,6 +162,13 @@ fn run(name: &str, main: &[u8], args: &Args, libs: Vec<PathBuf>) -> ExitCode {
         sys.set_exec_host(h.clone());
     }
     zeus_mq::register(&mut sys);
+    // the machine code of the COBOL programs (ZEUS_INTERPRET=1: without)
+    if std::env::var_os("ZEUS_INTERPRET").is_none()
+        && let Err(e) = machine_code::install(&mut sys, image)
+    {
+        eprintln!("zeus-rt: {e}");
+        return ExitCode::from(16);
+    }
     let (sub_dds, sub_db2) = (dds.clone(), host(&db2));
     let linker = zeus_pli::link::ModuleLinker::new(
         libs,

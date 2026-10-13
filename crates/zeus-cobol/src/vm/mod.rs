@@ -71,6 +71,24 @@ struct Frame {
     pc: u32,
 }
 
+/// Programs compiled to machine code: `run` runs the program of
+/// instance `s.cur` from `s.pc` until it leaves that program or the run
+/// ends; None when that program has no machine code (the interpreter
+/// runs it).
+pub trait NativeCode {
+    fn run(&self, m: &mut Machine, s: &mut RunState) -> Option<RResult<Option<Exit>>>;
+}
+
+/// Where a run unit's interpreter is: the program instance, the next
+/// instruction, the instances that called it (in this module), and
+/// whether the first was called by another program.
+pub struct RunState {
+    stack: Vec<Frame>,
+    pub cur: usize,
+    pub pc: u32,
+    called: bool,
+}
+
 pub struct Machine {
     mem: Vec<u8>,
     /// State of FUNCTION RANDOM.
@@ -126,6 +144,8 @@ pub struct Machine {
     /// Called every few thousand instructions (the dispatcher of a CICS
     /// region gives other tasks the processor).
     tick: Option<fn()>,
+    /// Machine code of programs (native executables).
+    native: Option<Rc<dyn NativeCode>>,
     ticks: u32,
 }
 
@@ -201,6 +221,7 @@ impl Machine {
             natives_mach: HashMap::new(),
             exec_host: None,
             tick: None,
+            native: None,
             ticks: 0,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
@@ -391,6 +412,25 @@ impl Machine {
     /// in place of the PARM.
     pub fn set_main_args(&mut self, args: Vec<Option<usize>>) {
         self.main_args = Some(args);
+    }
+
+    /// The name and the number of instructions of program instance
+    /// `inst` (for its machine code).
+    pub fn program_shape(&self, inst: usize) -> (&str, usize) {
+        let code = &self.instances[inst].code;
+        (&code.name, code.code.len())
+    }
+
+    /// The run unit's storage and the static storage address of program
+    /// instance `inst` in it (for machine code that accesses data
+    /// directly). The storage moves when it grows.
+    pub fn native_memory(&mut self, inst: usize) -> (*mut u8, usize) {
+        (self.mem.as_mut_ptr(), self.instances[inst].static_base)
+    }
+
+    /// Runs the programs that have machine code with it.
+    pub fn set_native(&mut self, n: Rc<dyn NativeCode>) {
+        self.native = Some(n);
     }
 
     /// Finds the programs that are not COBOL programs of the search
@@ -724,350 +764,371 @@ impl Machine {
     /// Runs instance `start` from its entry. A `called` program returns
     /// (Exit::Returned) at EXIT PROGRAM / GOBACK.
     fn run_from(&mut self, start: usize, called: bool) -> RResult<Exit> {
-        let mut stack: Vec<Frame> = Vec::new();
-        let mut cur = start;
-        let mut pc: u32 = 0;
+        let mut s = RunState {
+            stack: Vec::new(),
+            cur: start,
+            pc: 0,
+            called,
+        };
         loop {
-            let code = self.instances[cur].code.clone();
-            let Some(ins) = code.code.get(pc as usize) else {
-                return err(format!(
-                    "{}: control ran past the end of the program",
-                    code.name
-                ));
-            };
-            pc += 1;
-            self.count_tick();
-            let ins = match ins {
-                Instr::Exec(n) => match self.exec(cur, &code, *n)? {
-                    exec::ExecOutcome::Continue => continue,
-                    exec::ExecOutcome::Goto(t) => {
-                        pc = t;
-                        continue;
-                    }
-                    exec::ExecOutcome::Return => &Instr::GoBack,
-                },
-                _ => ins,
-            };
-            match ins {
-                Instr::Nop => {}
-                Instr::Move(src, dst) => {
-                    let v = self.eval_src(cur, src)?;
-                    self.move_val(cur, &v, dst)?;
+            // the program's machine code, when it has some
+            if let Some(n) = self.native.clone()
+                && let Some(r) = n.run(self, &mut s)
+            {
+                if let Some(e) = r? {
+                    return Ok(e);
                 }
-                Instr::Store {
-                    value,
-                    dst,
-                    rounded,
-                    check,
-                } => match self.eval_ex(cur, value) {
-                    Ok(v) => self.store(cur, v, dst, *rounded, *check)?,
-                    Err(e) if e.0 == SIZE_ERROR => self.size_error = true,
-                    Err(e) => return Err(e),
-                },
-                Instr::DivRem {
-                    dividend,
-                    divisor,
-                    quot,
-                    rounded,
-                    rem,
-                    check,
-                } => {
-                    let a = self.eval_ex(cur, dividend)?;
-                    let b = self.eval_ex(cur, divisor)?;
-                    self.div_rem(cur, a, b, quot, *rounded, rem, *check)?;
+                continue;
+            }
+            if let Some(e) = self.exec_step(&mut s)? {
+                return Ok(e);
+            }
+        }
+    }
+
+    /// Runs the instruction at `s.pc` of program instance `s.cur`; the
+    /// end of the run unit's main program or of a called one.
+    pub fn exec_step(&mut self, s: &mut RunState) -> RResult<Option<Exit>> {
+        let cur = s.cur;
+        let code = self.instances[cur].code.clone();
+        let Some(ins) = code.code.get(s.pc as usize) else {
+            return err(format!(
+                "{}: control ran past the end of the program",
+                code.name
+            ));
+        };
+        s.pc += 1;
+        let pc = s.pc;
+        self.count_tick();
+        let ins = match ins {
+            Instr::Exec(n) => match self.exec(cur, &code, *n)? {
+                exec::ExecOutcome::Continue => return Ok(None),
+                exec::ExecOutcome::Goto(t) => {
+                    s.pc = t;
+                    return Ok(None);
                 }
-                Instr::ClearSizeError => self.size_error = false,
-                Instr::SetTemp(t, ex) => {
-                    let v = self.eval_ex(cur, ex)?;
-                    self.instances[cur].temps[*t as usize] = v;
+                exec::ExecOutcome::Return => &Instr::GoBack,
+            },
+            _ => ins,
+        };
+        match ins {
+            Instr::Nop => {}
+            Instr::Move(src, dst) => {
+                let v = self.eval_src(cur, src)?;
+                self.move_val(cur, &v, dst)?;
+            }
+            Instr::Store {
+                value,
+                dst,
+                rounded,
+                check,
+            } => match self.eval_ex(cur, value) {
+                Ok(v) => self.store(cur, v, dst, *rounded, *check)?,
+                Err(e) if e.0 == SIZE_ERROR => self.size_error = true,
+                Err(e) => return Err(e),
+            },
+            Instr::DivRem {
+                dividend,
+                divisor,
+                quot,
+                rounded,
+                rem,
+                check,
+            } => {
+                let a = self.eval_ex(cur, dividend)?;
+                let b = self.eval_ex(cur, divisor)?;
+                self.div_rem(cur, a, b, quot, *rounded, rem, *check)?;
+            }
+            Instr::ClearSizeError => self.size_error = false,
+            Instr::SetTemp(t, ex) => {
+                let v = self.eval_ex(cur, ex)?;
+                self.instances[cur].temps[*t as usize] = v;
+            }
+            Instr::Jump(t) => s.pc = *t,
+            Instr::JumpIf(c, t) => {
+                if self.eval_cx(cur, c)? {
+                    s.pc = *t;
                 }
-                Instr::Jump(t) => pc = *t,
-                Instr::JumpIf(c, t) => {
-                    if self.eval_cx(cur, c)? {
-                        pc = *t;
-                    }
+            }
+            Instr::JumpUnless(c, t) => {
+                if !self.eval_cx(cur, c)? {
+                    s.pc = *t;
                 }
-                Instr::JumpUnless(c, t) => {
-                    if !self.eval_cx(cur, c)? {
-                        pc = *t;
-                    }
+            }
+            Instr::Perform { start, end, ret } => {
+                let inst = &mut self.instances[cur];
+                if inst.perform.len() > 10_000 {
+                    return err("PERFORM nesting too deep (recursive PERFORM?)");
                 }
-                Instr::Perform { start, end, ret } => {
-                    let inst = &mut self.instances[cur];
-                    if inst.perform.len() > 10_000 {
-                        return err("PERFORM nesting too deep (recursive PERFORM?)");
-                    }
-                    inst.perform.push((*end, *ret));
-                    pc = *start;
-                }
-                Instr::ParaEnd(p) => {
-                    let inst = &mut self.instances[cur];
-                    if inst.perform.last().is_some_and(|&(end, _)| end == *p) {
-                        let (_, ret) = inst.perform.pop().unwrap();
-                        let code = &inst.code;
-                        if !code.segments.is_empty() && ret != USE_RETURN {
-                            // returning from a PERFORM does not
-                            // reinitialize the caller's segment
-                            let i = code.segments.partition_point(|&(s, _)| s <= ret);
-                            if i > 0 {
-                                inst.segment = code.segments[i - 1].1;
-                            }
+                inst.perform.push((*end, *ret));
+                s.pc = *start;
+            }
+            Instr::ParaEnd(p) => {
+                let inst = &mut self.instances[cur];
+                if inst.perform.last().is_some_and(|&(end, _)| end == *p) {
+                    let (_, ret) = inst.perform.pop().unwrap();
+                    let code = &inst.code;
+                    if !code.segments.is_empty() && ret != USE_RETURN {
+                        // returning from a PERFORM does not
+                        // reinitialize the caller's segment
+                        let i = code.segments.partition_point(|&(s, _)| s <= ret);
+                        if i > 0 {
+                            inst.segment = code.segments[i - 1].1;
                         }
-                        if ret == USE_RETURN {
-                            // end of a GLOBAL declarative of a containing program
-                            let f = stack.pop().unwrap();
-                            cur = f.inst;
-                            pc = f.pc;
-                        } else {
-                            pc = ret;
-                        }
+                    }
+                    if ret == USE_RETURN {
+                        // end of a GLOBAL declarative of a containing program
+                        let f = s.stack.pop().unwrap();
+                        s.cur = f.inst;
+                        s.pc = f.pc;
+                    } else {
+                        s.pc = ret;
                     }
                 }
-                Instr::Segment(seg) => self.enter_segment(cur, *seg),
-                Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex)?,
-                Instr::Initiate(r) => self.report_initiate(cur, *r)?,
-                Instr::Generate { report, group } => self.report_generate(cur, *report, *group)?,
-                Instr::Terminate(r) => self.report_terminate(cur, *r)?,
-                Instr::SuppressPrinting => self.suppress_printing = true,
-                Instr::DebugCause(c, line) => self.instances[cur].debug_cause = (*c, *line),
-                Instr::DebugProc { .. } | Instr::DebugData { .. } | Instr::DebugFile { .. } => {
-                    if let Some((target, end)) = self.debug_fire(cur, ins)? {
+            }
+            Instr::Segment(seg) => self.enter_segment(cur, *seg),
+            Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex)?,
+            Instr::Initiate(r) => self.report_initiate(cur, *r)?,
+            Instr::Generate { report, group } => self.report_generate(cur, *report, *group)?,
+            Instr::Terminate(r) => self.report_terminate(cur, *r)?,
+            Instr::SuppressPrinting => self.suppress_printing = true,
+            Instr::DebugCause(c, line) => self.instances[cur].debug_cause = (*c, *line),
+            Instr::DebugProc { .. } | Instr::DebugData { .. } | Instr::DebugFile { .. } => {
+                if let Some((target, end)) = self.debug_fire(cur, ins)? {
+                    self.instances[cur].perform.push((end, pc));
+                    s.pc = target;
+                }
+            }
+            Instr::UseCheck { file, handled } => {
+                let st = std::mem::replace(&mut self.last_status, *b"00");
+                let skip = st[0] == b'0'
+                    || (st[0] == b'1' && handled & 1 != 0)
+                    || (st[0] == b'2' && handled & 2 != 0);
+                if !skip && let Some((inst, start, end)) = self.find_use(cur, *file) {
+                    let target = self.instances[inst].code.paragraphs[start as usize].start;
+                    if inst == cur {
                         self.instances[cur].perform.push((end, pc));
-                        pc = target;
+                    } else {
+                        s.stack.push(Frame { inst: cur, pc });
+                        s.cur = inst;
+                        self.instances[cur].perform.push((end, USE_RETURN));
                     }
+                    s.pc = target;
                 }
-                Instr::UseCheck { file, handled } => {
-                    let st = std::mem::replace(&mut self.last_status, *b"00");
-                    let skip = st[0] == b'0'
-                        || (st[0] == b'1' && handled & 1 != 0)
-                        || (st[0] == b'2' && handled & 2 != 0);
-                    if !skip && let Some((inst, start, end)) = self.find_use(cur, *file) {
-                        let target = self.instances[inst].code.paragraphs[start as usize].start;
-                        if inst == cur {
-                            self.instances[cur].perform.push((end, pc));
-                        } else {
-                            stack.push(Frame { inst: cur, pc });
-                            cur = inst;
-                            self.instances[cur].perform.push((end, USE_RETURN));
-                        }
-                        pc = target;
-                    }
+            }
+            Instr::GoDepending(ex, targets) => {
+                let v = self.eval_ex(cur, ex)?;
+                let n = v
+                    .rescale(0, zeus_decimal::Rounding::Truncate)
+                    .map(|d| d.coef)
+                    .unwrap_or(0);
+                if n >= 1 && (n as usize) <= targets.len() {
+                    s.pc = targets[n as usize - 1];
                 }
-                Instr::GoDepending(ex, targets) => {
-                    let v = self.eval_ex(cur, ex)?;
-                    let n = v
-                        .rescale(0, zeus_decimal::Rounding::Truncate)
-                        .map(|d| d.coef)
-                        .unwrap_or(0);
-                    if n >= 1 && (n as usize) <= targets.len() {
-                        pc = targets[n as usize - 1];
-                    }
+            }
+            Instr::AlterableGo(slot) => s.pc = self.instances[cur].alter[*slot as usize],
+            Instr::Alter(slot, target) => self.instances[cur].alter[*slot as usize] = *target,
+            Instr::StopRun => {
+                self.load_rc(cur);
+                return Ok(Some(Exit::StopRun(self.return_code_value())));
+            }
+            Instr::StopLiteral(src) => {
+                let v = self.eval_src(cur, src)?;
+                let bytes = self.display_bytes(cur, &v)?;
+                let _ = self.stdout.write_all(&ebcdic::to_host(&bytes));
+                let _ = self.stdout.write_all(b"\n");
+                let _ = self.stdout.flush();
+                // The run waits for the operator's reply; an interrupt
+                // (ETX) cancels it.
+                if self.stdin_line().is_some_and(|l| l.contains('\u{3}')) {
+                    return Ok(Some(Exit::StopRun(self.return_code_value())));
                 }
-                Instr::AlterableGo(slot) => pc = self.instances[cur].alter[*slot as usize],
-                Instr::Alter(slot, target) => self.instances[cur].alter[*slot as usize] = *target,
-                Instr::StopRun => {
-                    self.load_rc(cur);
-                    return Ok(Exit::StopRun(self.return_code_value()));
-                }
-                Instr::StopLiteral(src) => {
-                    let v = self.eval_src(cur, src)?;
-                    let bytes = self.display_bytes(cur, &v)?;
-                    let _ = self.stdout.write_all(&ebcdic::to_host(&bytes));
-                    let _ = self.stdout.write_all(b"\n");
-                    let _ = self.stdout.flush();
-                    // The run waits for the operator's reply; an interrupt
-                    // (ETX) cancels it.
-                    if self.stdin_line().is_some_and(|l| l.contains('\u{3}')) {
-                        return Ok(Exit::StopRun(self.return_code_value()));
-                    }
-                }
-                Instr::ExitProgram | Instr::GoBack => {
-                    let is_main = stack.is_empty();
-                    // RETURN-CODE goes back to the caller (or ends the run)
-                    self.load_rc(cur);
-                    if is_main && called {
-                        self.instances[cur].active = false;
-                        self.instances[cur].perform.clear();
-                        if self.instances[cur].code.initial {
-                            self.close_program_files(cur);
-                        }
-                        return Ok(Exit::Returned);
-                    }
-                    if is_main {
-                        if matches!(ins, Instr::GoBack) {
-                            return Ok(Exit::StopRun(self.return_code_value()));
-                        }
-                        // EXIT PROGRAM in a main program: continue
-                        continue;
-                    }
+            }
+            Instr::ExitProgram | Instr::GoBack => {
+                let is_main = s.stack.is_empty();
+                // RETURN-CODE goes back to the caller (or ends the run)
+                self.load_rc(cur);
+                if is_main && s.called {
                     self.instances[cur].active = false;
                     self.instances[cur].perform.clear();
                     if self.instances[cur].code.initial {
                         self.close_program_files(cur);
                     }
-                    let f = stack.pop().unwrap();
-                    cur = f.inst;
-                    pc = f.pc;
-                    self.store_rc(cur);
+                    return Ok(Some(Exit::Returned));
                 }
-                Instr::Display {
-                    items,
-                    upon_console: _,
-                    advance,
-                } => {
-                    let mut out = Vec::new();
-                    for it in items {
-                        let v = self.eval_src(cur, it)?;
-                        out.extend(self.display_bytes(cur, &v)?);
+                if is_main {
+                    if matches!(ins, Instr::GoBack) {
+                        return Ok(Some(Exit::StopRun(self.return_code_value())));
                     }
-                    let _ = self.stdout.write_all(&ebcdic::to_host(&out));
-                    if *advance {
-                        let _ = self.stdout.write_all(b"\n");
-                    }
+                    // EXIT PROGRAM in a main program: continue
+                    return Ok(None);
                 }
-                Instr::Accept { dst, from } => self.accept(cur, dst, *from)?,
-                Instr::Open(f, mode) => self.open_file(cur, *f, *mode)?,
-                Instr::Close(f, lock) => self.close_file(cur, *f, *lock)?,
-                Instr::CloseReel(f) => self.close_reel(cur, *f)?,
-                Instr::Write {
-                    file,
-                    record,
-                    from,
-                    advance,
-                } => self.write_file(cur, *file, *record, from.as_ref(), advance.as_ref())?,
-                Instr::Rewrite { file, record, from } => {
-                    self.rewrite_file(cur, *file, *record, from.as_ref())?
+                self.instances[cur].active = false;
+                self.instances[cur].perform.clear();
+                if self.instances[cur].code.initial {
+                    self.close_program_files(cur);
                 }
-                Instr::Read {
-                    file,
-                    next,
-                    into,
-                    key,
-                } => self.read_file(cur, *file, *next, into.as_ref(), *key)?,
-                Instr::Delete(f) => self.delete_record(cur, *f)?,
-                Instr::Start { file, rel, key } => {
-                    self.start_file(cur, *file, *rel, key.as_ref())?
+                let f = s.stack.pop().unwrap();
+                s.cur = f.inst;
+                s.pc = f.pc;
+                self.store_rc(s.cur);
+            }
+            Instr::Display {
+                items,
+                upon_console: _,
+                advance,
+            } => {
+                let mut out = Vec::new();
+                for it in items {
+                    let v = self.eval_src(cur, it)?;
+                    out.extend(self.display_bytes(cur, &v)?);
                 }
-                Instr::Call {
-                    program,
-                    args,
-                    returning: _,
-                } => {
-                    // ON EXCEPTION / ON OVERFLOW handles a missing program.
-                    let next = code.code.get(pc as usize);
-                    let handled =
-                        matches!(next, Some(Instr::JumpUnless(zir::Cx::CallException, _)));
-                    if let Some(callee) = self.prepare_call(cur, program, args, handled)? {
-                        stack.push(Frame { inst: cur, pc });
-                        if stack.len() > 1000 {
-                            return err("CALL nesting too deep");
-                        }
-                        cur = callee;
-                        pc = 0;
-                    }
-                }
-                Instr::Cancel(src) => {
-                    let v = self.eval_src(cur, src)?;
-                    let name_bytes = self.alnum_bytes(cur, &v, 0)?;
-                    let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
-                        .trim()
-                        .to_ascii_uppercase();
-                    if let Some(&i) = self.by_name.get(&name)
-                        && !self.instances[i].active
-                    {
-                        self.close_program_files(i);
-                        self.reset(i);
-                        self.instances[i].initialized = false;
-                    }
-                }
-                Instr::Initialize { .. } => return err("INITIALIZE instruction not expected"),
-                Instr::Inspect(loc, steps) => self.inspect(cur, loc, steps)?,
-                Instr::StringStmt {
-                    sources,
-                    into,
-                    pointer,
-                } => self.string_stmt(cur, sources, into, pointer.as_ref())?,
-                Instr::Unstring {
-                    source,
-                    delims,
-                    into,
-                    pointer,
-                    tallying,
-                } => self.unstring(
-                    cur,
-                    source,
-                    delims,
-                    into,
-                    pointer.as_ref(),
-                    tallying.as_ref(),
-                )?,
-                Instr::SetIndex(loc, ex) => {
-                    let v = self.eval_ex(cur, ex)?;
-                    self.set_value(cur, loc, v)?;
-                }
-                Instr::SetSwitch(idx, on) => {
-                    let name = code.switches[*idx as usize].clone();
-                    self.switches.insert(name, *on);
-                }
-                Instr::SearchStep { .. } => return err("SEARCH step not expected"),
-                Instr::Sort {
-                    file,
-                    keys,
-                    duplicates: _,
-                    using,
-                    giving,
-                    input,
-                    output,
-                    collating,
-                    merge,
-                } => {
-                    let sort = files::SortSpec {
-                        file: *file,
-                        keys: keys.clone(),
-                        collating: collating.clone(),
-                        merge: *merge,
-                    };
-                    // Input phase
-                    self.sort_records.clear();
-                    for &u in using {
-                        self.sort_read_file(cur, u)?;
-                    }
-                    if let Some((start, end)) = input {
-                        self.sort_records.clear();
-                        self.instances[cur].debug_cause = (zir::debug_cause::SORT_INPUT, 0);
-                        self.run_procedure(cur, *start, *end, &mut stack)?;
-                    }
-                    let records = std::mem::take(&mut self.sort_records);
-                    let sorted = self.sort_sort(cur, &sort, records)?;
-                    if let Some((start, end)) = output {
-                        self.sort_return = Some((sorted, 0));
-                        self.instances[cur].debug_cause = if *merge {
-                            (zir::debug_cause::MERGE_OUTPUT, 0)
-                        } else {
-                            (zir::debug_cause::SORT_OUTPUT, 0)
-                        };
-                        self.run_procedure(cur, *start, *end, &mut stack)?;
-                        self.sort_return = None;
-                    } else {
-                        for &g in giving {
-                            self.sort_write_file(cur, g, &sorted)?;
-                        }
-                    }
-                }
-                Instr::Release(f, from) => {
-                    let rec = self.sort_record_bytes(cur, *f, from.as_ref())?;
-                    self.sort_records.push(rec);
-                }
-                Instr::Return(f, into) => self.sort_return_record(cur, *f, into.as_ref())?,
-                Instr::Exec(_) => unreachable!(),
-                Instr::Unsupported(name) => {
-                    return err(format!(
-                        "{}: statement {name} is not supported yet",
-                        code.name
-                    ));
+                let _ = self.stdout.write_all(&ebcdic::to_host(&out));
+                if *advance {
+                    let _ = self.stdout.write_all(b"\n");
                 }
             }
+            Instr::Accept { dst, from } => self.accept(cur, dst, *from)?,
+            Instr::Open(f, mode) => self.open_file(cur, *f, *mode)?,
+            Instr::Close(f, lock) => self.close_file(cur, *f, *lock)?,
+            Instr::CloseReel(f) => self.close_reel(cur, *f)?,
+            Instr::Write {
+                file,
+                record,
+                from,
+                advance,
+            } => self.write_file(cur, *file, *record, from.as_ref(), advance.as_ref())?,
+            Instr::Rewrite { file, record, from } => {
+                self.rewrite_file(cur, *file, *record, from.as_ref())?
+            }
+            Instr::Read {
+                file,
+                next,
+                into,
+                key,
+            } => self.read_file(cur, *file, *next, into.as_ref(), *key)?,
+            Instr::Delete(f) => self.delete_record(cur, *f)?,
+            Instr::Start { file, rel, key } => self.start_file(cur, *file, *rel, key.as_ref())?,
+            Instr::Call {
+                program,
+                args,
+                returning: _,
+            } => {
+                // ON EXCEPTION / ON OVERFLOW handles a missing program.
+                let next = code.code.get(pc as usize);
+                let handled = matches!(next, Some(Instr::JumpUnless(zir::Cx::CallException, _)));
+                if let Some(callee) = self.prepare_call(cur, program, args, handled)? {
+                    s.stack.push(Frame { inst: cur, pc });
+                    if s.stack.len() > 1000 {
+                        return err("CALL nesting too deep");
+                    }
+                    s.cur = callee;
+                    s.pc = 0;
+                }
+            }
+            Instr::Cancel(src) => {
+                let v = self.eval_src(cur, src)?;
+                let name_bytes = self.alnum_bytes(cur, &v, 0)?;
+                let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
+                    .trim()
+                    .to_ascii_uppercase();
+                if let Some(&i) = self.by_name.get(&name)
+                    && !self.instances[i].active
+                {
+                    self.close_program_files(i);
+                    self.reset(i);
+                    self.instances[i].initialized = false;
+                }
+            }
+            Instr::Initialize { .. } => return err("INITIALIZE instruction not expected"),
+            Instr::Inspect(loc, steps) => self.inspect(cur, loc, steps)?,
+            Instr::StringStmt {
+                sources,
+                into,
+                pointer,
+            } => self.string_stmt(cur, sources, into, pointer.as_ref())?,
+            Instr::Unstring {
+                source,
+                delims,
+                into,
+                pointer,
+                tallying,
+            } => self.unstring(
+                cur,
+                source,
+                delims,
+                into,
+                pointer.as_ref(),
+                tallying.as_ref(),
+            )?,
+            Instr::SetIndex(loc, ex) => {
+                let v = self.eval_ex(cur, ex)?;
+                self.set_value(cur, loc, v)?;
+            }
+            Instr::SetSwitch(idx, on) => {
+                let name = code.switches[*idx as usize].clone();
+                self.switches.insert(name, *on);
+            }
+            Instr::SearchStep { .. } => return err("SEARCH step not expected"),
+            Instr::Sort {
+                file,
+                keys,
+                duplicates: _,
+                using,
+                giving,
+                input,
+                output,
+                collating,
+                merge,
+            } => {
+                let sort = files::SortSpec {
+                    file: *file,
+                    keys: keys.clone(),
+                    collating: collating.clone(),
+                    merge: *merge,
+                };
+                // Input phase
+                self.sort_records.clear();
+                for &u in using {
+                    self.sort_read_file(cur, u)?;
+                }
+                if let Some((start, end)) = input {
+                    self.sort_records.clear();
+                    self.instances[cur].debug_cause = (zir::debug_cause::SORT_INPUT, 0);
+                    self.run_procedure(cur, *start, *end, &mut s.stack)?;
+                }
+                let records = std::mem::take(&mut self.sort_records);
+                let sorted = self.sort_sort(cur, &sort, records)?;
+                if let Some((start, end)) = output {
+                    self.sort_return = Some((sorted, 0));
+                    self.instances[cur].debug_cause = if *merge {
+                        (zir::debug_cause::MERGE_OUTPUT, 0)
+                    } else {
+                        (zir::debug_cause::SORT_OUTPUT, 0)
+                    };
+                    self.run_procedure(cur, *start, *end, &mut s.stack)?;
+                    self.sort_return = None;
+                } else {
+                    for &g in giving {
+                        self.sort_write_file(cur, g, &sorted)?;
+                    }
+                }
+            }
+            Instr::Release(f, from) => {
+                let rec = self.sort_record_bytes(cur, *f, from.as_ref())?;
+                self.sort_records.push(rec);
+            }
+            Instr::Return(f, into) => self.sort_return_record(cur, *f, into.as_ref())?,
+            Instr::Exec(_) => unreachable!(),
+            Instr::Unsupported(name) => {
+                return err(format!(
+                    "{}: statement {name} is not supported yet",
+                    code.name
+                ));
+            }
         }
+
+        Ok(None)
     }
 
     /// Runs an input/output procedure (paragraphs `start`..=`end`) to

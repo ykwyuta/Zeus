@@ -16,7 +16,9 @@
 //! `--native` writes an executable for the platform (or for `--target`,
 //! a Rust target triple) instead of a `.zo` module: the Zeus run time
 //! with the module, and the modules of `--with` (separately compiled
-//! COBOL or PL/I subprograms), inside. See [`zeus_cobol::image`].
+//! COBOL or PL/I subprograms), inside. See [`zeus_cobol::image`]. The
+//! COBOL programs are compiled to machine code for the target
+//! ([`zeus_cobol::native`]) unless `--no-machine-code` is given.
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -28,7 +30,7 @@ fn usage() -> ExitCode {
         "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] [--nsymbol dbcs|national] -o <artifact> <source>"
     );
     eprintln!(
-        "       zcobc compile --native [--target <triple>] [--with <module.zo>]... [options] -o <executable> <source>"
+        "       zcobc compile --native [--target <triple>] [--with <module.zo>]... [--no-machine-code] [options] -o <executable> <source>"
     );
     eprintln!("       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] <artifact>");
     eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
@@ -56,6 +58,8 @@ struct Args {
     target: Option<String>,
     /// `--with`: modules put into the executable.
     with: Vec<PathBuf>,
+    /// `--no-machine-code`: the executable interprets the programs.
+    no_machine_code: bool,
 }
 
 fn parse_args(args: &[String]) -> Option<Args> {
@@ -72,6 +76,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
         native: false,
         target: None,
         with: Vec::new(),
+        no_machine_code: false,
     };
     let mut it = args.iter();
     while let Some(arg) = it.next() {
@@ -82,6 +87,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
             "--debugging-lines" => a.debugging_lines = true,
             "--cics" => a.cics = true,
             "--native" => a.native = true,
+            "--no-machine-code" => a.no_machine_code = true,
             "--target" => a.target = Some(it.next()?.clone()),
             "--with" => a.with.push(PathBuf::from(it.next()?)),
             "--nsymbol" => {
@@ -218,6 +224,13 @@ fn native(
         image
             .members
             .push((zeus_cobol::image::member_name(w), data));
+    }
+    if !args.no_machine_code {
+        let triple = args
+            .target
+            .clone()
+            .unwrap_or_else(zeus_cobol::native::host_triple);
+        image.add_machine_code(&triple)?;
     }
     let runtime = zeus_cobol::image::find_runtime(args.target.as_deref())?;
     image

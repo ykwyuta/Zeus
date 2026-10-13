@@ -61,10 +61,47 @@ impl Image {
         Some(Image { members })
     }
 
-    /// The image of the running executable, if it has one.
+    /// The image of the running executable, if it has one (only the end
+    /// of the file is read).
     pub fn of_current_exe() -> Option<Image> {
+        use std::io::{Read, Seek, SeekFrom};
         let exe = std::env::current_exe().ok()?;
-        Image::from_executable(&std::fs::read(exe).ok()?)
+        let mut f = std::fs::File::open(exe).ok()?;
+        let size = f.seek(SeekFrom::End(0)).ok()?;
+        if size < 16 {
+            return None;
+        }
+        let mut tail = [0u8; 16];
+        f.seek(SeekFrom::End(-16)).ok()?;
+        f.read_exact(&mut tail).ok()?;
+        if &tail[8..] != MAGIC {
+            return None;
+        }
+        let len = u64::from_le_bytes(tail[..8].try_into().ok()?);
+        let start = size.checked_sub(16 + len)?;
+        let mut data = vec![0u8; (len + 16) as usize];
+        f.seek(SeekFrom::Start(start)).ok()?;
+        f.read_exact(&mut data).ok()?;
+        Image::from_executable(&data)
+    }
+
+    /// Adds the machine code of the COBOL modules for a target triple
+    /// (members `NAME.zx`, see [`crate::native`]).
+    pub fn add_machine_code(&mut self, triple: &str) -> Result<(), String> {
+        let mut extra = Vec::new();
+        for (name, data) in &self.members {
+            if crate::native::NativeModule::from_bytes(data).is_some() {
+                continue;
+            }
+            // COBOL modules (a PL/I module does not load as one)
+            let Ok(module) = crate::load_module_bytes(data) else {
+                continue;
+            };
+            let code = crate::native::compile(&module, triple)?;
+            extra.push((format!("{name}.zx"), code.to_bytes()));
+        }
+        self.members.extend(extra);
+        Ok(())
     }
 
     /// Writes executable `out`: the run time `runtime` and this image.
