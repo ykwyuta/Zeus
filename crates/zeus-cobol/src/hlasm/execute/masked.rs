@@ -8,6 +8,7 @@ pub(super) fn execute(
     low: &mut [u32; 16],
     high: &mut [u32; 16],
     mem: &mut [u8],
+    storage: &crate::hlasm::DynamicStorage,
     cc: &mut u8,
 ) -> Result<bool, String> {
     let Some(spec) = masked_bytes(&ins.op) else {
@@ -34,6 +35,9 @@ pub(super) fn execute(
     // ICM/CLM require a one-byte access check even for mask zero. STCM
     // permits this model-dependent check; Zeus chooses to perform it too.
     range(mem, addr, count.max(1))?;
+    if matches!(spec.kind, MaskedKind::Store) {
+        storage.check_write(addr, count)?;
+    }
     let mut bytes = read(low, high, r).to_be_bytes();
     let start = if spec.high { 0 } else { 4 };
     let mut selected = [0u8; 4];

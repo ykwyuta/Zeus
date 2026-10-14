@@ -9,7 +9,16 @@ mod cli_help;
 fn main() -> ExitCode {
     if cli_help::show(
         include_str!("../../../../docs/help/zas.txt"),
-        &["-I", "-L", "-o", "--parm", "--sysparm", "--diagnostics"],
+        &[
+            "-I",
+            "-L",
+            "-o",
+            "--parm",
+            "--sysparm",
+            "--diagnostics",
+            "--source-encoding",
+            "--source-format",
+        ],
     ) {
         return ExitCode::SUCCESS;
     }
@@ -41,8 +50,24 @@ fn run() -> Result<i32, String> {
     let mut diagnostics = None;
     let mut assembly_options = hlasm::AssemblyOptions::default();
     let mut has_sysparm = false;
+    let mut has_source_encoding = false;
+    let mut has_source_format = false;
     while let Some(a) = it.next() {
         match a.as_str() {
+            "--source-format" => {
+                has_source_format = true;
+                assembly_options.source_format = it
+                    .next()
+                    .ok_or("--source-format requires a value")?
+                    .parse()?;
+            }
+            "--source-encoding" => {
+                has_source_encoding = true;
+                assembly_options.source_encoding = it
+                    .next()
+                    .ok_or("--source-encoding requires a value")?
+                    .parse()?;
+            }
             "-I" | "-L" => dirs.push(PathBuf::from(
                 it.next().ok_or("-I/-L requires a directory")?,
             )),
@@ -74,6 +99,12 @@ fn run() -> Result<i32, String> {
     }
     if has_sysparm && !matches!(command, "compile" | "check") {
         return Err("--sysparm is available for compile/check".into());
+    }
+    if has_source_encoding && !matches!(command, "compile" | "check") {
+        return Err("--source-encoding is available for compile/check".into());
+    }
+    if has_source_format && !matches!(command, "compile" | "check") {
+        return Err("--source-format is available for compile/check".into());
     }
     if command == "link" {
         let mut modules = Vec::new();

@@ -124,7 +124,7 @@ pub fn compile_report_with_options(
         diagnostics: vec![],
         complete: false,
     };
-    let result = assemble::statements(path)
+    let result = super::source::statements(path, options, false, &mut report.diagnostics)
         .and_then(|input| macros::expand(input, dirs, &mut report.diagnostics, options))
         .and_then(assemble::compile_statements);
     match result {

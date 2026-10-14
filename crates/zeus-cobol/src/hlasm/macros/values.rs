@@ -705,7 +705,7 @@ impl Scope {
             );
         }
         let old = self.set(&r.name, state).unwrap();
-        if old.kind != kind || old.array != !r.indices.is_empty() {
+        if old.kind != kind || old.array == r.indices.is_empty() {
             return Err("SET assignment disagrees with symbol type or dimension".into());
         }
         let items = operands(text);

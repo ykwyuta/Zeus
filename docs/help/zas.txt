@@ -24,6 +24,19 @@ OPTIONS
   --sysparm TEXT
                compile/check: assembly-time &SYSPARM text, preserving case.
                For JCL assembly use PARM='SYSPARM(text)' on the EXEC statement.
+  --source-format auto|fixed
+      Auto accepts extended host remarks and legacy long text records. Fixed
+      always honors the continuation column, even in records longer than 80
+      bytes. Default: auto. An explicit ICTL selects strict columns in either
+      mode. Use fixed for alphabetic identification fields on continued remarks.
+  --source-encoding FORMAT
+               compile/check: utf8 (default), or ebcdic:CCSID:RECORD_LENGTH.
+               Example: ebcdic:939:80 reads fixed 80-byte mixed Japanese
+               EBCDIC records. Supported CCSIDs: 37, 930, 939, 1390, 1399.
+               The setting also applies to COPY and macro library members.
+               UTF-8 source accepts a BOM. EBCDIC records must be complete;
+               malformed SO/SI sequences are errors. Column positions count
+               original EBCDIC bytes, including SO/SI and DBCS byte pairs.
   --diagnostics FILE
                compile/check: write JSON with diagnostics (file, line,
                operation, severity, category, message), complete, and the
@@ -33,6 +46,18 @@ OPTIONS
   --help, -h   Display embedded help without compiling or executing.
 
 LINKAGE
+  LINK EP=NAME or EPLOC=address calls an entry through the owning Machine.
+  PARAM=(addresses) constructs arguments; (register) denotes an address in
+  registers 2..12. VL=1 marks the last parameter address. Without PARAM,
+  an unchanged incoming R1 list retains its known argument count and original
+  terminator convention. Known COBOL/PL/I signatures also supply fixed counts.
+  Other lists require a high-bit terminator (up to 4096 entries).
+  LINK can call HLASM, COBOL, registered host programs, and PL/I through the
+  run unit's configured linker. XCTL transfers control and returns its
+  target's result directly to the previous caller. R15 receives the result.
+  Direct execute/execute_with_storage APIs have no module-service host;
+  use Machine for programs that issue LINK or XCTL. Unsupported macro forms
+  and keywords are errors; IBM macro source is not embedded.
   Place NAME.zo or member NAME in the caller's load library. COBOL CALL and
   PL/I external calls pass addresses in the same run-unit storage. R1 points
   to fullword argument addresses; the final address has its high bit set.
@@ -112,9 +137,12 @@ LINKING
   open code and COPY text, skipping macro definitions/generation and ignoring
   conditional branches. Lookahead does not substitute model fields or define
   symbols for D'. Supported system-variable T'/K'/N' attributes follow their
-  scalar or sublist value. Additional assembler options and
-  attributes, extended DC/DS program annotations and
-  register type-checking controls remain unsupported.
+  scalar or sublist value. DC/DS P(absolute-expression) annotations follow the
+  type extension and assign a 32-bit program type; SYSATTRP returns its four
+  EBCDIC bytes. The first operand with P() supplies the declaration's program
+  type. SYSATTRA returns the first operand's type and extension, such as FD,
+  QD or SY. Additional options, attributes and register type checking remain
+  unsupported.
   Literal L'/T'/D' references are supported directly and through macro parameters,
   &SYSLIST and SETC elements, for example &LEN SETA L'=F'7'. L'/T' define
   literal metadata; D' only checks whether it was already defined. Machine
@@ -150,9 +178,39 @@ LINKING
   DC/DS layout can use resolvable forward absolute EQU constants. Literal
   operands and conditional attributes require values known at their reference;
   they do not look ahead. Expressions requiring location-counter layout are
-  diagnosed. Other constant types do not yet support expression-valued lengths.
-  Floating constants, bit lengths, expression duplication factors and
-  literal-type compatibility modes remain unsupported.
+  diagnosed. Other supported types also accept L(expression) byte lengths and
+  parenthesized expression duplication factors. Bit lengths use L.n/L.(expr)
+  and pack across adjacent bit operands; the final byte is filled with zeros.
+  CA uses CCSID 819, CE uses the active EBCDIC CCSID, CU uses UTF-16BE, and
+  G emits pure DBCS with a mixed ZEUS_CCSID. Character fields pad on the right
+  with the appropriate spaces. CU/G byte lengths must be even; neither permits
+  a bit length. A/Y absolute bit fields are supported; relocatable bit fields
+  are errors. Y/AD/VD and explicit address lengths retain their field widths
+  through linking/loading using module format 7. DCB metadata uses format 8.
+  S/SY encode base/displacement addresses, with unsigned 12-bit or signed
+  20-bit displacements. Nominals may use displacement(base) or an active
+  USING binding. S/SY literals use USING at LTORG/END and the referring
+  instruction's location for *. DC duplicates advance * per nominal.
+  DXD declares an external dummy extent with DS syntax and length attribute 1.
+  Q/QD/QY refer to dummy sections, classes, parts or labels within classes;
+  J/JD give section/class/part lengths. CXD gives the total external dummy
+  requirement. Same-name dummy definitions merge by maximum length and
+  alignment. Allocate the resulting work area explicitly with GETMAIN/STORAGE.
+  QY uses the signed 20-bit split-displacement encoding and rejects overflow.
+  XATTR PSECT(label)[,LINKAGE(OS)] associates an entry with the writable class
+  or section containing label; R/RD contain that area's first-byte address,
+  relocated at load time. External PSECT labels resolve through ENTRY metadata.
+  A mapped Zeus class retains gaps between image elements; J includes those
+  gaps and Q uses actual offsets from the class's first byte. Three-byte R/RD
+  addresses must fit 24 bits. These quantities require module format 9.
+  CATTR switches class elements within a CSECT/RSECT. Supported attributes
+  include ALIGN(0/1/2/3/4/12), READONLY, EXECUTABLE/NOTEXECUTABLE, RMODE(24/31/ANY),
+  LOAD/DEFLOAD/NOLOAD and reuse declarations. A class continuation has no
+  operands. NOLOAD classes also support PART(name), PRIORITY(0..2147483647)
+  and FILL(0..255); continuations specify PART. Parts merge by maximum size
+  and alignment, ordered by descending priority. Initialized PART binding,
+  arbitrary GOFF attributes and IBM object interchange remain unsupported.
+  Floating constants and literal-type compatibility modes remain unsupported.
   Set R15 explicitly when the callee expects its entry address there; BRASL
   only sets its specified link register. The binder computes relative
   displacements after all members are placed, checking alignment and the
@@ -166,7 +224,7 @@ LINKING
   composite instruction relocations use format 3 so older readers reject them.
   Composite address relocations use format 4 and retain their image-origin
   coefficient after binding, so reloading and relinking recompute the value.
-  Formats 1 through 3 remain readable. Images without composite address
+  Formats 1 through 9 remain readable. Images without composite address
   relocations or pending instruction fixups use format 1.
   Fullword A constants accept linear expressions such as A(TABLE+LIMIT-START),
   A(LIMIT-START), A(TABLE+TABLE) and A(-TABLE), directly or through EQU aliases.
@@ -174,9 +232,9 @@ LINKING
   32 bits; negative differences use two's complement. Signed absolute fullword
   values are also supported. Each absent weak term contributes zero in a
   composite expression. Single weak-symbol constants retain the existing
-  zero-target convention, including ignoring the addend when absent.
-  DSECT terms, relocatable multiplication/division and other address-constant
-  lengths/types remain unsupported. V constants require a symbol name.
+  zero-target convention, retaining the constant addend when absent.
+  DSECT terms in A/V and relocatable multiplication/division remain unsupported.
+  Q/J supply the separate dummy-section offset/length interface. V constants require a symbol name.
   A duplicated constant captures '*' at each field; an =A(...) literal
   captures '*' at its referring instruction.
 
@@ -243,8 +301,9 @@ MACRO SYSTEM SYMBOLS AND FUNCTIONS
   CLI source/library names use actual host paths and file stems; unavailable
   streams/volumes are empty. JCL supplies job, step and allocated DD names.
   &SYSJOB/&SYSSTEP use (NOJOB)/(NOSTEP) when no job context is supplied.
-  &SYSOPT_CODEPAGE and &SYSCODEPAGE identify the active CCSID. DBCS, RENT and
-  XOBJECT assembler flags are 0; OPTABLE/CURR_OPTABLE identify the ZEUS table.
+  &SYSOPT_CODEPAGE and &SYSCODEPAGE identify the active CCSID. DBCS reflects
+  mixed source/data code pages; RENT and XOBJECT flags are 0.
+  OPTABLE/CURR_OPTABLE identify the ZEUS table.
   SYSLIST counts positional operands (including omitted ones), excludes
   keyword operands, and returns the invocation label at index 0. SYSMAC(0)
   is the current macro, increasing indices walk callers to OPEN CODE.
@@ -263,6 +322,21 @@ MACRO SYSTEM SYMBOLS AND FUNCTIONS
   subscripts, incompatible assignments and numeric overflow are diagnosed.
 
 SUPPORTED INSTRUCTIONS
+  ICTL begin[,end[,continue]] selects physical source columns (first instruction
+  only). Defaults without ICTL are 1,71,16; an omitted continue column disables
+  continuation. COPY and library macro members always use standard columns and
+  cannot contain ICTL or ISEQ. ISEQ left,right checks physical sequence fields
+  in EBCDIC order, including comments and continuation records; bare ISEQ ends
+  checking. Non-increasing fields produce severity-4 warnings and still allow
+  module output. Blank sequence fields do not replace the previous nonblank.
+  CS/CSY/CSG and CDS/CDSY/CDSG compare and swap fullword, doubleword or quadword
+  storage, setting CC=0 on replacement or CC=1 while loading the unequal value.
+  Double forms require even register pairs; storage must have natural alignment.
+  TS tests the high bit of a byte, sets CC=0/1, and sets the byte to X'FF'.
+  LAA/LAAG/LAAL/LAALG/LAN/LANG/LAO/LAOG/LAX/LAXG load the old storage value
+  and update storage with the arithmetic/logical result, including CC effects.
+  Each operation completes under exclusive run-unit ownership of the memory.
+  This serialized engine has no independently executing CPUs.
   CNOP byte,boundary emits executable NOP padding; byte must be even and in
   0..boundary-2, boundary a power of two in 4..4096. The label denotes the
   halfword-aligned start of padding. PUSH/POP save independent USING, PRINT
@@ -434,11 +508,88 @@ DYNAMIC SHARED STORAGE
   OS authorization, storage keys, address spaces, IBM macro parameter lists
   and additional GETMAIN request variants are not emulated by these paths.
 
+ADDITIONAL SCALAR INSTRUCTIONS
+  CSST first,second,compare-register uses R0's low byte as function 0/1/2
+  (word/doubleword/quadword comparison), and its next byte as store
+  characteristic 0..4 (1/2/4/8/16 bytes). R1 points to a 16-byte-aligned
+  parameter list; its low four bits are ignored. Replacement starts at byte 0,
+  and the additional store value at byte 16. Quadword comparisons need an even
+  register pair. Both inputs are fetched before either store; operand 1 is
+  stored before operand 2. Alignment/access/protection errors suppress both
+  stores. CC is 0 on equality and 1 on mismatch (which loads the compare input).
+  LPD/LPDG load two naturally aligned operands into an even register pair.
+  Their two fetches are interlocked in the serialized run unit (CC=0); the
+  32-bit form preserves upper words. Address displacements are unsigned 12-bit.
+  RISBG/RISBGN/RISBHG/RISBLG accept r1,r2,start,end[,rotate]. Z suffix aliases
+  zero unselected destination bits; high/low forms preserve the other word.
+  RNSBG/ROSBG/RXSBG perform logical operations on selected bits; T aliases
+  set CC without storing. Ranges can wrap, and rotate defaults to zero.
+  FLOGR uses an even destination pair for the leftmost-one position and the
+  source with that bit cleared. POPCNT r1,r2[,mask] counts bits per byte;
+  mask 8 counts the entire register. Other mask bits are reserved.
+  NRK/NGRK, ORK/OGRK, XRK/XGRK, NCRK/NCGRK, OCRK/OCGRK, NNRK/NNGRK,
+  NORK/NOGRK and NXRK/NXGRK accept three registers. NOTR/NOTGR are aliases.
+  SELR/SELGR/SELFHR select their second or third register using a condition
+  mask, preserving CC. E/Z/NE/NZ/H/P/NH/NP/L/M/NL/NM/O/NO suffixes supply masks.
+
+MODULE AND BASIC SERVICES
+  LOAD EP=NAME or EPLOC=address returns a 31-bit entry pointer in R0, a length
+  in doublewords in R1, and RC 0 in R15. DELETE releases one LOAD responsibility;
+  RC 4 means no matching responsibility remains. HLASM entry aliases share an
+  image count. Active assembler images are released after their last return;
+  unused images and their protection metadata are reclaimed. Re-loading a
+  released image restores initial storage. COBOL, PL/I and registered host
+  entries use eight-byte virtual dispatch slots (length 1), never host pointers.
+  Their existing language runtimes keep program instances until run-unit end.
+  Save R1 around LOAD when it contains your parameter list. A loaded entry
+  accepts normal register linkage; set R15 to the entry address when required.
+  For COBOL/PL/I, known signatures permit fixed argument lists without a
+  terminator. Unknown signatures require a last-address high-bit terminator.
+
+  WTO 'text' or WTO TEXT=address writes one message to the run-unit output
+  sink (SYSOUT in JCL); TEXT points to a halfword byte length and EBCDIC text.
+  Length is 1..126 bytes. ROUTCDE=(codes) and DESC=(codes) are retained in
+  operator-message metadata. Machine::operator_messages exposes the most
+  recent 1024 messages; the output sink receives every message.
+  POST ecb[,completion] sets the posted bit and a 30-bit completion code.
+  WAIT [events,]ECB=address or ECBLIST=address waits for completion counts.
+  ECBs and their pointer lists must be fullword aligned; ECBLIST's final
+  pointer has its high bit set. Machine::schedule_hlasm_post queues producer
+  completions for cooperative WAIT dispatch. A wait without enough completed
+  or queued events reports a deadlock. Wait registrations are cleared on
+  both completion and error. This does not emulate independent host CPUs.
+
+RECORD INPUT AND OUTPUT
+  DCB DDNAME=name,DSORG=PS,MACRF=mode,RECFM=format,LRECL=n declares a sequential
+  record interface. MACRF supports GM/GL (GET move/locate) and PM/PL (PUT
+  move/locate), including paired modes. RECFM supports F/FB/V/VB. LRECL and
+  BLKSIZE are 0..32760; zero LRECL requires an allocated DD length. EODAD and
+  SYNAD name compiled exits. Unsupported keywords/forms are diagnosed.
+  OPEN (dcb,INPUT,other,OUTPUT) opens DDs; OUTPUT creates/truncates and EXTEND
+  appends. Missing DD returns R15=8. CLOSE (dcb,,other) flushes and closes;
+  GET dcb,area and PUT dcb,area use move mode. GET dcb and PUT dcb use locate
+  mode and return a buffer address in R1. A locate PUT flushes the preceding
+  buffer; CLOSE or run-unit teardown writes the last pending record.
+  Variable records in assembler buffers include a four-byte RDW; LRECL includes
+  it. Dataset storage reuses Zeus fixed/RDW/text formats; FB/VB operate on
+  deblocked logical records. DD formats override DCB formats/lengths. Text
+  DDs use the same host/EBCDIC conversions as COBOL. EOF branches to EODAD;
+  absent EODAD is an error. Recoverable GET/PUT errors can enter SYNAD with
+  R15=8 and R14 naming the next instruction. This is a source-level service
+  interface, not full IBM DCB/control-program binary compatibility.
+  DCBs and their EODAD/SYNAD exits must be below 16 MiB; DCBs are fullword
+  aligned. Machine loads DCB-bearing modules below this limit. Copies of initialized DCBs can be
+  opened by address. An open DCB pins its heap bytes until CLOSE. Per-file
+  locate buffers survive assembler returns and are released on close; calls
+  through LINK close files when their owning image is released. FREEPOOL
+  accepts a closed DCB; buffers have already been reclaimed by CLOSE.
+  Run-unit/step teardown closes the files and reports final output errors.
+
 LIMITATIONS
   This is not complete HLASM or z/Architecture compatibility. Unimplemented
   areas include remaining integer/floating/vector/privileged instructions,
   AMODE 64 linkage, IBM object linking, cross-language object linking,
-  literal pools in DSECTs, additional option profiles, ICTL,
+  literal pools in DSECTs, additional option profiles,
   external SETAF/SETCF functions, AREAD/AINSERT and full diagnostic/listing output,
   arbitrary IBM macros, z/OS services and IBM object-deck output.
   Unknown operations fail compilation. Execution checks storage accesses

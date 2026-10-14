@@ -22,6 +22,7 @@ pub(super) fn execute(
     low: &mut [u32; 16],
     high: &mut [u32; 16],
     mem: &mut [u8],
+    storage: &crate::hlasm::DynamicStorage,
     cc: &mut u8,
 ) -> Result<bool, String> {
     let op = ins.op.as_str();
@@ -100,6 +101,7 @@ pub(super) fn execute(
             if op == "LMG" {
                 write(low, high, target, doubleword(mem, addr + n * 8)?);
             } else {
+                storage.check_write(addr + n * 8, 8)?;
                 mem[addr + n * 8..addr + (n + 1) * 8]
                     .copy_from_slice(&read(low, high, target).to_be_bytes());
             }
@@ -108,6 +110,7 @@ pub(super) fn execute(
     }
     if op == "STG" {
         let dest = range(mem, ea()?, 8)?;
+        storage.check_write(dest.start, 8)?;
         mem[dest].copy_from_slice(&a.to_be_bytes());
         return Ok(true);
     }

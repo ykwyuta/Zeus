@@ -130,7 +130,7 @@ impl StepCtx<'_> {
         Ok(out)
     }
 
-    fn read_dd(&self, dd: &Dd) -> Result<Vec<Vec<u8>>, String> {
+    pub(crate) fn read_dd(&self, dd: &Dd) -> Result<Vec<Vec<u8>>, String> {
         Ok(match &dd.kind {
             DdKind::Dummy | DdKind::Sysout => Vec::new(),
             DdKind::Instream(lines) => lines

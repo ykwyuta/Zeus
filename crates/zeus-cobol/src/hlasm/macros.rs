@@ -1,4 +1,4 @@
-use super::assemble::{Statement, directive, instruction_size, member, operands, statements};
+use super::assemble::{Statement, directive, instruction_size, member, operands};
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::path::{Path, PathBuf};
 mod controls;
@@ -466,7 +466,7 @@ fn expand_scope(
         if s.op == "COPY" && !macro_invocation {
             let file = member(&s.args, Path::new(&s.file), dirs).map_err(|e| s.error(e))?;
             out.extend(expand_scope(
-                statements(&file)?,
+                super::source::statements(&file, &state.options, true, &mut state.diagnostics)?,
                 dirs,
                 macros,
                 depth + 1,
@@ -525,7 +525,7 @@ fn expand_scope(
                     }
                 };
                 if !expand_scope(
-                    statements(&file)?,
+                    super::source::statements(&file, &state.options, true, &mut state.diagnostics)?,
                     dirs,
                     macros,
                     depth + 1,
@@ -660,6 +660,7 @@ struct Expansion {
     attribute_values: super::assemble::Symbols,
     attributes: HashMap<String, Result<super::expression::EquAttributes, String>>,
     storage_types: HashMap<String, String>,
+    storage_programs: HashMap<String, Result<Option<u32>, String>>,
     defined_symbols: HashSet<String>,
     ordinary_attributes: HashMap<String, (Result<u32, String>, u8)>,
     defined_literals: HashSet<String>,
@@ -702,7 +703,7 @@ impl Expansion {
                 if op == "END" {
                     break;
                 }
-                if (s.label == name && !matches!(op, "TITLE" | "AMODE" | "RMODE"))
+                if (s.label == name && !matches!(op, "TITLE" | "AMODE" | "RMODE" | "XATTR"))
                     || (matches!(op, "EXTRN" | "WXTRN")
                         && operands(&s.args)
                             .iter()
@@ -711,6 +712,14 @@ impl Expansion {
                     let mut found = s.clone();
                     if !op.is_empty() {
                         found.op = op.into();
+                    }
+                    if found.op == "CXD" {
+                        found.op = "DS".into();
+                        found.args = "A".into();
+                    }
+                    if found.op == "DCB" {
+                        found.op = "DS".into();
+                        found.args = "CL96".into();
                     }
                     return Ok(Some(found));
                 }
@@ -729,7 +738,12 @@ impl Expansion {
                     };
                     let path = member(&member_name, Path::new(&s.file), &state.library_dirs)
                         .map_err(|e| s.error(e))?;
-                    if let Some(found) = scan(&statements(&path)?, name, state, depth + 1)? {
+                    if let Some(found) = scan(
+                        &super::source::statements(&path, &state.options, true, &mut vec![])?,
+                        name,
+                        state,
+                        depth + 1,
+                    )? {
                         return Ok(Some(found));
                     }
                 }
@@ -768,7 +782,7 @@ impl Expansion {
                     .unwrap_or_else(|| "(NOSTEP)".into()),
             ),
             ("&SYSPARM", self.options.sysparm.clone()),
-            ("&SYSOPT_DBCS", "0".into()),
+            ("&SYSOPT_DBCS", u8::from(crate::codepage::active().is_mixed() || matches!(self.options.source_encoding, super::SourceEncoding::Ebcdic { ccsid, .. } if crate::codepage::get(ccsid).is_some_and(|cp| cp.is_mixed()))).to_string()),
             ("&SYSOPT_RENT", "0".into()),
             ("&SYSOPT_XOBJECT", "0".into()),
             ("&SYSOPT_OPTABLE", "ZEUS".into()),
@@ -989,6 +1003,20 @@ impl Expansion {
     }
 
     fn observe_attributes(&mut self, statement: &Statement) {
+        if statement.op == "CXD" {
+            let mut data = statement.clone();
+            data.op = "DS".into();
+            data.args = "A".into();
+            self.observe_attributes(&data);
+            return;
+        }
+        if statement.op == "DCB" {
+            let mut data = statement.clone();
+            data.op = "DS".into();
+            data.args = "CL96".into();
+            self.observe_attributes(&data);
+            return;
+        }
         if matches!(statement.op.as_str(), "TITLE" | "AMODE" | "RMODE") {
             return;
         }
@@ -1056,6 +1084,7 @@ impl Expansion {
         if statement.op == "EQU" {
             self.numeric_attributes.insert(name.clone(), Ok((0, 0)));
             self.storage_types.remove(&name);
+            self.storage_programs.remove(&name);
             let attributes =
                 super::expression::early_equ_attributes(&statement.args, &self.attribute_values)
                     .map_err(|e| statement.error(e));
@@ -1126,7 +1155,7 @@ impl Expansion {
                     "I"
                 } else if matches!(
                     statement.op.as_str(),
-                    "CSECT" | "RSECT" | "DSECT" | "START" | "LOCTR"
+                    "CSECT" | "RSECT" | "DSECT" | "START" | "LOCTR" | "CATTR" | "DXD"
                 ) {
                     "J"
                 } else {
@@ -1159,22 +1188,17 @@ impl Expansion {
             self.ordinary_attributes.insert(name.clone(), ordinary);
             // Supported DC/DS types carry an implicit assembler type. Other
             // generated labels have no program or assembler annotation.
-            let kind = if matches!(statement.op.as_str(), "DC" | "DS") {
-                let args = statement.args.to_ascii_uppercase();
-                args.find(|c: char| c.is_ascii_alphabetic()).map(|at| {
-                    if args[at..].starts_with("FD") {
-                        "FD".into()
-                    } else {
-                        args[at..at + 1].into()
-                    }
-                })
+            let annotations = if data {
+                super::constants::annotations(&statement.args, &self.attribute_values)
             } else {
-                None
+                Ok((None, String::new()))
             };
-            // Storage assembler types extend the EQU register keywords, so
-            // keep their result separately from EQU attribute validation.
+            self.storage_programs.insert(
+                name.clone(),
+                annotations.as_ref().map(|a| a.0).map_err(Clone::clone),
+            );
             self.storage_types
-                .insert(name.clone(), kind.unwrap_or_default());
+                .insert(name.clone(), annotations.map(|a| a.1).unwrap_or_default());
             self.attributes.remove(&name);
         }
     }
@@ -1277,7 +1301,7 @@ impl Expansion {
                     crate::ebcdic::encode(
                         if matches!(
                             s.op.as_str(),
-                            "CSECT" | "RSECT" | "DSECT" | "START" | "LOCTR"
+                            "CSECT" | "RSECT" | "DSECT" | "START" | "LOCTR" | "CATTR" | "DXD"
                         ) {
                             "J"
                         } else if instruction_size(&s.op).is_some() {
@@ -1323,7 +1347,11 @@ impl Expansion {
                 .map_err(|e| format!("cannot query {name} during macro expansion: {e}"));
         }
         Ok(if program {
-            String::new()
+            self.storage_programs
+                .get(&name)
+                .cloned()
+                .unwrap_or(Ok(None))?
+                .map_or_else(String::new, |n| crate::ebcdic::decode(&n.to_be_bytes()))
         } else {
             self.storage_types.get(&name).cloned().unwrap_or_default()
         })

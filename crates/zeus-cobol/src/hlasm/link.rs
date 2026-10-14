@@ -14,6 +14,16 @@ fn exports(module: &Module) -> HashMap<String, u32> {
     entries
 }
 
+fn provides(module: &Module, symbol: &str) -> bool {
+    exports(module).contains_key(symbol)
+        || module
+            .bindings
+            .sections
+            .iter()
+            .any(|s| s.name == symbol || s.class.as_deref() == Some(symbol))
+        || module.bindings.psects.iter().any(|p| p.symbol == symbol)
+}
+
 pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
     let first = modules.first().ok_or("no HLASM modules to link")?;
     let mut linked = Module {
@@ -29,10 +39,14 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
         relocations: Vec::new(),
         entries: HashMap::new(),
         externals: HashMap::new(),
+        dcbs: Vec::new(),
+        bindings: super::Bindings::default(),
     };
     for module in modules {
         let alignment = module.required_alignment()?;
         module.validate_read_only()?;
+        super::data_management::validate(module)?;
+        module.bindings.validate(module)?;
         linked.rmode = linked.rmode.min(module.rmode);
         linked.alignment = linked.alignment.max(module.alignment);
         let origin = linked.storage.len().next_multiple_of(alignment);
@@ -42,6 +56,15 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
             .ok_or("linked HLASM image exceeds 16 MiB")?;
         linked.storage.resize(origin, 0);
         linked.storage.extend(&module.storage);
+        linked.bindings.merge(&module.bindings, origin as u32);
+        linked
+            .dcbs
+            .extend(module.dcbs.iter().cloned().map(|mut dcb| {
+                dcb.offset += origin as u32;
+                dcb.end = dcb.end.map(|value| value + origin as u32);
+                dcb.error = dcb.error.map(|value| value + origin as u32);
+                dcb
+            }));
         linked.read_only.extend(
             module
                 .read_only
@@ -80,8 +103,13 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
             linked.code.push(instruction);
         }
         for relocation in &module.relocations {
+            if !(1..=8).contains(&relocation.width)
+                || (relocation.width != 4 && module.zeus_hlasm < 7)
+            {
+                return Err("invalid relocation width or module version".into());
+            }
             if (relocation.offset as usize)
-                .checked_add(4)
+                .checked_add(relocation.width as usize)
                 .is_none_or(|n| n > module.storage.len())
             {
                 return Err("relocation outside module storage".into());
@@ -91,9 +119,9 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
             if let Some(expression) = &mut relocation.expression {
                 expression.rebase(origin)?;
             } else if relocation.symbol.is_none() {
-                relocation.target = relocation
-                    .target
-                    .checked_add(origin as u32)
+                relocation.addend = relocation
+                    .addend
+                    .checked_add(origin as i64)
                     .ok_or("relocation overflow")?;
             }
             linked.relocations.push(relocation);
@@ -231,15 +259,24 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
     linked
         .externals
         .retain(|name, _| !linked.entries.contains_key(name));
-    linked.zeus_hlasm = if !linked.read_only.is_empty() || linked.rmode == 24 {
-        6
-    } else if linked.alignment > 8 {
-        5
-    } else {
-        super::format_version(&linked.code, &linked.relocations)
-    };
+    linked.zeus_hlasm = super::format_version(&linked.code, &linked.relocations).max(
+        if linked.bindings.requires_extended() {
+            9
+        } else if !linked.dcbs.is_empty() {
+            8
+        } else if !linked.read_only.is_empty() || linked.rmode == 24 {
+            6
+        } else if linked.alignment > 8 {
+            5
+        } else {
+            1
+        },
+    );
     // Check relocated values without making them permanent in the object.
     linked.storage_at(0)?;
+    linked
+        .bindings
+        .initialize(&linked, &mut linked.storage.clone(), 0)?;
     Ok(linked)
 }
 
@@ -257,6 +294,16 @@ pub fn link_with_libraries(mut modules: Vec<Module>, dirs: &[PathBuf]) -> Result
             .collect();
         let mut required = Vec::new();
         for module in &modules {
+            required.extend(
+                module
+                    .bindings
+                    .quantities
+                    .iter()
+                    .filter(|q| {
+                        !matches!(q.kind, super::QuantityKind::Total) && q.element.is_none()
+                    })
+                    .map(|q| q.symbol.clone()),
+            );
             required.extend(
                 module
                     .relocations
@@ -302,7 +349,7 @@ pub fn link_with_libraries(mut modules: Vec<Module>, dirs: &[PathBuf]) -> Result
         required.dedup();
         let mut added = false;
         for symbol in required {
-            if modules.iter().any(|m| exports(m).contains_key(&symbol)) {
+            if modules.iter().any(|m| provides(m, &symbol)) {
                 continue;
             }
             if defined.contains(&symbol) || !attempted.insert(symbol.clone()) {
@@ -320,7 +367,7 @@ pub fn link_with_libraries(mut modules: Vec<Module>, dirs: &[PathBuf]) -> Result
                             std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
                         let module =
                             load_module(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
-                        if !exports(&module).contains_key(&symbol) {
+                        if !provides(&module, &symbol) {
                             return Err(format!("{} does not define {symbol}", path.display()));
                         }
                         found = Some(module);

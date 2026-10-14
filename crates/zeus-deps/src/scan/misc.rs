@@ -212,18 +212,56 @@ pub fn csd(text: &str) -> Scanned {
 }
 
 /// Application assembler sources, COPY members and macro invocations.
+fn hlasm_argument_field(text: &str) -> &str {
+    let mut quoted = false;
+    for (at, c) in text.char_indices() {
+        let attribute =
+            at > 0 && b"LKNDTOSI".contains(&text.as_bytes()[at - 1].to_ascii_uppercase());
+        if c == '\'' && (quoted || !attribute) {
+            quoted = !quoted;
+        }
+        if c.is_whitespace() && !quoted {
+            return &text[..at];
+        }
+    }
+    text
+}
+
 pub fn hlasm(text: &str) -> super::Scanned {
     let mut out = super::Scanned::default();
     let mut prototype = false;
     let mut macros = std::collections::HashSet::new();
     let mut operation_aliases = std::collections::HashMap::<String, String>::new();
     let mut external_kinds = std::collections::HashMap::new();
+    let mut local_symbols = std::collections::HashSet::new();
+    let mut binding_aliases = std::collections::BTreeSet::new();
     for raw in text
         .lines()
         .filter(|l| !l.starts_with('*') && !l.starts_with(".*"))
     {
         let words: Vec<_> = raw.split_whitespace().collect();
         let at = usize::from(!raw.starts_with(char::is_whitespace));
+        if at == 1
+            && let Some(label) = words.first().filter(|name| !name.contains('&'))
+        {
+            local_symbols.insert(label.to_ascii_uppercase());
+        }
+        if at == 1
+            && let Some(op) = words.get(1)
+            && matches!(op.to_ascii_uppercase().as_str(), "DXD" | "DSECT" | "CATTR")
+        {
+            binding_aliases.insert(words[0].to_ascii_uppercase());
+        }
+        if words
+            .get(at)
+            .is_some_and(|op| op.eq_ignore_ascii_case("CATTR"))
+            && let Some(part_at) = raw.to_ascii_uppercase().find("PART(")
+            && let Some(end) = raw[part_at + 5..].find(')')
+        {
+            let name = raw[part_at + 5..part_at + 5 + end].to_ascii_uppercase();
+            local_symbols.insert(name.clone());
+            binding_aliases.insert(name);
+        }
         if let (Some(op), Some(args)) = (words.get(at), words.get(at + 1))
             && matches!(op.to_ascii_uppercase().as_str(), "EXTRN" | "WXTRN")
         {
@@ -248,7 +286,13 @@ pub fn hlasm(text: &str) -> super::Scanned {
             continue;
         };
         let mut op = op.to_ascii_uppercase();
-        let arg = words.next().unwrap_or("");
+        let first = words.next().unwrap_or("");
+        let argument_start = if first.is_empty() {
+            raw.len()
+        } else {
+            raw.find(first).unwrap_or(raw.len())
+        };
+        let arg = hlasm_argument_field(&raw[argument_start..]);
         if op == "OPSYN" {
             if let Some(label) = label {
                 let name = label.to_ascii_uppercase();
@@ -297,39 +341,37 @@ pub fn hlasm(text: &str) -> super::Scanned {
                 );
             }
         }
-        // V constants are implicit external declarations. Ignore quoted
-        // character constants and comments when looking for nominal values.
-        let argument_start = raw.find(arg).unwrap_or(raw.len());
-        let upper = arg.to_ascii_uppercase();
-        let mut quoted = false;
-        for (at, c) in upper.char_indices() {
-            if c == '\'' {
-                quoted = !quoted;
-            }
-            if quoted || !upper[at..].starts_with("V(") {
+        for reference in zeus_cobol::hlasm::constant_references(arg, op != "DC") {
+            if reference.kind != 'V' && local_symbols.contains(&reference.name) {
                 continue;
             }
-            if op != "DC" && (at == 0 || upper.as_bytes()[at - 1] != b'=') {
-                continue;
-            }
-            if let Some(end) = upper[at + 2..].find(')') {
-                for name in upper[at + 2..at + 2 + end]
-                    .split(',')
-                    .filter(|n| !n.is_empty())
-                {
-                    let mut r =
-                        super::Ref::new("HLASM_EXTERNAL", name, line + 1, argument_start + at + 3);
-                    r.dynamic = name.contains('&');
-                    r.attrs.push((
-                        "weak",
-                        external_kinds
-                            .get(name)
-                            .copied()
-                            .unwrap_or(false)
-                            .to_string(),
-                    ));
-                    out.refs.push(r);
-                }
+            let mut r = super::Ref::new(
+                "HLASM_EXTERNAL",
+                &reference.name,
+                line + 1,
+                raw[..argument_start + reference.offset].chars().count() + 1,
+            );
+            r.dynamic = reference.name.contains('&');
+            r.attrs.push((
+                "weak",
+                external_kinds
+                    .get(&reference.name)
+                    .copied()
+                    .unwrap_or(false)
+                    .to_string(),
+            ));
+            r.attrs.push(("constant_type", reference.kind.to_string()));
+            out.refs.push(r);
+        }
+        if matches!(op.as_str(), "LINK" | "XCTL" | "LOAD") {
+            if let Some((name, col)) = operand(raw, "EP") {
+                out.refs
+                    .push(super::Ref::new("CALL", &name, line + 1, col).attr("service", &op));
+            } else if let Some((pointer, col)) = operand(raw, "EPLOC") {
+                let mut reference =
+                    super::Ref::new("CALL", &pointer, line + 1, col).attr("service", &op);
+                reference.dynamic = true;
+                out.refs.push(reference);
             }
         }
         let target = if op == "COPY" {
@@ -349,6 +391,11 @@ pub fn hlasm(text: &str) -> super::Scanned {
                 .map_or(1, |i| i + 1);
             out.refs
                 .push(super::Ref::new("HLASM_COPY", target, line + 1, col));
+        }
+    }
+    for alias in binding_aliases {
+        if out.name.as_ref() != Some(&alias) && !out.aliases.contains(&alias) {
+            out.aliases.push(alias);
         }
     }
     out
@@ -377,6 +424,46 @@ mod tests {
         assert_eq!(s.name.as_deref(), Some("MAIN"));
         assert_eq!(s.refs.len(), 1);
         assert_eq!(s.refs[0].target, "MEMBER");
+    }
+
+    #[test]
+    fn hlasm_extended_constants_and_services_keep_dependencies_and_source_columns() {
+        let text = "MAIN CSECT\nREF DC (N+1)VDP(C'TAG ')L(8)(REMOTE),Q(LOCAL),JD(EXTD),QY(PART1),R(OTHER)\n L 2,=QDP(4)L(8)(EXT2)\nMSG DC C'V(FAKE) Q(FAKE)'\nLOCAL DSECT\nPRIVATE CATTR NOLOAD,PART(PART1)\n LINK EP=COBOL,PARAM=(VALUE)\n LOAD EP=PLISUB\n XCTL EPLOC=TARGET\n";
+        let scanned = hlasm(text);
+        let refs: Vec<_> = scanned
+            .refs
+            .iter()
+            .map(|r| (r.edge, r.target.as_str(), r.dynamic))
+            .collect();
+        assert_eq!(
+            refs,
+            [
+                ("HLASM_EXTERNAL", "REMOTE", false),
+                ("HLASM_EXTERNAL", "EXTD", false),
+                ("HLASM_EXTERNAL", "OTHER", false),
+                ("HLASM_EXTERNAL", "EXT2", false),
+                ("CALL", "COBOL", false),
+                ("CALL", "PLISUB", false),
+                ("CALL", "TARGET", true)
+            ]
+        );
+        assert!(scanned.aliases.contains(&"LOCAL".into()));
+        assert!(scanned.aliases.contains(&"PART1".into()));
+        for r in &scanned.refs {
+            let source = text.lines().nth(r.line - 1).unwrap();
+            assert!(
+                source[r.col - 1..].starts_with(&r.target),
+                "{} {}:{}",
+                r.target,
+                r.line,
+                r.col
+            );
+        }
+        assert!(
+            scanned.refs[0]
+                .attrs
+                .contains(&("constant_type", "V".into()))
+        );
     }
 
     #[test]

@@ -31,6 +31,7 @@ struct Literal {
 }
 
 struct LiteralFixup {
+    pool: usize,
     spec: String,
     pub(super) offset: u32,
     location: u32,
@@ -54,6 +55,9 @@ impl LiteralPool {
         defined: &HashSet<String>,
         symbols: &Symbols,
     ) -> Result<String, String> {
+        if super::constants::duplication(spec, symbols)?.1 == 0 {
+            return Err("literal duplication factor must be positive".into());
+        }
         let key = if literal_has_location(spec) {
             format!("{spec}@{location_section}:{location}")
         } else {
@@ -90,6 +94,7 @@ impl LiteralPool {
         symbols: &mut Symbols,
         fixups: &mut Vec<LiteralFixup>,
         section: &str,
+        pool: usize,
     ) -> Result<(), String> {
         if self.pending.is_empty() {
             return Ok(());
@@ -117,13 +122,14 @@ impl LiteralPool {
                     length: literal.length,
                     type_attribute: storage_type(&literal.spec),
                     numeric_attributes: literal.numeric_attributes,
-                    program_type: None,
-                    assembler_type: None,
+                    program_type: super::constants::annotations(&literal.spec, symbols)?.0,
+                    assembler_type: Some(super::constants::annotations(&literal.spec, symbols)?.1),
                     complex: BTreeMap::new(),
                 },
             );
-            if address_constants(&literal.spec)?.is_some() {
+            if address_constants(&literal.spec, symbols)?.is_some() {
                 fixups.push(LiteralFixup {
+                    pool,
                     spec: literal.spec,
                     offset: *offset,
                     location: literal.location,
@@ -139,102 +145,7 @@ impl LiteralPool {
 }
 
 pub(super) fn statements(path: &Path) -> Result<Vec<Statement>, String> {
-    let text = std::fs::read_to_string(path).map_err(|e| format!("{}: {e}", path.display()))?;
-    let mut result = Vec::new();
-    let mut physical = text.lines().enumerate().peekable();
-    while let Some((line, raw)) = physical.next() {
-        if raw.is_empty() || raw.starts_with('*') || raw.starts_with(".*") {
-            continue;
-        }
-        let mut area: String = raw.chars().take(71).collect();
-        let mut previous = raw;
-        while previous.chars().count() <= 80
-            && previous.chars().nth(71).is_some_and(|c| c != ' ')
-            && physical.peek().is_some_and(|(_, next)| {
-                next.len() >= 15 && next.chars().take(15).all(|c| c == ' ')
-            })
-        {
-            let (_, continuation) = physical.next().ok_or_else(|| {
-                format!(
-                    "{}:{}: missing continuation record",
-                    path.display(),
-                    line + 1
-                )
-            })?;
-            if continuation.chars().take(15).any(|c| c != ' ') {
-                return Err(format!(
-                    "{}:{}: continuation must start in column 16",
-                    path.display(),
-                    line + 1
-                ));
-            }
-            if area
-                .chars()
-                .filter(|c| *c == '\'')
-                .count()
-                .is_multiple_of(2)
-            {
-                area = area.trim_end().to_string();
-            }
-            area.extend(continuation.chars().skip(15).take(56));
-            previous = continuation;
-        }
-        let mut rest = area.as_str();
-        let label = if rest.starts_with(char::is_whitespace) {
-            String::new()
-        } else {
-            let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-            let name = rest[..end].to_ascii_uppercase();
-            rest = &rest[end..];
-            name
-        };
-        rest = rest.trim_start();
-        let end = rest.find(char::is_whitespace).unwrap_or(rest.len());
-        let op = rest[..end].to_ascii_uppercase();
-        rest = rest[end..].trim_start();
-        let mut quoted = false;
-        let mut depth = 0;
-        let end = rest
-            .char_indices()
-            .find_map(|(i, c)| {
-                if c == '\'' && (quoted || !attribute_quote(rest, i)) {
-                    quoted = !quoted;
-                }
-                if !quoted {
-                    if c == '(' {
-                        depth += 1;
-                    }
-                    if c == ')' {
-                        depth -= 1;
-                    }
-                }
-                (c.is_whitespace() && !quoted && depth == 0).then_some(i)
-            })
-            .unwrap_or(rest.len());
-        if !rest.is_empty()
-            && rest[end..].trim().is_empty()
-            && previous.chars().nth(71).is_some_and(|c| c != ' ')
-        {
-            return Err(format!(
-                "{}:{}: invalid or missing continuation record",
-                path.display(),
-                line + 1
-            ));
-        }
-        if !op.is_empty() {
-            result.push(Statement {
-                label,
-                op,
-                args: rest[..end].into(),
-                file: path.display().to_string(),
-                line: line + 1,
-                sequence: raw.chars().skip(72).take(8).collect(),
-                section: String::new(),
-                offset: 0,
-            });
-        }
-    }
-    Ok(result)
+    super::source::statements(path, &super::AssemblyOptions::default(), false, &mut vec![])
 }
 
 /// Split operands while preserving commas in strings and address subfields.
@@ -287,6 +198,7 @@ pub(super) fn directive(op: &str) -> bool {
     matches!(
         op,
         "CSECT"
+            | "DCB"
             | "LOCTR"
             | "CNOP"
             | "PUSH"
@@ -294,6 +206,10 @@ pub(super) fn directive(op: &str) -> bool {
             | "RSECT"
             | "START"
             | "DSECT"
+            | "DXD"
+            | "CXD"
+            | "XATTR"
+            | "CATTR"
             | "USING"
             | "DROP"
             | "EQU"
@@ -353,6 +269,9 @@ pub(super) fn pair_operation(op: &str) -> bool {
     matches!(
         op,
         "ML" | "MLR"
+            | "FLOGR"
+            | "LPD"
+            | "LPDG"
             | "MLG"
             | "MLGR"
             | "DL"
@@ -425,6 +344,24 @@ fn wide_memory(op: &str) -> bool {
 }
 
 pub(super) fn instruction_size(op: &str) -> Option<u32> {
+    if super::operation::register_logic(op).is_some() || super::operation::select(op).is_some() {
+        return Some(4);
+    }
+    if super::operation::rotate_selected(op).is_some() {
+        return Some(6);
+    }
+    if let Some(spec) = super::operation::conditional(op) {
+        return Some(
+            if spec.kind == super::operation::ConditionalKind::Register {
+                4
+            } else {
+                6
+            },
+        );
+    }
+    if let Some((size, _)) = super::operation::interlocked(op) {
+        return Some(size);
+    }
     if let Some(spec) = super::operation::relative(op) {
         return Some(spec.size());
     }
@@ -438,9 +375,9 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         return Some(6);
     }
     Some(match op {
-        "BCTGR" | "ALCR" | "ALCGR" | "SLBR" | "SLBGR" | "LRVR" | "LRVGR" | "LBR" | "LGBR"
-        | "MLR" | "MLGR" | "DLR" | "DLGR" | "DSGR" | "DSGFR" => 4,
-        "SLLG" | "SRLG" | "SLAG" | "SRAG" | "RLL" | "RLLG" => 6,
+        "POPCNT" | "FLOGR" | "BCTGR" | "ALCR" | "ALCGR" | "SLBR" | "SLBGR" | "LRVR" | "LRVGR"
+        | "LBR" | "LGBR" | "MLR" | "MLGR" | "DLR" | "DLGR" | "DSGR" | "DSGFR" => 4,
+        "SLLG" | "SRLG" | "SLAG" | "SRAG" | "RLL" | "RLLG" | "LPD" | "LPDG" | "CSST" => 6,
         "SLDL" | "SRDL" | "SLDA" | "SRDA" => 4,
         "LGR" | "LGFR" | "LLGFR" | "LTGR" | "LCGR" | "LPGR" | "LNGR" | "AGR" | "SGR" | "ALGR"
         | "SLGR" | "CGR" | "CLGR" | "NGR" | "OGR" | "XGR" | "AGFR" | "SGFR" | "CGFR" | "MSGR"
@@ -458,7 +395,8 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         "MVC" | "CLC" | "XC" | "NC" | "OC" | "MVN" | "MVZ" | "TR" | "ZAP" | "AP" | "SP" | "CP"
         | "MP" | "DP" | "PACK" | "UNPK" | "TRT" | "TRTR" | "SRP" | "ED" | "EDMK" => 6,
         // STIMER is implemented as an OS service, not an IBM macro expansion.
-        "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE" => 4,
+        "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE" | "LINK" | "XCTL" | "LOAD" | "DELETE"
+        | "WTO" | "WAIT" | "POST" | "OPEN" | "CLOSE" | "GET" | "PUT" | "FREEPOOL" => 4,
         _ => return None,
     })
 }
@@ -479,37 +417,50 @@ pub(super) struct Symbol {
 pub(super) type Symbols = HashMap<String, Symbol>;
 
 pub(super) fn storage_type(spec: &str) -> u8 {
-    let at = spec.find(|c: char| c.is_ascii_alphabetic()).unwrap_or(0);
-    let mut kind = spec
+    let (clean, _, assembler) = super::constants::annotated(spec)
+        .unwrap_or_else(|_| (std::borrow::Cow::Borrowed(spec), None, String::new()));
+    let spec = clean.as_ref();
+    let at = super::constants::type_start(spec).unwrap_or(0);
+    let kind = spec
         .as_bytes()
         .get(at)
         .copied()
         .unwrap_or(b'U')
         .to_ascii_uppercase();
-    let tail = spec.get(at + 1..).unwrap_or("").to_ascii_uppercase();
-    let modifiers = tail.strip_prefix('D').unwrap_or(&tail);
-    if modifiers.starts_with('L') {
-        kind = match kind {
+    let modifiers = spec.get(at + assembler.len()..).unwrap_or("");
+    let kind = if modifiers.starts_with('L') {
+        match kind {
             b'F' | b'H' => b'G',
-            b'A' | b'V' => b'R',
+            b'A' | b'S' | b'Q' | b'J' | b'R' | b'V' | b'Y' => b'R',
+            b'E' | b'D' | b'L' => b'K',
+            b'G' => b'@',
             _ => kind,
-        };
-    }
+        }
+    } else {
+        match kind {
+            b'J' => b'A',
+            b'R' => b'V',
+            b'G' => b'@',
+            _ => kind,
+        }
+    };
     crate::ebcdic::encode(&(kind as char).to_string())[0]
 }
 
-/// End of one literal specification, excluding an expression that follows it.
 pub(super) fn literal_end(text: &str, start: usize) -> Result<usize, String> {
     if text.as_bytes().get(start) != Some(&b'=') {
         return Err("literal must start with =".into());
     }
-    let mut at = start + 1;
-    let fixed = text[at..]
-        .bytes()
-        .find(u8::is_ascii_alphabetic)
-        .is_some_and(|c| matches!(c.to_ascii_uppercase(), b'F' | b'H'));
+    let type_end = start + 1 + super::constants::type_start(&text[start + 1..])? + 1;
+    let mut at = type_end;
     while let Some(&c) = text.as_bytes().get(at) {
-        if c == b'(' && fixed {
+        if c == b'('
+            && at > type_end
+            && matches!(
+                text.as_bytes().get(at - 1),
+                Some(b'L' | b'S' | b'E' | b'P' | b'.' | b'+' | b'-')
+            )
+        {
             at += super::constants::parenthesized_end(&text[at..])?;
             continue;
         }
@@ -566,6 +517,9 @@ pub(super) fn literal_attributes(literal: &str, symbols: &Symbols) -> Result<(u3
         return Err("unexpected literal suffix".into());
     }
     let spec = &literal[1..];
+    if super::constants::duplication(spec, symbols)?.1 == 0 {
+        return Err("literal duplication factor must be positive".into());
+    }
     let (_, _, length) = storage(spec, true, symbols)?;
     Ok((length, storage_type(spec)))
 }
@@ -580,9 +534,8 @@ pub(super) fn storage_numeric_attributes(
         .into_iter()
         .next()
         .ok_or("constant required")?;
-    let at = first
-        .find(|c: char| c.is_ascii_alphabetic())
-        .ok_or("storage type expected")?;
+    let (first, _, _) = super::constants::annotated(&first)?;
+    let at = super::constants::type_start(&first)?;
     let kind = first.as_bytes()[at].to_ascii_uppercase();
     let scale = if matches!(kind, b'P' | b'Z') {
         let nominal = first
@@ -596,7 +549,11 @@ pub(super) fn storage_numeric_attributes(
             .split_once('.')
             .map_or(0, |(_, fraction)| fraction.len() as i64)
     } else if matches!(kind, b'F' | b'H') {
-        let tail = &first[at + 1..];
+        let tail = if let Some((_, after_length)) = super::bit_constants::length(&first, symbols)? {
+            &first[after_length..]
+        } else {
+            &first[at + 1..]
+        };
         let tail = if kind == b'F' {
             tail.strip_prefix('D').unwrap_or(tail)
         } else {
@@ -683,65 +640,95 @@ pub(super) fn storage(
     initialized: bool,
     symbols: &Symbols,
 ) -> Result<(Vec<u8>, u32, u32), String> {
+    storage_with_origin(spec, initialized, symbols, 0)
+}
+
+fn storage_with_origin(
+    spec: &str,
+    initialized: bool,
+    symbols: &Symbols,
+    origin: u32,
+) -> Result<(Vec<u8>, u32, u32), String> {
     let list = operands(spec);
     if list.len() == 1 {
         return storage_item(spec, initialized, symbols);
     }
     let (mut bytes, mut alignment, mut length) = (Vec::new(), 1, 1);
+    let mut position = 0;
+    let mut origin = origin as usize;
     for (i, part) in list.iter().enumerate() {
+        if let Some(field) = super::bit_constants::assemble(part, initialized, symbols)? {
+            if i == 0 {
+                length = field.length;
+            }
+            if position + field.bits > 8 << 20 {
+                return Err("storage declaration exceeds 1 MiB".into());
+            }
+            super::bit_constants::append(&mut bytes, &mut position, &field.bytes, field.bits);
+            continue;
+        }
         let (data, align, len) = storage_item(part, initialized, symbols)?;
         if i == 0 {
             alignment = align;
             length = len;
+            origin = origin.next_multiple_of(align as usize);
         }
-        bytes.resize(bytes.len().next_multiple_of(align as usize), 0);
+        bytes.resize(
+            (origin + bytes.len()).next_multiple_of(align as usize) - origin,
+            0,
+        );
         if bytes.len().saturating_add(data.len()) > 1 << 20 {
             return Err("storage declaration exceeds 1 MiB".into());
         }
         bytes.extend(data);
+        position = bytes.len() * 8;
     }
     Ok((bytes, alignment, length))
 }
 
-fn storage_item(
+pub(super) fn storage_item(
     spec: &str,
     initialized: bool,
     symbols: &Symbols,
 ) -> Result<(Vec<u8>, u32, u32), String> {
-    if let Some((count, values, _)) = address_constants(spec)? {
+    let (clean, _, _) = super::constants::annotated(spec)?;
+    let spec = clean.as_ref();
+    if let Some(field) = super::bit_constants::assemble(spec, initialized, symbols)? {
+        return Ok((field.bytes, 1, field.length));
+    }
+    if let Some(adcon) = address_constants(spec, symbols)? {
+        let AddressConstants {
+            count,
+            values,
+            width,
+            alignment,
+            ..
+        } = adcon;
         let size = count
-            .checked_mul(values.len())
-            .and_then(|n| n.checked_mul(4))
+            .checked_mul(values.len().max(1))
+            .and_then(|n| n.checked_mul(width as usize))
             .filter(|n| *n <= 1 << 20)
             .ok_or("storage declaration exceeds 1 MiB")?;
-        return Ok((vec![0; size], 4, 4));
+        return Ok((vec![0; size], alignment, width.into()));
     }
-    let type_at = spec
-        .find(|c: char| c.is_ascii_alphabetic())
-        .ok_or("storage type expected")?;
-    let count = if type_at == 0 {
-        1
-    } else {
-        spec[..type_at]
-            .parse::<u32>()
-            .map_err(|_| "invalid duplication factor")?
-    };
+    let (type_at, count) = super::constants::duplication(spec, symbols)?;
     let kind = spec.as_bytes()[type_at].to_ascii_uppercase();
     let tail = &spec[type_at + 1..];
     let doubleword = kind == b'F' && tail.starts_with('D');
-    let tail = if doubleword { &tail[1..] } else { tail };
+    let character_extension = if kind == b'C' {
+        tail.chars().next().filter(|c| matches!(c, 'A' | 'E' | 'U'))
+    } else {
+        None
+    };
+    let extension = doubleword || character_extension.is_some();
+    let tail = if extension { &tail[1..] } else { tail };
     let quote = super::constants::nominal_quote(tail)?;
+    let initialized = initialized && (count != 0 || quote.is_some());
     let modifiers = &tail[..quote.unwrap_or(tail.len())];
     let (explicit, scale, exponent) = if matches!(kind, b'F' | b'H') {
         super::constants::fixed_modifiers(modifiers, symbols)?
     } else {
-        if !modifiers.is_empty() && !modifiers.starts_with('L') {
-            return Err("unsupported storage constant modifier".into());
-        }
-        let explicit = modifiers
-            .strip_prefix('L')
-            .map(|n| n.parse::<u32>().map_err(|_| "invalid length"))
-            .transpose()?;
+        let explicit = super::constants::byte_length(modifiers, symbols)?;
         (explicit, 0, 0)
     };
     let literal = if let Some(q) = quote {
@@ -752,7 +739,7 @@ fn storage_item(
     } else {
         String::new()
     };
-    if initialized && matches!(kind, b'F' | b'H' | b'A' | b'P' | b'Z') && literal.contains(',') {
+    if matches!(kind, b'F' | b'H' | b'A' | b'P' | b'Z' | b'X' | b'B') && literal.contains(',') {
         let q = quote.unwrap();
         let mut result = Vec::new();
         let (mut alignment, mut length) = (1, 1);
@@ -762,7 +749,7 @@ fn storage_item(
                 &spec[type_at..type_at + 1 + usize::from(doubleword) + q],
                 value
             );
-            let (bytes, align, len) = storage_item(&item, true, symbols)?;
+            let (bytes, align, len) = storage_item(&item, initialized, symbols)?;
             if index == 0 {
                 alignment = align;
                 length = len;
@@ -774,8 +761,36 @@ fn storage_item(
         }
         return Ok((result.repeat(count as usize), alignment, length));
     }
+    let character = kind == b'C' || kind == b'G';
+    let unicode = character_extension == Some('U');
+    let graphic = kind == b'G';
     let (mut bytes, align) = match kind {
+        b'C' if character_extension == Some('A') => (
+            literal
+                .chars()
+                .map(|c| {
+                    u8::try_from(u32::from(c))
+                        .map_err(|_| "CA constant character is outside CCSID 819")
+                })
+                .collect::<Result<Vec<_>, _>>()?,
+            1,
+        ),
+        b'C' if unicode => (
+            literal.encode_utf16().flat_map(u16::to_be_bytes).collect(),
+            1,
+        ),
         b'C' => (crate::ebcdic::encode(&literal), 1),
+        b'G' => {
+            let cp = crate::codepage::active();
+            if !cp.is_mixed() {
+                return Err("G constant requires a mixed DBCS ZEUS_CCSID".into());
+            }
+            let bytes = cp.encode_dbcs(&literal);
+            if cp.decode_dbcs(&bytes) != literal {
+                return Err("G constant contains an unmappable graphic character".into());
+            }
+            (bytes, 1)
+        }
         b'X' => {
             if !literal.is_ascii() {
                 return Err("invalid hex constant".into());
@@ -882,6 +897,8 @@ fn storage_item(
         bytes.len() as u32
     } else {
         match kind {
+            b'C' if unicode => 2,
+            b'G' => 2,
             b'C' | b'X' | b'B' | b'P' | b'Z' => 1,
             b'H' => 2,
             b'F' if doubleword => 8,
@@ -891,7 +908,10 @@ fn storage_item(
     if len > 1 << 20 || count.checked_mul(len).is_none_or(|n| n > 1 << 20) {
         return Err("storage declaration exceeds 1 MiB".into());
     }
-    if initialized && kind != b'C' {
+    if (unicode || graphic) && !len.is_multiple_of(2) {
+        return Err("CU/G byte length must be a multiple of two".into());
+    }
+    if initialized && !character {
         let size = len as usize;
         if bytes.len() > size {
             bytes = bytes[bytes.len() - size..].to_vec();
@@ -906,6 +926,30 @@ fn storage_item(
             let mut padded = vec![fill; size - bytes.len()];
             padded.extend(bytes);
             bytes = padded;
+        }
+    } else if initialized && character {
+        if kind == b'C'
+            && matches!(character_extension, None | Some('E'))
+            && bytes.len() > len as usize
+        {
+            let cp = crate::codepage::active();
+            let truncated = &bytes[..len as usize];
+            if cp.is_mixed() && cp.encode(&cp.decode(truncated)) != truncated {
+                return Err("truncation into DBCS character data is not permitted".into());
+            }
+        }
+        bytes.truncate(len as usize);
+        let padding: &[u8] = if unicode {
+            &[0, 0x20]
+        } else if graphic {
+            &crate::codepage::DBCS_SPACE
+        } else if character_extension == Some('A') {
+            &[0x20]
+        } else {
+            &[0x40]
+        };
+        while bytes.len() < len as usize {
+            bytes.extend_from_slice(padding);
         }
     } else {
         bytes.resize(
@@ -1021,6 +1065,8 @@ fn address(
     let displacement_range = if super::operation::masked_bytes(&s.op).is_some_and(|spec| spec.long)
         || canonical_operation(&s.op) != s.op
         || wide_memory(&s.op)
+        || super::operation::interlocked(&s.op).is_some_and(|(size, _)| size == 6)
+        || super::operation::conditional(&s.op).is_some()
         || matches!(
             s.op.as_str(),
             "SLLG" | "SRLG" | "SLAG" | "SRAG" | "RLL" | "RLLG"
@@ -1115,7 +1161,7 @@ pub(super) fn compile_statements(lines: Vec<Statement>) -> Result<Module, String
     let mut phases = HashMap::new();
     for _ in 0..lines.len() + 3 {
         match compile_layout(lines.clone(), &phases)? {
-            LayoutPass::Complete(module) => return Ok(module),
+            LayoutPass::Complete(module) => return Ok(*module),
             LayoutPass::Retry(next) => phases = next,
         }
     }
@@ -1123,7 +1169,7 @@ pub(super) fn compile_statements(lines: Vec<Statement>) -> Result<Module, String
 }
 
 enum LayoutPass {
-    Complete(Module),
+    Complete(Box<Module>),
     Retry(HashMap<String, u32>),
 }
 
@@ -1170,7 +1216,7 @@ fn compile_layout(
                 operand.strip_prefix('=')
             };
             if let Some(spec) = spec
-                && let Ok(Some((_, values, true))) = address_constants(spec)
+                && let Some(values) = external_address_names(spec).ok().flatten()
             {
                 for name in values {
                     let name = name.to_ascii_uppercase();
@@ -1234,6 +1280,12 @@ fn compile_layout(
     let mut image = Vec::new();
     let mut literals = LiteralPool::default();
     let mut literal_fixups = Vec::new();
+    let mut bindings = super::Bindings::default();
+    let mut area_alignment = HashMap::<String, u32>::new();
+    let mut class_attributes = HashMap::<String, super::classes::Attributes>::new();
+    let mut class_controls = HashMap::<String, String>::new();
+    let mut part_attributes = HashMap::<String, super::classes::Attributes>::new();
+    let mut parent_control = String::new();
     let mut entry = 0;
     let mut attribute_symbols = Symbols::new();
     let mut pending_attribute_equ = Vec::new();
@@ -1244,6 +1296,40 @@ fn compile_layout(
         }
         if !current_control.is_empty() {
             last_areas.insert(current_control.clone(), section.clone());
+        }
+        if s.op == "XATTR" {
+            continue;
+        }
+        if s.op == "DXD" {
+            if !symbol_name(&s.label) || symbols.contains_key(&s.label) {
+                return Err(s.error("DXD requires a unique symbol"));
+            }
+            let (bytes, alignment, _) =
+                storage(&s.args, false, &symbols).map_err(|e| s.error(e))?;
+            bindings.sections.push(super::BindingSection {
+                name: s.label.clone(),
+                length: bytes.len() as u32,
+                alignment,
+                dummy: true,
+                class: None,
+                concatenate: false,
+                priority: 0,
+                image: None,
+            });
+            symbols.insert(
+                s.label.clone(),
+                Symbol {
+                    section: Some(s.label.clone()),
+                    value: 0,
+                    length: 1,
+                    type_attribute: crate::ebcdic::encode("J")[0],
+                    numeric_attributes: None,
+                    program_type: None,
+                    assembler_type: None,
+                    complex: BTreeMap::new(),
+                },
+            );
+            continue;
         }
         if s.op == "AMODE"
             && !matches!(s.args.to_ascii_uppercase().as_str(), "31" | "ANY" | "ANY31")
@@ -1270,6 +1356,7 @@ fn compile_layout(
                 name = s.label.clone();
             }
             current_control = format!("$C:{}", s.label);
+            parent_control = current_control.clone();
             let kind = if s.op == "START" {
                 "CSECT"
             } else {
@@ -1290,6 +1377,76 @@ fn compile_layout(
             area_images.insert(section.clone(), std::mem::take(&mut image));
             area_ranges.insert(section.clone(), std::mem::take(&mut instruction_ranges));
             section = last_areas.get(&current_control).cloned().unwrap_or(area);
+            image = area_images.remove(&section).unwrap_or_default();
+            instruction_ranges = area_ranges.remove(&section).unwrap_or_default();
+        } else if s.op == "CATTR" {
+            if parent_control.is_empty()
+                || (!current_control.starts_with("$C:")
+                    && !class_controls.contains_key(&current_control))
+            {
+                return Err(s.error("CATTR requires an executable control section"));
+            }
+            if !symbol_name(&s.label) || s.label.len() > 16 {
+                return Err(s.error("CATTR class name must be a symbol of 1..16 characters"));
+            }
+            let attributes = if let Some(first) = class_attributes.get(&s.label) {
+                if first.part.is_none() {
+                    if !s.args.is_empty() {
+                        return Err(s.error("CATTR continuation must not repeat class attributes"));
+                    }
+                    first.clone()
+                } else {
+                    let mut attrs = first.clone();
+                    attrs.part = None;
+                    attrs.priority = 0;
+                    attrs.fill = 0;
+                    let parsed = super::classes::parse(&format!("NOLOAD,{}", s.args), &symbols)
+                        .map_err(|e| s.error(e))?;
+                    attrs.part = Some(
+                        parsed
+                            .part
+                            .ok_or_else(|| s.error("CATTR continuation requires PART"))?,
+                    );
+                    attrs.priority = parsed.priority;
+                    attrs.fill = parsed.fill;
+                    attrs
+                }
+            } else {
+                let parsed = super::classes::parse(&s.args, &symbols).map_err(|e| s.error(e))?;
+                class_attributes.insert(s.label.clone(), parsed.clone());
+                parsed
+            };
+            image_alignment = image_alignment.max(attributes.alignment);
+            rmode = rmode.min(attributes.rmode);
+            area_images.insert(section.clone(), std::mem::take(&mut image));
+            area_ranges.insert(section.clone(), std::mem::take(&mut instruction_ranges));
+            current_control = format!(
+                "{}{}:{}",
+                if attributes.no_load { "$D:" } else { "$C:" },
+                &parent_control[3..],
+                format_args!("@{}:@{}", s.label, attributes.part.as_deref().unwrap_or(""))
+            );
+            class_controls.insert(current_control.clone(), s.label.clone());
+            part_attributes
+                .entry(current_control.clone())
+                .or_insert_with(|| attributes.clone());
+            section_types.insert(
+                current_control.clone(),
+                if attributes.read_only {
+                    "RSECT"
+                } else {
+                    "CSECT"
+                }
+                .into(),
+            );
+            section = format!("{current_control}:");
+            if !control_areas
+                .iter()
+                .any(|(control, _)| control == &current_control)
+            {
+                control_areas.push((current_control.clone(), vec![section.clone()]));
+            }
+            section = last_areas.get(&current_control).cloned().unwrap_or(section);
             image = area_images.remove(&section).unwrap_or_default();
             instruction_ranges = area_ranges.remove(&section).unwrap_or_default();
         } else if s.op == "DSECT" {
@@ -1331,7 +1488,8 @@ fn compile_layout(
             "CSECT" | "RSECT" | "START" | "DSECT" | "LOCTR"
         );
         let reopening =
-            layout_statement && !s.label.is_empty() && layout_labels.contains_key(&s.label);
+            (layout_statement && !s.label.is_empty() && layout_labels.contains_key(&s.label))
+                || (s.op == "CATTR" && symbols.contains_key(&s.label));
         if layout_statement && !s.label.is_empty() {
             let label_area = if s.op == "LOCTR" {
                 section.clone()
@@ -1352,12 +1510,33 @@ fn compile_layout(
         let offset = counters
             .entry(section.clone())
             .or_insert_with(|| phases.get(&section).copied().unwrap_or(0));
-        let data = if matches!(s.op.as_str(), "DS" | "DC") {
-            Some(storage(&s.args, s.op == "DC", &symbols).map_err(|e| s.error(e))?)
+        let data = if s.op == "CXD" {
+            if !s.args.is_empty() {
+                return Err(s.error("CXD takes no operands"));
+            }
+            Some((vec![0; 4], 4, 4))
+        } else if s.op == "DCB" {
+            Some((
+                vec![0; super::data_management::LENGTH],
+                4,
+                super::data_management::LENGTH as u32,
+            ))
+        } else if matches!(s.op.as_str(), "DS" | "DC") {
+            Some(
+                storage_with_origin(&s.args, s.op == "DC", &symbols, *offset)
+                    .map_err(|e| s.error(e))?,
+            )
         } else {
             None
         };
+        if matches!(s.op.as_str(), "DC" | "DS") {
+            super::constants::annotations(&s.args, &symbols).map_err(|e| s.error(e))?;
+        }
         if let Some((_, align, _)) = &data {
+            area_alignment
+                .entry(current_control.clone())
+                .and_modify(|a| *a = (*a).max(*align))
+                .or_insert(*align);
             *offset = offset.next_multiple_of(*align);
         }
         if instruction_size(&s.op).is_some() || s.op == "CNOP" {
@@ -1406,7 +1585,11 @@ fn compile_layout(
                     length: data
                         .as_ref()
                         .map_or_else(|| instruction_size(&s.op).unwrap_or(1), |d| d.2),
-                    type_attribute: if data.is_some() {
+                    type_attribute: if s.op == "CXD" {
+                        crate::ebcdic::encode("A")[0]
+                    } else if s.op == "DCB" {
+                        crate::ebcdic::encode("C")[0]
+                    } else if data.is_some() {
                         storage_type(&s.args)
                     } else {
                         crate::ebcdic::encode(if layout_statement {
@@ -1420,8 +1603,22 @@ fn compile_layout(
                     numeric_attributes: data
                         .as_ref()
                         .and_then(|d| storage_numeric_attributes(&s.args, d.2, &symbols).ok()),
-                    program_type: None,
-                    assembler_type: None,
+                    program_type: if matches!(s.op.as_str(), "DC" | "DS") {
+                        super::constants::annotations(&s.args, &symbols)
+                            .map_err(|e| s.error(e))?
+                            .0
+                    } else {
+                        None
+                    },
+                    assembler_type: if matches!(s.op.as_str(), "DC" | "DS") {
+                        Some(
+                            super::constants::annotations(&s.args, &symbols)
+                                .map_err(|e| s.error(e))?
+                                .1,
+                        )
+                    } else {
+                        None
+                    },
                     complex: BTreeMap::new(),
                 }
             };
@@ -1451,7 +1648,7 @@ fn compile_layout(
                     return Err(s.error("control section exceeds 16 MiB"));
                 }
                 image.resize(image.len().max(*offset as usize), 0);
-                if s.op == "DC" {
+                if matches!(s.op.as_str(), "DC" | "DCB" | "CXD") {
                     if instruction_ranges
                         .iter()
                         .any(|r| s.offset < r.end && r.start < *offset)
@@ -1508,6 +1705,12 @@ fn compile_layout(
             }
             *offset = target;
         } else if let Some(size) = instruction_size(&s.op) {
+            if class_controls
+                .get(&current_control)
+                .is_some_and(|name| !class_attributes[name].executable)
+            {
+                return Err(s.error("instruction inside NOTEXECUTABLE class"));
+            }
             if !executable {
                 return Err(s.error("instruction inside DSECT"));
             }
@@ -1542,6 +1745,7 @@ fn compile_layout(
                 &mut symbols,
                 &mut literal_fixups,
                 &section,
+                statement_index,
             )?;
             if *offset > s.offset
                 && instruction_ranges
@@ -1643,14 +1847,37 @@ fn compile_layout(
         &mut symbols,
         &mut literal_fixups,
         &section,
+        usize::MAX,
     )?;
     area_images.insert(section, image);
     let mut image = Vec::new();
     let mut area_bases = HashMap::new();
     let mut read_only = Vec::new();
     let mut next_phases = HashMap::new();
+    let mut control_origins = HashMap::<String, u32>::new();
+    let symbol_controls: HashMap<_, _> = symbols
+        .iter()
+        .filter_map(|(name, value)| {
+            let area = value.section.as_deref()?;
+            let control = area.rsplit_once(':')?.0;
+            control
+                .starts_with("$C:")
+                .then(|| (name.clone(), control.to_string()))
+        })
+        .collect();
+    let symbol_classes: HashMap<_, _> = symbols
+        .iter()
+        .filter_map(|(name, value)| {
+            let area = value.section.as_deref()?;
+            let control = area.rsplit_once(':')?.0;
+            class_controls
+                .contains_key(control)
+                .then(|| (name.clone(), control.to_string()))
+        })
+        .collect();
     for (control, areas) in &control_areas {
         let mut dummy_offset = 0u32;
+        let section_start = image.len() as u32;
         for (area_index, area) in areas.iter().enumerate() {
             let executable = area.starts_with("$C:");
             let base = if executable {
@@ -1659,10 +1886,19 @@ fn compile_layout(
                 dummy_offset
             }
             .next_multiple_of(if area_index == 0 {
-                if executable && has_cnop { 4096 } else { 8 }
+                if executable && has_cnop {
+                    4096
+                } else if let Some(name) = class_controls.get(control) {
+                    class_attributes[name].alignment
+                } else {
+                    8
+                }
             } else {
                 1
             });
+            if area_index == 0 {
+                control_origins.insert(control.clone(), base);
+            }
             let phase = phases.get(area).copied().unwrap_or(0);
             next_phases.insert(area.clone(), base % 4096);
             let mut bytes = area_images.remove(area).unwrap_or_default();
@@ -1699,6 +1935,45 @@ fn compile_layout(
                 ),
             );
         }
+        if control.starts_with("$C:") && !class_controls.contains_key(control) {
+            continue;
+        }
+        bindings.sections.push(super::BindingSection {
+            name: part_attributes
+                .get(control)
+                .and_then(|a| a.part.clone())
+                .or_else(|| class_controls.get(control).cloned())
+                .unwrap_or_else(|| control[3..].into()),
+            length: if control.starts_with("$D:") {
+                dummy_offset
+            } else {
+                (image.len() as u32).saturating_sub(section_start.next_multiple_of(if has_cnop {
+                    4096
+                } else if let Some(name) = class_controls.get(control) {
+                    class_attributes[name].alignment
+                } else {
+                    8
+                }))
+            },
+            alignment: area_alignment
+                .get(control)
+                .copied()
+                .unwrap_or(1)
+                .max(part_attributes.get(control).map_or(1, |a| a.alignment)),
+            dummy: part_attributes
+                .get(control)
+                .is_some_and(|a| a.part.is_some()),
+            class: part_attributes
+                .get(control)
+                .filter(|a| a.part.is_some())
+                .map(|_| class_controls[control].clone()),
+            concatenate: part_attributes
+                .get(control)
+                .is_some_and(|a| a.part.is_none()),
+            priority: part_attributes.get(control).map_or(0, |a| a.priority),
+            image: (class_controls.contains_key(control) && control.starts_with("$C:"))
+                .then(|| control_origins[control]),
+        });
     }
     if next_phases
         .iter()
@@ -1782,8 +2057,10 @@ fn compile_layout(
     let mut using_serial = 0;
     let mut using_stack = Vec::new();
     let mut code = Vec::new();
+    let mut dcbs = Vec::new();
     let mut relocations = Vec::new();
-    for literal in literal_fixups {
+    for literal in &literal_fixups {
+        section_quantities(&literal.spec, literal.offset, &symbols, &mut bindings)?;
         fix_address_constants(
             &literal.spec,
             literal.offset,
@@ -1797,6 +2074,20 @@ fn compile_layout(
     let mut entries = HashMap::new();
     entries.insert(name.clone(), entry);
     for (statement_index, s) in lines.iter().enumerate() {
+        for literal in literal_fixups
+            .iter()
+            .filter(|l| l.pool == statement_index || (s.op == "END" && l.pool == usize::MAX))
+        {
+            fix_base_constants(
+                &literal.spec,
+                literal.offset,
+                Some(literal.location),
+                &symbols,
+                &using,
+                &mut image,
+            )
+            .map_err(|e| s.error(e))?;
+        }
         if matches!(s.op.as_str(), "PUSH" | "POP") {
             if !operands(&s.args.to_ascii_uppercase())
                 .iter()
@@ -1819,6 +2110,9 @@ fn compile_layout(
                     offset,
                     op: "BCR".into(),
                     storage_service: None,
+                    module_service: None,
+                    system_service: None,
+                    data_service: None,
                     registers: vec![0],
                     address: None,
                     source: None,
@@ -1858,13 +2152,96 @@ fn compile_layout(
             }
             continue;
         }
+        if s.op == "CATTR" {
+            continue;
+        }
+        if s.op == "XATTR" {
+            if !entries.contains_key(&s.label)
+                && !lines
+                    .iter()
+                    .any(|l| l.op == "ENTRY" && operands(&l.args).contains(&s.label))
+            {
+                return Err(s.error("XATTR requires a defined section or ENTRY name"));
+            }
+            let mut target = None;
+            for arg in &args {
+                if let Some(name) = arg
+                    .to_ascii_uppercase()
+                    .strip_prefix("PSECT(")
+                    .and_then(|v| v.strip_suffix(')'))
+                {
+                    let value = expression(name, &symbols, "", 0).map_err(|e| s.error(e))?;
+                    if value
+                        .section
+                        .as_deref()
+                        .is_some_and(|section| section.starts_with("EXTERN:"))
+                    {
+                        target = Some((0, None, Some(name.to_string())));
+                    } else {
+                        if value.section.as_deref() != Some("") {
+                            return Err(s.error("PSECT must refer to mapped writable storage"));
+                        }
+                        let control = symbol_controls.get(name).ok_or_else(|| {
+                            s.error("PSECT target must identify a mapped section or class")
+                        })?;
+                        target = Some((
+                            control_origins[control],
+                            class_controls.get(control).cloned(),
+                            None,
+                        ));
+                    }
+                } else if !matches!(
+                    arg.to_ascii_uppercase().as_str(),
+                    "LINKAGE(OS)" | "LINK(OS)"
+                ) {
+                    return Err(s.error(format!("unsupported XATTR attribute {arg}")));
+                }
+            }
+            if let Some((offset, class, target)) = target {
+                bindings.psects.push(super::Psect {
+                    symbol: s.label.clone(),
+                    offset,
+                    class,
+                    target,
+                });
+            }
+            continue;
+        }
+        if s.op == "CXD" && s.section.is_empty() {
+            bindings.quantities.push(super::Quantity {
+                offset: s.offset,
+                width: 4,
+                kind: super::QuantityKind::Total,
+                symbol: String::new(),
+                element: None,
+                addend: 0,
+            });
+            continue;
+        }
+        if s.op == "DCB" && s.section.is_empty() {
+            dcbs.push(data_control_block(s, &symbols).map_err(|e| s.error(e))?);
+            continue;
+        }
         if s.op == "DC" && s.section.is_empty() {
-            let mut at = s.offset;
+            let mut position = s.offset as usize * 8;
             for item in operands(&s.args) {
+                if let Some(field) =
+                    super::bit_constants::assemble(&item, true, &symbols).map_err(|e| s.error(e))?
+                {
+                    position += field.bits;
+                    continue;
+                }
                 let (bytes, align, _) =
                     storage_item(&item, true, &symbols).map_err(|e| s.error(e))?;
-                at = at.next_multiple_of(align);
-                if address_constants(&item).map_err(|e| s.error(e))?.is_some() {
+                let at = (position.div_ceil(8) as u32).next_multiple_of(align);
+                if address_constants(&item, &symbols)
+                    .map_err(|e| s.error(e))?
+                    .is_some()
+                {
+                    section_quantities(&item, at, &symbols, &mut bindings)
+                        .map_err(|e| s.error(e))?;
+                    fix_base_constants(&item, at, None, &symbols, &using, &mut image)
+                        .map_err(|e| s.error(e))?;
                     fix_address_constants(
                         &item,
                         at,
@@ -1876,7 +2253,7 @@ fn compile_layout(
                     )
                     .map_err(|e| s.error(e))?;
                 }
-                at += bytes.len() as u32;
+                position = (at as usize + bytes.len()) * 8;
             }
             continue;
         }
@@ -1999,6 +2376,9 @@ fn compile_layout(
                 offset: s.offset,
                 op: s.op.clone(),
                 storage_service: None,
+                module_service: None,
+                system_service: None,
+                data_service: None,
                 registers: Vec::new(),
                 address: None,
                 source: None,
@@ -2021,6 +2401,81 @@ fn compile_layout(
                 )
             };
             let expected = match canonical_operation(&s.op) {
+                "OPEN" | "CLOSE" | "GET" | "PUT" | "FREEPOOL" => {
+                    i.data_service = Some(data_service(s, &args, &symbols, &using)?);
+                    args.len()
+                }
+                op if super::operation::conditional(op).is_some() => {
+                    use super::operation::ConditionalKind;
+                    let spec = super::operation::conditional(op).unwrap();
+                    i.registers = vec![reg(0)?];
+                    let mask = if let Some(mask) = spec.mask {
+                        u32::from(mask)
+                    } else {
+                        let value = super::expression::evaluate_early(
+                            args.get(2).ok_or("missing condition mask")?,
+                            &symbols,
+                        )?
+                        .value;
+                        u32::try_from(value)
+                            .ok()
+                            .filter(|n| *n <= 15)
+                            .ok_or("condition mask must be 0..15")?
+                    };
+                    match spec.kind {
+                        ConditionalKind::Register => {
+                            i.registers.push(reg(1)?);
+                            i.immediate = mask;
+                        }
+                        ConditionalKind::Immediate => {
+                            let value = super::expression::evaluate_early(
+                                args.get(1).ok_or("missing conditional immediate")?,
+                                &symbols,
+                            )?
+                            .value;
+                            i.immediate = i16::try_from(value)
+                                .map_err(|_| "conditional immediate must fit signed 16 bits")?
+                                as i32 as u32;
+                            i.length = mask;
+                        }
+                        _ => {
+                            let operand = addr(1, false)?.0;
+                            if operand.index != 0 {
+                                return Err("index not permitted for conditional load/store".into());
+                            }
+                            i.address = Some(operand);
+                            i.immediate = mask;
+                        }
+                    }
+                    if spec.mask.is_some() { 2 } else { 3 }
+                }
+                "WTO" | "WAIT" | "POST" => {
+                    i.system_service = Some(system_service(s, &args, &symbols, &using)?);
+                    args.len()
+                }
+                "LINK" | "XCTL" | "LOAD" | "DELETE" => {
+                    i.module_service = Some(module_service(s, &args, &symbols, &using)?);
+                    args.len()
+                }
+                op if super::operation::interlocked(op).is_some() => {
+                    let operand = if op == "TS" { 0 } else { 2 };
+                    if operand == 2 {
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        if op.starts_with("CDS") && i.registers.iter().any(|r| r % 2 != 0) {
+                            return Err(
+                                "COMPARE DOUBLE AND SWAP requires even register pairs".into()
+                            );
+                        }
+                    }
+                    let (address, _) = addr(operand, false)?;
+                    if address.index != 0 {
+                        return Err(
+                            "interlocked instructions do not accept an index register".into()
+                        );
+                    }
+                    i.address = Some(address);
+                    operand + 1
+                }
                 "MVST" | "CLST" | "SRST" => {
                     i.registers = vec![reg(0)?, reg(1)?];
                     2
@@ -2160,6 +2615,91 @@ fn compile_layout(
                         return Err("index not permitted for masked-byte instruction".into());
                     }
                     3
+                }
+                op if super::operation::register_logic(op).is_some() => {
+                    i.registers = vec![reg(0)?, reg(1)?];
+                    if matches!(op, "NOTR" | "NOTGR") {
+                        i.registers.push(reg(1)?);
+                        i.op = if op == "NOTR" { "NORK" } else { "NOGRK" }.into();
+                        2
+                    } else {
+                        i.registers.push(reg(2)?);
+                        3
+                    }
+                }
+                op if super::operation::select(op).is_some() => {
+                    let (root, mask) = super::operation::select(op).unwrap();
+                    i.op = root.into();
+                    i.registers = vec![reg(0)?, reg(1)?, reg(2)?];
+                    i.immediate = if let Some(mask) = mask {
+                        mask.into()
+                    } else {
+                        let value = expression(
+                            args.get(3).ok_or("SELECT condition mask required")?,
+                            &symbols,
+                            &s.section,
+                            s.offset,
+                        )?;
+                        if value.section.is_some() || !(0..=15).contains(&value.value) {
+                            return Err("SELECT mask must be 0..15".into());
+                        }
+                        value.value as u32
+                    };
+                    if mask.is_some() { 3 } else { 4 }
+                }
+                "CSST" => {
+                    i.address = Some(addr(0, false)?.0);
+                    i.source = Some(addr(1, false)?.0);
+                    i.registers = vec![reg(2)?];
+                    if i.address.as_ref().unwrap().index != 0
+                        || i.source.as_ref().unwrap().index != 0
+                    {
+                        return Err("CSST does not accept index registers".into());
+                    }
+                    3
+                }
+                "LPD" | "LPDG" => {
+                    i.registers = vec![reg(0)?];
+                    i.address = Some(addr(1, false)?.0);
+                    i.source = Some(addr(2, false)?.0);
+                    if i.address.as_ref().unwrap().index != 0
+                        || i.source.as_ref().unwrap().index != 0
+                    {
+                        return Err("LPD/LPDG do not accept index registers".into());
+                    }
+                    3
+                }
+                "FLOGR" | "POPCNT" => {
+                    i.registers = vec![reg(0)?, reg(1)?];
+                    if s.op == "POPCNT" && args.len() == 3 {
+                        let mask = expression(&args[2], &symbols, &s.section, s.offset)?;
+                        if mask.section.is_some() || ![0, 8].contains(&mask.value) {
+                            return Err(
+                                "POPCNT mask must be 0 or 8; other bits are reserved".into()
+                            );
+                        }
+                        i.immediate = mask.value as u32;
+                        3
+                    } else {
+                        2
+                    }
+                }
+                op if super::operation::rotate_selected(op).is_some() => {
+                    let (root, flags) = super::operation::rotate_selected(op).unwrap();
+                    if !(4..=5).contains(&args.len()) {
+                        return Err("rotate/select requires r1,r2,start,end[,rotate]".into());
+                    }
+                    i.op = root.into();
+                    i.registers = vec![reg(0)?, reg(1)?];
+                    for (index, arg) in args.iter().enumerate().skip(2) {
+                        let value = expression(arg, &symbols, &s.section, s.offset)?;
+                        if value.section.is_some() || !(0..=255).contains(&value.value) {
+                            return Err("rotate/select immediate must fit an unsigned byte".into());
+                        }
+                        i.immediate |= (value.value as u32) << ((4 - index) * 8);
+                    }
+                    i.immediate |= flags;
+                    args.len()
                 }
                 op if super::operation::partial_immediate(op).is_some() => {
                     let spec = super::operation::partial_immediate(op).unwrap();
@@ -2402,18 +2942,91 @@ fn compile_layout(
         };
         code.push(make().map_err(|e| s.error(e))?);
     }
+    for literal in literal_fixups.iter().filter(|l| l.pool == usize::MAX) {
+        fix_base_constants(
+            &literal.spec,
+            literal.offset,
+            Some(literal.location),
+            &symbols,
+            &using,
+            &mut image,
+        )?;
+    }
     if !code.iter().any(|i| i.offset == entry) {
         return Err("entry does not address an instruction".into());
     }
     super::template::initialize(&code, &mut image)?;
-    Ok(LayoutPass::Complete(Module {
-        zeus_hlasm: if !read_only.is_empty() || rmode == 24 {
-            6
-        } else if image_alignment > 8 {
-            5
-        } else {
-            super::format_version(&code, &relocations)
-        },
+    for q in &bindings.quantities {
+        if matches!(
+            q.kind,
+            super::QuantityKind::Offset | super::QuantityKind::LongOffset
+        ) {
+            for section in &mut bindings.sections {
+                if section.name == q.symbol
+                    && control_areas
+                        .iter()
+                        .any(|(control, _)| control == &format!("$D:{}", q.symbol))
+                {
+                    section.dummy = true;
+                }
+            }
+        }
+    }
+    bindings.sections.retain(|section| {
+        section.dummy
+            || section.concatenate
+            || bindings.quantities.iter().any(|q| q.symbol == section.name)
+    });
+    for q in &mut bindings.quantities {
+        if matches!(
+            q.kind,
+            super::QuantityKind::Offset | super::QuantityKind::LongOffset
+        ) && let Some(control) = symbol_classes.get(&q.symbol)
+        {
+            if q.symbol == class_controls[control] {
+                continue;
+            }
+            let attributes = &part_attributes[control];
+            let name = attributes.part.as_ref().unwrap_or(&class_controls[control]);
+            let value = &symbols[&q.symbol];
+            let origin = control_origins[control];
+            q.addend = u32::try_from(value.value)
+                .ok()
+                .and_then(|value| value.checked_sub(origin))
+                .ok_or("invalid class label offset")?;
+            q.element = bindings
+                .sections
+                .iter()
+                .position(|s| s.name == *name && (attributes.no_load || s.image == Some(origin)));
+            if q.element.is_none() {
+                return Err("class label has no binding element".into());
+            }
+        }
+    }
+    for (name, &offset) in &entries {
+        if let Some(control) = symbol_controls.get(name) {
+            bindings.labels.push(super::BindingLabel {
+                symbol: name.clone(),
+                offset,
+                section: control_origins[control],
+                class: class_controls.get(control).cloned(),
+            });
+        }
+    }
+    let module = Module {
+        zeus_hlasm: super::format_version(&code, &relocations).max(
+            if bindings.requires_extended() {
+                9
+            } else if !dcbs.is_empty() {
+                8
+            } else if !read_only.is_empty() || rmode == 24 {
+                6
+            } else if image_alignment > 8 {
+                5
+            } else {
+                1
+            },
+        ),
         name,
         alignment: image_alignment,
         instruction_templates: true,
@@ -2425,7 +3038,446 @@ fn compile_layout(
         relocations,
         entries,
         externals,
-    }))
+        dcbs,
+        bindings,
+    };
+    super::data_management::validate(&module)?;
+    module.bindings.validate(&module)?;
+    Ok(LayoutPass::Complete(Box::new(module)))
+}
+
+fn data_service(
+    s: &Statement,
+    args: &[String],
+    symbols: &Symbols,
+    using: &[Using],
+) -> Result<super::DataService, String> {
+    use super::{DataService, StorageOperand};
+    let pointer = |text: &str| -> Result<StorageOperand, String> {
+        if let Some(r) = text.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
+            let r = register(r, symbols)?;
+            if !(1..=12).contains(&r) {
+                return Err("data service address register must be 1..12".into());
+            }
+            Ok(StorageOperand::Register(r))
+        } else {
+            Ok(StorageOperand::Address(
+                address(text, s, symbols, using, false)?.0,
+            ))
+        }
+    };
+    match s.op.as_str() {
+        "GET" | "PUT" => {
+            if args.is_empty() || args.len() > 2 {
+                return Err("GET/PUT dcb[,area] required".into());
+            }
+            let dcb = pointer(&args[0])?;
+            let area = args
+                .get(1)
+                .filter(|s| !s.is_empty())
+                .map(|s| pointer(s))
+                .transpose()?;
+            Ok(if s.op == "GET" {
+                DataService::Get { dcb, area }
+            } else {
+                DataService::Put { dcb, area }
+            })
+        }
+        "FREEPOOL" => {
+            if args.len() != 1 {
+                return Err("FREEPOOL dcb required".into());
+            }
+            Ok(DataService::FreePool(pointer(&args[0])?))
+        }
+        "OPEN" => {
+            if args.len() != 1 {
+                return Err("unsupported OPEN form; use OPEN (dcb,mode,...)".into());
+            }
+            let list = args[0]
+                .strip_prefix('(')
+                .and_then(|s| s.strip_suffix(')'))
+                .ok_or("OPEN requires a parenthesized list")?;
+            let list = operands(list);
+            let mut result = vec![];
+            let mut at = 0;
+            while at < list.len() {
+                let dcb = pointer(&list[at])?;
+                let mode = list
+                    .get(at + 1)
+                    .map(|s| s.to_ascii_uppercase())
+                    .unwrap_or_default();
+                let (output, extend) = match mode.as_str() {
+                    "" | "INPUT" => (false, false),
+                    "OUTPUT" => (true, false),
+                    "EXTEND" => (true, true),
+                    _ => return Err(format!("unsupported OPEN mode {mode}")),
+                };
+                result.push((dcb, output, extend));
+                at += 2;
+            }
+            if result.is_empty() {
+                return Err("OPEN list is empty".into());
+            }
+            Ok(DataService::Open(result))
+        }
+        "CLOSE" => {
+            if args.len() != 1 {
+                return Err("unsupported CLOSE form; use CLOSE (dcb,...)".into());
+            }
+            let list = args[0]
+                .strip_prefix('(')
+                .and_then(|s| s.strip_suffix(')'))
+                .ok_or("CLOSE requires a parenthesized list")?;
+            let list = operands(list)
+                .into_iter()
+                .filter(|s| !s.is_empty())
+                .map(|s| pointer(&s))
+                .collect::<Result<Vec<_>, _>>()?;
+            if list.is_empty() {
+                return Err("CLOSE list is empty".into());
+            }
+            Ok(DataService::Close(list))
+        }
+        _ => unreachable!(),
+    }
+}
+
+fn data_control_block(s: &Statement, symbols: &Symbols) -> Result<super::DataControlBlock, String> {
+    use super::{DataControlBlock, DcbAccessMode as AccessMode, DcbRecordFormat as RecordFormat};
+    if s.label.is_empty() {
+        return Err("DCB requires a label".into());
+    }
+    let mut dcb = DataControlBlock {
+        offset: s.offset,
+        ddname: String::new(),
+        record_format: RecordFormat::Fixed,
+        blocked: false,
+        record_length: 0,
+        block_size: 0,
+        get: None,
+        put: None,
+        end: None,
+        error: None,
+    };
+    let mut seen = HashSet::new();
+    for arg in operands(&s.args) {
+        let (key, value) = arg.split_once('=').ok_or("DCB keyword=value required")?;
+        let key = key.to_ascii_uppercase();
+        if !seen.insert(key.clone()) {
+            return Err(format!("duplicate DCB keyword {key}"));
+        }
+        let number = || -> Result<u16, String> {
+            let n = super::expression::evaluate_early(value, symbols)?.value;
+            u16::try_from(n)
+                .ok()
+                .filter(|n| *n <= 32760)
+                .ok_or_else(|| "DCB length must be 0..32760".into())
+        };
+        match key.as_str() {
+            "DDNAME" => {
+                let name = value.trim_matches('\'').to_ascii_uppercase();
+                if !symbol_name(&name) || name.len() > 8 {
+                    return Err("DCB DDNAME must be a symbol of 1..8 characters".into());
+                }
+                dcb.ddname = name;
+            }
+            "DSORG" if value.eq_ignore_ascii_case("PS") => {}
+            "DEVD" if value.eq_ignore_ascii_case("DA") => {}
+            "RECFM" => {
+                let value = value.to_ascii_uppercase();
+                match value.as_str() {
+                    "F" | "FB" => dcb.record_format = RecordFormat::Fixed,
+                    "V" | "VB" => dcb.record_format = RecordFormat::Variable,
+                    _ => return Err("supported QSAM RECFM forms are F/FB/V/VB".into()),
+                }
+                dcb.blocked = value.ends_with('B');
+            }
+            "LRECL" => dcb.record_length = number()?,
+            "BLKSIZE" => dcb.block_size = number()?,
+            "MACRF" => {
+                let modes = value
+                    .strip_prefix('(')
+                    .and_then(|s| s.strip_suffix(')'))
+                    .unwrap_or(value);
+                for mode in operands(modes) {
+                    let mode = mode.to_ascii_uppercase();
+                    match mode.as_str() {
+                        "GM" | "GL" => {
+                            if dcb
+                                .get
+                                .replace(if mode.ends_with('M') {
+                                    AccessMode::Move
+                                } else {
+                                    AccessMode::Locate
+                                })
+                                .is_some()
+                            {
+                                return Err("duplicate DCB GET mode".into());
+                            }
+                        }
+                        "PM" | "PL" => {
+                            if dcb
+                                .put
+                                .replace(if mode.ends_with('M') {
+                                    AccessMode::Move
+                                } else {
+                                    AccessMode::Locate
+                                })
+                                .is_some()
+                            {
+                                return Err("duplicate DCB PUT mode".into());
+                            }
+                        }
+                        _ => return Err("supported QSAM MACRF forms are GM/GL/PM/PL".into()),
+                    }
+                }
+            }
+            "EODAD" | "SYNAD" => {
+                let target = expression(value, symbols, "", s.offset)?;
+                if target.section.as_deref() != Some("") {
+                    return Err("DCB exit must address executable storage".into());
+                }
+                let target = u32::try_from(target.value).map_err(|_| "invalid DCB exit")?;
+                if key == "EODAD" {
+                    dcb.end = Some(target);
+                } else {
+                    dcb.error = Some(target);
+                }
+            }
+            _ => return Err(format!("unsupported DCB keyword/form {key}={value}")),
+        }
+    }
+    if dcb.ddname.is_empty() || (dcb.get.is_none() && dcb.put.is_none()) {
+        return Err("DCB requires DDNAME and MACRF".into());
+    }
+    if dcb.record_format == RecordFormat::Variable
+        && dcb.record_length != 0
+        && dcb.record_length < 4
+    {
+        return Err("variable DCB LRECL must include its four-byte RDW".into());
+    }
+    Ok(dcb)
+}
+
+fn system_service(
+    s: &Statement,
+    args: &[String],
+    symbols: &Symbols,
+    using: &[Using],
+) -> Result<super::SystemService, String> {
+    use super::{MessageText, StorageOperand, SystemService};
+    let pointer = |text: &str| -> Result<StorageOperand, String> {
+        if let Some(r) = text.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
+            let r = register(r, symbols)?;
+            if !(1..=12).contains(&r) {
+                return Err("service address register must be 1..12".into());
+            }
+            Ok(StorageOperand::Register(r))
+        } else {
+            Ok(StorageOperand::Address(
+                address(text, s, symbols, using, false)?.0,
+            ))
+        }
+    };
+    let scalar = |text: &str, max: u32| -> Result<StorageOperand, String> {
+        if let Some(r) = text.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
+            let r = register(r, symbols)?;
+            if !(r == 0 || (2..=12).contains(&r)) {
+                return Err("service value register must be 0 or 2..12".into());
+            }
+            return Ok(StorageOperand::Register(r));
+        }
+        let value = super::expression::evaluate_early(text, symbols)?.value;
+        let value = u32::try_from(value)
+            .ok()
+            .filter(|v| *v <= max)
+            .ok_or("service scalar value out of range")?;
+        Ok(StorageOperand::Constant(value))
+    };
+    if s.op == "POST" {
+        if args.is_empty() || args.len() > 2 {
+            return Err("POST ecb[,completion] required".into());
+        }
+        return Ok(SystemService::Post {
+            ecb: pointer(&args[0])?,
+            code: scalar(
+                args.get(1)
+                    .map(String::as_str)
+                    .filter(|s| !s.is_empty())
+                    .unwrap_or("0"),
+                0x3fff_ffff,
+            )?,
+        });
+    }
+    let mut seen = HashSet::new();
+    if s.op == "WAIT" {
+        let mut events = StorageOperand::Constant(1);
+        let mut ecbs = None;
+        let mut list = false;
+        for (index, arg) in args.iter().enumerate() {
+            if index == 0 && !arg.contains('=') {
+                if !arg.is_empty() {
+                    events = scalar(arg, 255)?;
+                }
+                continue;
+            }
+            let (key, value) = arg.split_once('=').ok_or("WAIT keyword=value required")?;
+            let key = key.to_ascii_uppercase();
+            if !seen.insert(key.clone()) {
+                return Err(format!("duplicate WAIT keyword {key}"));
+            }
+            match key.as_str() {
+                "ECB" | "ECBLIST" => {
+                    if ecbs.replace(pointer(value)?).is_some() {
+                        return Err("ECB and ECBLIST are mutually exclusive".into());
+                    }
+                    list = key == "ECBLIST";
+                }
+                "LINKAGE" if value == "SVC" => {}
+                _ => return Err(format!("unsupported WAIT keyword/form {key}={value}")),
+            }
+        }
+        if !list && matches!(events,StorageOperand::Constant(n) if n != 1) {
+            return Err("WAIT ECB requires one event".into());
+        }
+        return Ok(SystemService::Wait {
+            ecbs: ecbs.ok_or("WAIT requires ECB or ECBLIST")?,
+            list,
+            events,
+        });
+    }
+    let (mut text, mut routes, mut descriptors) = (None, vec![], vec![]);
+    for (index, arg) in args.iter().enumerate() {
+        if index == 0 && arg.starts_with('\'') && arg.ends_with('\'') && arg.len() >= 2 {
+            text = Some(MessageText::Literal(
+                arg[1..arg.len() - 1].replace("''", "'"),
+            ));
+            continue;
+        }
+        let (key, value) = arg
+            .split_once('=')
+            .ok_or("WTO requires quoted text or TEXT=address")?;
+        let key = key.to_ascii_uppercase();
+        if !seen.insert(key.clone()) {
+            return Err(format!("duplicate WTO keyword {key}"));
+        }
+        match key.as_str() {
+            "TEXT" => {
+                if text
+                    .replace(MessageText::Address(pointer(value)?))
+                    .is_some()
+                {
+                    return Err("WTO text forms are mutually exclusive".into());
+                }
+            }
+            "ROUTCDE" | "DESC" => {
+                let list = value
+                    .strip_prefix('(')
+                    .and_then(|s| s.strip_suffix(')'))
+                    .unwrap_or(value);
+                let codes = super::assemble::operands(list)
+                    .iter()
+                    .map(|v| {
+                        let n = super::expression::evaluate_early(v, symbols)?.value;
+                        if !(1..=if key == "ROUTCDE" { 128 } else { 16 }).contains(&n) {
+                            return Err("WTO routing/descriptor code out of range".to_string());
+                        }
+                        Ok(n as u8)
+                    })
+                    .collect::<Result<Vec<_>, String>>()?;
+                if key == "ROUTCDE" {
+                    routes = codes;
+                } else {
+                    descriptors = codes;
+                }
+            }
+            "LINKAGE" if value == "SVC" => {}
+            _ => return Err(format!("unsupported WTO keyword/form {key}={value}")),
+        }
+    }
+    Ok(SystemService::Write {
+        text: text.ok_or("WTO message text required")?,
+        routes,
+        descriptors,
+    })
+}
+
+fn module_service(
+    s: &Statement,
+    args: &[String],
+    symbols: &Symbols,
+    using: &[Using],
+) -> Result<super::ModuleService, String> {
+    use super::{ModuleName, ModuleService, StorageOperand};
+    let pointer = |text: &str| -> Result<StorageOperand, String> {
+        if let Some(r) = text.strip_prefix('(').and_then(|s| s.strip_suffix(')')) {
+            let r = register(r, symbols)?;
+            if !(2..=12).contains(&r) {
+                return Err("module service address registers must be 2..12".into());
+            }
+            Ok(StorageOperand::Register(r))
+        } else {
+            Ok(StorageOperand::Address(
+                address(text, s, symbols, using, false)?.0,
+            ))
+        }
+    };
+    let (mut name, mut parameters, mut variable_list) = (None, None, false);
+    let mut seen = HashSet::new();
+    for arg in args {
+        let (key, value) = arg
+            .split_once('=')
+            .ok_or("module service keyword=value required")?;
+        let key = key.to_ascii_uppercase();
+        if !seen.insert(key.clone()) {
+            return Err(format!("duplicate module service keyword {key}"));
+        }
+        match key.as_str() {
+            "EP" => {
+                let value = value.to_ascii_uppercase();
+                if !symbol_name(&value) || value.len() > 8 {
+                    return Err("EP must be a symbol of 1..8 characters".into());
+                }
+                if name.replace(ModuleName::Literal(value)).is_some() {
+                    return Err("EP and EPLOC are mutually exclusive".into());
+                }
+            }
+            "EPLOC" => {
+                if name.replace(ModuleName::Address(pointer(value)?)).is_some() {
+                    return Err("EP and EPLOC are mutually exclusive".into());
+                }
+            }
+            "PARAM" if matches!(s.op.as_str(), "LINK" | "XCTL") => {
+                let value = value
+                    .strip_prefix('(')
+                    .and_then(|s| s.strip_suffix(')'))
+                    .unwrap_or(value);
+                parameters = Some(if value.is_empty() {
+                    vec![]
+                } else {
+                    operands(value)
+                        .iter()
+                        .map(|v| pointer(v))
+                        .collect::<Result<Vec<_>, _>>()?
+                });
+            }
+            "VL" if value == "1" && matches!(s.op.as_str(), "LINK" | "XCTL") => {
+                variable_list = true
+            }
+            _ => return Err(format!("unsupported {} keyword/form {key}={value}", s.op)),
+        }
+    }
+    if variable_list && parameters.is_none() {
+        return Err("VL=1 requires PARAM".into());
+    }
+    if matches!(s.op.as_str(), "LOAD" | "DELETE") {
+        parameters = Some(vec![]);
+    }
+    Ok(ModuleService {
+        name: name.ok_or("module service requires EP or EPLOC")?,
+        parameters,
+        variable_list,
+    })
 }
 
 fn storage_service(
@@ -2583,29 +3635,125 @@ fn storage_service(
     Ok(request)
 }
 
-fn address_constants(spec: &str) -> Result<Option<(usize, Vec<String>, bool)>, String> {
-    let at = spec
-        .find(|c: char| c.is_ascii_alphabetic())
-        .ok_or("storage type expected")?;
-    let prefix = &spec.as_bytes()[at..];
-    if !matches!(prefix[0].to_ascii_uppercase(), b'A' | b'V') || prefix.get(1) != Some(&b'(') {
+struct AddressConstants {
+    count: usize,
+    values: Vec<String>,
+    external: bool,
+    width: u8,
+    alignment: u32,
+    wide: bool,
+    kind: u8,
+    long_offset: bool,
+}
+
+fn external_address_names(spec: &str) -> Result<Option<Vec<String>>, String> {
+    let (clean, _, _) = super::constants::annotated(spec)?;
+    let spec = clean.as_ref();
+    let at = super::constants::type_start(spec)?;
+    if !spec.as_bytes()[at].eq_ignore_ascii_case(&b'V') {
         return Ok(None);
     }
-    let values = spec[at + 2..]
-        .strip_suffix(')')
-        .ok_or("address constant closing parenthesis required")?;
-    let count = if at == 0 {
-        1
+    let tail = &spec[at + 1..];
+    let tail = tail.strip_prefix('D').unwrap_or(tail);
+    let tail = if let Some(length) = tail.strip_prefix('L') {
+        let end = if length.starts_with('(') {
+            super::constants::parenthesized_end(length)?
+        } else {
+            length.bytes().take_while(u8::is_ascii_digit).count()
+        };
+        &length[end..]
     } else {
-        spec[..at]
-            .parse::<usize>()
-            .map_err(|_| "invalid duplication factor")?
+        tail
     };
-    Ok(Some((
-        count,
-        operands(values),
-        prefix[0].eq_ignore_ascii_case(&b'V'),
-    )))
+    Ok(tail
+        .strip_prefix('(')
+        .and_then(|s| s.strip_suffix(')'))
+        .map(operands))
+}
+
+fn address_constants(spec: &str, symbols: &Symbols) -> Result<Option<AddressConstants>, String> {
+    let (clean, _, _) = super::constants::annotated(spec)?;
+    let spec = clean.as_ref();
+    let at = super::constants::type_start(spec)?;
+    let kind = spec.as_bytes()[at].to_ascii_uppercase();
+    if !matches!(kind, b'A' | b'V' | b'Y' | b'S' | b'Q' | b'J' | b'R') {
+        return Ok(None);
+    }
+    let mut tail = &spec[at + 1..];
+    let wide = (tail.starts_with('D') && !matches!(kind, b'Y' | b'S'))
+        || (kind == b'S' && tail.starts_with('Y'));
+    let long_offset = kind == b'Q' && tail.starts_with('Y');
+    if wide || long_offset {
+        tail = &tail[1..];
+    }
+    if tail.starts_with("L.") {
+        return Ok(None);
+    }
+    let end = if let Some(modifier) = tail.strip_prefix('L') {
+        1 + if modifier.starts_with('(') {
+            super::constants::parenthesized_end(modifier)?
+        } else {
+            modifier.bytes().take_while(u8::is_ascii_digit).count()
+        }
+    } else {
+        0
+    };
+    let explicit = super::constants::byte_length(&tail[..end], symbols)?;
+    let implicit = if long_offset {
+        3
+    } else if kind == b'S' {
+        if wide { 3 } else { 2 }
+    } else if wide {
+        8
+    } else if kind == b'Y' {
+        2
+    } else {
+        4
+    };
+    let width = explicit.unwrap_or(implicit);
+    if (long_offset && width != 3)
+        || (kind == b'Q' && !wide && !long_offset && width > 4)
+        || (kind == b'J' && ![2, 3, 4, 8].contains(&width))
+        || (kind == b'R' && !(width == 3 || width == 4 || (wide && width == 8)))
+        || (kind == b'S' && width != implicit)
+        || width == 0
+        || width > if kind == b'Y' { 2 } else { 8 }
+        || (kind == b'V' && !(width == 3 || width == 4 || (wide && width == 8)))
+    {
+        return Err("invalid address constant length".into());
+    }
+    let nominal = &tail[end..];
+    if nominal.starts_with('\'') && kind == b'A' && !wide {
+        return Ok(None);
+    }
+    let values = if nominal.is_empty() {
+        vec![]
+    } else {
+        let inner = nominal
+            .strip_prefix('(')
+            .and_then(|s| s.strip_suffix(')'))
+            .ok_or("address constant requires a parenthesized nominal")?;
+        if inner.is_empty() {
+            return Err("address constant nominal is empty".into());
+        }
+        operands(inner)
+    };
+    Ok(Some(AddressConstants {
+        count: super::constants::duplication(spec, symbols)?.1 as usize,
+        values,
+        external: kind == b'V',
+        width: width as u8,
+        alignment: if explicit.is_some() {
+            1
+        } else if kind == b'S' || long_offset {
+            2
+        } else {
+            implicit
+        },
+        wide,
+        kind,
+        long_offset,
+    }))
 }
 
 pub(super) fn symbol_name(name: &str) -> bool {
@@ -2620,6 +3768,105 @@ pub(super) fn symbol_name(name: &str) -> bool {
             .all(|c| c.is_ascii_alphanumeric() || b"_@$#".contains(&c))
 }
 
+/// Encode base/displacement constants using the bindings at the declaration or
+/// at the literal-pool statement. A literal's location counter remains that of
+/// the referring instruction for every duplicated nominal.
+fn section_quantities(
+    spec: &str,
+    mut at: u32,
+    symbols: &Symbols,
+    bindings: &mut super::Bindings,
+) -> Result<(), String> {
+    let Some(c) = address_constants(spec, symbols)? else {
+        return Ok(());
+    };
+    if !matches!(c.kind, b'Q' | b'J' | b'R') {
+        return Ok(());
+    }
+    if c.count != 0 && c.values.is_empty() {
+        return Err("DC Q/J/R constant requires a nominal value".into());
+    }
+    for _ in 0..c.count {
+        for name in &c.values {
+            if !symbol_name(name) {
+                return Err("Q/J/R constant requires a section name".into());
+            }
+            bindings.quantities.push(super::Quantity {
+                offset: at,
+                width: c.width,
+                kind: if c.kind == b'R' {
+                    super::QuantityKind::Psect
+                } else if c.kind == b'J' {
+                    super::QuantityKind::Length
+                } else if c.long_offset {
+                    super::QuantityKind::LongOffset
+                } else {
+                    super::QuantityKind::Offset
+                },
+                symbol: name.to_ascii_uppercase(),
+                element: None,
+                addend: 0,
+            });
+            at += u32::from(c.width);
+        }
+    }
+    Ok(())
+}
+
+fn fix_base_constants(
+    spec: &str,
+    mut at: u32,
+    location: Option<u32>,
+    symbols: &Symbols,
+    using: &[Using],
+    image: &mut [u8],
+) -> Result<(), String> {
+    let Some(c) = address_constants(spec, symbols)? else {
+        return Ok(());
+    };
+    if c.kind != b'S' {
+        return Ok(());
+    }
+    if c.count != 0 && c.values.is_empty() {
+        return Err("DC S/SY constant requires a nominal value".into());
+    }
+    for _ in 0..c.count {
+        for nominal in &c.values {
+            let statement = Statement {
+                label: String::new(),
+                op: if c.wide { "LY" } else { "L" }.into(),
+                args: String::new(),
+                file: String::new(),
+                line: 0,
+                sequence: String::new(),
+                section: String::new(),
+                offset: location.unwrap_or(at),
+            };
+            let (a, _) = address(nominal, &statement, symbols, using, false)?;
+            // An S nominal has only a base field, never an index field.
+            if a.index != 0
+                || nominal
+                    .rfind('(')
+                    .is_some_and(|i| operands(&nominal[i + 1..nominal.len() - 1]).len() > 1)
+            {
+                return Err("S/SY constant accepts displacement(base), without an index".into());
+            }
+            let d = a.displacement as u32;
+            let end = at as usize + c.width as usize;
+            let bytes = image
+                .get_mut(at as usize..end)
+                .ok_or("S/SY constant outside module storage")?;
+            bytes[0] = a.base << 4 | ((d >> 8) & 15) as u8;
+            bytes[1] = d as u8;
+            if c.wide {
+                bytes[2] = (d >> 12) as u8;
+            }
+            at += u32::from(c.width);
+        }
+    }
+    Ok(())
+}
+
 fn fix_address_constants(
     spec: &str,
     mut at: u32,
@@ -2629,9 +3876,24 @@ fn fix_address_constants(
     image: &mut [u8],
     relocations: &mut Vec<Relocation>,
 ) -> Result<(), String> {
-    let Some((count, values, external)) = address_constants(spec)? else {
+    let Some(adcon) = address_constants(spec, symbols)? else {
         return Ok(());
     };
+    let AddressConstants {
+        count,
+        values,
+        external,
+        width,
+        wide,
+        kind,
+        ..
+    } = adcon;
+    if matches!(kind, b'S' | b'Q' | b'J' | b'R') {
+        return Ok(());
+    }
+    if count != 0 && values.is_empty() {
+        return Err("DC address constant requires a nominal value".into());
+    }
     for _ in 0..count {
         for expr in &values {
             if external && !symbol_name(expr) {
@@ -2639,6 +3901,14 @@ fn fix_address_constants(
             }
             let terms =
                 super::expression::evaluate_terms(expr, symbols, "", location.unwrap_or(at))?;
+            if !terms.relocations.is_empty()
+                && !external
+                && ((kind == b'Y' && width != 2)
+                    || (kind == b'A' && !wide && !(2..=4).contains(&width))
+                    || (wide && width < 2))
+            {
+                return Err("invalid relocatable address constant length".into());
+            }
             let complex = !external
                 && (terms.relocations.len() > 1 || terms.relocations.values().any(|n| *n != 1));
             if complex {
@@ -2659,6 +3929,7 @@ fn fix_address_constants(
                 }
                 relocations.push(Relocation {
                     offset: at,
+                    width,
                     target: 0,
                     symbol: None,
                     addend: 0,
@@ -2670,13 +3941,13 @@ fn fix_address_constants(
                     }),
                 });
                 let end = (at as usize)
-                    .checked_add(4)
+                    .checked_add(width as usize)
                     .ok_or("address constant offset overflow")?;
                 image
                     .get_mut(at as usize..end)
                     .ok_or("address constant outside module storage")?
                     .fill(0);
-                at += 4;
+                at += u32::from(width);
                 continue;
             }
             let value = expression(expr, symbols, "", location.unwrap_or(at))?;
@@ -2693,6 +3964,7 @@ fn fix_address_constants(
                 let weak = externals.get(&symbol).copied().unwrap_or(false);
                 relocations.push(Relocation {
                     offset: at,
+                    width,
                     target: 0,
                     symbol: Some(symbol),
                     addend: if external { 0 } else { value.value },
@@ -2701,15 +3973,20 @@ fn fix_address_constants(
                 });
                 0
             } else {
-                let target = u32::try_from(value.value)
-                    .or_else(|_| i32::try_from(value.value).map(|n| n as u32))
-                    .map_err(|_| "address constant out of range")?;
+                let target = if value.section.is_none() {
+                    value.value as u32
+                } else {
+                    u32::try_from(value.value)
+                        .or_else(|_| i32::try_from(value.value).map(|n| n as u32))
+                        .map_err(|_| "address constant out of range")?
+                };
                 if value.section.as_deref() == Some("") {
                     relocations.push(Relocation {
                         offset: at,
-                        target,
+                        width,
+                        target: 0,
                         symbol: None,
-                        addend: 0,
+                        addend: value.value,
                         weak: false,
                         expression: None,
                     });
@@ -2719,13 +3996,26 @@ fn fix_address_constants(
                 target
             };
             let end = (at as usize)
-                .checked_add(4)
+                .checked_add(width as usize)
                 .ok_or("address constant offset overflow")?;
             image
                 .get_mut(at as usize..end)
                 .ok_or("address constant outside module storage")?
-                .copy_from_slice(&target.to_be_bytes());
-            at += 4;
+                .copy_from_slice(
+                    &(if value.section.is_none() {
+                        (if wide {
+                            value.value
+                        } else {
+                            i64::from(value.value as i32)
+                        }) as u64
+                    } else if value.section.as_deref() == Some("") {
+                        value.value as u64
+                    } else {
+                        u64::from(target)
+                    })
+                    .to_be_bytes()[8 - width as usize..],
+                );
+            at += u32::from(width);
         }
     }
     Ok(())

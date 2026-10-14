@@ -179,7 +179,7 @@ pub const EDGE_TYPES: &[EdgeType] = &[
         name: "HLASM 外部シンボル",
         from: &["HLASM_PROGRAM", "HLASM_COPYBOOK"],
         to: PROGRAMS,
-        description: "EXTRN / WXTRN / V型アドレス定数の参照",
+        description: "EXTRN / WXTRN / V・Q・J・R型定数の参照",
     },
     EdgeType {
         code: "HLASM_COPY",
@@ -214,7 +214,7 @@ pub const EDGE_TYPES: &[EdgeType] = &[
         name: "CALL",
         from: SOURCES,
         to: PROGRAMS,
-        description: "CALL 文 (COBOL は定数か変数、PL/I は外部の手続き)",
+        description: "CALL 文および HLASM LINK / XCTL / LOAD (定数名または動的な入口)",
     },
     EdgeType {
         code: "PLI_FETCH",
@@ -586,6 +586,20 @@ pub const NODE_ATTRS: &[AttrType] = &[
 ];
 
 pub const EDGE_ATTRS: &[AttrType] = &[
+    a(
+        "HLASM_EXTERNAL",
+        "constant_type",
+        "定数型",
+        "TEXT",
+        "V / Q / J / R の参照元定数型",
+    ),
+    a(
+        "CALL",
+        "service",
+        "呼出しサービス",
+        "TEXT",
+        "HLASM LINK / XCTL / LOAD",
+    ),
     a(
         "HLASM_EXTERNAL",
         "weak",

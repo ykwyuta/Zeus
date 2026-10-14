@@ -99,6 +99,80 @@ fn native_cobol_calls_embedded_hlasm_with_shared_storage() {
 }
 
 #[test]
+fn assembler_links_back_to_native_cobol_and_pli_with_shared_arguments() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("bridge.asm");
+    std::fs::write(&path, "BRIDGE RSECT\n USING BRIDGE,12\n LR 12,15\n L 11,PREF\n C 11,=A(RET)\n BNE EARLY\n ST 14,RET\n ST 1,ARGS\n LINK EP=CBADD\n L 1,ARGS\n LINK EP=PSUB\n L 14,RET\n BR 14\nEARLY LA 15,99\n BR 14\nWORK CATTR NOTEXECUTABLE,ALIGN(4),RMODE(31)\nRET DS F\nARGS DS F\nPREF DC RP(C'CTX!')(BRIDGE)\nBRIDGE XATTR PSECT(RET)\n END BRIDGE\n").unwrap();
+    let asm = zeus_cobol::hlasm::compile_file(&path, &[]).unwrap();
+    let path = dir.path().join("cbadd.cbl");
+    std::fs::write(&path, "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. CBADD.\n       DATA DIVISION.\n       LINKAGE SECTION.\n       01 ARG PIC S9(9) COMP.\n       PROCEDURE DIVISION USING ARG.\n           ADD 7 TO ARG\n           MOVE 9 TO RETURN-CODE\n           GOBACK.\n").unwrap();
+    let sub = zeus_cobol::compile_file(&path, &Default::default()).unwrap();
+    let path = dir.path().join("psub.pli");
+    std::fs::write(&path, " PSUB: PROC(V) OPTIONS(ASM);\n DCL V FIXED BIN(31);\n V=V+11;\n CALL PLIRETC(17);\n END PSUB;\n").unwrap();
+    let (rc, compiled) = zeus_pli::compile_file(&path, &Default::default());
+    let pli = compiled
+        .module
+        .unwrap_or_else(|| panic!("rc {rc}: {:?}", compiled.messages));
+    assert!(
+        pli.procs.iter().any(|p| p.name == "PSUB" && p.external),
+        "{:?}",
+        pli.procs
+    );
+    zeus_pli::load_module_bytes(&zeus_pli::module_bytes(&pli).unwrap()).unwrap();
+    let path = dir.path().join("main.cbl");
+    std::fs::write(&path, "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. MAINPGM.\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01 ARG PIC S9(9) COMP VALUE 5.\n       PROCEDURE DIVISION.\n           CALL 'BRIDGE' USING ARG\n           IF ARG = 23 AND RETURN-CODE = 17\n             MOVE 0 TO RETURN-CODE\n           ELSE MOVE 99 TO RETURN-CODE END-IF\n           STOP RUN.\n").unwrap();
+    let main = zeus_cobol::compile_file(&path, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&main).unwrap()),
+            ("CBADD".into(), zeus_cobol::module_bytes(&sub).unwrap()),
+            ("PSUB".into(), zeus_pli::module_bytes(&pli).unwrap()),
+            (
+                "BRIDGE".into(),
+                zeus_cobol::hlasm::module_bytes(&asm).unwrap(),
+            ),
+        ],
+    };
+    let exe = executable(dir.path(), "asm-reverse-call", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+    let path = dir.path().join("loaded.asm");
+    std::fs::write(&path, "BRIDGE CSECT\n USING BRIDGE,12\n LR 12,15\n ST 14,RET\n ST 1,ARGS\n LINK EP=CBADD\n LOAD EP=PSUB\n LR 8,0\n L 1,ARGS\n L 2,0(1)\n ST 2,FIXED\n NI FIXED,X'7F'\n LA 1,FIXED\n LR 15,8\n BASR 14,15\n ST 15,CODE\n DELETE EP=PSUB\n L 15,CODE\n L 14,RET\n BR 14\nRET DS F\nARGS DS F\nFIXED DS F\nCODE DS F\n END\n").unwrap();
+    let loaded = zeus_cobol::hlasm::compile_file(&path, &[]).unwrap();
+    let mut image = image;
+    image.members.last_mut().unwrap().1 = zeus_cobol::hlasm::module_bytes(&loaded).unwrap();
+    let exe = executable(dir.path(), "asm-loaded-pli", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}
+
+#[test]
+fn native_cobol_calls_assembler_record_io_with_the_same_dds() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("reader.asm");
+    std::fs::write(&path,"READER CSECT\n USING READER,12\n LR 12,15\n L 10,0(1)\n XR 6,6\n OPEN (IN,INPUT)\nLOOP GET IN\n AHI 6,1\n B LOOP\nEOF CLOSE (IN)\n ST 6,0(10)\n LA 15,0\n BR 14\nIN DCB DDNAME=INFILE,MACRF=GL,RECFM=F,LRECL=4,EODAD=EOF\n END\n").unwrap();
+    let asm = zeus_cobol::hlasm::compile_file(&path, &[]).unwrap();
+    let path = dir.path().join("main.cbl");
+    std::fs::write(&path,"       IDENTIFICATION DIVISION.\n       PROGRAM-ID. MAINPGM.\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01 CNT PIC S9(9) COMP VALUE 0.\n       PROCEDURE DIVISION.\n           CALL 'READER' USING CNT\n           IF CNT = 3 AND RETURN-CODE = 0\n             MOVE 0 TO RETURN-CODE\n           ELSE MOVE 99 TO RETURN-CODE END-IF\n           STOP RUN.\n").unwrap();
+    let main = zeus_cobol::compile_file(&path, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&main).unwrap()),
+            (
+                "READER".into(),
+                zeus_cobol::hlasm::module_bytes(&asm).unwrap(),
+            ),
+        ],
+    };
+    let input = dir.path().join("input");
+    std::fs::write(&input, zeus_cobol::ebcdic::encode("ABCD1234WXYZ")).unwrap();
+    let dd = format!("INFILE={}", input.display());
+    let exe = executable(dir.path(), "assembler-io", &image);
+    assert_eq!(run(&exe, &["--dd", &dd], "").1, 0);
+    assert_eq!(run_env(&exe, &["--dd", &dd], "", true).1, 0);
+}
+
+#[test]
 fn native_cobol_calls_hlasm_with_reversed_bytes_and_long_displacements() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("asmrev.asm");

@@ -80,7 +80,7 @@ fn page_alignment_fragmentation_cannot_bypass_the_run_unit_storage_budget() {
     }
     assert!(storage.allocated_bytes() < 64 << 10);
     assert!(memory.len() <= (64 << 10) + 4096);
-    storage.release_subpool(&mut memory, 1);
+    storage.release_subpool(&mut memory, 1).unwrap();
     assert_eq!(memory.len(), 0);
     assert!(
         storage

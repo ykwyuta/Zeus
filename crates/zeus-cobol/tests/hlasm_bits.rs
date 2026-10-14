@@ -374,3 +374,263 @@ fn carry_memory_access_and_malformed_immediates_report_errors_and_reclaim_frames
     );
     assert_eq!(mem, before);
 }
+
+#[test]
+fn rotate_insert_selects_wrapping_ranges_and_preserves_unselected_words() {
+    let data = "LEFT DC XL8'1122334455667788'\nRIGHT DC XL8'FEDCBA9876543210'";
+    for (op, start, end, rotate, expected, cc) in [
+        ("RISBG", 0, 63, 0, 0xfedcba9876543210, 1),
+        ("RISBG", 0, 63, 8, 0xdcba9876543210fe, 1),
+        ("RISBG", 56, 7, 0, 0xfe22334455667710, 1),
+        ("RISBGZ", 56, 7, 0, 0xfe00000000000010, 1),
+        ("RISBGZ", 32, 63, 0, 0x0000000076543210, 2),
+        ("RISBGZ", 0, 0, 1, 0x8000000000000000, 1),
+        ("RISBGN", 0, 63, 0, 0xfedcba9876543210, 3),
+        ("RISBGNZ", 32, 63, 0, 0x0000000076543210, 3),
+        ("RISBHG", 0, 31, 0, 0xfedcba9855667788, 3),
+        ("RISBLG", 0, 31, 0, 0x1122334476543210, 3),
+        ("RISBHGZ", 8, 15, 32, 0x0054000055667788, 3),
+        ("RISBLGZ", 8, 15, 32, 0x1122334400dc0000, 3),
+        ("RISBHGZ", 24, 7, 0, 0xfe00009855667788, 3),
+    ] {
+        let body = check_cc(
+            &format!(
+                "LG 2,LEFT\nLG 3,RIGHT\n{}\n{op} 2,3,{start},{end},{rotate}",
+                incoming_cc(3)
+            ),
+            cc,
+        );
+        let got = run(&body, data);
+        assert_eq!(got[0], expected, "{op} {start},{end},{rotate}");
+        assert_eq!(got[1], 0xfedcba9876543210);
+        assert_eq!(got[2], 1, "{op} CC");
+    }
+    let got = run("LG 2,RIGHT\nRISBG 2,2,0,63,8", data);
+    assert_eq!(got[0], 0xdcba9876543210fe);
+}
+
+#[test]
+fn rotate_logical_cc_uses_selected_bits_and_test_forms_preserve_destination() {
+    for (op, expected, cc) in [
+        ("RNSBG", 0xffff000000000000, 0),
+        ("ROSBG", 0xffff000000005500, 1),
+        ("RXSBG", 0xffff000000005500, 1),
+        ("RNSBGT", 0xffff000000000000, 0),
+        ("ROSBGT", 0xffff000000000000, 1),
+        ("RXSBGT", 0xffff000000000000, 1),
+    ] {
+        let body = check_cc(&format!("LG 2,LEFT\nLG 3,RIGHT\n{op} 2,3,48,55"), cc);
+        let got = run(
+            &body,
+            "LEFT DC XL8'FFFF000000000000'\nRIGHT DC XL8'0000000000005500'",
+        );
+        assert_eq!(got[0], expected, "{op}");
+        assert_eq!(got[2], 1, "{op} CC");
+    }
+    // T in I3 and Z in I4 are independent controls; ignored high immediate
+    // bits do not change the architecturally selected bit positions/rotation.
+    let got = run("LGHI 2,-1\nLGHI 3,0\nRXSBG 2,3,128,63,255", "");
+    assert_eq!(got[0], u64::MAX);
+    let got = run("LGHI 2,-1\nLGHI 3,1\nRISBG 2,3,64,255,192", "");
+    assert_eq!(got[0], 1);
+}
+
+#[test]
+fn rotate_selected_execute_overlays_register_fields_and_rejects_bad_operands() {
+    let got = run(
+        "LGHI 2,1\nLGHI 3,2\nLGHI 4,16\nEX 4,TARGET\nB DONE\n@TARGET RISBG 2,3,0,63,1\n@DONE NOPR 0",
+        "",
+    );
+    assert_eq!(got[0], 1);
+    assert_eq!(got[1], 4);
+    for body in [
+        "RISBG 2,3,0",
+        "RISBG 2,3,0,63,0,1",
+        "RISBG 16,3,0,63",
+        "RISBG 2,3,-1,63",
+        "RISBG 2,3,0,256",
+        "RISBG 2,3,0,63,256",
+        "RISBG 2,3,BITS,63",
+    ] {
+        assert!(compile(body, "").is_err(), "{body}");
+    }
+}
+
+#[test]
+fn find_leftmost_one_covers_every_bit_and_aliased_register_pairs() {
+    for position in 0..=64 {
+        let source = if position == 64 {
+            0
+        } else {
+            (1u64 << (63 - position)) | 1
+        };
+        for register in [2, 3, 5] {
+            let body = check_cc(
+                &format!("LG {register},SOURCE\nFLOGR 2,{register}"),
+                if source == 0 { 0 } else { 2 },
+            );
+            let got = run(&body, &format!("SOURCE DC XL8'{source:016X}'"));
+            assert_eq!(got[0], position, "bit {position}, reg {register}");
+            assert_eq!(
+                got[1],
+                u64::from(position < 63),
+                "bit {position}, reg {register}"
+            );
+            assert_eq!(got[2], 1);
+        }
+    }
+    assert!(compile("FLOGR 3,2", "").is_err());
+}
+
+#[test]
+fn population_count_counts_per_byte_or_whole_register_and_sets_cc() {
+    for (source, bytes, total) in [
+        (0, 0, 0),
+        (u64::MAX, 0x0808080808080808, 64),
+        (0xff800f0301000055, 0x0801040201000004, 20),
+    ] {
+        for (mask, expected) in [("", bytes), (",0", bytes), (",8", total)] {
+            let body = check_cc(
+                &format!("LG 2,SOURCE\nPOPCNT 2,2{mask}"),
+                u8::from(source != 0),
+            );
+            let got = run(&body, &format!("SOURCE DC XL8'{source:016X}'"));
+            assert_eq!(got[0], expected, "{source:016x} {mask}");
+            assert_eq!(got[2], 1);
+        }
+    }
+    for mask in [1, 7, 9, 16, -1] {
+        assert!(compile(&format!("POPCNT 2,3,{mask}"), "").is_err());
+    }
+}
+
+#[test]
+fn three_operand_logical_operations_preserve_width_and_overlapping_inputs() {
+    for (op, expected) in [
+        ("NRK", 0x00000001),
+        ("ORK", 0xffff00ff),
+        ("XRK", 0xffff00fe),
+        ("NNRK", 0xfffffffe),
+        ("NORK", 0x0000ff00),
+        ("NXRK", 0x0000ff01),
+        ("NCRK", 0xffff0000),
+        ("OCRK", 0xffffff01),
+    ] {
+        let body = check_cc(&format!("LG 2,DEST\nLG 3,LEFT\nLG 5,RIGHT\n{op} 2,3,5"), 1);
+        let got = run(
+            &body,
+            "DEST DC XL8'1122334400000000'\nLEFT DC XL8'F0000000FFFF0001'\nRIGHT DC XL8'00000000000000FF'",
+        );
+        assert_eq!(got[0], 0x1122334400000000 | expected, "{op}");
+        assert_eq!(got[2], 1, "{op}");
+        let wide = match op {
+            "NNRK" => "NNGRK",
+            "NORK" => "NOGRK",
+            "NXRK" => "NXGRK",
+            "NCRK" => "NCGRK",
+            "OCRK" => "OCGRK",
+            "NRK" => "NGRK",
+            "ORK" => "OGRK",
+            _ => "XGRK",
+        };
+        let expected = match op {
+            "NRK" => 0x00000001,
+            "ORK" => 0xf0000000ffff00ff,
+            "XRK" => 0xf0000000ffff00fe,
+            "NNRK" => 0xfffffffffffffffe,
+            "NORK" => 0x0fffffff0000ff00,
+            "NXRK" => 0x0fffffff0000ff01,
+            "NCRK" => 0xf0000000ffff0000,
+            _ => 0xffffffffffffff01,
+        };
+        let got = run(
+            &format!("LG 2,LEFT\nLG 3,RIGHT\n{wide} 2,2,3"),
+            "LEFT DC XL8'F0000000FFFF0001'\nRIGHT DC XL8'00000000000000FF'",
+        );
+        assert_eq!(got[0], expected, "{wide}");
+    }
+    assert_eq!(run("LGHI 2,0\nNOTGR 2,2", "")[0], u64::MAX);
+    assert_eq!(run("LGHI 2,0\nNOTR 2,2", "")[0], u64::from(u32::MAX));
+}
+
+#[test]
+fn select_families_cover_all_masks_and_cc_values_with_halfword_preservation() {
+    let data = "DEST DC XL8'1122334455667788'\nLEFT DC XL8'ABCDEF0102030405'\nRIGHT DC XL8'9876543210203040'";
+    for cc in 0..4 {
+        for mask in 0..16 {
+            for (op, high, wide) in [
+                ("SELR", false, false),
+                ("SELFHR", true, false),
+                ("SELGR", false, true),
+            ] {
+                let chosen = if mask & (8 >> cc) != 0 {
+                    0xabcdef0102030405u64
+                } else {
+                    0x9876543210203040
+                };
+                let expected = if wide {
+                    chosen
+                } else if high {
+                    (chosen & 0xffffffff00000000) | 0x55667788
+                } else {
+                    0x1122334400000000 | (chosen & 0xffffffff)
+                };
+                let body = check_cc(
+                    &format!(
+                        "LG 2,DEST\nLG 3,LEFT\nLG 6,RIGHT\n{}\n{op} 2,3,6,{mask}",
+                        incoming_cc(cc)
+                    ),
+                    cc,
+                );
+                let got = run(&body, data);
+                assert_eq!(got[0], expected, "{op} CC={cc}, mask={mask}");
+                assert_eq!(got[2], 1);
+            }
+        }
+    }
+    for (suffix, mask) in [
+        ("E", 8),
+        ("Z", 8),
+        ("NE", 7),
+        ("NZ", 7),
+        ("H", 2),
+        ("P", 2),
+        ("NH", 13),
+        ("NP", 13),
+        ("L", 4),
+        ("M", 4),
+        ("NL", 11),
+        ("NM", 11),
+        ("O", 1),
+        ("NO", 14),
+    ] {
+        for cc in 0..4 {
+            let got = run(
+                &format!(
+                    "LG 2,LEFT\nLG 3,RIGHT\n{}\nSELGR{suffix} 2,2,3",
+                    incoming_cc(cc)
+                ),
+                data,
+            );
+            assert_eq!(
+                got[0],
+                if mask & (8 >> cc) != 0 {
+                    0xabcdef0102030405
+                } else {
+                    0x9876543210203040
+                },
+                "suffix {suffix} CC={cc}"
+            );
+        }
+    }
+    for body in [
+        "NRK 2,3",
+        "NCRK 2,3,16",
+        "SELR 2,3,5,16",
+        "SELGR 2,3,5,-1",
+        "SELFHR 2,3,5,BITS",
+        "SELRE 2,3,5,8",
+    ] {
+        assert!(compile(body, "").is_err(), "{body}");
+    }
+}

@@ -2,27 +2,47 @@
 //! decoded instructions and Zeus relocations, not IBM object decks. Execution uses the caller's
 //! storage and the 31-bit OS linkage convention, without unsafe host pointers.
 mod assemble;
+mod binding;
+mod bit_constants;
+mod classes;
 mod constants;
 mod context;
+mod data_management;
 mod diagnostics;
 mod execute;
 mod expression;
 mod link;
 mod macros;
 mod operation;
+mod services;
+mod source;
+mod source_refs;
 mod storage;
+mod system_services;
 mod template;
 
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 
 pub use assemble::compile_file;
+pub use binding::{
+    Bindings, Label as BindingLabel, Psect, Quantity, QuantityKind, Section as BindingSection,
+};
 pub use context::{AssemblyDataSet, AssemblyOptions};
+pub use data_management::{
+    AccessMode as DcbAccessMode, DataControlBlock, RecordFormat as DcbRecordFormat,
+};
+pub(crate) use data_management::{Reply as DataReply, Request as DataRequest};
 pub use diagnostics::{AssemblyReport, Diagnostic, compile_report, compile_report_with_options};
-pub(crate) use execute::execute_entry;
+pub(crate) use execute::execute_entry_with_host;
 pub use execute::{execute, execute_with_storage};
 pub use link::{link_modules, link_with_libraries};
+pub(crate) use services::{Host, Registers};
+pub use source::{SourceEncoding, SourceFormat};
+pub use source_refs::{ConstantReference, constant_references};
 pub use storage::DynamicStorage;
+pub use system_services::OperatorMessage;
+pub(crate) use system_services::{completed as completed_events, post as post_event};
 
 pub fn is_operation(op: &str) -> bool {
     assemble::directive(op)
@@ -74,11 +94,20 @@ pub struct Module {
     /// address constant still requests library inclusion during linking.
     #[serde(default)]
     pub externals: std::collections::HashMap<String, bool>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub dcbs: Vec<DataControlBlock>,
+    #[serde(default, skip_serializing_if = "Bindings::is_empty")]
+    pub bindings: Bindings,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Relocation {
     pub offset: u32,
+    #[serde(
+        default = "default_address_width",
+        skip_serializing_if = "is_default_address_width"
+    )]
+    pub width: u8,
     pub target: u32,
     #[serde(default)]
     pub symbol: Option<String>,
@@ -209,34 +238,43 @@ impl Module {
             template::initialize(&self.code, &mut storage)?;
         }
         for r in &self.relocations {
+            if r.width != 4 && self.zeus_hlasm < 7 {
+                return Err("variable-width relocation requires module version 7".into());
+            }
             let value = if let Some(expression) = &r.expression {
                 if r.symbol.is_some() || r.target != 0 || r.addend != 0 || r.weak {
                     return Err("conflicting address relocations".into());
                 }
-                expression.value_at(base)? as u32
+                expression.value_at(base)? as u64
             } else if let Some(symbol) = &r.symbol {
                 if !r.weak {
                     return Err(format!(
                         "unresolved external symbol {symbol}; link the module before execution"
                     ));
                 }
-                0
+                r.addend as u64
             } else {
                 let value = i64::try_from(base)
                     .ok()
                     .and_then(|b| b.checked_add(i64::from(r.target)))
                     .and_then(|n| n.checked_add(r.addend))
-                    .filter(|n| (0..=0x7fff_ffff).contains(n))
-                    .ok_or("address constant exceeds AMODE 31")?;
-                value as u32
+                    .ok_or("address constant arithmetic overflow")?;
+                value as u64
             };
             let at = r.offset as usize;
-            let end = at.checked_add(4).ok_or("invalid address relocation")?;
+            if !(1..=8).contains(&r.width) {
+                return Err("invalid address relocation width".into());
+            }
+            let end = at
+                .checked_add(r.width as usize)
+                .ok_or("invalid address relocation")?;
             storage
                 .get_mut(at..end)
                 .ok_or("invalid address relocation")?
-                .copy_from_slice(&value.to_be_bytes());
+                .copy_from_slice(&value.to_be_bytes()[8 - r.width as usize..]);
         }
+        data_management::initialize(self, &mut storage, base)?;
+        self.bindings.initialize(self, &mut storage, base)?;
         Ok(storage)
     }
 }
@@ -276,6 +314,12 @@ pub struct Instruction {
     pub op: String,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub storage_service: Option<StorageService>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub module_service: Option<ModuleService>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub system_service: Option<SystemService>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub data_service: Option<DataService>,
     pub registers: Vec<u8>,
     pub address: Option<Address>,
     pub source: Option<Address>,
@@ -289,6 +333,58 @@ pub struct Instruction {
     pub relative_expression: Option<RelativeExpression>,
     pub file: String,
     pub line: usize,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum ModuleName {
+    Literal(String),
+    Address(StorageOperand),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModuleService {
+    pub name: ModuleName,
+    pub parameters: Option<Vec<StorageOperand>>,
+    pub variable_list: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum MessageText {
+    Literal(String),
+    Address(StorageOperand),
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum SystemService {
+    Write {
+        text: MessageText,
+        routes: Vec<u8>,
+        descriptors: Vec<u8>,
+    },
+    Post {
+        ecb: StorageOperand,
+        code: StorageOperand,
+    },
+    Wait {
+        ecbs: StorageOperand,
+        list: bool,
+        events: StorageOperand,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum DataService {
+    Open(Vec<(StorageOperand, bool, bool)>),
+    Close(Vec<StorageOperand>),
+    Get {
+        dcb: StorageOperand,
+        area: Option<StorageOperand>,
+    },
+    Put {
+        dcb: StorageOperand,
+        area: Option<StorageOperand>,
+    },
+    FreePool(StorageOperand),
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -386,7 +482,9 @@ impl RelocationExpression {
 }
 
 fn format_version(code: &[Instruction], relocations: &[Relocation]) -> u32 {
-    if relocations.iter().any(|r| r.expression.is_some()) {
+    if relocations.iter().any(|r| r.width != 4) {
+        7
+    } else if relocations.iter().any(|r| r.expression.is_some()) {
         4
     } else if code.iter().any(|i| i.relative_expression.is_some()) {
         3
@@ -395,6 +493,13 @@ fn format_version(code: &[Instruction], relocations: &[Relocation]) -> u32 {
     } else {
         1
     }
+}
+
+fn default_address_width() -> u8 {
+    4
+}
+fn is_default_address_width(width: &u8) -> bool {
+    *width == 4
 }
 
 fn default_length() -> u32 {
@@ -421,10 +526,19 @@ pub fn load_module(bytes: &[u8]) -> Result<Module, String> {
         return Err("not a Zeus HLASM module".into());
     }
     let module: Module = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-    if !matches!(module.zeus_hlasm, 1..=6) {
+    if !matches!(module.zeus_hlasm, 1..=9) {
         return Err("unsupported HLASM module version".into());
     }
     module.required_alignment()?;
+    data_management::validate(&module)?;
+    module.bindings.validate(&module)?;
+    if module
+        .relocations
+        .iter()
+        .any(|r| !(1..=8).contains(&r.width) || (r.width != 4 && module.zeus_hlasm < 7))
+    {
+        return Err("invalid relocation width or module version".into());
+    }
     module.validate_read_only()?;
     if module.alignment > 8 && module.zeus_hlasm < 5 {
         return Err("extended alignment requires HLASM module version 5".into());

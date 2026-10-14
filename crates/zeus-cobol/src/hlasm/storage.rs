@@ -18,6 +18,7 @@ pub struct DynamicStorage {
     protected: BTreeMap<usize, Vec<u8>>,
     charged: BTreeMap<usize, usize>,
     committed: usize,
+    pinned: BTreeMap<usize, usize>,
 }
 
 impl Default for DynamicStorage {
@@ -36,11 +37,45 @@ impl DynamicStorage {
             protected: BTreeMap::new(),
             charged: BTreeMap::new(),
             committed: 0,
+            pinned: BTreeMap::new(),
         }
     }
 
     pub fn allocated_bytes(&self) -> usize {
         self.allocated
+    }
+
+    pub(crate) fn check_write(&self, address: usize, length: usize) -> Result<(), String> {
+        let end = address.checked_add(length).ok_or("write range overflow")?;
+        if length != 0
+            && self
+                .protected
+                .range(..end)
+                .any(|(start, bytes)| address < start + bytes.len())
+        {
+            return Err("storage protection exception: write to RSECT".into());
+        }
+        Ok(())
+    }
+
+    pub(crate) fn pin(&mut self, address: usize, length: usize) {
+        self.pinned.insert(address, length);
+    }
+    pub(crate) fn unpin(&mut self, address: usize) {
+        self.pinned.remove(&address);
+    }
+    fn check_release(&self, address: usize, length: usize) -> Result<(), String> {
+        let end = address
+            .checked_add(length)
+            .ok_or("release range overflow")?;
+        if self
+            .pinned
+            .range(..end)
+            .any(|(start, length)| address < start + length)
+        {
+            return Err("storage is retained by an open data control block".into());
+        }
+        Ok(())
     }
 
     pub(crate) fn protect(
@@ -211,6 +246,46 @@ impl DynamicStorage {
         self.reserve(memory, length, 8, 0, 0x7fff_0000, true)
     }
 
+    pub(crate) fn module(
+        &mut self,
+        memory: &mut Vec<u8>,
+        module: &super::Module,
+    ) -> Result<usize, String> {
+        let base = self.reserve(
+            memory,
+            module.storage.len(),
+            module.required_alignment()?,
+            0,
+            if module.rmode == 24 || !module.dcbs.is_empty() {
+                1 << 24
+            } else {
+                0x7fff_0000
+            },
+            true,
+        )?;
+        let result = module.storage_at(base).and_then(|image| {
+            memory[base..base + image.len()].copy_from_slice(&image);
+            self.protect(module, memory, base)
+        });
+        if let Err(e) = result {
+            self.release_frame(memory, base);
+            return Err(e);
+        }
+        Ok(base)
+    }
+
+    pub(crate) fn release_module(
+        &mut self,
+        memory: &mut Vec<u8>,
+        module: &super::Module,
+        base: usize,
+    ) {
+        for region in &module.read_only {
+            self.protected.remove(&(base + region.start as usize));
+        }
+        self.release_frame(memory, base);
+    }
+
     pub(crate) fn release_frame(&mut self, memory: &mut Vec<u8>, address: usize) {
         let block = self
             .active
@@ -259,6 +334,7 @@ impl DynamicStorage {
         let end = address
             .checked_add(length)
             .ok_or("storage release address overflow")?;
+        self.check_release(address, length)?;
         let (&start, block) = self
             .active
             .range(..=address)
@@ -293,16 +369,20 @@ impl DynamicStorage {
         Ok(())
     }
 
-    pub fn release_subpool(&mut self, memory: &mut Vec<u8>, subpool: u8) {
+    pub fn release_subpool(&mut self, memory: &mut Vec<u8>, subpool: u8) -> Result<(), String> {
         let blocks: Vec<_> = self
             .active
             .iter()
             .filter(|(_, b)| !b.frame && b.subpool == subpool)
             .map(|(&a, b)| (a, b.length))
             .collect();
+        for (address, length) in &blocks {
+            self.check_release(*address, *length)?;
+        }
         for (a, length) in blocks {
             self.release(memory, a, length, subpool)
                 .expect("owned subpool allocation");
         }
+        Ok(())
     }
 }

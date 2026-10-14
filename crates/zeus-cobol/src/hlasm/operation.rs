@@ -133,3 +133,153 @@ pub(super) fn partial_immediate(op: &str) -> Option<PartialImmediate> {
     };
     Some(PartialImmediate { width, shift, kind })
 }
+/// Interlocked operations run to completion while the engine exclusively owns
+/// the run-unit storage. No host thread can observe an intermediate update.
+pub(super) fn interlocked(op: &str) -> Option<(u32, usize)> {
+    Some(match op {
+        "TS" => (4, 1),
+        "CS" => (4, 4),
+        "CDS" => (4, 8),
+        "CSY" => (6, 4),
+        "CDSY" | "CSG" => (6, 8),
+        "CDSG" => (6, 16),
+        "LAA" | "LAAL" | "LAN" | "LAO" | "LAX" => (6, 4),
+        "LAAG" | "LAALG" | "LANG" | "LAOG" | "LAXG" => (6, 8),
+        _ => return None,
+    })
+}
+
+#[derive(Clone, Copy, PartialEq)]
+pub(super) enum ConditionalKind {
+    MemoryLoad,
+    MemoryStore,
+    Register,
+    Immediate,
+}
+
+pub(super) struct Conditional {
+    pub root: &'static str,
+    pub kind: ConditionalKind,
+    pub wide: bool,
+    pub high: bool,
+    pub mask: Option<u8>,
+}
+
+pub(super) fn conditional(op: &str) -> Option<Conditional> {
+    for root in [
+        "LOCFHR", "LOCGHI", "LOCHHI", "STOCFH", "LOCGR", "LOCFH", "LOCHI", "STOCG", "LOCR", "LOCG",
+        "STOC", "LOC",
+    ] {
+        if let Some(suffix) = op.strip_prefix(root) {
+            let mask = if suffix.is_empty() {
+                None
+            } else {
+                Some(match suffix {
+                    "O" => 1,
+                    "NO" => 14,
+                    "H" | "P" => 2,
+                    "NH" | "NP" => 13,
+                    "L" | "M" => 4,
+                    "NL" | "NM" => 11,
+                    "E" | "Z" => 8,
+                    "NE" | "NZ" => 7,
+                    _ => continue,
+                })
+            };
+            return Some(Conditional {
+                root,
+                kind: if root.starts_with("STOC") {
+                    ConditionalKind::MemoryStore
+                } else if root.ends_with('R') {
+                    ConditionalKind::Register
+                } else if root.ends_with("HI") {
+                    ConditionalKind::Immediate
+                } else {
+                    ConditionalKind::MemoryLoad
+                },
+                wide: matches!(root, "LOCG" | "LOCGR" | "LOCGHI" | "STOCG"),
+                high: matches!(root, "LOCFH" | "LOCFHR" | "LOCHHI" | "STOCFH"),
+                mask,
+            });
+        }
+    }
+    None
+}
+
+/// RIE-f rotate/select operations; suffix controls are expanded at assembly.
+pub(super) fn rotate_selected(op: &str) -> Option<(&'static str, u32)> {
+    Some(match op {
+        "RISBG" => ("RISBG", 0),
+        "RISBGZ" => ("RISBG", 0x8000),
+        "RISBGN" => ("RISBGN", 0),
+        "RISBGNZ" => ("RISBGN", 0x8000),
+        "RISBHG" => ("RISBHG", 0),
+        "RISBHGZ" => ("RISBHG", 0x8000),
+        "RISBLG" => ("RISBLG", 0),
+        "RISBLGZ" => ("RISBLG", 0x8000),
+        "RNSBG" => ("RNSBG", 0),
+        "RNSBGT" => ("RNSBG", 0x800000),
+        "ROSBG" => ("ROSBG", 0),
+        "ROSBGT" => ("ROSBG", 0x800000),
+        "RXSBG" => ("RXSBG", 0),
+        "RXSBGT" => ("RXSBG", 0x800000),
+        _ => return None,
+    })
+}
+
+#[derive(Clone, Copy)]
+pub(super) enum Logic {
+    And,
+    Or,
+    Xor,
+    Nand,
+    Nor,
+    Nxor,
+    AndComplement,
+    OrComplement,
+}
+pub(super) fn register_logic(op: &str) -> Option<(Logic, bool)> {
+    use Logic::*;
+    Some(match op {
+        "NRK" => (And, false),
+        "NGRK" => (And, true),
+        "ORK" => (Or, false),
+        "OGRK" => (Or, true),
+        "XRK" => (Xor, false),
+        "XGRK" => (Xor, true),
+        "NNRK" => (Nand, false),
+        "NNGRK" => (Nand, true),
+        "NORK" | "NOTR" => (Nor, false),
+        "NOGRK" | "NOTGR" => (Nor, true),
+        "NXRK" => (Nxor, false),
+        "NXGRK" => (Nxor, true),
+        "NCRK" => (AndComplement, false),
+        "NCGRK" => (AndComplement, true),
+        "OCRK" => (OrComplement, false),
+        "OCGRK" => (OrComplement, true),
+        _ => return None,
+    })
+}
+pub(super) fn select(op: &str) -> Option<(&'static str, Option<u8>)> {
+    for root in ["SELFHR", "SELGR", "SELR"] {
+        if let Some(suffix) = op.strip_prefix(root) {
+            let mask = if suffix.is_empty() {
+                None
+            } else {
+                Some(match suffix {
+                    "O" => 1,
+                    "NO" => 14,
+                    "H" | "P" => 2,
+                    "NH" | "NP" => 13,
+                    "L" | "M" => 4,
+                    "NL" | "NM" => 11,
+                    "E" | "Z" => 8,
+                    "NE" | "NZ" => 7,
+                    _ => continue,
+                })
+            };
+            return Some((root, mask));
+        }
+    }
+    None
+}

@@ -906,11 +906,11 @@ impl Parser {
                 pos: ppos,
                 sentences: Vec::new(),
             };
-            while !self.eof()
-                && !self.is_paragraph_header()
-                && !self.is_section_header()
-                && !self.at_program_end()
-                && !(self.is("END") && self.is_at(1, "DECLARATIVES"))
+            while !(self.eof()
+                || self.is_paragraph_header()
+                || self.is_section_header()
+                || self.at_program_end()
+                || (self.is("END") && self.is_at(1, "DECLARATIVES")))
             {
                 para.sentences.push(self.sentence()?);
             }

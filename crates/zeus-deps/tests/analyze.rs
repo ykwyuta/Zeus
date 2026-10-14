@@ -451,3 +451,58 @@ fn hlasm_reports_multiple_unknown_operations_and_warning_notes() {
                 && r.iter().any(|v| v == "false"))
     );
 }
+
+#[test]
+fn assembler_p2_dependencies_resolve_dummy_definitions_and_reverse_language_calls() {
+    use zeus_deps::graph::{Options, analyze};
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "ROOT.asm",
+        "ROOT CSECT\n LINK EP=CALLEE\n BR 14\nPTR DC (2)QP(C'OFFS')L(4)(EXTD),JD(EXTD),R(CALLEEA),Q(LOCAL)\nLOCAL DSECT\nFIELD DS F\n END ROOT\n",
+    );
+    write(
+        dir.path(),
+        "STORAGE.asm",
+        "STORAGE CSECT\n BR 14\nEXTD DXD 2F\n END STORAGE\n",
+    );
+    write(
+        dir.path(),
+        "LIB.asm",
+        "LIB CSECT\nCALLEEA BR 14\n ENTRY CALLEEA\nWORK CSECT\nAREA DS F\nCALLEEA XATTR PSECT(AREA)\n END LIB\n",
+    );
+    write(
+        dir.path(),
+        "CALLEE.cbl",
+        "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. CALLEE.\n       PROCEDURE DIVISION.\n           GOBACK.\n",
+    );
+    let graph = analyze(&Options {
+        roots: vec![dir.path().join("ROOT.asm")],
+        libs: vec![dir.path().into()],
+        compile: true,
+    });
+    assert!(
+        !graph.nodes.iter().any(|n| n.status == "MISSING"),
+        "{:?}",
+        graph.nodes
+    );
+    for (kind, name) in [
+        ("HLASM_EXTERNAL", "EXTD"),
+        ("HLASM_EXTERNAL", "CALLEEA"),
+        ("CALL", "CALLEE"),
+    ] {
+        assert!(
+            graph
+                .edges
+                .iter()
+                .any(|e| e.edge_type == kind && e.target_name == name && e.resolution == "FILE"),
+            "{kind} {name}"
+        );
+    }
+    assert!(
+        !graph
+            .edges
+            .iter()
+            .any(|e| e.edge_type == "HLASM_EXTERNAL" && e.target_name == "LOCAL")
+    );
+}

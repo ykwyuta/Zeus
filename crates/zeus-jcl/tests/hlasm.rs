@@ -2,6 +2,88 @@ use zeus_ds::catalog::{Catalog, Entry, EntryKind, Recfm};
 use zeus_jcl::job::{Env, Outcome};
 
 #[test]
+fn qsam_input_and_sysout_records_run_with_fresh_handles_in_each_jcl_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut catalog = Catalog::open(&dir.path().join("catalog")).unwrap();
+    catalog
+        .define(Entry {
+            name: "APP.LOAD".into(),
+            kind: EntryKind::Partitioned {
+                recfm: Recfm::U,
+                lrecl: 0,
+            },
+        })
+        .unwrap();
+    let mut env = Env {
+        catalog,
+        spool: dir.path().join("spool"),
+        loadlibs: vec![],
+        proclibs: vec![],
+    };
+    let job = "//RECORDS JOB\n//ASM EXEC PGM=ASMA90\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&ASM,DISP=(NEW,PASS)\n//SYSIN DD *\nCOPYREC CSECT\n USING COPYREC,12\n LR 12,15\n XR 6,6\n OPEN (IN,INPUT,OUT,OUTPUT)\nLOOP GET IN\n PUT OUT,(1)\n AHI 6,1\n B LOOP\nEOF CLOSE (IN,,OUT)\n C 6,=F'2'\n BNE BAD\n WTO 'Record copy complete'\n LA 15,0\n BR 14\nBAD LA 15,99\n BR 14\nIN DCB DDNAME=INFILE,MACRF=GL,RECFM=F,LRECL=80,EODAD=EOF\nOUT DCB DDNAME=OUTFILE,MACRF=PM,RECFM=F,LRECL=80\n END\n/*\n//BIND EXEC PGM=IEWL\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&ASM,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=APP.LOAD(COPYREC),DISP=SHR\n//RUN1 EXEC PGM=COPYREC\n//STEPLIB DD DSN=APP.LOAD,DISP=SHR\n//SYSPRINT DD SYSOUT=*\n//SYSOUT DD SYSOUT=*\n//OUTFILE DD SYSOUT=*\n//INFILE DD *\nONE\nTWO\n/*\n//RUN2 EXEC PGM=COPYREC\n//STEPLIB DD DSN=APP.LOAD,DISP=SHR\n//SYSPRINT DD SYSOUT=*\n//SYSOUT DD SYSOUT=*\n//OUTFILE DD SYSOUT=*\n//INFILE DD *\nTHREE\nFOUR\n/*\n";
+    let mut log = vec![];
+    let steps = zeus_jcl::job::run_job(&mut env, job, &mut log).unwrap();
+    assert_eq!(steps.len(), 4);
+    for step in steps {
+        assert_eq!(
+            step.outcome,
+            Outcome::Rc(0),
+            "{step:?}: {}",
+            String::from_utf8_lossy(&log)
+        );
+    }
+    let spool = env.spool.join("RECORDS");
+    let output = std::fs::read_to_string(spool.join("03.RUN1.OUTFILE")).unwrap();
+    assert_eq!(
+        output.lines().map(str::trim_end).collect::<Vec<_>>(),
+        ["ONE", "TWO"]
+    );
+    let output = std::fs::read_to_string(spool.join("04.RUN2.OUTFILE")).unwrap();
+    assert_eq!(
+        output.lines().map(str::trim_end).collect::<Vec<_>>(),
+        ["THREE", "FOUR"]
+    );
+    assert!(
+        std::fs::read_to_string(spool.join("04.RUN2.SYSOUT"))
+            .unwrap()
+            .contains("Record copy complete")
+    );
+}
+
+#[test]
+fn assembler_links_to_pli_with_shared_storage_from_each_jcl_step() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut catalog = Catalog::open(&dir.path().join("catalog")).unwrap();
+    catalog
+        .define(Entry {
+            name: "APP.LOAD".into(),
+            kind: EntryKind::Partitioned {
+                recfm: Recfm::U,
+                lrecl: 0,
+            },
+        })
+        .unwrap();
+    let mut env = Env {
+        catalog,
+        spool: dir.path().join("spool"),
+        loadlibs: vec![],
+        proclibs: vec![],
+    };
+    let job = "//REVERSE JOB\n//PLI EXEC PGM=IBMZPLI\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&PLI,DISP=(NEW,PASS)\n//SYSIN DD *\n PSUB: PROC(V) OPTIONS(ASM);\n DCL V FIXED BIN(31);\n V=V+11;\n CALL PLIRETC(17);\n END PSUB;\n/*\n//BINDPLI EXEC PGM=IEWL\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&PLI,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=APP.LOAD(PSUB),DISP=SHR\n//ASM EXEC PGM=ASMA90\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&ASM,DISP=(NEW,PASS)\n//SYSIN DD *\nDRIVER RSECT\n USING DRIVER,12\n LR 12,15\n ST 14,RET\n L 11,PREF\n A 11,OFFSET\n C 11,=A(VALUE)\n BNE BAD\n LINK EP=PSUB,PARAM=(VALUE),VL=1\n C 15,=F'17'\n BNE BAD\n L 2,VALUE\n C 2,=F'16'\n BNE BAD\n LA 15,0\n B DONE\nBAD LA 15,99\nDONE L 14,RET\n BR 14\nWORK CATTR NOTEXECUTABLE,ALIGN(4),RMODE(31)\nRET DS F\nVALUE DC F'5'\nPREF DC R(DRIVER)\nOFFSET DC Q(VALUE)\nDRIVER XATTR PSECT(VALUE)\n END DRIVER\n/*\n//BINDASM EXEC PGM=IEWL\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&ASM,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=APP.LOAD(DRIVER),DISP=SHR\n//RUN1 EXEC PGM=DRIVER\n//STEPLIB DD DSN=APP.LOAD,DISP=SHR\n//RUN2 EXEC PGM=DRIVER\n//STEPLIB DD DSN=APP.LOAD,DISP=SHR\n";
+    let mut log = vec![];
+    let steps = zeus_jcl::job::run_job(&mut env, job, &mut log).unwrap();
+    assert_eq!(steps.len(), 6);
+    for step in steps {
+        assert_eq!(
+            step.outcome,
+            Outcome::Rc(0),
+            "{step:?}: {}",
+            String::from_utf8_lossy(&log)
+        );
+    }
+}
+
+#[test]
 fn assembler_macros_receive_actual_jcl_job_step_sysparm_and_dd_context() {
     let dir = tempfile::tempdir().unwrap();
     let catalog = Catalog::open(&dir.path().join("catalog")).unwrap();

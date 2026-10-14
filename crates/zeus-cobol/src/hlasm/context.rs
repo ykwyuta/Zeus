@@ -12,6 +12,8 @@ pub struct AssemblyDataSet {
 
 #[derive(Debug, Clone)]
 pub struct AssemblyOptions {
+    pub source_encoding: super::SourceEncoding,
+    pub source_format: super::SourceFormat,
     pub sysparm: String,
     pub job: Option<String>,
     pub step: Option<String>,
@@ -23,6 +25,8 @@ pub struct AssemblyOptions {
 impl Default for AssemblyOptions {
     fn default() -> Self {
         Self {
+            source_encoding: super::SourceEncoding::default(),
+            source_format: super::SourceFormat::default(),
             sysparm: String::new(),
             job: None,
             step: None,

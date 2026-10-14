@@ -2432,6 +2432,21 @@ impl Machine {
         }))
     }
 
+    pub fn parameter_count(&self, name: &str) -> Option<usize> {
+        let name = name.to_ascii_uppercase();
+        self.module
+            .procs
+            .iter()
+            .filter(|p| p.external)
+            .find_map(|p| {
+                if p.name == name {
+                    Some(p.params.len())
+                } else {
+                    p.entries.iter().find(|e| e.0 == name).map(|e| e.1.len())
+                }
+            })
+    }
+
     /// The error of a call from another module: the message and the
     /// abend.
     fn report(&mut self, e: Intr) -> String {
@@ -2768,6 +2783,12 @@ impl Machine {
 
     fn end(&mut self, r: R<()>) -> RunEnd {
         self.close_all();
+        if let Some(sys) = &mut self.sys
+            && let Err(error) = sys.finish_assembler_io()
+        {
+            let _ = writeln!(self.env.msgout, "ZEUS PL/I: assembler I/O cleanup: {error}");
+            return RunEnd::Abend("U4038".into());
+        }
         let _ = self.env.stdout.flush();
         let _ = self.env.msgout.flush();
         match r {

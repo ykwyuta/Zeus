@@ -14,11 +14,37 @@ enum Format {
     Relative(u8),
     Rre(u8, u8),
     Opaque,
+    Ignored,
+    ConditionalImmediate,
 }
 
 // Fixed opcode bytes in RRE occupy the second byte, while the registers
 // remain in the fourth byte. EXECUTE must not reinterpret them as RR fields.
 const RRE: &[(&str, u8, u8)] = &[
+    ("NRK", 0xB9, 0xF4),
+    ("NGRK", 0xB9, 0xE4),
+    ("ORK", 0xB9, 0xF6),
+    ("OGRK", 0xB9, 0xE6),
+    ("XRK", 0xB9, 0xF7),
+    ("XGRK", 0xB9, 0xE7),
+    ("NNRK", 0xB9, 0x74),
+    ("NNGRK", 0xB9, 0x64),
+    ("NORK", 0xB9, 0x76),
+    ("NOGRK", 0xB9, 0x66),
+    ("NXRK", 0xB9, 0x77),
+    ("NXGRK", 0xB9, 0x67),
+    ("NCRK", 0xB9, 0xF5),
+    ("NCGRK", 0xB9, 0xE5),
+    ("OCRK", 0xB9, 0x75),
+    ("OCGRK", 0xB9, 0x65),
+    ("SELR", 0xB9, 0xF0),
+    ("SELGR", 0xB9, 0xE3),
+    ("SELFHR", 0xB9, 0xC0),
+    ("FLOGR", 0xB9, 0x83),
+    ("POPCNT", 0xB9, 0xE1),
+    ("LOCR", 0xB9, 0xF2),
+    ("LOCGR", 0xB9, 0xE2),
+    ("LOCFHR", 0xB9, 0xE0),
     ("LGR", 0xB9, 0x04),
     ("LGFR", 0xB9, 0x14),
     ("LLGFR", 0xB9, 0x16),
@@ -62,8 +88,26 @@ const RRE: &[(&str, u8, u8)] = &[
 fn format(ins: &Instruction) -> Format {
     use Format::*;
     let op = assemble::canonical_operation(&ins.op);
-    if let Some((_, first, second)) = RRE.iter().find(|(name, _, _)| *name == op) {
+    let condition = super::operation::conditional(op);
+    let opcode = condition.as_ref().map_or(op, |spec| spec.root);
+    if super::operation::rotate_selected(op).is_some() {
+        return TwoRegisters;
+    }
+    if op == "TS" {
+        return Ignored;
+    }
+    if super::operation::interlocked(op).is_some() {
+        return TwoRegisters;
+    }
+    if let Some((_, first, second)) = RRE.iter().find(|(name, _, _)| *name == opcode) {
         return Rre(*first, *second);
+    }
+    if let Some(spec) = condition {
+        return if spec.kind == super::operation::ConditionalKind::Immediate {
+            ConditionalImmediate
+        } else {
+            Mask
+        };
     }
     if let Some(relative) = super::operation::relative(op) {
         use super::operation::RelativeKind::*;
@@ -87,6 +131,9 @@ fn format(ins: &Instruction) -> Format {
         "MVCLE" | "CLCLE" | "STM" | "LM" | "LMG" | "STMG" | "SLLG" | "SRLG" | "SLAG" | "SRAG"
         | "RLL" | "RLLG" => TwoRegisters,
         "SLL" | "SRL" | "SLA" | "SRA" | "SLDL" | "SRDL" | "SLDA" | "SRDA" => RegisterOpcode(0),
+        "CSST" => RegisterOpcode(2),
+        "LPD" => RegisterOpcode(4),
+        "LPDG" => RegisterOpcode(5),
         "AHI" => RegisterOpcode(10),
         "LGHI" => RegisterOpcode(9),
         "AGHI" => RegisterOpcode(11),
@@ -120,7 +167,10 @@ fn format(ins: &Instruction) -> Format {
         _ if assemble::instruction_size(&ins.op) == Some(2) => TwoRegisters,
         _ if ins.address.is_some()
             && !ins.registers.is_empty()
-            && !matches!(op, "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE")
+            && !matches!(
+                op,
+                "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE" | "LINK" | "XCTL"
+            )
             && super::operation::relative(&ins.op).is_none() =>
         {
             RegisterIndex
@@ -165,8 +215,9 @@ pub(super) fn byte(ins: &Instruction) -> u8 {
             };
             high << 4 | op
         }
-        Opaque => 0,
+        Opaque | Ignored => 0,
         Rre(_, byte) => byte,
+        ConditionalImmediate => r(0) << 4 | ins.length as u8,
     }
 }
 
@@ -174,6 +225,10 @@ pub(super) fn apply(ins: &mut Instruction, byte: u8) -> Result<(), String> {
     use Format::*;
     let (high, low) = (byte >> 4, byte & 15);
     match format(ins) {
+        ConditionalImmediate => {
+            ins.registers[0] = high;
+            ins.length = low.into();
+        }
         Length => ins.length = u32::from(byte) + 1,
         Decimal => {
             ins.length = u32::from(high) + 1;
@@ -207,6 +262,15 @@ pub(super) fn apply(ins: &mut Instruction, byte: u8) -> Result<(), String> {
                 .ok_or("missing template address")?
                 .index = low;
         }
+        RegisterOpcode(_) if matches!(ins.op.as_str(), "LPD" | "LPDG") => {
+            ins.op = match low {
+                4 => "LPD",
+                5 => "LPDG",
+                _ => return Err("EX modification selects unsupported SSF opcode".into()),
+            }
+            .into();
+            ins.registers[0] = high;
+        }
         RegisterOpcode(op) => {
             if low != op {
                 return Err("EX modification changes an unsupported opcode/reserved field".into());
@@ -226,6 +290,7 @@ pub(super) fn apply(ins: &mut Instruction, byte: u8) -> Result<(), String> {
                 ins.registers = vec![high];
             }
         }
+        Ignored => {}
         Opaque if byte == 0 => {}
         Opaque => return Err("EX modification of this instruction format is unsupported".into()),
         Rre(first, _) => {

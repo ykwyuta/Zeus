@@ -54,16 +54,92 @@ fn options(parm: &str) -> Vec<String> {
 /// Source text of SYSIN and the source name for messages.
 fn source(ctx: &StepCtx) -> Result<(String, String), String> {
     let lines = ctx.read_text("SYSIN")?;
-    let name = match ctx.dd("SYSIN").map(|d| &d.kind) {
+    let name = source_name(ctx);
+    let mut text = lines.join("\n");
+    text.push('\n');
+    Ok((name, text))
+}
+
+fn source_name(ctx: &StepCtx) -> String {
+    match ctx.dd("SYSIN").map(|d| &d.kind) {
         Some(DdKind::Dataset { dsn, member }) => match member {
             Some(m) => format!("{dsn}({m})"),
             None => dsn.clone(),
         },
         _ => "SYSIN".into(),
+    }
+}
+
+/// Keep physical EBCDIC columns intact, particularly SO/SI and DBCS pairs.
+/// Dataset record framing is removed by the DD layer, not by a text decoder.
+fn assembler_source(ctx: &StepCtx) -> Result<Vec<u8>, String> {
+    use zeus_ds::format::RecordFormat;
+    let dd = ctx.dd("SYSIN").ok_or("DD SYSIN missing")?;
+    let mut bytes = vec![];
+    for dd in std::iter::once(dd).chain(dd.concat.iter()) {
+        let records = if let DdKind::Instream(lines) = &dd.kind {
+            lines
+                .iter()
+                .map(|s| zeus_cobol::ebcdic::encode(s))
+                .collect()
+        } else if dd.format == Some(RecordFormat::Text) {
+            ctx.read_dd(dd)?
+                .iter()
+                .map(|r| {
+                    std::str::from_utf8(r)
+                        .map(zeus_cobol::ebcdic::encode)
+                        .map_err(|e| format!("SYSIN: invalid UTF-8 text: {e}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            ctx.read_dd(dd)?
+        };
+        append_assembler_cards(&mut bytes, records);
+    }
+    Ok(bytes)
+}
+
+fn append_assembler_cards(bytes: &mut Vec<u8>, records: Vec<Vec<u8>>) {
+    for mut record in records {
+        // HLASM source columns and sequence fields end at column 80.
+        record.resize(80, 0x40);
+        bytes.extend(record);
+    }
+}
+
+fn assembler_syslib(ctx: &StepCtx, dir: &Path) -> Result<Vec<PathBuf>, String> {
+    use zeus_ds::format::RecordFormat;
+    let mut dirs = vec![];
+    let Some(dd) = ctx.dd("SYSLIB") else {
+        return Ok(dirs);
     };
-    let mut text = lines.join("\n");
-    text.push('\n');
-    Ok((name, text))
+    for (index, dd) in std::iter::once(dd).chain(dd.concat.iter()).enumerate() {
+        if !dd.path.is_dir() {
+            continue;
+        }
+        let out = dir.join(format!("lib{index}"));
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        for entry in std::fs::read_dir(&dd.path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                continue;
+            }
+            let data = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
+            let records = if let Ok(text) = std::str::from_utf8(&data)
+                && (dd.format == Some(RecordFormat::Text) || data.contains(&b'\n'))
+            {
+                text.lines().map(zeus_cobol::ebcdic::encode).collect()
+            } else {
+                zeus_ds::format::decode(dd.format.unwrap_or(RecordFormat::Fixed(80)), &data)
+                    .map_err(|e| e.to_string())?
+            };
+            let mut cards = vec![];
+            append_assembler_cards(&mut cards, records);
+            std::fs::write(out.join(entry.file_name()), cards).map_err(|e| e.to_string())?;
+        }
+        dirs.push(out);
+    }
+    Ok(dirs)
 }
 
 /// Writes a module to SYSLIN (the file of the data set).
@@ -220,11 +296,16 @@ pub fn hlasm(ctx: &mut StepCtx) -> ProgramResult {
         .sysout("SYSPRINT")
         .map_err(crate::job::Outcome::JclError)?;
     let tmp = tempdir()?;
-    let (name, text) = source(ctx).map_err(crate::job::Outcome::JclError)?;
+    let name = source_name(ctx);
+    let text = assembler_source(ctx).map_err(crate::job::Outcome::JclError)?;
     let src = tmp.path().join(source_file(&name, "asm"));
     std::fs::write(&src, text).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
-    let dirs = syslib(ctx, tmp.path());
+    let dirs = assembler_syslib(ctx, tmp.path()).map_err(crate::job::Outcome::JclError)?;
     let mut assembly_options = zeus_cobol::hlasm::AssemblyOptions {
+        source_encoding: zeus_cobol::hlasm::SourceEncoding::Ebcdic {
+            ccsid: zeus_cobol::codepage::active().ccsid,
+            record_length: 80,
+        },
         job: Some(ctx.job_name.clone()),
         step: Some(ctx.step_name.clone()),
         ..Default::default()

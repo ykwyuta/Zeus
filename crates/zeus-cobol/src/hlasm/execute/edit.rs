@@ -5,6 +5,7 @@ pub(super) fn execute(
     ins: &Instruction,
     registers: &mut [u32; 16],
     memory: &mut [u8],
+    storage: &crate::hlasm::DynamicStorage,
     cc: &mut u8,
 ) -> Result<bool, String> {
     if !matches!(ins.op.as_str(), "ED" | "EDMK") {
@@ -23,6 +24,7 @@ pub(super) fn execute(
         return Err("invalid edit length".into());
     }
     range(memory, first, length)?;
+    storage.check_write(first, length)?;
     let fill = memory[first];
     let (mut significant, mut nonzero, mut lower, mut current) = (false, false, false, 0u8);
     for at in first + 1..first + length {

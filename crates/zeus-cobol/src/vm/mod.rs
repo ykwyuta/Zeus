@@ -1,5 +1,7 @@
 //! The ZIR interpreter.
 
+mod assembler;
+mod assembler_io;
 pub mod data;
 mod eval;
 pub mod exec;
@@ -125,6 +127,9 @@ pub struct Machine {
     mem: Vec<u8>,
     hlasm: HashMap<String, (Rc<crate::hlasm::Module>, usize, u32)>,
     hlasm_storage: crate::hlasm::DynamicStorage,
+    hlasm_call_depth: usize,
+    hlasm_residency: assembler::Residency,
+    hlasm_io: assembler_io::Files,
     /// State of FUNCTION RANDOM.
     random: u64,
     instances: Vec<Instance>,
@@ -185,6 +190,106 @@ pub struct Machine {
     ticks: u32,
 }
 
+impl crate::hlasm::Host for Machine {
+    fn data(
+        &mut self,
+        request: crate::hlasm::DataRequest,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<crate::hlasm::DataReply, String> {
+        self.with_hlasm_memory(memory, storage, |machine| machine.assembler_data(request))
+    }
+    fn parameter_count(
+        &mut self,
+        name: &str,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<Option<usize>, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            Ok(machine
+                .find_program(name)
+                .map(|index| machine.instances[index].code.using.len())
+                .or_else(|| {
+                    machine
+                        .linker
+                        .as_ref()
+                        .and_then(|linker| linker.parameter_count(name))
+                }))
+        })
+    }
+    fn message(&mut self, message: crate::hlasm::OperatorMessage) -> Result<u32, String> {
+        writeln!(self.stdout, "{}", message.text).map_err(|e| e.to_string())?;
+        self.stdout.flush().map_err(|e| e.to_string())?;
+        self.hlasm_residency.message_id = self.hlasm_residency.message_id.wrapping_add(1).max(1);
+        if self.hlasm_residency.messages.len() == 1024 {
+            self.hlasm_residency.messages.pop_front();
+        }
+        self.hlasm_residency.messages.push_back(message);
+        Ok(self.hlasm_residency.message_id)
+    }
+    fn wait(
+        &mut self,
+        events: &[usize],
+        needed: usize,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<(), String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            while crate::hlasm::completed_events(events, &machine.mem)? < needed {
+                let (ecb, completion) = machine.hlasm_residency.posts.pop_front().ok_or(
+                    "WAIT deadlock: no pending event producer in this serialized run unit",
+                )?;
+                crate::hlasm::post_event(&mut machine.mem, ecb, completion)?;
+                machine.hlasm_storage.verify_protection(&mut machine.mem)?;
+            }
+            Ok(())
+        })
+    }
+    fn load(
+        &mut self,
+        name: &str,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<(u32, u32), String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.load_assembler_service(name)
+        })
+    }
+    fn delete(
+        &mut self,
+        name: &str,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<i32, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.delete_assembler_service(name)
+        })
+    }
+    fn branch(
+        &mut self,
+        target: usize,
+        registers: &mut crate::hlasm::Registers,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<usize, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.branch_assembler_service(target, registers)
+        })
+    }
+    fn call(
+        &mut self,
+        name: &str,
+        args: &[Option<usize>],
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+        terminated: bool,
+    ) -> Result<i32, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.dispatch_assembler_target(name, args, terminated)
+        })
+    }
+}
+
 /// A program implemented by the host: it gets the storage and the
 /// addresses of the CALL arguments (None: OMITTED) and returns the
 /// return code or an error that ends the run unit.
@@ -242,6 +347,9 @@ impl Machine {
             mem: vec![0; PSA_SIZE],
             hlasm: HashMap::new(),
             hlasm_storage: crate::hlasm::DynamicStorage::default(),
+            hlasm_call_depth: 0,
+            hlasm_residency: assembler::Residency::default(),
+            hlasm_io: assembler_io::Files::default(),
             instances: Vec::new(),
             file_states: Vec::new(),
             externals: HashMap::new(),
@@ -318,13 +426,7 @@ impl Machine {
     }
 
     fn install_hlasm(&mut self, key: &str, module: crate::hlasm::Module) -> Result<(), String> {
-        let origin = self
-            .mem
-            .len()
-            .next_multiple_of(module.required_alignment()?);
-        self.mem.resize(origin, 0);
-        let base = self.alloc(&module.storage_at(origin)?);
-        self.hlasm_storage.protect(&module, &self.mem, base)?;
+        let base = self.hlasm_storage.module(&mut self.mem, &module)?;
         let entry = if key == module.name {
             module.entry
         } else {
@@ -351,19 +453,47 @@ impl Machine {
         name: &str,
         args: &[Option<usize>],
     ) -> Option<Result<i32, String>> {
+        self.call_hlasm_mode(name, args, true, true)
+    }
+
+    fn call_hlasm_mode(
+        &mut self,
+        name: &str,
+        args: &[Option<usize>],
+        terminated: bool,
+        pin: bool,
+    ) -> Option<Result<i32, String>> {
         match self.load_hlasm(name) {
             Ok(false) => None,
             Err(e) => Some(Err(e)),
             Ok(true) => {
-                let (module, base, entry) = &self.hlasm[&name.to_ascii_uppercase()];
-                Some(crate::hlasm::execute_entry(
-                    module,
-                    &mut self.mem,
-                    *base,
+                if self.hlasm_call_depth >= 128 {
+                    return Some(Err("HLASM nested call limit exceeded".into()));
+                }
+                let (module, base, entry) = self.hlasm[&name.to_ascii_uppercase()].clone();
+                if pin {
+                    self.hlasm_residency.pinned.insert(base);
+                }
+                *self.hlasm_residency.active.entry(base).or_default() += 1;
+                let mut memory = std::mem::take(&mut self.mem);
+                let mut storage = std::mem::take(&mut self.hlasm_storage);
+                self.hlasm_call_depth += 1;
+                let result = crate::hlasm::execute_entry_with_host(
+                    &module,
+                    &mut memory,
+                    base,
                     args,
-                    *entry,
-                    &mut self.hlasm_storage,
-                ))
+                    entry,
+                    &mut storage,
+                    self,
+                    terminated,
+                    None,
+                );
+                self.hlasm_call_depth -= 1;
+                self.mem = memory;
+                self.hlasm_storage = storage;
+                let cleanup = self.leave_hlasm(base);
+                Some(result.and_then(|rc| cleanup.map(|_| rc)))
             }
         }
     }
@@ -383,8 +513,15 @@ impl Machine {
         };
         let name = module.name.clone();
         self.install_hlasm(&name, module)?;
-        self.call_hlasm(&name, &args)
-            .ok_or_else(|| "HLASM main not loaded".to_string())?
+        let result = self
+            .call_hlasm(&name, &args)
+            .ok_or_else(|| "HLASM main not loaded".to_string())?;
+        let result = match result {
+            Err(error) if error == STOP_RUN => Ok(self.return_code),
+            result => result,
+        };
+        let cleanup = self.finish_assembler_io();
+        result.and_then(|rc| cleanup.map(|_| rc))
     }
 
     /// Creates (or returns) the instance of program `index` of `module`.
@@ -670,6 +807,7 @@ impl Machine {
     pub fn finish(&mut self) {
         self.flush_coverage();
         self.close_all();
+        let _ = self.finish_assembler_io();
         let _ = self.stdout.flush();
     }
 
@@ -722,6 +860,7 @@ impl Machine {
         for f in PSA_TCB {
             self.mem[f..f + 4].copy_from_slice(&(tcb_addr as u32).to_be_bytes());
         }
+        self.control_blocks = true;
     }
 
     /// Assigns a file (by ASSIGN name or file name) to a path.
@@ -755,13 +894,15 @@ impl Machine {
         }
         let r = self.run(main);
         self.close_all();
+        let cleanup = self.finish_assembler_io().map_err(RunError);
         let _ = self.stdout.flush();
-        match r {
+        let result = match r {
             Ok(Exit::StopRun(code)) => Ok(code),
             Ok(Exit::Returned) => Ok(self.return_code_value()),
             Err(e) if e.0 == STOP_RUN => Ok(self.return_code_value()),
             Err(e) => Err(e),
-        }
+        };
+        result.and_then(|rc| cleanup.map(|_| rc))
     }
 
     fn close_all(&mut self) {

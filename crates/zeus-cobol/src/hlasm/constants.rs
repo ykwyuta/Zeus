@@ -1,5 +1,56 @@
 //! Exact decimal conversion for fixed-point source constants.
 
+/// Locate the type after a decimal or parenthesized-expression duplication
+/// factor. Alphabetic symbols inside the factor are not storage types.
+pub(super) fn type_start(spec: &str) -> Result<usize, String> {
+    let at = if spec.starts_with('(') {
+        parenthesized_end(spec)?
+    } else {
+        spec.bytes().take_while(u8::is_ascii_digit).count()
+    };
+    if !spec.as_bytes().get(at).is_some_and(u8::is_ascii_alphabetic) {
+        return Err("storage type expected after duplication factor".into());
+    }
+    Ok(at)
+}
+
+pub(super) fn duplication(
+    spec: &str,
+    symbols: &super::assemble::Symbols,
+) -> Result<(usize, u32), String> {
+    let at = type_start(spec)?;
+    let count = if at == 0 {
+        1
+    } else if spec.starts_with('(') {
+        u32::try_from(super::expression::evaluate_early(&spec[1..at - 1], symbols)?.value)
+            .map_err(|_| "duplication factor must be nonnegative and fit 32 bits")?
+    } else {
+        spec[..at]
+            .parse()
+            .map_err(|_| "invalid duplication factor")?
+    };
+    if count > 1 << 20 {
+        return Err("storage declaration exceeds 1 MiB".into());
+    }
+    Ok((at, count))
+}
+
+pub(super) fn byte_length(
+    text: &str,
+    symbols: &super::assemble::Symbols,
+) -> Result<Option<u32>, String> {
+    if text.is_empty() {
+        return Ok(None);
+    }
+    let (length, rest) = modifier(text, 'L', symbols)?;
+    if !text.starts_with('L') || !rest.is_empty() {
+        return Err("unsupported storage constant modifier".into());
+    }
+    u32::try_from(length)
+        .map(Some)
+        .map_err(|_| "constant length must be nonnegative".into())
+}
+
 /// Parse byte length, binary scale and decimal exponent, in source order.
 pub(super) fn fixed_modifiers(
     text: &str,
@@ -187,4 +238,57 @@ pub(super) fn fixed_value(nominal: &str, scale: i32, exponent: i32) -> Result<i6
         i128::from(value)
     };
     i64::try_from(signed).map_err(|_| "fixed-point constant exceeds signed 64-bit range".into())
+}
+
+/// The optional P() annotation follows the type extension and contributes no
+/// storage. Keep its parsing shared by layout, bit fields and macro attributes.
+pub(super) fn annotated(
+    spec: &str,
+) -> Result<(std::borrow::Cow<'_, str>, Option<&str>, String), String> {
+    let at = type_start(spec)?;
+    let upper = spec[at..].to_ascii_uppercase();
+    let extension = [
+        "AD", "VD", "QD", "QY", "RD", "SY", "JD", "FD", "CA", "CE", "CU", "DB", "DH", "DD", "EB",
+        "EH", "ED", "LB", "LH", "LD", "LQ",
+    ]
+    .iter()
+    .any(|t| upper.starts_with(t));
+    let end = at + 1 + usize::from(extension);
+    let assembler = spec[at..end].to_ascii_uppercase();
+    if !spec[end..].starts_with("P(") {
+        return Ok((std::borrow::Cow::Borrowed(spec), None, assembler));
+    }
+    let close = end + 1 + parenthesized_end(&spec[end + 1..])?;
+    let value = &spec[end + 2..close - 1];
+    if value.is_empty() {
+        return Err("program type requires a 32-bit absolute value".into());
+    }
+    Ok((
+        std::borrow::Cow::Owned(format!("{}{}", &spec[..end], &spec[close..])),
+        Some(value),
+        assembler,
+    ))
+}
+pub(super) fn annotations(
+    spec: &str,
+    symbols: &super::assemble::Symbols,
+) -> Result<(Option<u32>, String), String> {
+    let mut program = None;
+    let mut assembler = String::new();
+    for item in super::assemble::operands(spec) {
+        let (_, term, kind) = annotated(&item)?;
+        if assembler.is_empty() {
+            assembler = kind;
+        }
+        if let Some(term) = term {
+            let value = super::expression::evaluate_early(term, symbols)?.value;
+            if !(i64::from(i32::MIN)..=i64::from(u32::MAX)).contains(&value) {
+                return Err("program type exceeds 32-bit range".into());
+            }
+            if program.is_none() {
+                program = Some(value as u32);
+            }
+        }
+    }
+    Ok((program, assembler))
 }

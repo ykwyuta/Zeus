@@ -1,9 +1,12 @@
+mod atomic;
 mod bits;
+mod conditional;
 mod edit;
 mod integer;
 mod long;
 mod masked;
 mod memory;
+mod registers;
 mod wide;
 use super::{Address, Module};
 use std::collections::HashMap;
@@ -18,7 +21,7 @@ fn range(mem: &[u8], addr: usize, len: usize) -> Result<std::ops::Range<usize>, 
     Ok(addr..end)
 }
 
-fn word(mem: &[u8], addr: usize) -> Result<u32, String> {
+pub(super) fn word(mem: &[u8], addr: usize) -> Result<u32, String> {
     Ok(u32::from_be_bytes(
         mem[range(mem, addr, 4)?]
             .try_into()
@@ -32,7 +35,7 @@ fn put_word(mem: &mut [u8], addr: usize, value: u32) -> Result<(), String> {
     Ok(())
 }
 
-fn address(a: &Address, registers: &[u32; 16]) -> Result<usize, String> {
+pub(super) fn address(a: &Address, registers: &[u32; 16]) -> Result<usize, String> {
     let register = |r: u8| -> Result<u32, String> {
         if r == 0 {
             Ok(0)
@@ -115,6 +118,31 @@ pub(crate) fn execute_entry(
     entry: u32,
     storage: &mut super::DynamicStorage,
 ) -> Result<i32, String> {
+    execute_entry_with_host(
+        module,
+        mem,
+        base,
+        args,
+        entry,
+        storage,
+        &mut super::services::NoHost,
+        true,
+        None,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn execute_entry_with_host(
+    module: &Module,
+    mem: &mut Vec<u8>,
+    base: usize,
+    args: &[Option<usize>],
+    entry: u32,
+    storage: &mut super::DynamicStorage,
+    host: &mut dyn super::Host,
+    terminated: bool,
+    initial: Option<&mut super::Registers>,
+) -> Result<i32, String> {
     module.validate_origin(base)?;
     module.validate_relative_references(base)?;
     storage.verify_protection(mem)?;
@@ -141,6 +169,16 @@ pub(crate) fn execute_entry(
         .and_then(|n| n.checked_add(72))
         .ok_or("HLASM invocation frame length overflow")?;
     let frame = storage.frame(mem, frame_length)?;
+    let mut registers = initial.as_ref().map_or([0; 16], |r| r.low);
+    let mut high = initial.as_ref().map_or([0; 16], |r| r.high);
+    let mut cc = initial.as_ref().map_or(0, |r| r.cc);
+    let return_target = initial.as_ref().map_or(RETURN, |r| r.low[14] & 0x7fff_ffff);
+    if initial.is_none() {
+        registers[1] = (frame + 72) as u32;
+        registers[13] = frame as u32;
+        registers[14] = RETURN;
+        registers[15] = base as u32 + entry;
+    }
     let result = (|| {
         let save = frame;
         let list = save + 72;
@@ -149,18 +187,11 @@ pub(crate) fn execute_entry(
                 return Err("invalid HLASM argument address".into());
             }
             let mut value = arg.map_or(0, |a| a as u32);
-            if i + 1 == args.len() {
+            if terminated && i + 1 == args.len() {
                 value |= 0x8000_0000;
             }
             put_word(mem, list + i * 4, value)?;
         }
-        let mut registers = [0u32; 16];
-        // Legacy instructions update only the low word; wide instructions access both halves.
-        let mut high = [0u32; 16];
-        registers[1] = list as u32;
-        registers[13] = save as u32;
-        registers[14] = RETURN;
-        registers[15] = base as u32 + entry;
         let targets: HashMap<usize, usize> = module
             .code
             .iter()
@@ -170,7 +201,6 @@ pub(crate) fn execute_entry(
         let mut pc = *targets
             .get(&(base + entry as usize))
             .ok_or("invalid HLASM entry")?;
-        let mut cc = 0u8;
         for _ in 0..1_000_000 {
             let fetched = module
                 .code
@@ -206,7 +236,22 @@ pub(crate) fn execute_entry(
                 }
                 if matches!(
                     original.op.as_str(),
-                    "GETMAIN" | "FREEMAIN" | "STORAGE" | "STIMER"
+                    "GETMAIN"
+                        | "FREEMAIN"
+                        | "STORAGE"
+                        | "STIMER"
+                        | "LINK"
+                        | "XCTL"
+                        | "LOAD"
+                        | "DELETE"
+                        | "WTO"
+                        | "WAIT"
+                        | "POST"
+                        | "OPEN"
+                        | "CLOSE"
+                        | "GET"
+                        | "PUT"
+                        | "FREEPOOL"
                 ) {
                     return Err("EX of service instruction templates is unsupported".into());
                 }
@@ -241,13 +286,101 @@ pub(crate) fn execute_entry(
                     }
                     Ok(r)
                 };
-                if masked::execute(ins, &mut registers, &mut high, mem, &mut cc)?
-                    || edit::execute(ins, &mut registers, mem, &mut cc)?
-                    || long::execute(ins, &mut registers, mem, &mut cc)?
+                if matches!(
+                    ins.op.as_str(),
+                    "OPEN" | "CLOSE" | "GET" | "PUT" | "FREEPOOL"
+                ) {
+                    let reply = super::data_management::execute(
+                        ins.data_service
+                            .as_ref()
+                            .ok_or("missing data service metadata")?,
+                        &registers,
+                        mem,
+                        storage,
+                        host,
+                    )?;
+                    if let Some(address) = reply.address {
+                        registers[1] = u32::try_from(address)
+                            .map_err(|_| "data buffer exceeds 31-bit addressing")?;
+                        high[1] = 0;
+                    }
+                    if let Some(rc) = reply.rc {
+                        registers[15] = rc as u32;
+                    }
+                    if reply.link {
+                        registers[14] = next_address as u32 | 0x8000_0000;
+                    }
+                    return Ok((reply.branch, false));
+                }
+                if matches!(ins.op.as_str(), "WTO" | "WAIT" | "POST") {
+                    super::system_services::execute(
+                        ins.system_service
+                            .as_ref()
+                            .ok_or("missing system service metadata")?,
+                        &mut registers,
+                        mem,
+                        storage,
+                        host,
+                    )?;
+                    return Ok((None, false));
+                }
+                if matches!(ins.op.as_str(), "LINK" | "XCTL" | "LOAD" | "DELETE") {
+                    let request = ins
+                        .module_service
+                        .as_ref()
+                        .ok_or("missing module service metadata")?;
+                    let service_name = super::services::module_name(request, &registers, mem)?;
+                    let count = if request.parameters.is_none() {
+                        if initial.is_none() && (registers[1] & 0x7fff_ffff) as usize == list {
+                            Some(args.len())
+                        } else {
+                            host.parameter_count(&service_name, mem, storage)?
+                        }
+                    } else {
+                        None
+                    };
+                    let (name, parameters) = super::services::arguments(
+                        request,
+                        &registers,
+                        mem,
+                        args.is_empty().then_some(list),
+                        count,
+                    )?;
+                    if ins.op == "LOAD" {
+                        let (entry, length) = host.load(&name, mem, storage)?;
+                        registers[0] = entry;
+                        high[0] = 0;
+                        registers[1] = length;
+                        registers[15] = 0;
+                        return Ok((None, false));
+                    }
+                    if ins.op == "DELETE" {
+                        registers[15] = host.delete(&name, mem, storage)? as u32;
+                        return Ok((None, false));
+                    }
+                    let variable_list = if request.parameters.is_some() {
+                        request.variable_list
+                    } else if parameters.is_empty() {
+                        true
+                    } else {
+                        let last =
+                            (registers[1] & 0x7fff_ffff) as usize + (parameters.len() - 1) * 4;
+                        word(mem, last)? & 0x8000_0000 != 0
+                    };
+                    let rc = host.call(&name, &parameters, mem, storage, variable_list)?;
+                    registers[15] = rc as u32;
+                    return Ok((None, ins.op == "XCTL"));
+                }
+                if conditional::execute(ins, &mut registers, &mut high, mem, cc, storage)?
+                    || atomic::execute(ins, &mut registers, &mut high, mem, &mut cc, storage)?
+                    || masked::execute(ins, &mut registers, &mut high, mem, storage, &mut cc)?
+                    || edit::execute(ins, &mut registers, mem, storage, &mut cc)?
+                    || long::execute(ins, &mut registers, mem, storage, &mut cc)?
+                    || registers::execute(ins, &mut registers, &mut high, &mut cc)?
                     || bits::execute(ins, &mut registers, &mut high, mem, &mut cc)?
-                    || memory::execute(ins, &mut registers, &mut high, mem)?
+                    || memory::execute(ins, &mut registers, &mut high, mem, storage)?
                     || integer::execute(ins, &mut registers, &mut high, mem, &mut cc)?
-                    || wide::execute(ins, &mut registers, &mut high, mem, &mut cc)?
+                    || wide::execute(ins, &mut registers, &mut high, mem, storage, &mut cc)?
                 {
                     return Ok((None, false));
                 }
@@ -337,15 +470,13 @@ pub(crate) fn execute_entry(
                                 )
                                 .map(Some)
                         } else if length == Some(0) && release_address == 0 {
-                            storage.release_subpool(mem, subpool);
-                            Ok(None)
+                            storage.release_subpool(mem, subpool).map(|()| None)
                         } else if let Some(length) = length {
                             storage
                                 .release(mem, release_address, length, subpool)
                                 .map(|()| None)
                         } else {
-                            storage.release_subpool(mem, subpool);
-                            Ok(None)
+                            storage.release_subpool(mem, subpool).map(|()| None)
                         };
                         let rc = match result {
                             Ok(Some(at)) => {
@@ -354,6 +485,7 @@ pub(crate) fn execute_entry(
                                     high[1] = 0;
                                 }
                                 if let Some(destination) = destination {
+                                    storage.check_write(destination, 4)?;
                                     put_word(mem, destination, at as u32)?;
                                 } else if let StorageOperand::Register(r) = service.address {
                                     registers[r as usize] = at as u32;
@@ -371,6 +503,7 @@ pub(crate) fn execute_entry(
                         };
                         registers[15] = rc;
                         if let Some(Some(at)) = return_code {
+                            storage.check_write(at, 4)?;
                             put_word(mem, at, rc)?;
                         } else if let Some(StorageOperand::Register(r)) = service.return_code {
                             registers[r as usize] = rc;
@@ -461,6 +594,7 @@ pub(crate) fn execute_entry(
                         let (r, a) = (reg(0)?, ea()?);
                         let len = if op == "STH" { 2 } else { 1 };
                         let dest = range(mem, a, len)?;
+                        storage.check_write(a, len)?;
                         mem[dest].copy_from_slice(&registers[r].to_be_bytes()[4 - len..]);
                     }
                     "L" => {
@@ -469,6 +603,7 @@ pub(crate) fn execute_entry(
                     }
                     "ST" => {
                         let (r, a) = (reg(0)?, ea()?);
+                        storage.check_write(a, 4)?;
                         put_word(mem, a, registers[r])?;
                     }
                     "LA" => {
@@ -628,6 +763,7 @@ pub(crate) fn execute_entry(
                         for i in 0..count {
                             let r = (first + i) % 16;
                             if op == "STM" {
+                                storage.check_write(a + i * 4, 4)?;
                                 put_word(mem, a + i * 4, registers[r])?;
                             } else {
                                 registers[r] = word(mem, a + i * 4)?;
@@ -639,6 +775,9 @@ pub(crate) fn execute_entry(
                         range(mem, a, 1)?;
                         if ins.immediate > 255 {
                             return Err("invalid byte immediate".into());
+                        }
+                        if matches!(op, "MVI" | "NI" | "OI" | "XI") {
+                            storage.check_write(a, 1)?;
                         }
                         if op == "MVI" {
                             mem[a] = ins.immediate as u8;
@@ -707,6 +846,7 @@ pub(crate) fn execute_entry(
                             return Err("invalid SRP length or rounding digit".into());
                         }
                         let r = range(mem, a, length)?;
+                        storage.check_write(a, length)?;
                         let n = packed(&mem[r.clone()])?;
                         let raw = branch_address(
                             ins.source.as_ref().ok_or("missing SRP shift")?,
@@ -768,6 +908,9 @@ pub(crate) fn execute_entry(
                             return Err("invalid SS length".into());
                         }
                         let ra = range(mem, a, len)?;
+                        if op != "CLC" {
+                            storage.check_write(a, len)?;
+                        }
                         let rb = if op == "TR" {
                             b..b
                         } else {
@@ -809,6 +952,7 @@ pub(crate) fn execute_entry(
                                 .map_err(|_| "CVB fixed-point overflow")?
                                 as u32;
                         } else {
+                            storage.check_write(a, 8)?;
                             store_packed(&mut mem[dest], i128::from(registers[r] as i32))?;
                         }
                     }
@@ -823,6 +967,9 @@ pub(crate) fn execute_entry(
                             return Err("decimal lengths must be 1..16".into());
                         }
                         let (ra, rb) = (range(mem, a, l1)?, range(mem, b, l2)?);
+                        if op != "CP" {
+                            storage.check_write(a, l1)?;
+                        }
                         if op == "PACK" || op == "UNPK" {
                             let source = mem[rb].to_vec();
                             let mut nibbles = Vec::new();
@@ -946,7 +1093,7 @@ pub(crate) fn execute_entry(
                     }
                     _ => return Err(format!("unsupported instruction {}", ins.op)),
                 }
-                if branch == Some(RETURN as usize) {
+                if branch == Some(return_target as usize) {
                     return Ok((None, true));
                 }
                 Ok((branch, false))
@@ -955,15 +1102,38 @@ pub(crate) fn execute_entry(
             storage
                 .verify_protection(mem)
                 .map_err(|e| format!("{}:{}: {}: {e}", ins.file, ins.line, ins.op))?;
-            let (branch, returned) =
-                outcome.map_err(|e| format!("{}:{}: {}: {e}", ins.file, ins.line, ins.op))?;
+            let (branch, returned) = outcome.map_err(|e| {
+                if e.starts_with('\0') {
+                    e
+                } else {
+                    format!("{}:{}: {}: {e}", ins.file, ins.line, ins.op)
+                }
+            })?;
             if returned {
                 return Ok(registers[15] as i32);
             }
             pc = match branch {
-                Some(a) => *targets
-                    .get(&a)
-                    .ok_or("HLASM branch does not address an instruction")?,
+                Some(a) => {
+                    if let Some(pc) = targets.get(&a) {
+                        *pc
+                    } else {
+                        let mut state = super::Registers {
+                            low: registers,
+                            high,
+                            cc,
+                        };
+                        let resume = host.branch(a, &mut state, mem, storage)?;
+                        registers = state.low;
+                        high = state.high;
+                        cc = state.cc;
+                        if resume == return_target as usize {
+                            return Ok(registers[15] as i32);
+                        }
+                        *targets
+                            .get(&resume)
+                            .ok_or("loaded entry returned to an unmapped instruction")?
+                    }
+                }
                 None => *targets
                     .get(&next_address)
                     .ok_or("HLASM execution entered data or unmapped instruction storage")?,
@@ -972,6 +1142,11 @@ pub(crate) fn execute_entry(
         Err("HLASM instruction limit exceeded".into())
     })();
     storage.release_frame(mem, frame);
+    if let Some(initial) = initial {
+        initial.low = registers;
+        initial.high = high;
+        initial.cc = cc;
+    }
     result
 }
 

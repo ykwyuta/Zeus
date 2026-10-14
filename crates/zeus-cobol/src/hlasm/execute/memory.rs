@@ -9,6 +9,7 @@ pub(super) fn execute(
     low: &mut [u32; 16],
     high: &mut [u32; 16],
     mem: &mut [u8],
+    storage: &crate::hlasm::DynamicStorage,
 ) -> Result<bool, String> {
     let op = ins.op.as_str();
     if !matches!(
@@ -57,6 +58,7 @@ pub(super) fn execute(
                 _ => 2,
             };
             let dest = range(mem, addr, len)?;
+            storage.check_write(addr, len)?;
             mem[dest].copy_from_slice(&read(low, high, r).to_le_bytes()[..len]);
         }
         "LRV" => low[r] = word(mem, addr)?.swap_bytes(),

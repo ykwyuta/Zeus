@@ -5,10 +5,11 @@ pub(super) fn execute(
     ins: &Instruction,
     registers: &mut [u32; 16],
     memory: &mut [u8],
+    storage: &crate::hlasm::DynamicStorage,
     cc: &mut u8,
 ) -> Result<bool, String> {
     if matches!(ins.op.as_str(), "MVST" | "CLST" | "SRST") {
-        return string(ins, registers, memory, cc);
+        return string(ins, registers, memory, storage, cc);
     }
     if !matches!(ins.op.as_str(), "MVCL" | "CLCL" | "MVCLE" | "CLCLE") {
         return Ok(false);
@@ -51,6 +52,7 @@ pub(super) fn execute(
             range(memory, b, copied)?;
         }
         *cc = ordering_cc(n1.cmp(&n2));
+        storage.check_write(a, count)?;
         for i in 0..count {
             memory[a + i] = if i < copied { memory[b + i] } else { pad };
         }
@@ -105,6 +107,7 @@ fn string(
     ins: &Instruction,
     registers: &mut [u32; 16],
     memory: &mut [u8],
+    storage: &crate::hlasm::DynamicStorage,
     cc: &mut u8,
 ) -> Result<bool, String> {
     let r1 = *ins.registers.first().ok_or("missing string register")? as usize;
@@ -134,6 +137,7 @@ fn string(
             }
         } else if ins.op == "MVST" {
             let target = range(memory, a, 1)?.start;
+            storage.check_write(target, 1)?;
             memory[target] = right;
             if right == stop {
                 registers[r1] = a as u32;

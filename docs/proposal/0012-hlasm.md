@@ -115,9 +115,10 @@ definitions available at their reference. Literal numeric metadata is captured
 when its bytes are created and survives LTORG without re-evaluation. The shared
 literal scanner now skips balanced modifier expressions and distinguishes
 nominal quotes from self-defining/attribute quotes inside them. Unavailable,
-relocatable and layout-dependent values are diagnosed. Other constant types'
-expression-valued lengths, bit lengths, expression duplication factors and
-floating constants remain unsupported.
+relocatable and layout-dependent values are diagnosed. Expression-valued byte
+lengths, duplication factors and bit fields have since been added for the
+supported types described in the P2 progress section. Floating constants remain
+separate work.
 The embedded `zas --help` lists each implemented mnemonic.
 
 Relative instructions use checked signed 16/32-bit halfword displacements
@@ -262,7 +263,8 @@ and program values containing apostrophes or ampersands remain character data.
 Supported DC/DS declarations report their implicit assembler types, including
 FD extensions. Location-dependent attribute expressions cannot yet be evaluated
 during expansion: their queries return a source diagnostic rather than assuming
-a zero location. Extended DC/DS program annotations remain unsupported.
+a zero location. DC/DS P() program annotations and implicit assembler types are
+implemented as described in the P2 progress section.
 Attribute lookahead now scans subsequent open code and COPY text. Tests cover macro parameters, SET arrays,
 COPY, nesting, null/zero, source order, byte values and native/COBOL/JCL calls.
 
@@ -353,8 +355,9 @@ two's complement. Signed absolute fullword A constants are also supported.
 Arithmetic overflow of the internal checked i64 representation is an error.
 An absent weak symbol contributes zero within a composite expression while
 the other terms and addend remain. Single weak-symbol constants retain their
-existing zero-target convention. DSECT terms, relocatable multiplication/
-division and explicit A lengths/AD/Y forms remain unsupported.
+zero-target value, retaining any constant addend. DSECT terms and relocatable
+multiplication/division remain unsupported. Explicit A lengths, AD, VD and Y
+forms now retain their widths through module format 7.
 Tests cover duplicated constants and multiple nominal values, where `*`
 advances per field, and address literals, where it denotes the referring
 instruction. Strong data terms pull libraries even when the EXTRN metadata
@@ -594,6 +597,127 @@ Operand diagnostics explicitly mark unfinished recovery as incomplete.
 
 ## Validation and reference material
 
+### P2 completion (application-source scope)
+
+- Input controls: source-format auto preserves extended host remarks; fixed
+  honors the physical continuation column, including records longer than 80
+  bytes. Explicit ICTL uses strict columns in either mode. ICTL selects
+  begin/end/continuation columns, with standard
+  columns retained independently for COPY/library input. ISEQ checks physical
+  records, including comments and continuations, and emits severity-4 warnings
+  without preventing module output. UTF-8/BOM and fixed-record EBCDIC input
+  support the five existing Zeus CCSIDs. Mixed DBCS input preserves byte columns
+  and diagnoses malformed shifts; source-encoding selection also covers libraries.
+- Interlocked instruction execution: CS/CSY/CSG, CDS/CDSY/CDSG, CSST, TS and the
+  LAA/LAAG/LAAL/LAALG/LAN/LANG/LAO/LAOG/LAX/LAXG families. The engine exclusively
+  owns a run unit's storage while executing an instruction; fetch/compare/store
+  completes before any other program runs. LPD/LPDG fetch both naturally
+  aligned operands before updating their register pair, with CC=0 in this
+  serialized model. This is a serialized run-unit model,
+  without independently running CPUs or concurrent external writers. CSST covers
+  all three comparison widths and five additional-store widths, parameter/destination
+  aliasing and ordered overlapping stores. Protection errors suppress both stores.
+- LINK/XCTL dispatch through the owning Machine to HLASM, COBOL, registered
+  host programs and a configured PL/I linker. Addresses and allocation metadata
+  are lent together; failures restore ownership and release invocation frames.
+  EP/EPLOC and PARAM/VL standard-source forms are implemented. Unchanged incoming
+  R1 lists retain their known count and original terminator convention; known
+  COBOL/PL/I signatures supply fixed counts. Arbitrary lists with no known count
+  require a high-bit terminator.
+- LOAD/DELETE manage assembler image responsibility counts across entry aliases.
+  Executing images are retained until return; unused images and protection
+  metadata are released, and reload restores their initial storage. Loaded
+  entries support register branches with the caller's actual low/high registers,
+  CC and return address. Implicit COBOL/PL/I CALL instances retain run-unit
+  lifetime; LINK responsibility ends on return. COBOL/PL/I/host LOAD entries
+  have virtual dispatch slots; existing language instances retain run-unit
+  lifetime. Known COBOL/PL/I signatures allow fixed address lists.
+- Constants: expression duplication/byte lengths, CA (CCSID 819), CE, CU
+  (UTF-16BE), G with mixed ZEUS_CCSID, nominal lists, bit-field packing and
+  Y/AD/VD/explicit address lengths. Module format 7 records relocation widths;
+  linking/loading preserve them and older formats default to fullwords.
+  Mixed declarations align each operand using its actual location.
+- WTO writes to the run-unit output sink and retains routing/descriptor metadata
+  for the most recent 1024 operator messages. POST updates ECBs and WAIT handles
+  completion counts and high-bit-terminated ECB lists. Host producers can queue
+  completions for cooperative WAIT dispatch. A wait without enough completed or
+  queued events reports a deadlock and cleans up wait registrations; it never
+  invents a successful completion. This does not supply independent host CPUs.
+- Conditional LOC/LOCG/LOCFH, register forms, signed halfword immediate forms,
+  STOC/STOCG/STOCFH and condition-suffix aliases preserve CC and unselected
+  register halves. This engine validates storage access even when unselected.
+- DCB and QSAM OPEN/CLOSE/GET/PUT/FREEPOOL integrate DD fixed/RDW/text datasets.
+  Move/locate modes, EODAD/SYNAD, variable-record RDWs, copied DCBs, open-file
+  pins, close/teardown flushes and image-lifetime cleanup are implemented.
+  Module format 8 rebases and validates DCB metadata and compiled exits.
+  Native COBOL and repeated JCL steps exercise this interface.
+- S/SY constants use active USING at the declaration/pool, preserve referring
+  instruction * in literals and advance * per duplicated DC nominal. Q/QD/QY,
+  J/JD, DXD/CXD and XATTR PSECT with R/RD use module-format-9 section quantities.
+  External dummy extents merge by maximum length/alignment. QY and three-byte
+  R/RD validate their ranges instead of truncating them. Quantity references
+  participate in library inclusion. CATTR classes separate protected code from
+  writable PSECT data; NOLOAD PARTs merge by name and priority. Q/QY class-label
+  references retain their element positions through linking and serialization.
+  R resolves the start of the class/section containing its XATTR label, including
+  external ENTRY labels. Mapped class spans retain inter-element Zeus image gaps;
+  J measures the actual span and Q reaches the actual mapped field. NOLOAD
+  classes/parts retain their separate logical allocation layout. Tests compare
+  R+Q to exported field addresses and execute reads through that address in Machine.
+- DC/DS P() annotations expose program and assembler types via SYSATTRP/SYSATTRA.
+  Address/graphic type attributes include implicit J=A, R=V, G=@ and explicit
+  address lengths=R. Existing stores now check protection before writing even
+  when the new bytes would equal the old ones.
+- RISBG/RISBGN/RISBHG/RISBLG and RNSBG/ROSBG/RXSBG support zero/test aliases,
+  wrapping ranges and aliased inputs. FLOGR, POPCNT, three-register logical
+  operations (including complemented forms), and SELR/SELGR/SELFHR families
+  have CC, register-half, overlap and operand-validation regressions.
+- Corpus audit: CardDemo contains two executable assembler sources, COBDATFT
+  and MVSWAIT, with no VSAM macro use. The downloaded Bank of Z .asm files are
+  under IMS PSB/DBD definition directories. No additional executable assembler
+  sources were found in the fetched GenApp tree. Source-required VSAM work has
+  no currently identified assembler caller; general VSAM service compatibility
+  is not claimed.
+- All five P2 rows above have completed implementation and regression checks
+  within their stated application-source scope. Initialized PART binding,
+  complete GOFF attributes and IBM object interchange are not provided by the
+  new class metadata; those remain P3 object/binder work. The corpus-dependent
+  VSAM condition has no current executable assembler caller, as recorded above;
+  this does not establish general VSAM compatibility.
+
+The completion checks map directly to the original priority rows:
+
+| P2 row | Acceptance evidence |
+| --- | --- |
+| Module services and reverse language calls | `hlasm_services`, `hlasm_storage_services`, JCL `hlasm` and native executable regressions cover shared addresses, fixed/terminated parameter lists, R15, loaded register branches, repeated calls, unwinding and module cleanup across COBOL/PL/I/HLASM. |
+| Remaining constants and expressions | `hlasm_p2_constants`, `hlasm_relative_link`, `hlasm_language` and `hlasm_literals` cover bit packing, expression lengths/duplication, character/address/section quantities, program attributes, relocation and actual R+Q field addresses after linking and loading. |
+| Source encodings and controls | `hlasm_source` covers UTF-8 and EBCDIC/DBCS byte columns, ICTL/ISEQ, libraries and auto/fixed formats. Explicitly enabled CardDemo tests assemble and execute both executable assembler sources. |
+| Remaining scalar facilities and basic services | `hlasm_bits`, `hlasm_conditional`, `hlasm_interlocked` and `hlasm_events` cover aliases, CC, register halves, alignments, overlapping operands, suppressed stores, queued completions and deadlock cleanup under the serialized run-unit model. |
+| Data-management integration | `hlasm_io`, `hlasm_services`, JCL `hlasm` and native tests cover DD-backed fixed/variable/text records, move/locate I/O, EODAD/SYNAD, copied DCBs, close/error cleanup and repeated steps. Corpus inspection found no executable HLASM VSAM caller requiring the conditional follow-up. |
+
+Final validation on Windows:
+
+- `cargo test -p zeus-cobol -p zeus-pli -p zeus-jcl -p zeus-deps -p zeus-native`:
+  448 passed, no failures; one corpus test ignored by default.
+- `cargo test -p zeus-cobol --test hlasm -- --include-ignored`:
+  all four passed, including the separately enabled real-source corpus test.
+- Workspace Clippy with `--all-targets -- -D warnings`, all command binaries,
+  formatting and diff checks passed. The embedded-help checker passed 60
+  standalone invocations across 14 commands.
+- The broader workspace test run encountered five IMS TM queue tests failing
+  with Windows OS error 5 (access denied): `tm_preserves_ebcdic_dbcs_and_binary_bytes`,
+  `tm_queue_commit_rollback_and_persistence`,
+  `tm_queue_concurrent_producers_do_not_lose_messages`,
+  `tm_reclaims_input_after_process_crash` and `tm_rejects_corrupt_queue_snapshot`.
+  No IMS implementation was changed in this work; the full workspace test suite
+  is therefore not recorded as passing.
+
+Input controls follow the published [ICTL](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-ictl-instruction)
+and [ISEQ](https://www.ibm.com/docs/en/hla-and-tf/1.6?topic=statements-iseq-instruction)
+definitions; interlocked instructions follow the Principles of Operation,
+and module calls follow the published
+[LINK description](https://www.ibm.com/docs/en/zos/3.2.0?topic=module-link-linkx-description).
+
 Integration tests assemble original CardDemo COBDATFT/MVSWAIT and execute
 date conversions in both directions and a zero-interval wait. Synthetic
 tests cover aliased shared arguments, repeated calls without frame growth,
@@ -667,3 +791,13 @@ The P0/P1 increments also follow the published
 [dependent USING](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=ui-dependent-using-instruction),
 [STORAGE RELEASE](https://www.ibm.com/docs/en/zos/2.5.0?topic=storage-release-option)
 and [z/Architecture Principles of Operation](https://www.ibm.com/docs/en/module_1678991624569/pdf/SA22-7832-14.pdf).
+
+
+P2 section quantities and annotations follow the published
+[DC/DS annotation rules](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=option-extensions-dc-ds-equ-assembler-instructions),
+[Q constants](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=constants-offset-constantq),
+[J constants](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=constants-length-constantj),
+[R constants](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=constants-psect-referencer),
+[DXD](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-dxd-instruction),
+[CATTR](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-cattr-instruction-zos-cms)
+and [XATTR](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-xattr-instruction-zos-cms) descriptions.
