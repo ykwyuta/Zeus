@@ -101,10 +101,20 @@ F1       DFHMDF POS=(1,1),LENGTH=5
         "edge_attributes.csv",
         "edge_locations.csv",
         "missing_assets.csv",
+        "unsupported_syntax.csv",
+        "unsupported_syntax_locations.csv",
+        "compile_diagnostics.csv",
     ] {
         assert!(out.join(f).exists(), "{f}");
     }
     let nodes = rows(&out, "nodes.csv");
+    for file in [
+        "unsupported_syntax.csv",
+        "unsupported_syntax_locations.csv",
+        "compile_diagnostics.csv",
+    ] {
+        assert!(rows(&out, file).is_empty(), "--no-compile: {file}");
+    }
     let node = |name: &str| {
         nodes
             .iter()
@@ -211,5 +221,94 @@ fn masters() {
         "system_assets.csv",
     ] {
         assert!(tmp.path().join(f).exists(), "{f}");
+    }
+}
+
+#[test]
+fn unsupported_syntax_reports_each_use_and_distinguishes_compile_errors() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app = tmp.path().join("app");
+    write(&app, "OPS.cpy", "           SEND 'COPY MESSAGE'.\n");
+    for (name, body) in [
+        ("A", "           COPY OPS.\n           SEND 'SECOND'.\n"),
+        ("B", "           COPY OPS.\n           RECEIVE MESSAGE.\n"),
+        ("BROKEN", "           MOVE 1 TO UNDEFINED-NAME.\n"),
+    ] {
+        write(
+            &app,
+            &format!("{name}.cbl"),
+            &format!(
+                "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. {name}.\n       PROCEDURE DIVISION.\n{body}           GOBACK.\n"
+            ),
+        );
+    }
+    write(
+        &app,
+        "P.pli",
+        " P: PROC OPTIONS(MAIN);\n %INCLUDE PIO;\n END P;\n",
+    );
+    write(&app, "PIO.inc", " PUT BOGUS;\n");
+    let out = tmp.path().join("out");
+    let result = Command::new(env!("CARGO_BIN_EXE_zdeps"))
+        .args(["analyze", "--bom", "--out"])
+        .arg(&out)
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.success(),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    assert!(
+        String::from_utf8_lossy(&result.stdout)
+            .contains("3 unsupported syntax kinds, 5 occurrences")
+    );
+    let summary = rows(&out, "unsupported_syntax.csv");
+    assert_eq!(summary.len(), 3, "{summary:?}");
+    let send = summary.iter().find(|r| r[2] == "SEND").unwrap();
+    assert_eq!(&send[1..], ["COBOL", "SEND", "RUNTIME", "3", "2", "2"]);
+    let locations = rows(&out, "unsupported_syntax_locations.csv");
+    let send_uses: Vec<_> = locations.iter().filter(|r| r[0] == send[0]).collect();
+    assert_eq!(send_uses.len(), 3);
+    let copy_uses: Vec<_> = send_uses
+        .iter()
+        .filter(|r| r[7].ends_with("OPS.cpy"))
+        .collect();
+    assert_eq!(copy_uses.len(), 2);
+    assert!(
+        copy_uses
+            .iter()
+            .all(|r| r[8] == "1" && r[9] == "SEND 'COPY MESSAGE'.")
+    );
+    assert!(
+        send_uses
+            .iter()
+            .any(|r| r[2] == "A" && r[8] == "5" && r[7].ends_with("A.cbl"))
+    );
+    let pli = locations.iter().find(|r| r[4] == "PL/I").unwrap();
+    assert_eq!(pli[5], "PUT option BOGUS is not supported");
+    assert_eq!(pli[6], "COMPILE");
+    assert!(pli[7].ends_with("PIO.inc"));
+    assert_eq!(pli[8], "1");
+    assert_eq!(pli[9], "PUT BOGUS;");
+    let diagnostics = rows(&out, "compile_diagnostics.csv");
+    assert_eq!(diagnostics.len(), 6, "{diagnostics:?}");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|r| r[1] == "BROKEN" && r[4] == "ERROR")
+    );
+    assert!(!locations.iter().any(|r| r[2] == "BROKEN"));
+    for file in [
+        "unsupported_syntax.csv",
+        "unsupported_syntax_locations.csv",
+        "compile_diagnostics.csv",
+    ] {
+        assert!(
+            fs::read(out.join(file))
+                .unwrap()
+                .starts_with(b"\xef\xbb\xbf")
+        );
     }
 }
