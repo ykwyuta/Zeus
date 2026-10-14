@@ -123,6 +123,8 @@ pub struct RunState {
 
 pub struct Machine {
     mem: Vec<u8>,
+    hlasm: HashMap<String, (Rc<crate::hlasm::Module>, usize, u32)>,
+    hlasm_storage: crate::hlasm::DynamicStorage,
     /// State of FUNCTION RANDOM.
     random: u64,
     instances: Vec<Instance>,
@@ -238,6 +240,8 @@ impl Machine {
         Machine {
             random: 0x2545_F491_4F6C_DD1D,
             mem: vec![0; PSA_SIZE],
+            hlasm: HashMap::new(),
+            hlasm_storage: crate::hlasm::DynamicStorage::default(),
             instances: Vec::new(),
             file_states: Vec::new(),
             externals: HashMap::new(),
@@ -284,6 +288,103 @@ impl Machine {
         self.mem.resize(base, 0);
         self.mem.extend_from_slice(bytes);
         base
+    }
+
+    fn load_hlasm(&mut self, name: &str) -> Result<bool, String> {
+        let key = name.to_ascii_uppercase();
+        if self.hlasm.contains_key(&key) {
+            return Ok(true);
+        }
+        for dir in self.search_dirs.clone() {
+            for filename in [
+                format!("{key}.zo"),
+                key.clone(),
+                format!("{}.zo", key.to_ascii_lowercase()),
+            ] {
+                let path = dir.join(filename);
+                let Ok(bytes) = std::fs::read(&path) else {
+                    continue;
+                };
+                if !crate::hlasm::is_module(&bytes) {
+                    continue;
+                }
+                let module = crate::hlasm::load_module(&bytes)?;
+                let module = crate::hlasm::link_with_libraries(vec![module], &self.search_dirs)?;
+                self.install_hlasm(&key, module)?;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn install_hlasm(&mut self, key: &str, module: crate::hlasm::Module) -> Result<(), String> {
+        let origin = self
+            .mem
+            .len()
+            .next_multiple_of(module.required_alignment()?);
+        self.mem.resize(origin, 0);
+        let base = self.alloc(&module.storage_at(origin)?);
+        self.hlasm_storage.protect(&module, &self.mem, base)?;
+        let entry = if key == module.name {
+            module.entry
+        } else {
+            module.entries.get(key).copied().unwrap_or(module.entry)
+        };
+        let module = Rc::new(module);
+        for (alias, address) in &module.entries {
+            let alias_entry = if alias == &module.name {
+                module.entry
+            } else {
+                *address
+            };
+            self.hlasm
+                .entry(alias.clone())
+                .or_insert_with(|| (Rc::clone(&module), base, alias_entry));
+        }
+        self.hlasm.insert(key.to_string(), (module, base, entry));
+        Ok(())
+    }
+
+    /// A loaded HLASM module takes precedence over a Rust replacement.
+    pub fn call_hlasm(
+        &mut self,
+        name: &str,
+        args: &[Option<usize>],
+    ) -> Option<Result<i32, String>> {
+        match self.load_hlasm(name) {
+            Ok(false) => None,
+            Err(e) => Some(Err(e)),
+            Ok(true) => {
+                let (module, base, entry) = &self.hlasm[&name.to_ascii_uppercase()];
+                Some(crate::hlasm::execute_entry(
+                    module,
+                    &mut self.mem,
+                    *base,
+                    args,
+                    *entry,
+                    &mut self.hlasm_storage,
+                ))
+            }
+        }
+    }
+
+    /// JCL/main entry: R1 addresses a list whose first entry points to the
+    /// halfword-length-prefixed EXEC PARM, unless explicit arguments were set.
+    pub fn run_hlasm_main(&mut self, module: crate::hlasm::Module) -> Result<i32, String> {
+        let module = crate::hlasm::link_with_libraries(vec![module], &self.search_dirs)?;
+        let args = if let Some(args) = self.main_args.take() {
+            args
+        } else {
+            let text = crate::ebcdic::encode(&self.step.parm);
+            let len = u16::try_from(text.len()).map_err(|_| "EXEC PARM exceeds 65535 bytes")?;
+            let mut data = len.to_be_bytes().to_vec();
+            data.extend(text);
+            vec![Some(self.alloc(&data))]
+        };
+        let name = module.name.clone();
+        self.install_hlasm(&name, module)?;
+        self.call_hlasm(&name, &args)
+            .ok_or_else(|| "HLASM main not loaded".to_string())?
     }
 
     /// Creates (or returns) the instance of program `index` of `module`.
@@ -409,6 +510,10 @@ impl Machine {
         args: &[crate::interlang::XRef],
     ) -> Option<Result<i32, String>> {
         let name = name.to_ascii_uppercase();
+        let addrs: Vec<_> = args.iter().map(|a| a.addr).collect();
+        if let Some(result) = self.call_hlasm(&name, &addrs) {
+            return Some(result);
+        }
         if let Some(f) = self.natives_ref.get(&name).copied() {
             return Some(f(&mut self.mem, args));
         }
@@ -725,6 +830,13 @@ impl Machine {
             return Ok(None);
         }
         let Some(callee) = self.resolve_program(cur, &name) else {
+            if self.load_hlasm(&name).map_err(RunError)? {
+                let addrs = self.call_args(cur, args)?;
+                let result = self.call_hlasm(&name, &addrs).expect("loaded HLASM module");
+                self.return_code = result.map_err(RunError)?;
+                self.store_rc(cur);
+                return Ok(None);
+            }
             if let Some(f) = self.natives_mach.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
                 let rc = f(self, &addrs).map_err(RunError)?;
@@ -1129,6 +1241,10 @@ impl Machine {
                     self.reset(i);
                     self.instances[i].initialized = false;
                 }
+                if let Some((module, base, _)) = self.hlasm.get(&name) {
+                    let storage = module.storage_at(*base).map_err(RunError)?;
+                    self.mem[*base..*base + module.storage.len()].copy_from_slice(&storage);
+                }
             }
             Instr::Initialize { .. } => return err("INITIALIZE instruction not expected"),
             Instr::Inspect(loc, steps) => self.inspect(cur, loc, steps)?,
@@ -1479,6 +1595,7 @@ impl Machine {
     /// Whether program `name` can be called (it is loaded, if need be).
     pub fn load_program(&mut self, name: &str) -> bool {
         self.find_program(name).is_some()
+            || self.load_hlasm(name).unwrap_or(false)
             || self.natives.contains_key(name)
             || self.natives_ref.contains_key(name)
     }

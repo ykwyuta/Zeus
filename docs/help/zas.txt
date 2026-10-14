@@ -1,0 +1,461 @@
+zas - Compile, link and run the application HLASM subset
+
+USAGE
+  zas compile [-I DIR]... [--sysparm TEXT] [-o MODULE.zo] SOURCE.asm
+  zas check [-I DIR]... [--sysparm TEXT] SOURCE.asm
+  zas link [-L DIR]... -o MODULE.zo OBJECT.zo...
+  zas run [-L DIR]... [--parm TEXT] MODULE.zo
+  zas --help | zas --version
+
+DESCRIPTION
+  Compile application assembler source to a Zeus instruction module. This
+  is not an IBM object deck and is not native S/390 machine code. The module
+  runs through the Zeus instruction engine in the caller's shared storage.
+  Supports integer, character and packed-decimal application routines,
+  including CardDemo COBDATFT and MVSWAIT. IMS DBD/PSB and
+  BMS definitions use zims and zbms instead of this executable assembler.
+
+OPTIONS
+  -I DIR       COPY and macro search directory; repeatable. The directory
+               containing the referring source is also searched.
+  -o FILE      Output module (default SOURCE with extension .zo).
+  -L DIR       Object/load library for strong external references; repeatable.
+  --parm TEXT  EXEC-style main argument: halfword length followed by EBCDIC.
+  --sysparm TEXT
+               compile/check: assembly-time &SYSPARM text, preserving case.
+               For JCL assembly use PARM='SYSPARM(text)' on the EXEC statement.
+  --diagnostics FILE
+               compile/check: write JSON with diagnostics (file, line,
+               operation, severity, category, message), complete, and the
+               module on success. Unknown operations are collected where
+               safe; incomplete reports never emit a module. A later fatal
+               syntax error can still prevent reporting every occurrence.
+  --help, -h   Display embedded help without compiling or executing.
+
+LINKAGE
+  Place NAME.zo or member NAME in the caller's load library. COBOL CALL and
+  PL/I external calls pass addresses in the same run-unit storage. R1 points
+  to fullword argument addresses; the final address has its high bit set.
+  R13 points to a caller save area, R14 is the return address, R15 the entry
+  address and return code. Argument changes affect the caller directly.
+  Use compatible EBCDIC/big-endian layouts and PL/I OPTIONS(ASM) as needed.
+  Module static storage persists for the run unit; CANCEL restores its initial
+  bytes. Per-call argument lists and save areas are reclaimed on return/error.
+  Each JCL execution step owns a separate run unit, released at step end.
+  JCL EXEC PGM=NAME runs a module from STEPLIB/JOBLIB. ASMA90/ASMAHL compile
+  SYSIN using SYSLIB, writing the module to SYSLIN for IEWL binding.
+  IEWL links concatenated HLASM SYSLIN modules and searches SYSLIB for strong
+  external references. Missing/duplicate definitions return 12. COBOL/PL/I
+  binder handling remains a separate path; cross-language object linking
+  is not implemented.
+
+LINKING
+  EXTRN and V(SYMBOL) create strong external references. WXTRN creates weak
+  references: link resolves an explicitly included definition, but never
+  pulls a library member solely for a weak reference. An unresolved weak
+  address is zero. A(EXTERNAL+offset) is supported after EXTRN/WXTRN.
+  zas link writes one combined Zeus module. Its first input selects the
+  main program; other input modules supply CSECT and ENTRY definitions.
+  Strong references are resolved transitively from -L libraries (NAME.zo
+  or member NAME). Execution through zas/COBOL/PL/I/JCL uses the same linker
+  and the caller's load libraries. A missing strong definition is an error.
+  Library search uses member names, not an export index over arbitrary files.
+  Relative instructions accept EXTRN/WXTRN symbols, constant offsets and EQU
+  aliases, including forward chains of complex EQU definitions.
+  Composite targets such as TABLE+LIMIT-START
+  retain each external coefficient until linking. Parentheses, subtraction,
+  repeated terms and local labels are supported; the net relocation
+  coefficient must be one. Products/divisions of relocatable terms, absolute
+  numeric targets remain unsupported.
+  EQU keeps the coefficients of complex expressions, including intermediate
+  values with net coefficient zero or two. For example, SPAN EQU LIMIT-START
+  followed by TARGET EQU TABLE+SPAN can be used by LARL 15,TARGET. An alias
+  reduced to an absolute/simple value also works in ordinary operand contexts.
+  An unreduced complex alias cannot be used as a register number, immediate,
+  or USING origin. Complex aliases are supported in A-type address constants.
+  EQU VALUE[,LENGTH[,TYPE[,PROGRAM[,ASSEMBLER]]]] supports omitted fields.
+  LENGTH is absolute in 0..65535 and TYPE is an EBCDIC byte in 0..255, for
+  example VIEW EQU BUFFER,3,C'C'. Attribute expressions must be known at
+  the EQU definition; the value expression may still contain forward references.
+  L'VIEW yields the length; T'VIEW yields the numeric type byte in ordinary
+  instruction/constant expressions. Omitted lengths follow the leftmost term;
+  omitted EQU types default to U, including aliases of explicitly typed symbols.
+  Instruction labels carry their physical instruction length and type I;
+  supported DC/DS labels carry the first constant's length and storage type.
+  PROGRAM is an absolute 32-bit value known at the definition; signed values
+  and unsigned bit patterns are accepted. ASSEMBLER is AR, CR, CR32, CR64,
+  FPR, GR, GR32, GR64 or VR. For example, WORK EQU 3,,,,GR32 defines a typed
+  register symbol. Program/assembler attributes remain attached to the EQU
+  value during assembly; omitted fields are null, including on aliases.
+  These annotations do not enable unsupported CPU instructions or activate
+  register type checking.
+  SYSATTRP('symbol') and SYSATTRA('symbol') are available in macro expressions,
+  including SETC, AIF and nested character/arithmetic functions. SYSATTRP
+  returns all four program-type bytes as an EBCDIC-decoded character string;
+  SYSATTRA returns the assembler-type name without trailing spaces. Undefined
+  symbols, omitted attributes and null arguments return an empty string.
+  An explicitly zero program attribute returns four zero bytes, not an empty
+  string. C2A(SYSATTRP('symbol')) recovers its signed numeric representation.
+  Queries see previously generated EQU/COPY/macro definitions, and accept
+  substituted symbol names. Supported DC/DS labels report their implicit
+  assembler type, including FD. Text inside quoted literals stays literal.
+  Attribute expressions using known absolute EQU constants are supported;
+  queries requiring address layout (including '*') report a diagnostic.
+  Conditional assembly accepts L'SYMBOL, T'SYMBOL and D'SYMBOL in SETA/SETB/
+  SETC, AIF, computed AGO and ACTR expressions. L' is numeric, T' is a
+  character (ordinary assembly still treats T' as a numeric EBCDIC byte),
+  and D' is 1 for an already generated definition or EXTRN/WXTRN declaration,
+  otherwise 0. Macro parameters, &SYSLIST and SETC array elements may name
+  ordinary symbols; L'/T' of a parameter sublist use its first element.
+  L' rejects unavailable lengths and types M/N/O/T/U/$; use T' or D' first
+  to guard a length reference. Undefined L'/T'/S'/I' references scan subsequent
+  open code and COPY text, skipping macro definitions/generation and ignoring
+  conditional branches. Lookahead does not substitute model fields or define
+  symbols for D'. Supported system-variable T'/K'/N' attributes follow their
+  scalar or sublist value. Additional assembler options and
+  attributes, extended DC/DS program annotations and
+  register type-checking controls remain unsupported.
+  Literal L'/T'/D' references are supported directly and through macro parameters,
+  &SYSLIST and SETC elements, for example &LEN SETA L'=F'7'. L'/T' define
+  literal metadata; D' only checks whether it was already defined. Machine
+  operand references also define literals. Attribute-only references do not
+  allocate a pool constant or resolve address-constant nominal values.
+  Ordinary assembly expressions accept literal L' and numeric T' as well.
+  Literal identity follows its specification, not just its emitted bytes.
+  A location-counter literal such as =A(*) is specific to the current statement;
+  a character '*' or multiplication in =A(2*3) does not create that dependency.
+  Numeric S' (scale) and I' (integer capacity) attributes work for ordinary
+  symbols and literals, including conditional expressions and macro parameters.
+  F/H/FD use the S modifier (default 0) and I'=8*L'-S'-1. P/Z accept one decimal point, omit it
+  from stored bytes and use the number of fractional digits as S'. P uses
+  I'=2*L'-S'-1; Z uses I'=L'-S'. Lists use the first nominal value's attributes.
+  EQU assigns S'=I'=0 even when its value aliases a numeric constant.
+  Attribute-only S'/I' literals define metadata without allocating storage.
+  F/H/FD nominal values accept signed decimal integers or fractions. Sn accepts
+  a signed decimal integer in -187..346, following an optional byte length:
+  examples: FS8'1.25' and HL3S-2'20'. Conversion multiplies by 2**S
+  and rounds the magnitude to nearest, with ties away from zero. It uses exact
+  decimal arithmetic. Converted values must fit signed 64 bits; implicit H/F
+  lengths additionally require signed 16/32 bits. Lists and literals use the
+  same conversion. Other types report unavailable numeric attributes.
+  En adds a signed decimal exponent after optional L and S modifiers, for
+  example FL4S2E1'1.25'. A nominal can also carry an exponent: F'125E-2'.
+  The modifier applies to every value in a list; a nominal exponent applies
+  only to that value. Their sum must be in -85..75, as must the E modifier.
+  Conversion applies 10**(modifier+nominal exponent) and 2**S before rounding.
+  Exponents do not change S' or I'. F/H/FD byte length, scale and exponent
+  modifiers also accept parenthesized absolute expressions, including nested
+  arithmetic, self-defining terms, attributes and EQU symbols; S/E may put a
+  sign before the parentheses: FL(WIDTH)S(SHIFT+1)E-(POWER)'1.25'. Normal
+  DC/DS layout can use resolvable forward absolute EQU constants. Literal
+  operands and conditional attributes require values known at their reference;
+  they do not look ahead. Expressions requiring location-counter layout are
+  diagnosed. Other constant types do not yet support expression-valued lengths.
+  Floating constants, bit lengths, expression duplication factors and
+  literal-type compatibility modes remain unsupported.
+  Set R15 explicitly when the callee expects its entry address there; BRASL
+  only sets its specified link register. The binder computes relative
+  displacements after all members are placed, checking alignment and the
+  signed halfword range. Missing strong definitions and invalid encodings
+  fail linking before the output file is written.
+  Relative weak references do not pull libraries. For a single external target,
+  an absent weak target is zero including its addend. In a composite target,
+  each absent weak symbol contributes zero; other terms and constants remain.
+  Short weak references are range-checked at the actual load origin.
+  Pending single-symbol instruction relocations use Zeus module format 2;
+  composite instruction relocations use format 3 so older readers reject them.
+  Composite address relocations use format 4 and retain their image-origin
+  coefficient after binding, so reloading and relinking recompute the value.
+  Formats 1 through 3 remain readable. Images without composite address
+  relocations or pending instruction fixups use format 1.
+  Fullword A constants accept linear expressions such as A(TABLE+LIMIT-START),
+  A(LIMIT-START), A(TABLE+TABLE) and A(-TABLE), directly or through EQU aliases.
+  Their relocation coefficient need not be one. The result occupies the low
+  32 bits; negative differences use two's complement. Signed absolute fullword
+  values are also supported. Each absent weak term contributes zero in a
+  composite expression. Single weak-symbol constants retain the existing
+  zero-target convention, including ignoring the addend when absent.
+  DSECT terms, relocatable multiplication/division and other address-constant
+  lengths/types remain unsupported. V constants require a symbol name.
+  A duplicated constant captures '*' at each field; an =A(...) literal
+  captures '*' at its referring instruction.
+
+SUPPORTED LANGUAGE
+  CSECT/RSECT and DSECT reopening, LOCTR, START 0, EQU with forward references,
+  USING with multiple base registers, labeled and dependent USING, DROP by
+  register or label, ENTRY aliases, END, COPY and literal pools.
+  AMODE 31/ANY/ANY31 executes with the Zeus caller's 31-bit linkage.
+  RMODE 24 enforces loading below 16 MiB; RMODE ANY permits 31-bit origins.
+  LOCTR segments follow definition order without implicit alignment. A named
+  LOCTR resumes its owning section; a CSECT resumes its last active counter.
+  A section-name LOCTR resumes that section's first counter. An empty LOCTR
+  is a Zeus shorthand for the current section's first counter.
+  Named USING addresses use QUALIFIER.FIELD; unqualified references use
+  ordinary USING associations. Dependent USING maps a base onto an address
+  resolved through an existing USING and follows its root's lifetime.
+  USING (base,end),register and (base,end,lower,upper),register bound its range.
+  LTORG places pending literals at that point, deduplicated within each pool
+  and grouped by length. Literal A(*) captures its instruction's location.
+  An implicit END pool goes to the first control section's last active LOCTR;
+  place LTORG in another section when its registers must address that pool.
+  ORG supports an expression, optional boundary/offset and blank restoration
+  to the section's highest location. DS overlays preserve existing bytes.
+  Fixed-format continuation records start in column 16; column 72 marks
+  continuation. Expressions support unary signs, + - * /, parentheses,
+  same-section differences, L' length attributes and X'/B'/C' terms.
+  DS/DC support C/X/B/H/F/FD/P/Z, integer A constants and relocatable A(symbol)
+  constants/literals, duplication, explicit lengths and constant lists.
+  Macros support positional/keyword/default arguments, label parameters,
+  variable concatenation, scalar/array local/global A/B/C SET symbols,
+  created SET names (&(expression)), extended SET assignments with omitted
+  elements, parameter sublists, and K'/N' variable attributes. Array stores
+  grow when assigned beyond their declared initial extent.
+  SETC supports quoted terms, period concatenation, (count) duplication,
+  'text'(start,length) and 'text'(start,*) substring selection.
+  SETA/SETB/SETC, AIF (including multiple clauses), AGO (including computed
+  selection), ACTR, ANOP and MEXIT are supported. SETA uses signed 32-bit
+  values, with AND/OR/XOR/NOT and SLL/SRL/SLA/SRA bit operations. Logical
+  conditions support arithmetic/character relations and AND/OR/XOR/NOT.
+  Character relations compare length first, then EBCDIC bytes. Boolean
+  precedence is NOT, AND, OR, XOR; a nonzero arithmetic term is true.
+  Expansion is limited to 100,000 steps and nesting to 32.
+
+MACRO SYSTEM SYMBOLS AND FUNCTIONS
+  OPSYN copies a supported operation or defined macro, or deletes an operation
+  with an empty operand. Copies retain their definition when the original
+  changes. Nested macro definitions are supported. O' reports A/E/M/O/S/U
+  for assembler, extended mnemonic, defined macro, machine instruction,
+  library member and undefined/deleted operation.
+  MNOTE accepts [severity,]message, including omitted severity and * comments.
+  Severities 0..7 retain a valid module; 8..255 prevent module output. The
+  command/assembly step returns the highest severity. &SYSM_HSEV reports the
+  assembly maximum; &SYSM_SEV reports the last directly called macro's maximum.
+  DCVAL pairs apostrophes/ampersands once; DCLEN returns the resulting length;
+  DEQUOTE removes a single apostrophe from each end when present.
+  &SYSNDX, &SYSNEST, &SYSMAC(index), &SYSSTMT and &SYSLIST(index,subindex,...).
+  &SYSASM is ZEUS; &SYSVER is the actual Zeus package version. &SYSTEM_ID
+  identifies the host OS/architecture. &SYSDATC, &SYSDATE and &SYSTIME capture
+  assembly start in UTC. &SYSCLOCK captures each macro call in UTC.
+  &SYSECT, &SYSLOC and &SYSSTYP capture section context at macro entry;
+  &SYSSEQF preserves columns 73..80 of the outermost macro invocation.
+  &SYSIN_*, &SYSLIB_*, &SYSLIN_*, &SYSPRINT_*, &SYSPUNCH_*, &SYSTERM_* and
+  &SYSADATA_* expose DSN/MEMBER/VOLUME from supplied assembly context.
+  CLI source/library names use actual host paths and file stems; unavailable
+  streams/volumes are empty. JCL supplies job, step and allocated DD names.
+  &SYSJOB/&SYSSTEP use (NOJOB)/(NOSTEP) when no job context is supplied.
+  &SYSOPT_CODEPAGE and &SYSCODEPAGE identify the active CCSID. DBCS, RENT and
+  XOBJECT assembler flags are 0; OPTABLE/CURR_OPTABLE identify the ZEUS table.
+  SYSLIST counts positional operands (including omitted ones), excludes
+  keyword operands, and returns the invocation label at index 0. SYSMAC(0)
+  is the current macro, increasing indices walk callers to OPEN CODE.
+  Arithmetic functions: B2A/C2A/D2A/X2A, INDEX/FIND, ISBIN/ISDEC/ISHEX/ISSYM.
+  Character functions: A2B/A2C/A2D/A2X, B2C/B2D/B2X, C2B/C2D/C2X,
+  D2B/D2C/D2X, X2B/X2C/X2D, BYTE/SIGNED, UPPER/LOWER/DOUBLE.
+  Representation conversions preserve bit widths and signed 32-bit decimal
+  values. Traditional (UPPER 'text'), (BYTE value), (SIGNED value), DOUBLE,
+  LOWER and infix INDEX/FIND forms are supported alongside function calls.
+  Character concatenation accepts periods or juxtaposed terms.
+  IBM maintenance/PTF identifiers and additional option profiles are not
+  fabricated; unsupported symbols are diagnosed.
+  SETC values are limited to 4064 characters; array indices to 1,000,000;
+  expression/variable nesting to 64; expanded operand text to 1 MiB.
+  Parameters and system symbols are read-only. Undefined variables, invalid
+  subscripts, incompatible assignments and numeric overflow are diagnosed.
+
+SUPPORTED INSTRUCTIONS
+  CNOP byte,boundary emits executable NOP padding; byte must be even and in
+  0..boundary-2, boundary a power of two in 4..4096. The label denotes the
+  halfword-aligned start of padding. PUSH/POP save independent USING, PRINT
+  and ACONTROL stacks, with combined classes and optional NOPRINT. PRINT
+  flags are retained, but a traditional listing is not emitted. The supported
+  ACONTROL table selection is OPTABLE(ZEUS); additional controls are diagnosed.
+  CNOP boundaries above 8 use module format 5 with an alignment requirement;
+  the binder and loader preserve it. Formats 1..4 default to 8-byte alignment.
+  Format 6 preserves RSECT protection ranges and RMODE 24 through linking.
+  HLASM stores to installed RSECT ranges raise a storage-protection exception
+  and restore protected bytes. External writes are detected at HLASM entry;
+  this is not a host OS page-protection or storage-key implementation.
+  EX R1,D2(X2,B2) and EXRL R1,TARGET execute source-compiled templates with
+  their current second byte ORed with the low byte of R1 (R1=0 suppresses OR).
+  Supported fields include SS lengths, immediates, masks and register fields.
+  Relative targets use the template origin; link addresses use the EX/EXRL
+  continuation. Nested EXECUTE, unrepresented opcode changes, writes outside
+  the second byte and arbitrary data as machine code are explicitly rejected.
+  MVCL/CLCL use even register pairs and 24-bit lengths with a padding byte.
+  MVCLE/CLCLE use 32-bit lengths and address-derived padding; CC=3 permits
+  resumption after at most 4096 bytes. MVST/CLST/SRST use the ending byte in
+  R0, preserve completion registers and support partial completion.
+  ED/EDMK edit packed decimal using selectors, significance starters and
+  field separators; EDMK reports the first newly significant digit in R1.
+  TRT/TRTR D1(L1,B1),D2(B2) search a translation table without changing the
+  source, set CC 0/1/2, and report a hit through R1/R2. TRTR's first address
+  denotes the rightmost byte and scanning proceeds towards lower addresses.
+  SRP D1(L1,B1),D2(B2),I3 shifts/rounds packed decimal (1..16 bytes). The
+  low six address bits encode a signed shift (-32..31); I3 is 0..9. It
+  validates digits/signs, sets CC 0/1/2/3 and retains truncated overflow results.
+  Load/store: L/ST/LA/LR/LTR/LH/STH/IC/STC/STM/LM/LCR/LPR/LNR.
+  Arithmetic: A/S/C/CL/AL/SL/AH/SH/CH/AHI/AR/SR/CR/CLR/ALR/SLR,
+              M/MR/MH/D/DR, SLL/SRL/SLA/SRA.
+  Relative control flow: BRC/BRCL M1,TARGET; BRAS/BRASL R1,TARGET;
+    BRCT/BRCTG/BRCTH R1,TARGET; LARL R1,TARGET.
+    Short jump aliases: J/JE/JZ/JNE/JNZ/JH/JP/JL/JM/JNH/JNP/JNL/JNM,
+                        JO/JNO/JNOP.
+    Long aliases: JG/JGE/JGZ/JGNE/JGNZ/JGH/JGP/JGL/JGM/JGNH/JGNP,
+                  JGNL/JGNM/JGO/JGNO/JGNOP.
+    TARGET is a halfword-aligned label or relocatable expression in the
+    assembled image (including other CSECTs), or an expression combining
+    declared external symbols and local labels with net relocation coefficient
+    one. For example, TABLE+LIMIT-START adds an external length difference
+    to TABLE. No USING is needed.
+    Targets are measured from the current instruction in signed halfwords:
+    BRC/BRAS/BRCT/BRCTG and J aliases use 16 bits; the other forms use
+    32 bits. For example, J *+8 skips eight bytes from its own address.
+    BRAS/BRASL save the next instruction address with the AMODE 31 bit
+    set in the low word, retaining the upper word. BRCT uses the low word,
+    BRCTG the full register, and BRCTH the high word; each decrements with
+    wraparound and branches if nonzero. LARL loads a 31-bit address,
+    preserves the upper word, and does not access the referenced storage.
+    All these operations preserve CC. Internal relative references survive
+    module linking and relocation. Absolute numeric targets remain unsupported.
+  Other count branches: BCTR/BCTGR R1,R2; BCTG R1,D2(X2,B2).
+    BCTR uses the low word, BCTGR/BCTG the full register. The register
+    target is captured before decrement; R2=0 suppresses branching while
+    retaining the decrement. CC is unchanged.
+  Masked bytes: ICM/ICMY/ICMH, STCM/STCMY/STCMH, CLM/CLMY/CLMH.
+    Format: OP R1,M3,D2(B2), where M3 is an absolute four-bit mask (0..15).
+    Mask bits 8/4/2/1 select successive bytes of the low register word;
+    the H variants select the high word. Storage bytes are contiguous.
+    ICM inserts selected bytes, preserving every unselected register byte;
+    STCM packs selected bytes into storage and preserves CC; CLM compares
+    selected bytes as an unsigned field and preserves the register.
+    ICM sets CC 0 for all inserted bits zero or mask zero, otherwise CC 1
+    if the first inserted bit is one, or CC 2 if it is zero. CLM sets CC
+    0/1/2 for equal/low/high. Base forms use unsigned 12-bit displacement;
+    Y/H forms use signed 20-bit displacement. No index is allowed.
+    For example, ICM 2,B'0101',0(3) inserts two contiguous storage bytes
+    into byte positions 1 and 3 of the low word; STCM with the same mask
+    packs those two bytes back into contiguous storage.
+    Mask zero leaves register/storage bytes unchanged. Zeus still checks
+    one byte at the storage address (also its model choice for STCM).
+  Carry/borrow arithmetic: ALC/ALCR/SLB/SLBR (32 bits),
+                           ALCG/ALCGR/SLBG/SLBGR (64 bits).
+    Format: OP R1,R2 or OP R1,D2(X2,B2). Memory forms have signed 20-bit
+    displacements. Addition includes the carry from CC 2/3. Subtraction
+    includes a borrow for CC 0/1. Both produce CC 0/1 for zero/nonzero with
+    carry absent (or borrow present), CC 2/3 with carry (or no borrow).
+    The 32-bit forms preserve the upper register word.
+  Partial-register immediates (OP R1,I2):
+    IIHH/IIHL/IILH/IILL, IIHF/IILF: insert, preserving all other bits.
+    LLIHH/LLIHL/LLILH/LLILL, LLIHF/LLILF: load, zeroing all other bits.
+    NIHH/NIHL/NILH/NILL, NIHF/NILF: AND the selected register field.
+    OIHH/OIHL/OILH/OILL, OIHF/OILF: OR the selected register field.
+    XIHF/XILF: XOR the selected register field.
+    TMHH/TMHL/TMLH/TMLL: test selected bits without changing the register.
+    HH/HL/LH/LL select bits 0..15/16..31/32..47/48..63 respectively;
+    HF/LF select bits 0..31/32..63 (bit 0 is the most significant).
+    I2 is an absolute 16-bit unsigned value (HH/HL/LH/LL) or 32-bit
+    pattern (HF/LF); signed negative fullword values are accepted too.
+    Decimal and X'/B'/C' terms are accepted. For example,
+    LLIHF 2,X'FEDCBA98' followed by IILF 2,X'76543210' builds a full
+    64-bit value. Insert/load preserve CC. AND/OR/XOR set CC 0/1 from the
+    modified field alone. Test sets CC 0 for zero/mask-zero, 3 for all
+    selected ones, 1/2 for mixed bits with leftmost selected bit zero/one.
+  Long-displacement (signed 20-bit) encodings:
+    LY/STY/LHY/STHY/ICY/STCY, AY/SY/CY/CLY/ALY/SLY/NY/OY/XY,
+    AHY/SHY/CHY, LMY/STMY, CLIY/MVIY/NIY/OIY/XIY/TMY, CVBY/CVDY.
+    These use the matching legacy operation's semantics, with six-byte
+    instructions. RS/SI forms do not accept an index register.
+  Reversed bytes: LRVH/LRV/LRVG, LRVR/LRVGR, STRVH/STRV/STRVG.
+    Convert 2/4/8 bytes between big- and little-endian order. LRVH updates
+    only the low 16 bits; LRV/LRVR update only the low 32 bits. Upper bits
+    and condition codes are preserved. Stores change exactly 2/4/8 bytes.
+  Signed byte loads: LB/LBR (8 to 32 bits), LGB/LGBR (8 to 64 bits).
+    LBR/LGBR read the source register's low byte. Condition codes are kept.
+  Register-pair shifts: SLDL/SRDL/SLDA/SRDA (two low 32-bit words).
+  Shift/rotate: SLLG/SRLG/SLAG/SRAG/RLLG (64-bit), RLL (32-bit).
+               Format: OP R1,R3,D2(B2); R3 supplies the source, the low six
+               bits of B2+D2 supply the count. No storage is read for D2.
+  Logical multiply/divide: ML/MLR/DL/DLR (32-bit operands),
+                           MLG/MLGR/DLG/DLGR (64-bit operands).
+  Signed divide: DSG/DSGR (64-bit divisor), DSGF/DSGFR (32-bit divisor).
+  Pair operations require even R1. Multiplication uses R1+1 as multiplicand
+  and returns the full product in R1/R1+1. Logical division uses the pair
+  as dividend; signed single division uses only R1+1. Division returns
+  remainder in R1 and quotient in R1+1, truncating signed quotients toward
+  zero. Divide by zero and unrepresentable quotients report execution errors.
+  Multiply/divide and logical shifts/rotates preserve the condition code;
+  arithmetic shifts set sign/zero status and left shifts detect overflow.
+  64-bit load/store: LG/STG/LGF/LLGF/LGH/LLGH/LLGC/LGR/LGFR/LLGFR,
+                     LTGR/LCGR/LPGR/LNGR/LMG/STMG/LGHI/LGFI.
+  64-bit arithmetic: AG/AGR/AGF/AGFR/AGHI/AGFI, SG/SGR/SGF/SGFR,
+                     ALG/ALGR/SLG/SLGR, MSG/MSGR/MGHI.
+  64-bit compare/logical: CG/CGR/CGF/CGFR/CGHI/CGFI/CLG/CLGR,
+                          NG/NGR/OG/OGR/XG/XGR.
+  Registers retain all 64 bits; legacy instructions update the low word.
+  Wide memory operations and RSY shifts accept signed 20-bit displacements.
+  USING prefers a nonnegative displacement before a nearer negative one.
+  Addressing and cross-language argument lists remain AMODE 31. FD constants support
+  signed decimal integers, lists, duplication and explicit byte lengths.
+  Logical: N/O/X/NR/OR/XR, NI/OI/XI/TM.
+  Character: MVC/MVI/CLI/CLC/XC/NC/OC/MVN/MVZ/TR.
+  Decimal: ZAP/AP/SP/CP/MP/DP/PACK/UNPK/CVB/CVD (1..16 byte fields).
+  Branch: B/BE/BNE/BH/BL/BNH/BNL/BO/BNO/BP/BM/BZ/BNZ/BNP/BNM,
+          BC/BR/BCR/BCT/BAL/BALR/BAS/BASR/NOP/NOPR.
+  Service: STIMER WAIT,BINTVL=address.
+
+DYNAMIC SHARED STORAGE
+  GETMAIN R/RU/RC,LV=length[,SP=subpool][,LOC=BELOW|ANY]
+  FREEMAIN R/RU/RC,LV=length,A=(register)[,SP=subpool]
+  STORAGE OBTAIN,LENGTH=length[,ADDR=destination][,SP=subpool]
+  STORAGE RELEASE,LENGTH=length,ADDR=address[,SP=subpool]
+  STORAGE RELEASE,SP=subpool
+  Length/subpool operands accept absolute values or parenthesized registers.
+  GETMAIN returns an address in R1; its implicit R form reads packed SP/length
+  from R0. RC is conditional; R/RU are unconditional. FREEMAIN without LV/A
+  releases the specified subpool. A=address denotes the storage itself.
+  STORAGE ADDR=(register) returns/reads a pointer in that register. On OBTAIN,
+  a bare ADDR names a fullword receiving the pointer; on RELEASE, a bare ADDR
+  denotes the storage itself. R1 also receives an obtained address.
+  STORAGE supports BNDRY=DBLWD|PAGE, LOC=BELOW|ANY, COND=YES|NO and
+  RTCD=fullword|(register). RTCD requires COND=YES; R15 always receives RC.
+  Success returns 0; conditional allocation/release failure returns 4.
+  Unconditional failures raise runtime errors. Lengths round up to 8 bytes.
+  Allocations are zeroed, owned by their subpool and persist across returns,
+  errors and COBOL/PL/I calls in the same run unit. Explicit free returns them
+  to a coalescing reusable pool. Only a free tail shrinks backing storage.
+  Static storage and live call frames cannot be freed through these services.
+  The default active allocation limit is 64 MiB; retained heap growth also
+  has a 64 MiB plus one-page limit, so page alignment cannot bypass the budget.
+  Step/run-unit teardown releases all remaining memory. CANCEL is not a free
+  of application-owned dynamic allocations. Library users making repeated
+  calls must retain one DynamicStorage and use execute_with_storage; Machine
+  handles that ownership automatically. AssemblyOptions and
+  compile_report_with_options supply explicit build/job/DD/SYSPARM context.
+  OS authorization, storage keys, address spaces, IBM macro parameter lists
+  and additional GETMAIN request variants are not emulated by these paths.
+
+LIMITATIONS
+  This is not complete HLASM or z/Architecture compatibility. Unimplemented
+  areas include remaining integer/floating/vector/privileged instructions,
+  AMODE 64 linkage, IBM object linking, cross-language object linking,
+  literal pools in DSECTs, additional option profiles, ICTL,
+  external SETAF/SETCF functions, AREAD/AINSERT and full diagnostic/listing output,
+  arbitrary IBM macros, z/OS services and IBM object-deck output.
+  Unknown operations fail compilation. Execution checks storage accesses
+  and limits instructions per invocation to 1,000,000.
+  ORG cannot overwrite instructions or assemble overlapping instructions.
+  The engine rejects execution falling into pool/data/alignment gaps.
+
+EXAMPLES
+  zas compile -I app/maclib -o loadlib/COBDATFT.zo app/asm/COBDATFT.asm
+  zas compile -I app/maclib -o loadlib/MVSWAIT.zo app/asm/MVSWAIT.asm
+  zas check -I app/maclib app/asm/COBDATFT.asm
+  zas link -L loadlib -o linked.zo main.zo sub.zo
+  zas run --parm NIGHTLY loadlib/MAIN.zo
+  zjob --loadlib loadlib submit job.jcl
+
+EXIT STATUS
+  compile/check return the highest diagnostic severity (0 when none); a
+  warning may return 1..7 while emitting a valid module. link/help return 0
+  on success; run returns R15 (low byte). Compiler/runtime failures return
+  12 unless an explicit MNOTE supplies a higher severity.

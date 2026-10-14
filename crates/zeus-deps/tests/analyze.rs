@@ -225,6 +225,101 @@ fn masters() {
 }
 
 #[test]
+fn assembler_sources_and_macros_resolve_from_cobol_calls() {
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "MAIN.cbl",
+        "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. MAINPGM.\n       PROCEDURE DIVISION.\n           CALL 'ASMTEST'.\n           STOP RUN.\n",
+    );
+    write(
+        dir.path(),
+        "ASMTEST.asm",
+        "ASMTEST CSECT\n         USING *,15\n         COPY REGS\n         WAITZERO ZERO\n         SR R15,R15\n         BR R14\nZERO     DC F'0'\n         END\n",
+    );
+    write(dir.path(), "REGS.mac", "R14 EQU 14\nR15 EQU 15\n");
+    write(
+        dir.path(),
+        "WAITZERO.mac",
+        "         MACRO\n&NAME    WAITZERO &B\n         STIMER WAIT,BINTVL=&B\n         MEND\n",
+    );
+    let out = dir.path().join("out");
+    let status = Command::new(env!("CARGO_BIN_EXE_zdeps"))
+        .args(["analyze", "--out"])
+        .arg(&out)
+        .arg(dir.path().join("MAIN.cbl"))
+        .arg("--lib")
+        .arg(dir.path())
+        .status()
+        .unwrap();
+    assert!(status.success());
+    assert!(
+        rows(&out, "nodes.csv")
+            .iter()
+            .any(|r| r[1] == "HLASM_PROGRAM" && r[2] == "ASMTEST")
+    );
+    assert_eq!(
+        rows(&out, "edges.csv")
+            .iter()
+            .filter(|r| r[1] == "HLASM_COPY")
+            .count(),
+        2
+    );
+    assert!(rows(&out, "missing_assets.csv").is_empty());
+    assert!(rows(&out, "compile_diagnostics.csv").is_empty());
+}
+
+#[test]
+fn assembler_external_references_follow_entries_and_allow_missing_weak_symbols() {
+    use zeus_deps::graph::{Options, analyze};
+    let dir = tempfile::tempdir().unwrap();
+    write(
+        dir.path(),
+        "ROOT.asm",
+        "ROOT CSECT\n         L 2,=V(SUB)\n         WXTRN OPTIONAL\nPTR DC V(OPTIONAL)\nTEXT DC C'V(NOTAREF)'\nCOUNT DC F'1'     V(ALSONOTAREF) in a comment\n         BR 14\n         END\n",
+    );
+    write(
+        dir.path(),
+        "SUB.asm",
+        "LIB CSECT\nSUB BR 14\n         ENTRY SUB\n         END\n",
+    );
+    let mut opts = Options {
+        roots: vec![dir.path().join("ROOT.asm")],
+        libs: vec![dir.path().to_path_buf()],
+        compile: false,
+    };
+    let graph = analyze(&opts);
+    assert!(!graph.nodes.iter().any(|n| n.status == "MISSING"));
+    assert!(
+        graph
+            .nodes
+            .iter()
+            .any(|n| n.name == "OPTIONAL" && n.status == "OPTIONAL")
+    );
+    assert!(graph.edges.iter().any(|e| e.edge_type == "HLASM_EXTERNAL"
+        && e.target_name == "SUB"
+        && e.resolution == "FILE"));
+    assert!(!graph.nodes.iter().any(|n| n.name.contains("NOTAREF")));
+    write(
+        dir.path(),
+        "REQUIRED.asm",
+        "REQUIRED CSECT\n         EXTRN OPTIONAL\n         BR 14\n         END\n",
+    );
+    opts.roots.push(dir.path().join("REQUIRED.asm"));
+    let graph = analyze(&opts);
+    assert_eq!(
+        graph.nodes.iter().filter(|n| n.name == "OPTIONAL").count(),
+        1
+    );
+    assert!(
+        graph
+            .nodes
+            .iter()
+            .any(|n| n.name == "OPTIONAL" && n.status == "MISSING")
+    );
+}
+
+#[test]
 fn unsupported_syntax_reports_each_use_and_distinguishes_compile_errors() {
     let tmp = tempfile::tempdir().unwrap();
     let app = tmp.path().join("app");
@@ -311,4 +406,48 @@ fn unsupported_syntax_reports_each_use_and_distinguishes_compile_errors() {
                 .starts_with(b"\xef\xbb\xbf")
         );
     }
+}
+
+#[test]
+fn hlasm_reports_multiple_unknown_operations_and_warning_notes() {
+    let tmp = tempfile::tempdir().unwrap();
+    let app = tmp.path().join("app");
+    write(
+        &app,
+        "BAD.asm",
+        "BAD CSECT\n         UNKNOWN1 2,3\n         UNKNOWN2 4,5\n         BR 14\n         END\n",
+    );
+    write(
+        &app,
+        "NOTE.asm",
+        "NOTE CSECT\n         MNOTE 4,'warning only'\n         BR 14\n         END\n",
+    );
+    let out = tmp.path().join("out");
+    let result = Command::new(env!("CARGO_BIN_EXE_zdeps"))
+        .args(["analyze", "--bom", "--out"])
+        .arg(&out)
+        .arg(&app)
+        .output()
+        .unwrap();
+    assert!(
+        result.status.code() == Some(4),
+        "{}",
+        String::from_utf8_lossy(&result.stderr)
+    );
+    let locations = rows(&out, "unsupported_syntax_locations.csv");
+    assert!(locations.iter().any(|r| r[5] == "UNKNOWN1" && r[8] == "2"));
+    assert!(locations.iter().any(|r| r[5] == "UNKNOWN2" && r[8] == "3"));
+    let diagnostics = rows(&out, "compile_diagnostics.csv");
+    assert!(
+        diagnostics
+            .iter()
+            .any(|r| r[1] == "NOTE" && r[4] == "WARNING")
+    );
+    let attrs = rows(&out, "node_attributes.csv");
+    assert!(
+        attrs
+            .iter()
+            .any(|r| r.iter().any(|v| v == "compile_diagnostics_complete")
+                && r.iter().any(|v| v == "false"))
+    );
 }

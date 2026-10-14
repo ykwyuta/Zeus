@@ -20,6 +20,7 @@ pub fn run(program: &str, ctx: &mut StepCtx) -> Option<ProgramResult> {
         "DSNUTILB" => db2util::dsnutilb(ctx),
         "SORT" | "ICEMAN" | "DFSORT" | "SYNCSORT" => sort::run(ctx),
         "IGYCRCTL" => compile::cobol(ctx),
+        "ASMA90" | "ASMAHL" => compile::hlasm(ctx),
         "IBMZPLI" | "IEL1AA" | "IEL0AA" => compile::pli(ctx),
         "IEWL" | "IEWBLINK" | "HEWL" | "HEWLH096" | "IEWLF128" => compile::bind(ctx),
         // Operator and network facilities of the z/OS installation; the

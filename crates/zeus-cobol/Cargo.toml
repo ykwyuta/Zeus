@@ -28,3 +28,7 @@ workspace = true
 [[bin]]
 name = "zcov"
 path = "src/bin/zcov.rs"
+
+[[bin]]
+name = "zas"
+path = "src/bin/zas.rs"

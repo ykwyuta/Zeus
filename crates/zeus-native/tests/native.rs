@@ -69,6 +69,237 @@ fn run_env(exe: &Path, args: &[&str], stdin: &str, interpret: bool) -> (String, 
 }
 
 #[test]
+fn native_cobol_calls_embedded_hlasm_with_shared_storage() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("asmadd.asm");
+    std::fs::write(&source, "ASMADD CSECT\n         USING *,15\n         LR 10,14\n         L 15,=V(ASMLEAF)\n         BASR 14,15\n         LR 14,10\n         BR 14\n         END\n").unwrap();
+    let asm = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+    let leaf_source = dir.path().join("leaf.asm");
+    std::fs::write(&leaf_source, "ASMLEAF CSECT\n         USING *,15\n         L 2,0(1)\n         L 4,=A(INCR)\n         L 3,0(2)\n         A 3,0(4)\n         ST 3,0(2)\n         LA 15,9\n         BR 14\nINCR DC F'7'\n         END\n").unwrap();
+    let leaf = zeus_cobol::hlasm::compile_file(&leaf_source, &[]).unwrap();
+    let source = dir.path().join("main.cbl");
+    std::fs::write(&source, "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. MAINPGM.\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01 A PIC S9(9) COMP VALUE 5.\n       PROCEDURE DIVISION.\n           CALL 'ASMADD' USING A\n           IF A = 12 AND RETURN-CODE = 9\n             MOVE 0 TO RETURN-CODE\n           ELSE MOVE 99 TO RETURN-CODE END-IF\n           STOP RUN.\n").unwrap();
+    let cobol = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&cobol).unwrap()),
+            (
+                "ASMADD".into(),
+                zeus_cobol::hlasm::module_bytes(&asm).unwrap(),
+            ),
+            (
+                "ASMLEAF".into(),
+                zeus_cobol::hlasm::module_bytes(&leaf).unwrap(),
+            ),
+        ],
+    };
+    let exe = executable(dir.path(), "shared-asm", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}
+
+#[test]
+fn native_cobol_calls_hlasm_with_reversed_bytes_and_long_displacements() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("asmrev.asm");
+    std::fs::write(&source, "ASMREV CSECT\n         USING ASMREV,15\n         L 2,0(1)\n         L 3,4(1)\n         L 6,8(1)\n         LRVG 4,0(2)\n         STG 4,0(3)\n         LY 5,DELTA\n         STY 5,0(6)\n         LGHI 15,0\n         BR 14\nGAP DS 5000X\nDELTA DC F'7'\n         END\n").unwrap();
+    let asm = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+    let source = dir.path().join("main.cbl");
+    std::fs::write(
+        &source,
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MAINPGM.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 A PIC X(8) VALUE 'ABCDEFGH'.
+       01 B PIC X(8) VALUE SPACES.
+       01 N PIC S9(9) COMP VALUE 0.
+       PROCEDURE DIVISION.
+           CALL 'ASMREV' USING A B N
+           IF A = 'ABCDEFGH' AND B = 'HGFEDCBA' AND N = 7
+             MOVE 0 TO RETURN-CODE
+           ELSE MOVE 99 TO RETURN-CODE END-IF
+           STOP RUN.
+",
+    )
+    .unwrap();
+    let cobol = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&cobol).unwrap()),
+            (
+                "ASMREV".into(),
+                zeus_cobol::hlasm::module_bytes(&asm).unwrap(),
+            ),
+        ],
+    };
+    let exe = executable(dir.path(), "reverse-asm", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}
+
+#[test]
+fn native_cobol_calls_hlasm_with_carry_and_partial_register_immediates() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("asmbits.asm");
+    std::fs::write(&source, "ASMBITS CSECT\n         L 2,0(1)\n         LG 4,0(2)\n         LLILL 3,1\n         ALR 4,3\n         ALCGR 4,3\n         IIHF 4,1\n         STG 4,0(2)\n         LGHI 15,0\n         BR 14\n         END\n").unwrap();
+    let asm = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+    let source = dir.path().join("main.cbl");
+    std::fs::write(
+        &source,
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MAINPGM.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 A PIC S9(18) COMP VALUE 4294967295.
+       PROCEDURE DIVISION.
+           CALL 'ASMBITS' USING A
+           IF A = 4294967298 AND RETURN-CODE = 0
+             MOVE 0 TO RETURN-CODE
+           ELSE MOVE 99 TO RETURN-CODE END-IF
+           STOP RUN.
+",
+    )
+    .unwrap();
+    let cobol = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&cobol).unwrap()),
+            (
+                "ASMBITS".into(),
+                zeus_cobol::hlasm::module_bytes(&asm).unwrap(),
+            ),
+        ],
+    };
+    let exe = executable(dir.path(), "carry-asm", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}
+
+#[test]
+fn native_cobol_calls_hlasm_with_masked_bytes_in_both_register_halves() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("asmmask.asm");
+    std::fs::write(&source, "ASMMASK CSECT\n         USING ASMMASK,12\n         LR 12,15\n         L 2,0(1)\n         L 3,4(1)\n         LLILL 5,0\n         ICM 5,5,0(2)\n         STCM 5,5,0(3)\n         ICMH 5,10,0(2)\n         STCMH 5,10,2(3)\n         CLM 5,5,0(2)\n         BNE FAIL\n         CLMH 5,10,0(2)\n         BNE FAIL\n         LGHI 15,0\n         BR 14\nFAIL LGHI 15,99\n         BR 14\n         END\n").unwrap();
+    let asm = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+    let source = dir.path().join("main.cbl");
+    std::fs::write(
+        &source,
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MAINPGM.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 A PIC X(2) VALUE 'AB'.
+       01 B PIC X(4) VALUE SPACES.
+       PROCEDURE DIVISION.
+           CALL 'ASMMASK' USING A B
+           IF A = 'AB' AND B = 'ABAB' AND RETURN-CODE = 0
+             MOVE 0 TO RETURN-CODE
+           ELSE MOVE 99 TO RETURN-CODE END-IF
+           STOP RUN.
+",
+    )
+    .unwrap();
+    let cobol = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&cobol).unwrap()),
+            (
+                "ASMMASK".into(),
+                zeus_cobol::hlasm::module_bytes(&asm).unwrap(),
+            ),
+        ],
+    };
+    let exe = executable(dir.path(), "masked-asm", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}
+
+#[test]
+fn native_cobol_calls_hlasm_with_relative_calls_loops_and_far_data() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("asmrel.asm");
+    std::fs::write(&source, "ASMREL CSECT\n         L 10,0(1)\n         L 3,0(10)\n         LARL 12,INCR\n         LGHI 2,3\nLOOP BRASL 6,ADDONE\n         BRCTG 2,LOOP\n         ST 3,0(10)\n         LGHI 15,0\n         BR 14\nADDONE A 3,0(12)\n         BR 6\nGAP DS 70000X\nINCR DC F'7'\n         END\n").unwrap();
+    let asm = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+    let source = dir.path().join("main.cbl");
+    std::fs::write(
+        &source,
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MAINPGM.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 A PIC S9(9) COMP VALUE 5.
+       PROCEDURE DIVISION.
+           CALL 'ASMREL' USING A
+           IF A = 26 AND RETURN-CODE = 0
+             MOVE 0 TO RETURN-CODE
+           ELSE MOVE 99 TO RETURN-CODE END-IF
+           STOP RUN.
+",
+    )
+    .unwrap();
+    let cobol = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&cobol).unwrap()),
+            (
+                "ASMREL".into(),
+                zeus_cobol::hlasm::module_bytes(&asm).unwrap(),
+            ),
+        ],
+    };
+    let exe = executable(dir.path(), "relative-asm", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}
+
+#[test]
+fn native_cobol_calls_hlasm_with_complex_equ_adcon_and_relative_linkage() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("asmcross.asm");
+    std::fs::write(&source, "ASMCROSS CSECT\nTARGET EQU ASMLEAF+SPAN,4,C'A'\nSPAN EQU FINISH-BEGIN-4\n         USING ASMCROSS,15\n         LR 9,14\n         L 15,=A(TARGET)\n         BRASL 14,TARGET\n         LR 14,9\n         BR 14\n         EXTRN ASMLEAF,BEGIN,FINISH\n         END\n").unwrap();
+    let caller = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+    assert_eq!(caller.zeus_hlasm, 4);
+    let source = dir.path().join("asmleaf.asm");
+    std::fs::write(&source, "ASMLEAF CSECT\nBEGIN EQU ASMLEAF\nARGREG EQU 2,,,,GR32\nWORK EQU 3,,,,GR32\nDELTA EQU 0,7,C'F',X'00000007',GR32\n&INC SETA I'=FS(24)E(-2)'0E+2'+C2A(SYSATTRP('DELTA'))-7\n         AIF (S'=FS(24)E(-2)'0E+2' EQ 24).LITERAL\n         MNOTE 8,'unexpected literal attributes'\n.LITERAL ANOP\n         AIF (D'WORK AND T'DELTA EQ 'F').CHECK\n         MNOTE 8,'unexpected ordinary attributes'\n.CHECK AIF (SYSATTRA('WORK') EQ 'GR32').OK\n         MNOTE 8,'unexpected assembler type'\n.OK ANOP\n         L ARGREG,0(1)\nFINISH L WORK,0(ARGREG)\n         AHI WORK,&INC\n         ST WORK,0(ARGREG)\n         LGHI 15,T'DELTA-C'F'+9\n         BR 14\n         ENTRY BEGIN,FINISH\n         END\n").unwrap();
+    let callee = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+    let source = dir.path().join("main.cbl");
+    std::fs::write(
+        &source,
+        "       IDENTIFICATION DIVISION.
+       PROGRAM-ID. MAINPGM.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 A PIC S9(9) COMP VALUE 5.
+       PROCEDURE DIVISION.
+           CALL 'ASMCROSS' USING A
+           IF A = 12 AND RETURN-CODE = 9
+             MOVE 0 TO RETURN-CODE
+           ELSE MOVE 99 TO RETURN-CODE END-IF
+           STOP RUN.
+",
+    )
+    .unwrap();
+    let cobol = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![
+            ("MAINPGM".into(), zeus_cobol::module_bytes(&cobol).unwrap()),
+            (
+                "ASMCROSS".into(),
+                zeus_cobol::hlasm::module_bytes(&caller).unwrap(),
+            ),
+            (
+                "ASMLEAF".into(),
+                zeus_cobol::hlasm::module_bytes(&callee).unwrap(),
+            ),
+        ],
+    };
+    let exe = executable(dir.path(), "external-relative-asm", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}
+
+#[test]
 fn cobol_main_with_pli_subprogram() {
     let dir = tempfile::tempdir().unwrap();
     let module = zeus_cobol::compile_file(
@@ -90,6 +321,40 @@ fn cobol_main_with_pli_subprogram() {
         out,
         "PARM=WORLD\nIN PL/I 25\nN=00000002E T=PL/I\nIN=typed line"
     );
+}
+
+#[test]
+fn native_cobol_reads_assembler_allocated_storage_and_frees_it_later() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut members = Vec::new();
+    for (name, body) in [
+        (
+            "TAKE",
+            "         L 2,0(1)\n         GETMAIN RU,LV=32\n         ST 1,0(2)\n         MVC 0(3,1),=C'ABC'",
+        ),
+        (
+            "FREE",
+            "         L 2,0(1)\n         L 3,0(2)\n         FREEMAIN RU,LV=32,A=(3)",
+        ),
+    ] {
+        let source = dir.path().join(format!("{name}.asm"));
+        std::fs::write(&source, format!("{name} CSECT\n         USING {name},12\n         LR 12,15\n{body}\n         LGHI 15,0\n         BR 14\n         END\n")).unwrap();
+        let module = zeus_cobol::hlasm::compile_file(&source, &[]).unwrap();
+        members.push((
+            name.into(),
+            zeus_cobol::hlasm::module_bytes(&module).unwrap(),
+        ));
+    }
+    let source = dir.path().join("main.cbl");
+    std::fs::write(&source, "       IDENTIFICATION DIVISION.\n       PROGRAM-ID. MAINPGM.\n       DATA DIVISION.\n       WORKING-STORAGE SECTION.\n       01 P USAGE POINTER.\n       01 RESULT-CODE PIC 9(4) COMP VALUE 99.\n       LINKAGE SECTION.\n       01 HEAP-DATA PIC X(3).\n       PROCEDURE DIVISION.\n           CALL 'TAKE' USING P\n           SET ADDRESS OF HEAP-DATA TO P\n           IF HEAP-DATA = 'ABC' MOVE 0 TO RESULT-CODE END-IF\n           CALL 'FREE' USING P\n           MOVE RESULT-CODE TO RETURN-CODE\n           STOP RUN.\n").unwrap();
+    let module = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    members.insert(
+        0,
+        ("MAINPGM".into(), zeus_cobol::module_bytes(&module).unwrap()),
+    );
+    let exe = executable(dir.path(), "dynamic-asm", &Image { members });
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
 }
 
 #[test]

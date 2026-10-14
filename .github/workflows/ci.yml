@@ -88,7 +88,7 @@ jobs:
         run: |
           d=dist/${{ matrix.name }}
           mkdir -p $d/bin
-          for b in zcobc zcov zpli zjob zcics zbms zims zmq zconn zdeps zeus-rt; do
+          for b in zcobc zcov zas zpli zjob zcics zbms zims zmq zconn zdeps zeus-rt; do
             cp target/release/$b${{ matrix.exe }} $d/bin/
           done
           cp README.md LICENSE $d/
@@ -176,6 +176,7 @@ jobs:
           path: .cache/carddemo
           key: carddemo-${{ hashFiles('tools/fetch-carddemo.sh') }}
       - run: tools/carddemo.sh all
+      - run: cargo test -p zeus-cobol --test hlasm -- --include-ignored
       - run: tools/carddemo-online.sh test
       - name: Install s3270 and pr3287 (3270 display and printer emulators)
         run: sudo apt-get update && sudo apt-get install -y s3270 pr3287

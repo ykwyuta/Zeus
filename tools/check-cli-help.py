@@ -13,6 +13,7 @@ import tempfile
 
 
 COMMANDS = {
+    "zas": ["compile", "check", "link", "run"],
     "zcobc": ["compile", "run", "check", "inventory"],
     "zpli": ["compile", "run"],
     "zjob": ["submit", "catalog", "ims"],

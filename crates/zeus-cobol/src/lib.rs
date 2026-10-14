@@ -9,6 +9,7 @@ pub mod coverage;
 pub mod diag;
 pub mod ebcdic;
 pub mod front;
+pub mod hlasm;
 pub mod image;
 pub mod interlang;
 pub mod inventory;

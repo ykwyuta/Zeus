@@ -211,9 +211,173 @@ pub fn csd(text: &str) -> Scanned {
     s
 }
 
+/// Application assembler sources, COPY members and macro invocations.
+pub fn hlasm(text: &str) -> super::Scanned {
+    let mut out = super::Scanned::default();
+    let mut prototype = false;
+    let mut macros = std::collections::HashSet::new();
+    let mut operation_aliases = std::collections::HashMap::<String, String>::new();
+    let mut external_kinds = std::collections::HashMap::new();
+    for raw in text
+        .lines()
+        .filter(|l| !l.starts_with('*') && !l.starts_with(".*"))
+    {
+        let words: Vec<_> = raw.split_whitespace().collect();
+        let at = usize::from(!raw.starts_with(char::is_whitespace));
+        if let (Some(op), Some(args)) = (words.get(at), words.get(at + 1))
+            && matches!(op.to_ascii_uppercase().as_str(), "EXTRN" | "WXTRN")
+        {
+            for name in args.split(',') {
+                external_kinds
+                    .entry(name.to_ascii_uppercase())
+                    .or_insert(op.eq_ignore_ascii_case("WXTRN"));
+            }
+        }
+    }
+    for (line, raw) in text.lines().enumerate() {
+        if raw.is_empty() || raw.starts_with('*') || raw.starts_with(".*") {
+            continue;
+        }
+        let mut words = raw.split_whitespace();
+        let label = if raw.starts_with(char::is_whitespace) {
+            None
+        } else {
+            words.next()
+        };
+        let Some(op) = words.next() else {
+            continue;
+        };
+        let mut op = op.to_ascii_uppercase();
+        let arg = words.next().unwrap_or("");
+        if op == "OPSYN" {
+            if let Some(label) = label {
+                let name = label.to_ascii_uppercase();
+                if arg.is_empty() {
+                    operation_aliases.remove(&name);
+                } else {
+                    let target = arg.to_ascii_uppercase();
+                    let target = operation_aliases.get(&target).cloned().unwrap_or(target);
+                    operation_aliases.insert(name, target);
+                }
+            }
+            continue;
+        }
+        if let Some(target) = operation_aliases.get(&op) {
+            op = target.clone();
+        }
+        if matches!(op.as_str(), "CSECT" | "RSECT" | "START") {
+            if out.name.is_none() {
+                out.name = label.map(str::to_ascii_uppercase);
+            } else if let Some(label) = label {
+                let label = label.to_ascii_uppercase();
+                if out.name.as_ref() != Some(&label) && !out.aliases.contains(&label) {
+                    out.aliases.push(label);
+                }
+            }
+        }
+        if op == "ENTRY" {
+            out.aliases
+                .extend(arg.split(',').map(str::to_ascii_uppercase));
+        }
+        if prototype {
+            macros.insert(op.clone());
+            prototype = false;
+            continue;
+        }
+        if op == "MACRO" {
+            prototype = true;
+            continue;
+        }
+        if matches!(op.as_str(), "EXTRN" | "WXTRN") {
+            for name in arg.split(',').filter(|n| !n.is_empty()) {
+                let col = raw.find(name).map_or(1, |i| i + 1);
+                out.refs.push(
+                    super::Ref::new("HLASM_EXTERNAL", name, line + 1, col)
+                        .attr("weak", if op == "WXTRN" { "true" } else { "false" }),
+                );
+            }
+        }
+        // V constants are implicit external declarations. Ignore quoted
+        // character constants and comments when looking for nominal values.
+        let argument_start = raw.find(arg).unwrap_or(raw.len());
+        let upper = arg.to_ascii_uppercase();
+        let mut quoted = false;
+        for (at, c) in upper.char_indices() {
+            if c == '\'' {
+                quoted = !quoted;
+            }
+            if quoted || !upper[at..].starts_with("V(") {
+                continue;
+            }
+            if op != "DC" && (at == 0 || upper.as_bytes()[at - 1] != b'=') {
+                continue;
+            }
+            if let Some(end) = upper[at + 2..].find(')') {
+                for name in upper[at + 2..at + 2 + end]
+                    .split(',')
+                    .filter(|n| !n.is_empty())
+                {
+                    let mut r =
+                        super::Ref::new("HLASM_EXTERNAL", name, line + 1, argument_start + at + 3);
+                    r.dynamic = name.contains('&');
+                    r.attrs.push((
+                        "weak",
+                        external_kinds
+                            .get(name)
+                            .copied()
+                            .unwrap_or(false)
+                            .to_string(),
+                    ));
+                    out.refs.push(r);
+                }
+            }
+        }
+        let target = if op == "COPY" {
+            Some(arg)
+        } else if op != "MEND"
+            && !macros.contains(&op)
+            && !op.starts_with('&')
+            && !zeus_cobol::hlasm::is_operation(&op)
+        {
+            Some(op.as_str())
+        } else {
+            None
+        };
+        if let Some(target) = target.filter(|t| !t.is_empty()) {
+            let col = raw
+                .find(if op == "COPY" { arg } else { op.as_str() })
+                .map_or(1, |i| i + 1);
+            out.refs
+                .push(super::Ref::new("HLASM_COPY", target, line + 1, col));
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn hlasm_sections_entries_and_local_macro_operations() {
+        let s = hlasm(
+            "         MACRO\n         BUMP &R\n         GBLA &COUNT\n&COUNT   SETA &COUNT+1\n         AHI &R,1\n         MEND\nMAIN CSECT\n         BUMP 2\n         COPY REGS\nSECOND RSECT\n         ENTRY ALT,OTHER\n         END MAIN\n",
+        );
+        assert_eq!(s.name.as_deref(), Some("MAIN"));
+        assert_eq!(s.aliases, ["SECOND", "ALT", "OTHER"]);
+        assert_eq!(s.refs.len(), 1);
+        assert_eq!(s.refs[0].target, "REGS");
+    }
+
+    #[test]
+    fn hlasm_operation_aliases_do_not_create_false_macro_dependencies() {
+        let s = hlasm(
+            "LOAD OPSYN LGHI\nFETCH OPSYN COPY\nMAIN CSECT\n         LOAD 15,0\n         FETCH MEMBER\n         BR 14\n         END\n",
+        );
+        assert_eq!(s.name.as_deref(), Some("MAIN"));
+        assert_eq!(s.refs.len(), 1);
+        assert_eq!(s.refs[0].target, "MEMBER");
+    }
 
     #[test]
     fn psb_and_csd() {

@@ -102,6 +102,8 @@ pub struct StepCtx<'a> {
     pub env: &'a mut Env,
     pub dds: Vec<Dd>,
     pub parm: String,
+    pub job_name: String,
+    pub step_name: String,
     /// Prefix of the spool files of this step.
     spool_prefix: PathBuf,
 }
@@ -980,7 +982,17 @@ pub(crate) fn run_program(
         }
         return run_pli(ctx, module, libs, job, step);
     }
-    let module = zeus_cobol::load_module(&path).map_err(|_| Outcome::Abend("S806".into()))?;
+    let data = std::fs::read(&path).map_err(|_| Outcome::Abend("S806".into()))?;
+    let asm = if zeus_cobol::hlasm::is_module(&data) {
+        Some(zeus_cobol::hlasm::load_module(&data).map_err(|_| Outcome::Abend("S806".into()))?)
+    } else {
+        None
+    };
+    let module = if asm.is_none() {
+        Some(zeus_cobol::load_module_bytes(&data).map_err(|_| Outcome::Abend("S806".into()))?)
+    } else {
+        None
+    };
     // embedded SQL runs on the Db2 server named by ZEUS_DB2
     let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
     let mut m = cobol_factory(ctx, libs, job, step, db2.clone())();
@@ -1009,7 +1021,10 @@ pub(crate) fn run_program(
         m.set_main_args(addrs.iter().map(|&a| Some(a)).collect());
         zeus_ims::runtime::start_batch(sched, addrs);
     }
-    let r = m.run_main(module);
+    let r = match asm {
+        Some(module) => m.run_hlasm_main(module).map_err(zeus_cobol::vm::RunError),
+        None => m.run_main(module.expect("COBOL module")),
+    };
     linker.finish();
     // the IMS unit of work: committed at the normal end of the program
     let r = match (batch, r) {
@@ -1205,6 +1220,8 @@ fn run_steps(r: &mut Runner, job: &Job) -> Result<Vec<StepResult>, String> {
             .collect();
         let job_name = r.job_name.clone();
         let mut ctx = StepCtx {
+            job_name: job_name.clone(),
+            step_name: step.name.clone(),
             env: r.env,
             dds,
             parm: step.exec.get("PARM").map(parm_text).unwrap_or_default(),
