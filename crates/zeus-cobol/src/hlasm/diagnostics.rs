@@ -95,6 +95,8 @@ impl Diagnostic {
 /// is false when parsing, expansion or assembly stopped or could not be trusted.
 #[derive(Debug, Serialize, Deserialize)]
 pub struct AssemblyReport {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub listing: Option<super::AssemblyListing>,
     pub module: Option<Module>,
     pub diagnostics: Vec<Diagnostic>,
     pub complete: bool,
@@ -120,19 +122,65 @@ pub fn compile_report_with_options(
     options: &super::AssemblyOptions,
 ) -> AssemblyReport {
     let mut report = AssemblyReport {
+        listing: options
+            .collect_listing
+            .then(super::AssemblyListing::default),
         module: None,
         diagnostics: vec![],
         complete: false,
     };
-    let result = super::source::statements(path, options, false, &mut report.diagnostics)
-        .and_then(|input| macros::expand(input, dirs, &mut report.diagnostics, options))
-        .and_then(assemble::compile_statements);
+    let timer = std::time::Instant::now();
+    let mut effective = options.clone();
+    let mut process_statements = Vec::new();
+    let mut calls = Vec::new();
+    let mut sources = Vec::new();
+    let mut copies = Vec::new();
+    let result = super::source::statements(
+        path,
+        options,
+        false,
+        &mut report.diagnostics,
+        Some(&mut sources),
+    )
+    .and_then(|input| {
+        super::options::validate(options)?;
+        let input = super::options::apply_process(
+            input,
+            &mut effective,
+            &mut report.diagnostics,
+            &mut process_statements,
+        );
+        macros::expand(
+            input,
+            dirs,
+            &mut report.diagnostics,
+            &effective,
+            &mut calls,
+            &mut sources,
+            &mut copies,
+        )
+    })
+    .and_then(|lines| {
+        assemble::compile_statements(lines, report.listing.as_mut(), &mut report.diagnostics)
+    });
+    if let Some(listing) = &mut report.listing {
+        listing.elapsed_micros = timer.elapsed().as_micros().min(u128::from(u64::MAX)) as u64;
+        listing.optable = effective.optable;
+        listing.macrocase = effective.macrocase;
+        listing.pcontrol = effective.pcontrol;
+        listing.process_statements = process_statements;
+        listing.macro_calls = calls;
+        listing.copy_calls = copies;
+        listing.source_files = sources;
+    }
     match result {
         Ok(module) => {
-            report.complete = !report
-                .diagnostics
-                .iter()
-                .any(|d| d.category == "UNRESOLVED_OPERATION");
+            report.complete = !report.diagnostics.iter().any(|d| {
+                matches!(
+                    d.category.as_str(),
+                    "UNRESOLVED_OPERATION" | "UNSUPPORTED_OPTION"
+                )
+            });
             if report.return_code() < 8 && report.complete {
                 report.module = Some(module);
             }

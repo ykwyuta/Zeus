@@ -1,16 +1,17 @@
 zas - Compile, link and run the application HLASM subset
 
 USAGE
-  zas compile [-I DIR]... [--sysparm TEXT] [-o MODULE.zo] SOURCE.asm
+  zas compile [-I DIR]... [--sysparm TEXT] [--output-format zeus|obj|goff] [-o FILE] SOURCE.asm
   zas check [-I DIR]... [--sysparm TEXT] SOURCE.asm
-  zas link [-L DIR]... -o MODULE.zo OBJECT.zo...
+  zas link [-L DIR]... [--output-format zeus|obj|goff] -o FILE OBJECT...
   zas run [-L DIR]... [--parm TEXT] MODULE.zo
   zas --help | zas --version
 
 DESCRIPTION
-  Compile application assembler source to a Zeus instruction module. This
-  is not an IBM object deck and is not native S/390 machine code. The module
-  runs through the Zeus instruction engine in the caller's shared storage.
+  Compile application assembler source to a Zeus instruction module by default.
+  Select --output-format obj or goff for supported IBM architectural instructions
+  in fixed 80-byte object records. All run through the Zeus instruction engine in
+  the caller's shared storage. No host-CPU native code is generated.
   Supports integer, character and packed-decimal application routines,
   including CardDemo COBDATFT and MVSWAIT. IMS DBD/PSB and
   BMS definitions use zims and zbms instead of this executable assembler.
@@ -19,6 +20,11 @@ OPTIONS
   -I DIR       COPY and macro search directory; repeatable. The directory
                containing the referring source is also searched.
   -o FILE      Output module (default SOURCE with extension .zo).
+  --output-format zeus|obj|goff
+               compile/link: choose Zeus JSON (default), IBM OBJ card images,
+               or GOFF architecture-level-1 fixed 80-byte physical records.
+               Without -o, compile uses .zo, .obj or .goff respectively. An
+               extension alone does not select the format. See output limits.
   -L DIR       Object/load library for strong external references; repeatable.
   --parm TEXT  EXEC-style main argument: halfword length followed by EBCDIC.
   --sysparm TEXT
@@ -37,6 +43,71 @@ OPTIONS
                UTF-8 source accepts a BOM. EBCDIC records must be complete;
                malformed SO/SI sequences are errors. Column positions count
                original EBCDIC bytes, including SO/SI and DBCS byte pairs.
+  --pcontrol OPTIONS
+               compile/check: lock comma-separated PRINT options for the
+               entire assembly: ON/OFF, GEN/NOGEN, DATA/NODATA, MCALL/NOMCALL,
+               MSOURCE/NOMSOURCE, UHEAD/NOUHEAD. Source PRINT and PUSH/POP
+               cannot change locked options. Unspecified options still follow
+               source controls. NOPCONTROL (or an empty value) honors PRINT.
+               This CLI rejects conflicting pairs and invalid option names.
+               OFF suppresses expanded text; JSON/xref/original source remain
+               available. Invocation options override ordinary initial *PROCESS options;
+               *PROCESS OVERRIDE(...) takes priority over invocation options.
+  --compat OPTIONS
+               compile/check: select MACROCASE or NOMACROCASE (MC/NOMC).
+               The default preserves case. Invocation and initial *PROCESS
+               COMPAT/CPAT follow ordinary/OVERRIDE precedence. ACONTROL
+               can change this initial setting later; it is not a PRINT lock.
+               Other COMPAT suboptions are diagnosed; conflicting pairs on
+               this command line are rejected.
+  --optable PROFILE
+               compile/check: select UNI or ZEUS, optionally followed by
+               ,NOLIST. Both select the implemented union of instructions.
+               Older architecture profiles and opcode-table LIST are diagnosed.
+               The default is ZEUS. This option uses *PROCESS precedence.
+  --listing FILE
+               compile/check: write an expanded source listing with final
+               offsets, storage lengths, member file/line locations, and
+               initialized data bytes. PRINT ON/OFF, GEN/NOGEN, DATA/NODATA,
+               MCALL, MSOURCE, UHEAD, NOPRINT and PUSH/POP PRINT control text.
+               TITLE, SPACE, EJECT and CEJECT control 60-line body pages;
+               UHEAD uses resolved USINGs. JSON retains all expanded rows.
+               Macro calls include empty/nested/trailing invocations in order,
+               with their entry PRINT state. Expanded rows retain both caller
+               and macro-definition file/line locations. JSON includes the
+               complete call sequence even when text output is suppressed.
+               Open-code model statements retain variable-bearing original
+               text alongside each expansion, including loop iterations.
+               NOGEN shows the model and at most eight generated DC bytes.
+               Literal pools include final offsets, initialized bytes and
+               original literal operands at LTORG or the implicit end pool.
+               JSON and cross-references retain every literal's references
+               and pool location; text observes the pool's PRINT settings.
+               Instruction slots are Zeus decoded
+               templates; no IBM instruction bytes are implied.
+  --xref FILE  compile/check: write symbols, values, lengths, sections and
+               definition/reference locations in expanded source.
+  --source-listing FILE
+               compile/check: write all decoded physical input records with
+               file names and line numbers, including comments, blank lines,
+               continuations, sequence columns and complete macro definitions.
+               COPY and automatically loaded macro members are captured when
+               actually read; repeated reads remain separate snapshots. PRINT
+               does not suppress this explicit original-source archive. Records
+               after END remain in the archive. UTF-8 BOM/newline conventions
+               and EBCDIC SO/SI bytes are not reproduced as raw bytes.
+  --listing-json FILE
+               compile/check: write structured listing and symbol information
+               for tools, including source_files with decoded original records,
+               encoding/format/library metadata, original column counts, and
+               nonidentity Unicode-to-byte positions for EBCDIC DBCS. Input
+               records remain available after a later parse/assembly failure.
+               This is Zeus JSON, not IBM ADATA. The same data can
+               be collected through AssemblyOptions.collect_listing.
+  --adata FILE compile/check: write the ADATA analysis subset. Requires
+               --adata-ut UINT64 (raw ADATA UT, not Unix time). Optional
+               --adata-ccsid UINT16 and --adata-rdw select encoding/framing.
+               See ADATA ANALYSIS OUTPUT for record families and limits.
   --diagnostics FILE
                compile/check: write JSON with diagnostics (file, line,
                operation, severity, category, message), complete, and the
@@ -52,17 +123,46 @@ LINKAGE
   an unchanged incoming R1 list retains its known argument count and original
   terminator convention. Known COBOL/PL/I signatures also supply fixed counts.
   Other lists require a high-bit terminator (up to 4096 entries).
+  LINKX/XCTLX accept PLIST4=YES or PLIST8=YES (mutually exclusive).
+  Their default is eight-byte pointers in AMODE 64, four-byte otherwise.
+  AMODE64OK=YES is required for an AMODE 64 target. VL=1 is invalid for
+  eight-byte lists, which use a known count and have no end marker. LINK
+  requires AMODE 24/31; use LINKX in AMODE 64. An inherited list's physical
+  width must match PLIST4/PLIST8, including EXEC PARM's four-byte list.
   LINK can call HLASM, COBOL, registered host programs, and PL/I through the
   run unit's configured linker. XCTL transfers control and returns its
   target's result directly to the previous caller. R15 receives the result.
+  The existing LE services CEE3ABD, CEEDAYS, CEEGMT, CEELOCT, CEEDATM,
+  CEEDATE, CEESECS, CEENCOD, CEEDCOD, CEEHDLR, CEEHDLU, CEESGL and CEEGQDT
+  are callable through LINK and LOAD entry dispatch.
+  They require four-byte argument lists and checked parameter areas below
+  2 GiB; an AMODE 64 caller can select PLIST4=YES on LINKX. Date/picture
+  inputs use halfword-prefixed strings; formatting output occupies 80 bytes,
+  and optional feedback areas occupy 12 bytes.
+  CEENCOD takes c1,c2,case,severity,control,facility,isi,token[,feedback].
+  The first five inputs are binary halfwords, facility is three EBCDIC bytes,
+  isi is a binary fullword, and token/feedback each occupy 12 bytes.
+  Cases 1/2 and severity 0..4 are supported. A non-alphanumeric facility
+  returns warning 404 while constructing the token; invalid case, control,
+  severity or user-facility prefix returns an error and preserves token.
+  Omitted feedback on a severe constructor error uses the default U4038
+  termination. Synchronous OS-linkage handler registration/signaling is
+  described under LE CONDITION SERVICES. Full resume-cursor/exception integration
+  and entry/exit macro families remain pending.
   Direct execute/execute_with_storage APIs have no module-service host;
   use Machine for programs that issue LINK or XCTL. Unsupported macro forms
   and keywords are errors; IBM macro source is not embedded.
   Place NAME.zo or member NAME in the caller's load library. COBOL CALL and
   PL/I external calls pass addresses in the same run-unit storage. R1 points
-  to fullword argument addresses; the final address has its high bit set.
-  R13 points to a caller save area, R14 is the return address, R15 the entry
-  address and return code. Argument changes affect the caller directly.
+  to fullword argument addresses in AMODE 24/31 (last pointer marked), or
+  doubleword addresses in AMODE 64 (no marker). EXEC PARM retains a marked
+  four-byte list even for an AMODE 64 main program. R13 points to a 72-byte
+  caller save area in AMODE 24/31 or a 144-byte F4SA area in AMODE 64;
+  STMG 14,12,8(13) saves full registers. R14 is the return address;
+  R15 is the entry address and return code. BASSM/BSM and SAM24/31/64
+  support mode switching. GETMAIN returns a complete pointer in AMODE 64;
+  supervisor service parameter addresses must remain below 2 GiB.
+  Argument changes affect the caller directly.
   Use compatible EBCDIC/big-endian layouts and PL/I OPTIONS(ASM) as needed.
   Module static storage persists for the run unit; CANCEL restores its initial
   bytes. Per-call argument lists and save areas are reclaimed on return/error.
@@ -209,7 +309,7 @@ LINKING
   operands. NOLOAD classes also support PART(name), PRIORITY(0..2147483647)
   and FILL(0..255); continuations specify PART. Parts merge by maximum size
   and alignment, ordered by descending priority. Initialized PART binding,
-  arbitrary GOFF attributes and IBM object interchange remain unsupported.
+  arbitrary GOFF attributes and complete IBM object interchange remain unsupported.
   Floating constants and literal-type compatibility modes remain unsupported.
   Set R15 explicitly when the callee expects its entry address there; BRASL
   only sets its specified link register. The binder computes relative
@@ -224,7 +324,8 @@ LINKING
   composite instruction relocations use format 3 so older readers reject them.
   Composite address relocations use format 4 and retain their image-origin
   coefficient after binding, so reloading and relinking recompute the value.
-  Formats 1 through 9 remain readable. Images without composite address
+  Formats 1 through 10 remain readable. Format 10 carries addressing-mode
+  metadata and extended LINKX/XCTLX controls. Images without composite address
   relocations or pending instruction fixups use format 1.
   Fullword A constants accept linear expressions such as A(TABLE+LIMIT-START),
   A(LIMIT-START), A(TABLE+TABLE) and A(-TABLE), directly or through EQU aliases.
@@ -242,7 +343,8 @@ SUPPORTED LANGUAGE
   CSECT/RSECT and DSECT reopening, LOCTR, START 0, EQU with forward references,
   USING with multiple base registers, labeled and dependent USING, DROP by
   register or label, ENTRY aliases, END, COPY and literal pools.
-  AMODE 31/ANY/ANY31 executes with the Zeus caller's 31-bit linkage.
+  AMODE 24/31/64 and ANY/ANY31/ANY64 select source entry addressing.
+  Entries in classes inherit the owning control section mode.
   RMODE 24 enforces loading below 16 MiB; RMODE ANY permits 31-bit origins.
   LOCTR segments follow definition order without implicit alignment. A named
   LOCTR resumes its owning section; a CSECT resumes its last active counter.
@@ -303,7 +405,8 @@ MACRO SYSTEM SYMBOLS AND FUNCTIONS
   &SYSJOB/&SYSSTEP use (NOJOB)/(NOSTEP) when no job context is supplied.
   &SYSOPT_CODEPAGE and &SYSCODEPAGE identify the active CCSID. DBCS reflects
   mixed source/data code pages; RENT and XOBJECT flags are 0.
-  OPTABLE/CURR_OPTABLE identify the ZEUS table.
+  OPTABLE identifies the initial UNI/ZEUS selection; CURR_OPTABLE follows
+  ACONTROL OPTABLE and PUSH/POP ACONTROL.
   SYSLIST counts positional operands (including omitted ones), excludes
   keyword operands, and returns the invocation label at index 0. SYSMAC(0)
   is the current macro, increasing indices walk callers to OPEN CODE.
@@ -341,8 +444,27 @@ SUPPORTED INSTRUCTIONS
   0..boundary-2, boundary a power of two in 4..4096. The label denotes the
   halfword-aligned start of padding. PUSH/POP save independent USING, PRINT
   and ACONTROL stacks, with combined classes and optional NOPRINT. PRINT
-  flags are retained, but a traditional listing is not emitted. The supported
-  ACONTROL table selection is OPTABLE(ZEUS); additional controls are diagnosed.
+  flags control --listing text, which uses Zeus formatting.
+  ACONTROL supports AFPR (initially enabled), NOAFPR and OPTABLE(UNI|ZEUS),
+  with optional NOLIST inside OPTABLE. Initial *PROCESS statements support
+  PCONTROL(...), NOPCONTROL, OPTABLE(...) (OP abbreviation) and
+  COMPAT(MACROCASE/NOMACROCASE) (CPAT with MC/NOMC abbreviations).
+  Up to ten *PROCESS statements must precede other records except ICTL;
+  COPY and macro-library occurrences are comments. Continuation is invalid.
+  OVERRIDE(...) must enclose the complete option list. Conflicting options
+  at one precedence level use the last value and issue severity-4 warnings.
+  Unsupported or forbidden *PROCESS options produce explicit diagnostics.
+  NOAFPR restricts floating operands to FPR 0,2,4,6 and extended pairs to 0 or
+  4. GPR operands, base/index registers and masks keep their own restrictions.
+  State is captured per expanded statement, including macro/COPY output;
+  PUSH/POP ACONTROL restores AFPR and the selected table together.
+  ACONTROL COMPAT(MACROCASE) uppercases unquoted macro operand values;
+  COMPAT(NOMACROCASE) preserves case (the initial setting). CPAT(MC/NOMC)
+  are abbreviations. Fully apostrophe-enclosed operands preserve case;
+  C'characters' is unquoted for this option and is converted in full.
+  Keyword values and SYSLIST use the selected behavior, while listings keep
+  original invocation text. PUSH/POP ACONTROL also restores this setting.
+  Other COMPAT suboptions and other controls are diagnosed.
   CNOP boundaries above 8 use module format 5 with an alignment requirement;
   the binder and loader preserve it. Formats 1..4 default to 8-byte alignment.
   Format 6 preserves RSECT protection ranges and RMODE 24 through linking.
@@ -354,7 +476,9 @@ SUPPORTED INSTRUCTIONS
   Supported fields include SS lengths, immediates, masks and register fields.
   Relative targets use the template origin; link addresses use the EX/EXRL
   continuation. Nested EXECUTE, unrepresented opcode changes, writes outside
-  the second byte and arbitrary data as machine code are explicitly rejected.
+  the second byte and arbitrary source data as machine code are rejected.
+  Imported IBM text ranges instead decode architectural instruction bytes at
+  fetch time, including the temporary EX overlay and self-modified bytes.
   MVCL/CLCL use even register pairs and 24-bit lengths with a padding byte.
   MVCLE/CLCLE use 32-bit lengths and address-derived padding; CC=3 permits
   resumption after at most 4096 bytes. MVST/CLST/SRST use the ending byte in
@@ -384,11 +508,12 @@ SUPPORTED INSTRUCTIONS
     Targets are measured from the current instruction in signed halfwords:
     BRC/BRAS/BRCT/BRCTG and J aliases use 16 bits; the other forms use
     32 bits. For example, J *+8 skips eight bytes from its own address.
-    BRAS/BRASL save the next instruction address with the AMODE 31 bit
-    set in the low word, retaining the upper word. BRCT uses the low word,
+    BRAS/BRASL save the mode-tagged next instruction address; AMODE 64
+    writes the full register, AMODE 24/31 retains the upper word. BRCT uses the low word,
     BRCTG the full register, and BRCTH the high word; each decrements with
-    wraparound and branches if nonzero. LARL loads a 31-bit address,
-    preserves the upper word, and does not access the referenced storage.
+    wraparound and branches if nonzero. LARL loads an address according to
+    the current AMODE, preserves the upper word in AMODE 24/31, and does
+    not access the referenced storage.
     All these operations preserve CC. Internal relative references survive
     module linking and relocation. Absolute numeric targets remain unsupported.
   Other count branches: BCTR/BCTGR R1,R2; BCTG R1,D2(X2,B2).
@@ -468,7 +593,8 @@ SUPPORTED INSTRUCTIONS
   Registers retain all 64 bits; legacy instructions update the low word.
   Wide memory operations and RSY shifts accept signed 20-bit displacements.
   USING prefers a nonnegative displacement before a nearer negative one.
-  Addressing and cross-language argument lists remain AMODE 31. FD constants support
+  Address generation follows AMODE 24/31/64; high addresses never alias
+  low storage in AMODE 64. FD constants support
   signed decimal integers, lists, duplication and explicit byte lengths.
   Logical: N/O/X/NR/OR/XR, NI/OI/XI/TM.
   Character: MVC/MVI/CLI/CLC/XC/NC/OC/MVN/MVZ/TR.
@@ -533,7 +659,7 @@ ADDITIONAL SCALAR INSTRUCTIONS
   mask, preserving CC. E/Z/NE/NZ/H/P/NH/NP/L/M/NL/NM/O/NO suffixes supply masks.
 
 MODULE AND BASIC SERVICES
-  LOAD EP=NAME or EPLOC=address returns a 31-bit entry pointer in R0, a length
+  LOAD EP=NAME or EPLOC=address returns an AMODE-tagged entry in R0, a length
   in doublewords in R1, and RC 0 in R15. DELETE releases one LOAD responsibility;
   RC 4 means no matching responsibility remains. HLASM entry aliases share an
   image count. Active assembler images are released after their last return;
@@ -585,12 +711,147 @@ RECORD INPUT AND OUTPUT
   accepts a closed DCB; buffers have already been reclaimed by CLOSE.
   Run-unit/step teardown closes the files and reports final output errors.
 
+FLOATING-POINT SOURCE AND EXECUTION
+  DC/DS accept E/EH, D/DH, L/LH/LQ hexadecimal, EB/DB/LB binary,
+  and ED/DD/LD decimal floating-point constants. Conversion uses integer
+  arithmetic, including extended precision, decimal DPD, nominal lists,
+  expression lengths, duplication and packed bit lengths. LQ requests
+  quadword alignment. HFP supports scale and exponent modifiers; BFP/DFP
+  accept exponent modifiers. Explicit lengths remove implicit alignment.
+  HFP rounding suffixes require a type extension; BFP uses R1/R4/R5/R6/R7,
+  and DFP uses R8..R15. Special values use quoted nominal syntax such as
+  EB'(SNAN),(QNAN),(NAN),-(INF)' and DD'(MAX),(MIN),(DMIN)'.
+  Signed zero is retained for EH/DH/LH, BFP and DFP. Legacy E/D/L zeros are
+  positive. Not all assembler conversion warning behavior is implemented yet.
+
+  The engine has sixteen 64-bit FPRs, shared across LINK and loaded entries,
+  and an FPC with IEEE masks, sticky flags, DXC and rounding controls.
+  Short writes preserve the low FPR half. Extended operands use pairs
+  0/2, 1/3, 4/6, 5/7, 8/10, 9/11, 12/14 or 13/15.
+  LE/LD, STE/STD, LER/LDR/LXR provide bit-preserving transfers.
+  LFPC/STFPC, SFPC/EFPC, SRNM/SRNMB/SRNMT manage FP controls.
+  LPDFR/LNDFR/LCDFR change signs without changing CC or signaling NaNs;
+  LDGR/LGDR copy complete 64-bit patterns between FPRs and GPRs.
+
+  BFP: AEBR/ADBR/AXBR, SEBR/SDBR/SXBR, MEEBR/MDBR/MXBR,
+  MDEBR/MXDBR, DEBR/DDBR/DXBR, CEBR/CDBR/CXBR, KEBR/KDBR/KXBR;
+  AEB/ADB, SEB/SDB, MEEB/MDB/MDEB, DEB/DDB, CEB/CDB, KEB/KDB;
+  LPEBR/LPDBR/LPXBR, LNEBR/LNDBR/LNXBR, LCEBR/LCDBR/LCXBR,
+  LTEBR/LTDBR/LTXBR, LZER/LZDR/LZXR; LDEBR/LXDBR/LXEBR,
+  LEDBR/LDXBR/LEXBR; SQEBR/SQDBR/SQXBR and SQEB/SQDB.
+  MAEBR/MADBR/MSEBR/MSDBR and MAEB/MADB/MSEB/MSDB keep their
+  intermediate product exact and round only the final sum or difference.
+  FIEBR/FIDBR/FIXBR round to floating-point integers with explicit M3;
+  their A forms and LEDBRA/LDXBRA/LEXBRA add M4 inexact suppression.
+  These forms retain signed zero and support preparation rounding.
+  DIEBR/DIDBR R1,R3,R2,M4 produce an integer quotient in R3 and remainder
+  in R1, using three distinct FPRs. M4 selects final-quotient rounding;
+  the FPC controls remainder rounding. CC distinguishes final/partial results
+  and scaled quotient overflow. Tiny partial remainders do not underflow;
+  final underflow traps complete with a scaled remainder. Invalid-operation
+  traps suppress both outputs. NaN, infinity and signed zero are supported.
+  Finite arithmetic, division, square root and rounding use exact integers.
+  Invalid/divide-by-zero traps suppress the destination. Inexact traps
+  complete it. Overflow/underflow traps store architecture-scaled results.
+
+  HFP: AER/ADR/AXR, SER/SDR/SXR, AUR/AWR/SUR/SWR, CER/CDR/CXR,
+  MER/MDER/MDR/MXR/MXDR/MEER, DER/DDR/DXR, LPER/LPDR/LPXR,
+  LNER/LNDR/LNXR, LCER/LCDR/LCXR, LTER/LTDR/LTXR,
+  LRER/LEDR, LRDR/LDXR and LEXR; HER/HDR divide by two; SQER/SQDR/SQXR
+  and SQE/SQD compute normalized, rounded square roots. Negative nonzero
+  square roots report an HFP exception; zero fractions produce true zero.
+  AE/AD, SE/SD, AU/AW, SU/SW,
+  CE/CD, ME/MDE/MD/MXD/MEE, DE/DD. Add/subtract retain one hexadecimal
+  guard digit. Default exponent underflow produces true zero; exponent
+  overflow and division by zero report exceptions. SPM/IPM set/extract CC and
+  program masks. Underflow mask 2 and significance mask 1 complete the HFP
+  result before an exception. Fixed/decimal overflow masks are 8/4.
+  FIER/FIDR/FIXR truncate to normalized floating-point integers; LDER/LXDR/
+  LXER and LDE/LXD/LXE lengthen while preserving specified characteristics
+  and zero signs. MAER/MADR/MSER/MSDR and MAE/MAD/MSE/MSD retain an exact
+  product and sum before a single final truncation. MAYR/MAYHR/MAYLR,
+  MYR/MYHR/MYLR and their memory forms MAY/MAYH/MAYL/MY/MYH/MYL produce
+  unnormalized full/high/low results with wrapped characteristics, including
+  zeros, and do not recognize range exceptions.
+
+  Integer conversions: CEFBR/CDFBR/CXFBR and CEGBR/CDGBR/CXGBR
+  convert signed 32/64-bit integers to BFP; their A variants accept explicit
+  rounding and inexact-suppression masks. CELFBR/CDLFBR/CXLFBR and
+  CELGBR/CDLGBR/CXLGBR convert unsigned integers. CFEBR/CFDBR/CFXBR,
+  CGEBR/CGDBR/CGXBR (and A variants), CLFEBR/CLFDBR/CLFXBR,
+  CLGEBR/CLGDBR/CLGXBR convert BFP to signed/unsigned integers.
+  CEFR/CDFR/CXFR, CEGR/CDGR/CXGR, CFER/CFDR/CFXR and CGER/CGDR/CGXR
+  provide signed HFP conversions. A 32-bit result retains the high GPR half.
+
+  DFP: ADTR/AXTR, SDTR/SXTR, MDTR/MXTR, DDTR/DXTR operate on
+  three FPR operands. Their A variants add a fourth rounding/quantum-control
+  operand. CDTR/CXTR and KDTR/KXTR compare; LTDTR/LTXTR load/test.
+  Arithmetic preserves preferred quantum when representable, canonicalizes
+  DPD, propagates NaNs and recognizes IEEE and quantum exceptions.
+  LDETR/LXDTR lengthen; LEDTR/LDXTR round with explicit rounding and
+  exception-suppression controls. Range traps produce source-width scaled
+  results with target precision and scaled preferred quantum.
+  CDFTR/CXFTR and CDGTR/CXGTR (including A variants on 64-bit forms)
+  convert signed integers; CDLFTR/CXLFTR and CDLGTR/CXLGTR convert unsigned
+  integers. CFDTR/CFXTR, CGDTR/CGXTR (including A variants), CLFDTR/CLFXTR
+  and CLGDTR/CLGXTR convert back. 32-bit and unsigned forms use explicit
+  rounding/inexact masks. All DFP rounding modes apply, including decimal
+  preparation rounding. FIDTR/FIXTR round to floating-point integers;
+  QADTR/QAXTR quantize and RRDTR/RRXTR round to requested significance.
+  EEDTR/EEXTR extract biased exponents; ESDTR/ESXTR extract significance;
+  IEDTR/IEXTR insert biased exponents without IEEE exceptions, including
+  infinity/NaN encodings. CDSTR/CXSTR/CDUTR/CXUTR and CSDTR/CSXTR/CUDTR/
+  CUXTR convert packed significands in complete GPRs or even/odd GPR pairs.
+  CDPT/CXPT and CPDT/CPXT convert packed memory fields; CDZT/CXZT and
+  CZDT/CZXT convert zoned fields. Lengths are 1..9/18 bytes for packed and
+  1..16/34 for zoned long/extended operands. Output conversion ignores the
+  exponent, reports lost nonzero digits through CC 3 and the decimal-overflow
+  program mask, and supports plus-sign and force-positive-zero controls.
+  Zoned output selects EBCDIC or ASCII zones. Register packed conversions
+  leave CC unchanged; none of these conversions recognizes IEEE exceptions.
+
+  THDER/THDR and TBEDR/TBDR convert between BFP and HFP with source-sign CC
+  reporting; range conditions and NaNs do not update IEEE flags. CPSDR
+  copies a sign between arbitrary FP representations without changing CC.
+  TCEB/TCDB/TCXB and TDCET/TDCDT/TDCXT test all sign/class combinations;
+  TDGET/TDGDT/TDGXT test DFP safety groups. Their effective addresses supply
+  12-bit masks and do not access storage. CEDTR/CEXTR compare biased
+  exponents without signaling NaNs. SLDT/SLXT/SRDT/SRXT shift significands
+  by the low six effective-address bits, retaining the source quantum/sign
+  and canonicalizing special encodings without IEEE exceptions.
+  PFPO performs all 54 HFP/BFP/DFP cross-radix conversions. Place its function
+  code in the low word of GR0: 0x01ttsscc, where tt is the target format,
+  ss the source format, and cc the controls. Format codes are 00/01/02 for
+  short/long/extended HFP, 05/06/07 for BFP, and 08/09/0A for DFP. Source
+  data is in FPR4 (and FPR6 for extended), and results use FPR0/FPR2.
+  For example, GR0=0x01050908 converts decimal64 to binary32, nearest-even.
+  GR0 bit 31 (0x80000000 in the low word) requests a validity test, returning
+  CC 0 or 3 without changing floating-point state. Normal execution returns
+  CC 0, nontrap exceptions CC 1, and alternate range-trap action CC 2.
+  GR1's low word returns zero normally or the signed scaling exponent after
+  a range trap; its high word is retained. IEEE invalid traps suppress the
+  result and GR1, while range/inexact/quantum traps complete the operation.
+  Control bits 80/40 suppress inexact/select alternate range-trap action;
+  20/10 select HFP overflow/underflow reporting, or DFP quantum permission/
+  preferred quantum one. BFP targets require these two bits to be zero.
+  Rounding selectors are 0=current DFP, 1=current BFP, 8=nearest-even,
+  9=toward zero, A=toward positive, B=toward negative, C=nearest-away,
+  D=nearest-toward-zero, E=away, F=prepare. Selectors 2..7 are invalid.
+
+  BFP constants which cannot be represented exactly produce severity-4
+  FLOAT_CONVERSION warnings with source positions; range warnings distinguish
+  values above the largest finite or below the smallest nonzero magnitude.
+  A BFP scale modifier is ignored with a warning. Warnings preserve the
+  assembled module and appear on stderr, in --diagnostics, and in listings.
+  Specialized floating-point families and further diagnostic compatibility
+  remain under development.
+
 LIMITATIONS
   This is not complete HLASM or z/Architecture compatibility. Unimplemented
   areas include remaining integer/floating/vector/privileged instructions,
-  AMODE 64 linkage, IBM object linking, cross-language object linking,
+  LE/XPLINK linkage and condition handling, IBM object linking, cross-language object linking,
   literal pools in DSECTs, additional option profiles,
-  external SETAF/SETCF functions, AREAD/AINSERT and full diagnostic/listing output,
+  external SETAF/SETCF functions, AREAD/AINSERT and remaining diagnostic/listing output,
   arbitrary IBM macros, z/OS services and IBM object-deck output.
   Unknown operations fail compilation. Execution checks storage accesses
   and limits instructions per invocation to 1,000,000.
@@ -603,6 +864,7 @@ EXAMPLES
   zas check -I app/maclib app/asm/COBDATFT.asm
   zas link -L loadlib -o linked.zo main.zo sub.zo
   zas run --parm NIGHTLY loadlib/MAIN.zo
+  zas check --listing main.lst --xref main.xref --listing-json main.json main.asm
   zjob --loadlib loadlib submit job.jcl
 
 EXIT STATUS
@@ -610,3 +872,262 @@ EXIT STATUS
   warning may return 1..7 while emitting a valid module. link/help return 0
   on success; run returns R15 (low byte). Compiler/runtime failures return
   12 unless an explicit MNOTE supplies a higher severity.
+
+
+IBM OBJECT INPUT (INITIAL SUPPORT)
+  Commands which load assembler modules also accept fixed 80-byte IBM OBJ
+  card images and GOFF (fixed 80-byte or RDW-framed variable records).
+  Use zas run file.obj or file.goff, or include them in zas link inputs.
+  Runtime and binder libraries search .obj, .goff, .zo and extensionless members.
+  ESD/TXT/RLD/END records provide sections, entries, weak/strong references,
+  signed and compressed A/V relocation, deferred lengths and concatenated
+  modules. Imported bytes execute in the shared run-unit storage and can be
+  called from COBOL, PL/I and JCL. Module format 11 retains architectural
+  text ranges alongside source instruction metadata in a linked Zeus image.
+  GOFF supports HDR/ESD/TXT/RLD/LEN/END, continuation names/data, class
+  alignment, fill bytes, NOLOAD metadata, repeated text encoding, deferred
+  lengths, named/internal entries, compressed signed address relocations,
+  and mode-sensitive V constants. Mode-sensitive targets are resolved at link
+  time and tagged for AMODE 24/31/64 at the actual load origin.
+  GOFF external relative-immediate references support one additive external
+  label per signed 16/32-bit field. Fetched addends use halfword units;
+  store actions replace them. Linking checks halfword alignment and signed
+  displacement range. Module format 12 preserves these fixups across linking,
+  library discovery, serialization and changes of load origin.
+  The machine decoder includes basic RR/RX/RS/SI/SS/RI/RIL, RXY memory, and
+  RRE/RRF/RRD integer/floating-point register forms.
+  This remains an initial subset. Unsupported machine opcodes fail when
+  executed. XSD, common/part/pseudo-register allocation,
+  additional GOFF relocation forms, complete attributes and opcode coverage,
+  IBM-produced cross-language object conventions, and full object output remain
+  pending. Source listings still show Zeus instruction slots, not IBM bytes.
+
+OBJ OUTPUT
+  zas compile --output-format obj -o add.obj add.asm
+  zas link --output-format obj -L lib -o combined.obj main.zo helper.obj
+  zas run combined.obj
+
+  The object_bytes(Module) Rust API and compile/link emit ESD, TXT, RLD and
+  END records with EBCDIC names, binary fields and blank reserved bytes.
+  Output is deterministic. The current writer flattens the image into one
+  doubleword-aligned control section; additional exports become LD entries.
+  Strong/weak external references become ER/WX entries, including unused
+  EXTRN/WXTRN declarations. Names must fit 1..8 representable graphic bytes.
+  Internal/external signed relocation terms support 1..8-byte address fields.
+  TXT records hold up to 56 bytes; RLD records group full eight-byte items.
+  AMODE 24/31/64, RMODE 24/31 and an entirely read-only image are retained.
+
+  Source instructions are encoded as IBM architectural bytes, independently
+  of Zeus execution templates. Supported forms include basic RR/RX integer
+  and HFP operations; shifts, STM/LM, byte immediates; character and packed
+  decimal SS operations; RI/RIL immediates and local relative branches; common
+  RRE 64-bit register operations and RXY loads/stores/arithmetic. Existing
+  imported architectural text is retained. The source runtime's writable
+  scratch tail is retained, so a source RSECT alone is still a partially
+  read-only image and is currently rejected.
+
+  Unsupported encodings report source file/line and operation. Runtime macro
+  services, external relative instructions before linking, long names, mixed
+  entry modes, partially read-only images, alignment above eight, extended
+  section bindings, DCBs and mode-sensitive/relative-immediate object fixups
+  are rejected. Full scalar encoding and multiple-section output
+  and IBM binder interoperability verification remain pending. Encoding is
+  completed before writing, so encoding failures preserve an existing output.
+  Listings and diagnostic JSON still describe the Zeus source module.
+
+GOFF OUTPUT
+  zas compile --output-format goff -o program.goff program.asm
+  zas link --output-format goff -o combined.goff first.goff second.goff
+  zas link --output-format goff -o mixed.goff caller.goff helper.zo
+  zas run combined.goff
+
+  The goff_bytes(Module) Rust API and compile/link emit architecture-level-1
+  HDR/ESD/TXT/RLD/END records. Continuations preserve long EBCDIC names and
+  text/relocation data. END counts logical records, including HDR and END,
+  independently of physical continuation cards. Reserved fields are zero.
+  External names accept 1..32767 representable CCSID-37 bytes in X'41'..X'FE'.
+  Class names retain case; names that differ only by case remain distinct.
+  The source syntax still applies its own ordinary-symbol length limits.
+
+  The writer emits loadable byte-stream elements while retaining image offsets.
+  Uniform source images normally use B_TEXT. Source or OBJ images without
+  named class metadata can split into ordered Z_ translator classes at
+  read-only/executable boundaries. Names include a stable module fingerprint
+  and ordinal to distinguish fragments of different sections. This supports source RSECT code plus its
+  writable scratch tail, separate writable data, and imported non-executable
+  holes. Existing named concatenating elements retain class names, per-element
+  protection and alignment. Class order must reproduce the original placement;
+  zero-filled, unprotected/non-executable alignment gaps can be implicit.
+  Source/data appended after named elements can use generated trailing
+  elements, provided their class order also preserves the original offsets.
+  Fragment ordinals have matching ASCII/EBCDIC order.
+  AMODE 24/31/64 labels, RMODE 24/31 and module alignment 8/16/4096 are
+  supported; later elements can use byte/halfword/fullword alignment. Source
+  code uses the same architectural encodings as OBJ output. Listings and
+  diagnostic JSON continue to describe the Zeus source module.
+
+  Signed local/external 1..8-byte address relocations, weak references and
+  mode-sensitive 4/8-byte entry pointers are emitted. A known target AMODE
+  requires an exported label of that mode; a tagged initializer that would
+  wrap a field shorter than eight bytes is diagnosed. External RI references
+  support one additive external label per signed 16/32-bit halfword field.
+  Source BRAS/BRASL and other supported relative forms can refer to an external
+  symbol before linking. Addends must be halfword-aligned and fit the field.
+  Resolved relative displacements become architectural constant bytes.
+
+  LD, TXT, RLD P-pointers and END use the owning element and its local offset;
+  the linear expressions retain their original image-relative addresses.
+  Instructions and relocation fields cannot cross element boundaries.
+  Named elements with mixed protection/executability, unmapped interior source/class
+  gaps, nonzero or protected implicit alignment gaps, class order that would move bytes,
+  zero-length elements, unresolved section quantities/PSECTs, DCBs, XPLINK and
+  remaining unsupported encodings are diagnosed. Main and section entries
+  must use the default AMODE; other modes require exported labels.
+  Complete multi-element/binder metadata,
+  structured/NOLOAD output, deferred LEN output and IBM binder round-trip
+  validation remain pending. Failed encoding preserves an existing output file.
+  No host-CPU native code is generated.
+
+P3 ADDITIONAL FLOATING AND OBJECT FORMS
+  BFP memory lengthening LDEB/LXDB/LXEB and long-to-extended multiplication
+  MXDB/MXDBR use exact integer arithmetic, preserve NaN payload/sign and zero
+  signs on conversion, and validate extended destination register pairs.
+  Imported machine text also supports floating RXE/RXF/RSL-b memory, class/
+  group tests, DFP shifts and packed/zoned conversions. RSY-a/b and SIY forms
+  include LMG/STMG, 64-bit shifts/rotates, long-displacement masks, byte
+  immediates, conditional memory and compare-swap/load-and-update operations.
+  These architectural interpreters do not generate host-CPU native code.
+
+ADATA USER INFORMATION (INITIAL RECORD SUPPORT)
+  ADATA value1,value2,value3,value4,'text' accepts four optional signed 32-bit
+  decimal self-defining terms and up to 255 encoded bytes of quoted text.
+  Empty fields default to zero; doubled apostrophes represent one apostrophe.
+  A label must be a sequence symbol. Syntax and byte limits are checked even
+  without listing collection. UTF-8 input uses CCSID 37 for ADATA text; fixed
+  EBCDIC input uses its selected CCSID. Unmappable characters are diagnosed.
+  Listing JSON includes user_data with values, text and expanded file/line.
+  The Rust UserData::record(CCSID) API produces one documented X'0070' ADATA
+  architecture-level-3, edition-1 record, with big-endian fields and a 12-byte
+  common header, without an RDW. An enclosing ADATA file must declare that
+  CCSID in its identification record. This individual-record API does not yet
+  produce the full assembly ADATA file or imply machine-instruction records.
+
+GOFF LENGTH RELOCATIONS
+  R-length references support element lengths (including deferred LEN values)
+  and the architecturally zero length of labels, using ordinary 1..8 byte
+  fields. Fetch/store, signed actions and compressed RLD values apply. These
+  lengths remain independent of translator origins and load addresses.
+  A store replaces previous expression and addressing-mode attributes.
+  Class/PART length and other non-address relocation families remain pending.
+
+RI HALFWORD IMMEDIATES
+  LHI loads a signed halfword into the low 32 bits; MHI multiplies those bits
+  modulo 2^32; CHI compares them as signed values. LHI/MHI preserve the
+  condition code, while CHI sets equal/low/high. Upper GPR halves are preserved.
+  These source and imported-object forms support EX register overlays. Source
+  halfword immediates require absolute expressions in -32768..32767, including
+  the existing AHI/LGHI/AGHI/CGHI/MGHI forms.
+
+RIL IMPORTED FORMS
+  Imported text supports LGFI/AGFI/CGFI signed fullword immediates, BRCTH's
+  high-half counter and EXRL's PC-relative EXECUTE target. Fullword source
+  immediates require absolute expressions in -2147483648..2147483647.
+
+ADATA ANALYSIS OUTPUT
+  zas check source.asm --adata source.adata --adata-ut 123456789
+  zas compile source.asm --adata source.adata --adata-ut 123456789 --adata-rdw
+
+  --adata FILE emits architecture-level-3 ADATA analysis records during compile
+  or check. --adata-ut UINT64 is required and supplies the raw eight-byte ADATA
+  Universal Time value. This is not a Unix timestamp. Automatic conversion of
+  the UT epoch is not implemented; supply the producer timestamp appropriate
+  for your consuming tool. Elapsed-time statistics vary between assemblies.
+  --adata-ccsid UINT16 selects character encoding (default: input EBCDIC CCSID,
+  or 37 for UTF-8 source). Unrepresentable text is an error. --adata-rdw adds a
+  four-byte big-endian variable-record descriptor to every physical record;
+  without it, records are concatenated using their 12-byte headers and lengths.
+
+  Current generated records: Compilation Unit Start/End (0002), Identification
+  (0001), Job Identification (0000), Output File (000A), ASMAOPT identity
+  (000B, empty when not configured), Options (0010, supported settings),
+  normalized image/external/entry ESD (0020), expanded Source Analysis (0030),
+  Source Error (0032), DC/DS operands (0034), location-dependent repeated DC
+  extensions (0035), independently encoded Machine Instruction (0036), ordinary
+  signed 1..8-byte RLD (0040), Symbol (0042), Symbol Cross Reference (0044),
+  General Register Cross Reference (0045), Library (0060), Macro Reference
+  (0062, including nested COPY and parent/member totals), User Data (0070), USING Map (0080), and Statistics (0090).
+  Cross references and DC operands can span continuation records. DC/DS includes
+  individual nominal lengths/values, bit offsets, repetition and type attributes;
+  zero-duplication and DS values have no initialized bytes. Ordinary constants in
+  DSECT are reported without allocating executable storage. DSECT address
+  nominals needing relocation layout are diagnosed. RLD distinguishes A and V.
+  General register references include USING/DROP and implicit pair partners;
+  floating register numbers are excluded. Unsupported reference roles and
+  full unexpanded macro/COPY fidelity still need extension.
+  The end count includes all physical records and both unit delimiters.
+  The product identity is ZEUS. The normalized SD uses Zeus image offsets.
+  Expanded source does not yet reproduce all unexpanded conditional/macro
+  definition records. Unavailable symbol/options/statistics fields are zero;
+  elapsed wall time is measured, while portable CPU/exit/buffer metrics are not.
+  Original-section ESD identities, complete binding attributes, every relocation
+  family and full IBM option/member-reference semantics remain incomplete.
+  ADATA therefore remains an analysis subset, not full IBM ADATA compatibility.
+  Machine records need an implemented architectural encoding; unresolved source
+  relative references and Zeus runtime services can prevent output. The whole
+  stream is encoded before FILE is written, preserving existing contents on
+  encoding failure. Public record transport APIs preserve all ADATA record types
+  and opaque payloads, continuation flags, editions and length byte order.
+
+LE CONDITION SERVICES
+  CEEHDLR(routine, token, fc) registers an OS AMODE 24/31 condition handler in
+  the calling language frame. routine addresses a four-byte loaded entry value;
+  token is copied as a four-byte value. Handlers receive condition(12), token(4),
+  result(4), new_condition(12), all by reference. CEEHDLU(routine, fc) removes
+  that frame's registration. Re-registering reports warning 256 and refreshes
+  its LIFO position; a missing unregister reports warning 252. Invalid entries
+  report severe condition 257. Frame return/error/STOP RUN removes registrations.
+  Native callback and PL/I activations use the same lifetime tracking.
+
+  CEESGL(condition, q_data, fc) invokes live registrations in LIFO order from
+  the youngest frame. Active handlers are skipped during nested signals. With
+  fc supplied, result 10 resumes after CEESGL; 20 percolates; 21 skips the rest
+  of that frame; 30/31 promote to the next handler/frame; 32 restarts at the
+  handle-cursor frame and 33 at the original resume-cursor frame; 60 returns the supplied
+  valid fix-up token in fc. Promoting to an equivalent condition (first eight
+  token bytes) percolates even for actions 32/33. Repeated promotion is bounded;
+  an endless cycle reports an error. An unhandled condition is returned in fc; without
+  fc, an unhandled severe condition ends with U4038. CEEGQDT(condition, q, fc)
+  retrieves the supplied qualifying-data value from the condition instance.
+  CEEDCOD(token,c1,c2,case,severity,control,facility,isi,fc) decomposes a token,
+  including the all-zero success token, and reports condition 102 for reserved
+  flags. Inputs are copied before outputs to permit aliasing.
+
+  These services are synchronous. They do not yet implement resume-cursor
+  movement, complete HLL/hardware exception translation,
+  T_I_U processing or XPLINK/64-bit handler descriptors. Unsupported actions
+  report an error. CEESGL/CEEGQDT instance data lives until the outermost
+  language invocation ends. Keep LOAD responsibility for a handler entry while
+  registered. A LOAD dispatch slot can designate a COBOL/PL/I/native routine;
+  HLASM instruction entries may also be referenced directly. Nested-routine
+  environment descriptors are not supported.
+
+FLOATING-POINT OBJECT OUTPUT
+  OBJ and GOFF output now encode supported HFP/BFP/DFP RR, RRE, RRF, RRD, RXE,
+  RXF and RSL-b forms, including conversions, fused operations, classification,
+  decimal packed/zoned operations, DIEBR/DIDBR and FPC controls. RSY/SIY forms
+  include multiple-register saves/loads, long-displacement masked/conditional/
+  atomic operations and byte immediates. Existing scalar execution tests also
+  run through architectural OBJ/GOFF encoding, loading and machine decoding.
+  This does not add host-CPU native HLASM generation or claim full instruction,
+  exception or IBM binder interoperability.
+
+SCALAR OBJECT OUTPUT EXTENSIONS
+  OBJ/GOFF additionally encode RI/RIL partial immediate insert/load/logical/test
+  operations, RIE-f rotate/select including zero/test controls, RIE-g conditional
+  halfword loads, RRF register logical/select/conditional forms, POPCNT masks,
+  FLOGR, carry/borrow and reverse/byte register forms. RXY output includes reverse,
+  short and logical loads/stores, extended arithmetic/logical forms and CVBY/CVDY.
+  LLC/LLH zero-extend into the low 32 bits while retaining the high 32 bits and CC.
+  Binary input retains the corresponding operand/control fields. These additions
+  do not cover all scalar architectural instructions; unimplemented encodings
+  produce an error before an existing output file is replaced.

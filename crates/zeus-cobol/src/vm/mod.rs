@@ -130,6 +130,7 @@ pub struct Machine {
     hlasm_call_depth: usize,
     hlasm_residency: assembler::Residency,
     hlasm_io: assembler_io::Files,
+    le_conditions: le::handlers::Conditions,
     /// State of FUNCTION RANDOM.
     random: u64,
     instances: Vec<Instance>,
@@ -209,6 +210,7 @@ impl crate::hlasm::Host for Machine {
             Ok(machine
                 .find_program(name)
                 .map(|index| machine.instances[index].code.using.len())
+                .or_else(|| le::parameter_count(name))
                 .or_else(|| {
                     machine
                         .linker
@@ -278,14 +280,12 @@ impl crate::hlasm::Host for Machine {
     }
     fn call(
         &mut self,
-        name: &str,
-        args: &[Option<usize>],
+        request: crate::hlasm::AssemblerCall<'_>,
         memory: &mut Vec<u8>,
         storage: &mut crate::hlasm::DynamicStorage,
-        terminated: bool,
     ) -> Result<i32, String> {
         self.with_hlasm_memory(memory, storage, |machine| {
-            machine.dispatch_assembler_target(name, args, terminated)
+            machine.dispatch_assembler_target(request)
         })
     }
 }
@@ -350,6 +350,7 @@ impl Machine {
             hlasm_call_depth: 0,
             hlasm_residency: assembler::Residency::default(),
             hlasm_io: assembler_io::Files::default(),
+            le_conditions: le::handlers::Conditions::default(),
             instances: Vec::new(),
             file_states: Vec::new(),
             externals: HashMap::new(),
@@ -406,8 +407,12 @@ impl Machine {
         for dir in self.search_dirs.clone() {
             for filename in [
                 format!("{key}.zo"),
+                format!("{key}.obj"),
+                format!("{key}.goff"),
                 key.clone(),
                 format!("{}.zo", key.to_ascii_lowercase()),
+                format!("{}.obj", key.to_ascii_lowercase()),
+                format!("{}.goff", key.to_ascii_lowercase()),
             ] {
                 let path = dir.join(filename);
                 let Ok(bytes) = std::fs::read(&path) else {
@@ -453,7 +458,17 @@ impl Machine {
         name: &str,
         args: &[Option<usize>],
     ) -> Option<Result<i32, String>> {
-        self.call_hlasm_mode(name, args, true, true)
+        self.call_hlasm_mode(
+            name,
+            args,
+            true,
+            true,
+            assembler::Invocation {
+                parameter_mode: None,
+                allow_64: true,
+                floating: None,
+            },
+        )
     }
 
     fn call_hlasm_mode(
@@ -462,6 +477,7 @@ impl Machine {
         args: &[Option<usize>],
         terminated: bool,
         pin: bool,
+        invocation: assembler::Invocation<'_>,
     ) -> Option<Result<i32, String>> {
         match self.load_hlasm(name) {
             Ok(false) => None,
@@ -471,6 +487,12 @@ impl Machine {
                     return Some(Err("HLASM nested call limit exceeded".into()));
                 }
                 let (module, base, entry) = self.hlasm[&name.to_ascii_uppercase()].clone();
+                if module.entry_mode(entry) == 64 && !invocation.allow_64 {
+                    let cleanup = self.discard_hlasm_if_unused(base);
+                    return Some(cleanup.and(Err(
+                        "LINKX/XCTLX requires AMODE64OK=YES for an AMODE 64 target".into(),
+                    )));
+                }
                 if pin {
                     self.hlasm_residency.pinned.insert(base);
                 }
@@ -478,6 +500,7 @@ impl Machine {
                 let mut memory = std::mem::take(&mut self.mem);
                 let mut storage = std::mem::take(&mut self.hlasm_storage);
                 self.hlasm_call_depth += 1;
+                let frame = self.enter_language_frame();
                 let result = crate::hlasm::execute_entry_with_host(
                     &module,
                     &mut memory,
@@ -487,8 +510,11 @@ impl Machine {
                     &mut storage,
                     self,
                     terminated,
+                    invocation.parameter_mode,
                     None,
+                    invocation.floating,
                 );
+                self.leave_language_frame(frame);
                 self.hlasm_call_depth -= 1;
                 self.mem = memory;
                 self.hlasm_storage = storage;
@@ -502,6 +528,7 @@ impl Machine {
     /// halfword-length-prefixed EXEC PARM, unless explicit arguments were set.
     pub fn run_hlasm_main(&mut self, module: crate::hlasm::Module) -> Result<i32, String> {
         let module = crate::hlasm::link_with_libraries(vec![module], &self.search_dirs)?;
+        let exec_parameters = self.main_args.is_none();
         let args = if let Some(args) = self.main_args.take() {
             args
         } else {
@@ -514,7 +541,17 @@ impl Machine {
         let name = module.name.clone();
         self.install_hlasm(&name, module)?;
         let result = self
-            .call_hlasm(&name, &args)
+            .call_hlasm_mode(
+                &name,
+                &args,
+                true,
+                true,
+                assembler::Invocation {
+                    parameter_mode: exec_parameters.then_some(31),
+                    allow_64: true,
+                    floating: None,
+                },
+            )
             .ok_or_else(|| "HLASM main not loaded".to_string())?;
         let result = match result {
             Err(error) if error == STOP_RUN => Ok(self.return_code),
@@ -648,19 +685,31 @@ impl Machine {
     ) -> Option<Result<i32, String>> {
         let name = name.to_ascii_uppercase();
         let addrs: Vec<_> = args.iter().map(|a| a.addr).collect();
+        if le::parameter_count(&name).is_some() {
+            return Some(self.le_service(&name, &addrs).map(|_| 0).map_err(|e| e.0));
+        }
         if let Some(result) = self.call_hlasm(&name, &addrs) {
             return Some(result);
         }
         if let Some(f) = self.natives_ref.get(&name).copied() {
-            return Some(f(&mut self.mem, args));
+            let frame = self.enter_language_frame();
+            let result = f(&mut self.mem, args);
+            self.leave_language_frame(frame);
+            return Some(result);
         }
         if let Some(f) = self.natives_mach.get(&name).copied() {
             let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
-            return Some(f(self, &addrs));
+            let frame = self.enter_language_frame();
+            let result = f(self, &addrs);
+            self.leave_language_frame(frame);
+            return Some(result);
         }
         let f = self.natives.get(&name).copied()?;
         let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
-        Some(f(&mut self.mem, &addrs))
+        let frame = self.enter_language_frame();
+        let result = f(&mut self.mem, &addrs);
+        self.leave_language_frame(frame);
+        Some(result)
     }
 
     /// Calls program `name`: a COBOL program of the run unit, else one
@@ -678,9 +727,11 @@ impl Machine {
             return Ok(None);
         };
         let _ = self.stdout.flush();
+        let frame = self.enter_language_frame();
         let me = std::mem::replace(self, Machine::placeholder());
         let (back, r) = l.call(&name.to_ascii_uppercase(), me, args);
         *self = back;
+        self.leave_language_frame(frame);
         r.transpose()
     }
 
@@ -962,10 +1013,7 @@ impl Machine {
             .trim()
             .to_ascii_uppercase();
         self.call_exception = false;
-        if matches!(
-            name.as_str(),
-            "CEE3ABD" | "CEEDAYS" | "CEEGMT" | "CEELOCT" | "CEEDATM" | "CEEDATE" | "CEESECS"
-        ) {
+        if le::parameter_count(&name).is_some() {
             let addrs = self.call_args(cur, args)?;
             self.le_service(&name, &addrs)?;
             return Ok(None);
@@ -980,14 +1028,20 @@ impl Machine {
             }
             if let Some(f) = self.natives_mach.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
-                let rc = f(self, &addrs).map_err(RunError)?;
+                let frame = self.enter_language_frame();
+                let result = f(self, &addrs);
+                self.leave_language_frame(frame);
+                let rc = result.map_err(RunError)?;
                 self.return_code = rc;
                 self.store_rc(cur);
                 return Ok(None);
             }
             if let Some(f) = self.natives.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
-                self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
+                let frame = self.enter_language_frame();
+                let result = f(&mut self.mem, &addrs);
+                self.leave_language_frame(frame);
+                self.return_code = result.map_err(RunError)?;
                 self.store_rc(cur);
                 return Ok(None);
             }
@@ -1003,9 +1057,11 @@ impl Machine {
                     .collect();
                 let _ = self.stdout.flush();
                 // the run unit's storage (this machine) is lent to the callee
+                let frame = self.enter_language_frame();
                 let me = std::mem::replace(self, Machine::placeholder());
                 let (back, r) = l.call(&name, me, &refs);
                 *self = back;
+                self.leave_language_frame(frame);
                 if let Some(r) = r {
                     let end = r.map_err(RunError)?;
                     self.return_code = end.rc;
@@ -1059,17 +1115,24 @@ impl Machine {
             pc: 0,
             called,
         };
+        let frame = self.enter_language_frame();
+        let result = self.run_loop(&mut s);
+        self.leave_language_frame(frame);
+        result
+    }
+
+    fn run_loop(&mut self, s: &mut RunState) -> RResult<Exit> {
         loop {
             // the program's machine code, when it has some
             if let Some(n) = self.native.clone()
-                && let Some(r) = n.run(self, &mut s)
+                && let Some(r) = n.run(self, s)
             {
                 if let Some(e) = r? {
                     return Ok(e);
                 }
                 continue;
             }
-            if let Some(e) = self.exec_step(&mut s)? {
+            if let Some(e) = self.exec_step(s)? {
                 return Ok(e);
             }
         }
@@ -1311,6 +1374,7 @@ impl Machine {
                 if self.instances[cur].code.initial {
                     self.close_program_files(cur);
                 }
+                self.le_conditions.frames.pop();
                 let f = s.stack.pop().unwrap();
                 s.cur = f.inst;
                 s.pc = f.pc;
@@ -1365,6 +1429,7 @@ impl Machine {
                     if s.stack.len() > 1000 {
                         return err("CALL nesting too deep");
                     }
+                    self.enter_language_frame();
                     s.cur = callee;
                     s.pc = 0;
                 }

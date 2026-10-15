@@ -11,6 +11,9 @@ repository.workspace = true
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-decimal = { path = "../zeus-decimal" }
 
+[target.'cfg(windows)'.dependencies]
+atomicwrites = "0.4.4"
+
 [dev-dependencies]
 tempfile.workspace = true
 

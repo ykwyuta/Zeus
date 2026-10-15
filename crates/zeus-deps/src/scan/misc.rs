@@ -363,7 +363,7 @@ pub fn hlasm(text: &str) -> super::Scanned {
             r.attrs.push(("constant_type", reference.kind.to_string()));
             out.refs.push(r);
         }
-        if matches!(op.as_str(), "LINK" | "XCTL" | "LOAD") {
+        if matches!(op.as_str(), "LINK" | "LINKX" | "XCTL" | "XCTLX" | "LOAD") {
             if let Some((name, col)) = operand(raw, "EP") {
                 out.refs
                     .push(super::Ref::new("CALL", &name, line + 1, col).attr("service", &op));

@@ -117,8 +117,8 @@ literal scanner now skips balanced modifier expressions and distinguishes
 nominal quotes from self-defining/attribute quotes inside them. Unavailable,
 relocatable and layout-dependent values are diagnosed. Expression-valued byte
 lengths, duplication factors and bit fields have since been added for the
-supported types described in the P2 progress section. Floating constants remain
-separate work.
+supported types described in the P2 completion section. Floating constants
+and scalar floating-point execution are being added in the P3 work below.
 The embedded `zas --help` lists each implemented mnemonic.
 
 Relative instructions use checked signed 16/32-bit halfword displacements
@@ -712,6 +712,42 @@ Final validation on Windows:
   No IMS implementation was changed in this work; the full workspace test suite
   is therefore not recorded as passing.
 
+### P3 progress (in progress; not complete)
+
+The original four P3 rows remain the acceptance scope. No row is marked
+complete merely because some of its source forms now compile.
+
+| P3 row | Current state and remaining work |
+| --- | --- |
+| Language Environment and additional linkage | In progress: AMODE 24/31/64 source execution, 64-bit effective addresses and arguments, F4SA-sized save areas, BASSM/BSM/SAM mode switching, mixed-mode loaded entries and LINKX/XCTLX parameter-width controls. The existing seven LE date/time/abend services and CEENCOD condition-token construction support HLASM LINK and loaded-entry dispatch with checked AMODE 31 parameter lists. Synchronous OS AMODE 24/31 CEEHDLR/CEEHDLU/CEESGL/CEEGQDT and CEEDCOD now support dynamic handler lifetimes across HLASM, COBOL, PL/I and host callbacks. LE entry/exit variants, XPLINK, resume cursors, T_I_U and full HLL/hardware exception integration remain pending. |
+| Floating-point formats and instructions | In progress: exact integer-based HFP/BFP/DFP constants; architectural FPR/FPC state; HFP and BFP scalar arithmetic, BFP fused arithmetic/square root, HFP/BFP integer conversions, and DFP arithmetic/comparison and short/long/extended format conversion, signed/unsigned 32/64-bit integer conversion, floating-point integer rounding, quantum/significance extraction/insertion, QUANTIZE and REROUND; SPM/IPM and HFP underflow/significance masks. HFP halve and square root are implemented. HFP lengthening, integer rounding and fused/unnormalized families, BFP explicit rounding forms, register and memory packed/zoned DFP conversions, and basic HFP/BFP radix conversions are implemented. BFP/DFP classification, DFP groups, biased-exponent comparison and significand shifts are implemented. All 54 PFPO cross-radix functions, BFP conversion/ignored-scale warnings and DIEBR/DIDBR integer quotient/remainder are implemented. Specialized instructions, detailed exception edges and further diagnostic compatibility require additional implementation and validation. |
+| IBM object interoperability | In progress: basic OBJ/GOFF loading, architectural byte decoding on fetch, signed/compressed address and element-length relocation, single-external relative-immediate fixups, source/object linking and initial conventional OBJ/GOFF output with checked architectural source encodings, external RI emission and GOFF element placement/protection preservation. Architectural OBJ/GOFF bytes run through the shared interpreter from COBOL, PL/I and JCL. Full decoding/encoding, remaining record/relocation forms and GOFF attributes, binder controls, initialized PART binding and IBM-produced cross-language objects remain pending. Zeus source templates remain distinct from IBM bytes. |
+| Detailed assembler outputs and options | In progress: expanded source listings, initialized data bytes, final offsets/lengths, symbol definitions/references, macro-call provenance, resolved USING snapshots, text/JSON CLI output, PRINT state and stack, TITLE/SPACE/EJECT/CEJECT and UHEAD. Empty macro calls and macro-definition file/line provenance are included. Original physical records retain comments, blank/continuation/sequence records and full read macro definitions; literal-pool data and references, AFPR/NOAFPR, ACONTROL stack restoration and invocation PCONTROL locks are included. ADATA syntax, physical-record transport/RDW/continuations and a CLI analysis stream with identification, normalized SD, expanded source, instructions, diagnostics, symbols/xrefs, libraries and user information are available. Open-code model statements retain original text and per-iteration expansions, with NOGEN first-data handling. Initial *PROCESS PCONTROL/OPTABLE and source/invocation precedence are implemented. Complete ADATA record families/attributes and automatic UT epoch conversion, remaining conditional-assembly listing details and remaining ACONTROL/*PROCESS/options compatibility remain pending. |
+
+The floating-point increment introduces `num-bigint` and `num-traits` for exact
+integer arithmetic. Host `f32`/`f64` are used only as an independent finite-BFP
+test oracle, never to compute assembler constants or instruction results.
+Tests cover 32/64/128-bit binary and decimal encodings, short/long/extended
+HFP, all 1000 canonical DPD declets and all 1024 decoding patterns, signed zeros,
+rounding ties, extreme exponents, aliases and register halves, FPC flags/traps,
+scaled trap results, preferred quantum, loaded-entry FPR/FPC transfer and COBOL
+COMP-2 shared arguments. `hlasm_float` currently has 73 integration tests;
+additional internal tests exercise DPD and interrupting-result details.
+`hlasm_abi` covers 64-bit parameter/save layouts, EXEC PARM's four-byte list,
+mode switching, class-entry inheritance, wide implicit string operands,
+64-bit MVCLE partial lengths, supervisor pointer restrictions and mixed-mode
+LINKX calls. LINK and loaded-entry calls share FPRs, FPC and program masks.
+The mask/ABI/DFP-width checkpoint passed 50 library tests and 76 integration
+tests (35 floating-point, 16 ABI, 14 strings, 11 services), and workspace
+Clippy with warnings denied. The subsequent class-entry test is additional;
+these checkpoint counts are not a claim that all P3 acceptance tests pass.
+
+Source constants follow the published [HLASM Language Reference](https://publibfp.boulder.ibm.com/epubs/pdf/asmr1022.pdf),
+and floating-point instruction formats and arithmetic follow the
+[z/Architecture Principles of Operation](https://publibfp.boulder.ibm.com/epubs/pdf/a227832d.pdf).
+The implementation remains a source-decoded engine; host-CPU native generation
+for HLASM remains outside scope.
+
 Input controls follow the published [ICTL](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-ictl-instruction)
 and [ISEQ](https://www.ibm.com/docs/en/hla-and-tf/1.6?topic=statements-iseq-instruction)
 definitions; interlocked instructions follow the Principles of Operation,
@@ -801,3 +837,811 @@ P2 section quantities and annotations follow the published
 [DXD](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-dxd-instruction),
 [CATTR](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-cattr-instruction-zos-cms)
 and [XATTR](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=statements-xattr-instruction-zos-cms) descriptions.
+
+
+P3 scalar/output checkpoint (still in progress):
+
+- HFP halve/square root, DFP format/integer conversion, integer rounding,
+  QUANTIZE/REROUND and exponent/significance manipulation are covered by
+  `hlasm_float` (75 tests), with internal interrupt-result and DPD tests.
+- `hlasm_le` has four integration tests for LINK, LOAD/fixed arguments,
+  AMODE 64-to-31 parameter width, malformed areas and original ABEND codes.
+  The seven AWIs retain their documented AMODE 31 interface; see
+  [LE callable services](https://www.ibm.com/docs/en/zos/3.2.0?topic=guide-language-environment-callable-services).
+- `hlasm_listing` has eight tests for source/member locations, unchanged module
+  output, type/quoted-text filtering, CLI files, PRINT state/stack, macro
+  provenance, pages and resolved USING headers. The listing uses Zeus formatting;
+  its instruction slots are not IBM instruction bytes. JSON is not ADATA.
+- The later related-package regression checkpoint passed 537 tests with no
+  failures (one ignored corpus test), including LE/listing integration and
+  page controls. Subsequent scalar extensions passed 54 library tests,
+  73 floating-point tests and seven EXECUTE-template tests. These are
+  incremental checkpoints, not final P3 acceptance.
+
+GETMAIN's AMODE 64 successful pointer result and supervisor parameter bounds
+follow the public [assembler services reference](https://publibfp.boulder.ibm.com/epubs/pdf/iea2a2a0.pdf)
+and [addressing-mode restrictions](https://www.ibm.com/docs/en/zos/2.5.0?topic=us-addressing-mode-amode).
+
+
+The scalar conversion checkpoint additionally covers signed/unsigned register
+packed decimal, packed/zoned memory, sign-ignore and force-plus-zero controls,
+ASCII/EBCDIC zones, malformed digits, completed decimal-overflow stores,
+BFP explicit rounding/suppression, HFP/BFP conversion CC and unchanged IEEE
+flags, and maximum-finite overflow under preparation rounding. Source nominal
+exponents use unbounded integers before modifier cancellation and safe range
+reduction; coefficients and actual encoded precision remain exact.
+
+
+Classification/quantum-operation checkpoint:
+
+- TEST DATA CLASS covers every sign/class bit for all BFP/DFP widths. The
+  decimal normal/subnormal mask ordering follows its distinct architectural
+  bit assignments. Classification and group tests leave IEEE state unchanged.
+- DFP TEST DATA GROUP chooses the permitted safe-nonzero grouping for
+  subnormal values with a nonextreme exponent. Programs must not depend on
+  which of the two architecturally permitted groups a machine chooses.
+- Biased-exponent comparisons include infinities and signaling/quiet NaNs.
+  Digit shifts preserve quantum and sign, discard shifted-out digits and
+  clear reserved special-value fields. Wide mask/count values are reduced
+  before converting them to run-unit offsets, so ignored high bits do not
+  become spurious memory errors.
+- All 14 commands built, and the standalone embedded-help checker passed
+  60 invocations. The subsequent classification changes require a fresh
+  static/regression checkpoint. The later scalar regression passed 563 tests
+  with no failures (one ignored), before the PFPO and conversion-warning
+  increments below.
+
+
+PFPO/conversion-diagnostic checkpoint (still in progress):
+
+- PFPO implements all 54 cross-radix functions using exact ratios, with
+  implicit FPR4/FPR6 sources, FPR0/FPR2 targets, rounding selectors, validity
+  tests, sign/payload conversion, preferred quantum, and GR1 return codes.
+- Range traps deliver target-precision scaled values and signed exponents;
+  alternate action completes with CC 2. Inexact suppression does not remove
+  range DXC details or independent DFP quantum recognition. Invalid traps
+  suppress destination/GR1; inexact and quantum traps complete with the
+  documented exception priority. BFP tininess uses the precise input even
+  when rounding delivers the smallest normal value.
+- Nine internal PFPO tests cover function/control combinations, exception
+  state and independent exact/inexact scaling oracles. Integration tests
+  exercise all 54 functions with positive/negative exact values and signed
+  zeros through EX and serialized modules, plus explicit/current rounding.
+- BFP constants report severity-4 conversion warnings per nominal, including
+  inexact/range cases. Scale modifiers are ignored with a warning. Layout
+  retries and duplication factors do not multiply diagnostics; original
+  literal/member locations are retained. Uninitialized and zero-duplication
+  fields do not emit numerical rounding warnings. Warning modules remain
+  usable and diagnostics propagate to stderr, JSON and text listings.
+- PFPO follows the public Principles of Operation chapter 9, pages 9-35--9-47;
+  BFP conversion and scale warnings follow the Language Reference chapter 5,
+  pages 155--157. These are incremental validations, not P3 completion.
+
+
+Initial OBJ interoperability checkpoint (still in progress):
+
+- Module format 11 records imported architectural text ranges. The interpreter
+  fetches real instruction bytes at executed addresses, retaining interleaved
+  literals/data and self-modified instructions. Zeus source instructions can
+  share a linked image with imported text; EX decodes the temporary byte overlay.
+- Fixed 80-byte OBJ card images support ESD section/private/label/external/weak
+  definitions, TXT placement and overwrites, signed/compressed A/V RLD fields,
+  numeric/symbolic END entries, deferred lengths and multiple object modules.
+  Nonzero translator origins are removed before placement and relocation.
+- Synthetic tests cover OBJ serialization, internal/external/weak relocation,
+  source/object calls in both directions, self-modification, EX, invalid records
+  and shared COBOL arguments. A JCL integration test runs raw OBJ programs and
+  invokes them from COBOL and PL/I over multiple steps. Libraries accept .obj
+  in addition to Zeus .zo and extensionless members.
+- The decoder currently handles a basic RR/RX/RS/SI/SS/RI/RIL subset. It rejects
+  unsupported opcodes when fetched; accepting an OBJ container does not imply
+  all instructions or language-produced IBM objects can execute.
+- GOFF, XSD, common/pseudo-register allocation, Q/CXD and further relocation
+  forms, complete opcode coverage, object output and binder controls remain
+  pending. Format fields follow the public Program Management Advanced
+  Facilities Appendix A record diagrams, independently of IBM implementation.
+- The previous PFPO/diagnostic checkpoint passed 580 related-package tests,
+  zero failures and one ignored corpus test, plus workspace Clippy. The newer
+  object work requires a new broad regression/static checkpoint.
+
+
+Initial GOFF interoperability checkpoint (still in progress):
+
+- Fixed 80-byte and RDW-framed GOFF input reconstructs logical continuation
+  records without including padding. HDR/ESD/TXT/RLD/LEN/END validate sequence,
+  version, IDs/parents, counts, declared lengths and relocation bounds.
+- Loadable byte-stream elements retain class/alignment/fill/protection data;
+  TXT supports the documented repeat encoding, deferred lengths, nonzero
+  assembler element origins, and NOLOAD structured/unstructured metadata.
+- Signed and compressed address RLD items support internal elements/labels,
+  external and weak references, plus fetch/store semantics. Unsupported
+  mode-sensitive, offset/length/relative/long-displacement, conditional and
+  bit-field relocations are explicit errors, not silently ignored.
+- Nine GOFF integration tests cover fixed/RDW input, continuations, repeated
+  text, origins, entries, compressed relocation, source linking, malformed
+  input and standalone CLI loading/linking. A second JCL test runs raw GOFF
+  from COBOL, PL/I and direct EXEC programs across multiple steps, using .goff
+  library lookup. Fixtures are independently constructed from record fields.
+- The machine decoder additionally handles RXY long-displacement memory and
+  RRE/RRF/RRD register forms, including BFP/DFP and their distinct masks and
+  register positions. Eight machine tests cover 64-bit execution, both float
+  layouts, self-modification, EX and mixed source/object calls.
+- The earlier OBJ checkpoint passed 595 related-package tests, zero failures,
+  one ignored corpus test, and workspace Clippy. New GOFF changes require
+  the next broad/static checkpoint. This does not complete P3.
+
+GOFF field definitions additionally follow the published
+[Program Management Advanced Facilities V1R13](https://publib.boulder.ibm.com/epubs/pdf/iea2b2b1.pdf),
+GOFF record and relocation tables. No IBM implementation or macro source is used.
+
+
+GOFF addressing-mode/class checkpoint (still in progress):
+
+- Mode-sensitive V relocations retain explicit target-mode metadata. Linking
+  resolves external target modes, and loading applies the AMODE 24/31/64 tag
+  using the actual origin. Weak unresolved targets remain zero. Metadata is
+  validated for version, mode, bounds and overlap, including after serialization.
+- Tests execute BASSM from imported GOFF into source entries in all three
+  addressing modes and pull libraries from relocation expressions without
+  redundant external-name metadata.
+- Class contributions are grouped by class name, independently of the owning
+  SD name. Class names normalize to upper case; private and long section names
+  retain their distinct semantics. Byte-aligned text ranges can contain properly
+  aligned executed instructions. Empty elements remain linkable.
+- The prior GOFF regression passed 605 tests with no failures and one ignored
+  corpus test, plus workspace Clippy. Subsequent mode/class tests require the
+  next complete checkpoint. Offset/length/relative/bit-field/conditional
+  relocation and other original P3 work remain pending.
+
+
+Macro-listing provenance checkpoint (still in progress):
+
+- Listing JSON retains a complete invocation sequence with insertion positions,
+  depth, generated-statement counts, caller PRINT snapshots, and definition
+  prototype file/line. Empty, nested, suppressed and trailing calls are retained
+  independently of whether any expanded statement was generated.
+- Text walks calls and expanded rows in linear order. Call visibility uses the
+  caller's PRINT state, even when the first macro-body statement changes PRINT.
+  Empty calls do not claim the following unrelated data row's bytes.
+- Expanded rows retain original macro-body definition file/line alongside the
+  caller location. This metadata does not change macro context variables or the
+  module's executable representation. It is definition provenance, rather than
+  a complete original-source/comment/macro-definition listing.
+- Twelve listing tests cover these cases and JSON round trips; context and
+  conditional-attribute regressions pass. The prior full related-package
+  checkpoint (through GOFF mode/class changes) passed 612 tests, zero failures,
+  and one ignored corpus test. P3 remains incomplete.
+
+
+Original-source/literal/output checkpoint (still in progress):
+
+- `--source-listing FILE` exports the physical decoded input independently of
+  PRINT suppression in the expanded listing. JSON retains encoding, format,
+  member role, physical record lengths, and DBCS Unicode-to-byte columns.
+  Records are captured on the actual read, including comments, blank lines,
+  continuations, sequence fields, macro definitions and records after END.
+  Previously decoded input survives subsequent parse/expansion failures.
+- Listing literal pools include final bytes and offsets after relocation and
+  placement, pool statement and all expanded references. Reused literals share
+  an entry within a pool; later pools and location-dependent literals remain
+  distinct. Pool PRINT/DATA controls apply to text, while JSON/xref remain full.
+- Seventeen listing tests cover raw/expanded separation, member snapshots,
+  EBCDIC DBCS positions, failure/CLI/help behavior, literal reuse, implicit pools,
+  address literals and PRINT suppression. Listing collection leaves modules
+  unchanged. The full related-package regression and workspace Clippy passed
+  after these output additions; subsequent changes need a new checkpoint.
+
+Additional floating/machine/options checkpoint (still in progress):
+
+- BFP LDEB/LXDB/LXEB and MXDB/MXDBR now cover memory lengthening and exact
+  long-to-extended multiplication, with pair diagnostics and preserved special
+  values. Tests exercise a product containing a bit at 2^-104 and conversion
+  payloads which require precision beyond host double/extended arithmetic.
+- Imported RXE/RXF/RSL-b covers supported BFP/HFP memory arithmetic,
+  lengthening, fused/unnormalized operations, BFP/DFP classification, DFP shifts
+  and packed/zoned memory conversion with their distinct field layouts.
+- Imported RSY/SIY covers save/restore, shifts/rotates, byte immediates,
+  masked/conditional memory and atomic operations using signed 20-bit offsets.
+  Thirteen machine tests execute independently constructed byte sequences.
+- ACONTROL AFPR/NOAFPR is applied per expanded statement, with nested stack
+  restoration across COPY/macro expansion. FPR restrictions do not restrict
+  GPR or mask operands. Seventeen operand-position cases verify the distinction.
+  Defaults match the public Language Reference's AFPR-enabled initial state.
+- These are incremental P3 changes. LE entry/exit/XPLINK/condition integration,
+  remaining object/binder/relocation/decoder coverage, IBM ADATA and remaining
+  option compatibility are still required by the original acceptance scope.
+
+
+ADATA user-information checkpoint (still in progress):
+
+- ADATA source syntax validates four optional signed decimal fullwords, the
+  quoted string/escape syntax, sequence labels, representability and the
+  255-encoded-byte limit. COPY/macro expansion is reflected in listing JSON.
+- `UserData::record(CCSID)` encodes an individual X'0070' record with the
+  architecture-level-3, edition-1 common header and documented binary fields.
+  It does not produce the complete assembly ADATA stream; identification,
+  compilation-unit framing and the other original P3 ADATA record types remain
+  pending. No Zeus instruction-template bytes are presented as IBM bytes.
+- Five tests cover source validation with listing disabled/enabled, macro/COPY
+  provenance, independent binary field reads, signed limits, fixed-column
+  continuations, EBCDIC DBCS input and encoded lengths/unmappable characters.
+- Definitions follow the normative record/syntax tables in IBM's
+  [HLASM V1R6 Programmer's Guide](https://publibfp.boulder.ibm.com/epubs/pdf/asmp1022.pdf)
+  (common header and User-supplied Information X'0070') and
+  [ADATA instruction](https://www.ibm.com/docs/SSENW6_1.6.0/asma400/adata.html).
+  No IBM macro or implementation source is used.
+- The preceding full output/float/AFPR checkpoint passed 630 related-package
+  tests, zero failures and one ignored corpus test; workspace Clippy, all
+  command builds and 60 standalone help invocations across 14 commands passed.
+  Subsequent ADATA changes require another full checkpoint. P3 is incomplete.
+
+
+GOFF element-length checkpoint (still in progress):
+
+- R-length element/label relocations accept fetch/store, add/subtract,
+  compressed fields and ordinary widths 1..8. Deferred LEN values are used
+  after definition resolution, and translator/load origins are not added to
+  lengths. Label length is the architectural zero. Class/PART lengths remain
+  explicit unsupported cases, along with other pending relocation families.
+- Store semantics reset both prior expressions and mode-sensitive attributes.
+  Nineteen GOFF tests include length arithmetic, compression, rebasing,
+  serialization, deferred lengths and invalid referent/mode combinations.
+- The preceding ADATA checkpoint passed 635 related-package tests, zero
+  failures, one ignored corpus test, workspace Clippy, all command builds and
+  60 standalone help invocations. These new length changes require the next
+  broad checkpoint. The original P3 scope remains incomplete.
+
+
+RI immediate interoperability checkpoint (still in progress):
+
+- LHI/MHI/CHI are available in source and architectural imported text. Signed
+  halfword operands preserve GPR high halves; load/multiply preserve CC,
+  comparison sets signed ordering, and multiply does not signal fixed overflow.
+- Source halfword immediate expressions require absolute signed 16-bit values;
+  this also fixes previously accepted relocatable AHI/LGHI/AGHI/CGHI/MGHI
+  operands. Same-section absolute differences remain valid.
+- Sixteen machine integration tests now include EX register overlays, high
+  halves, multiplication wrapping under an enabled overflow mask, condition
+  codes, and signed/relocatable boundaries across all eight RI forms.
+- The preceding GOFF length checkpoint passed 638 related-package tests, zero
+  failures, one ignored corpus test, workspace Clippy, all command builds and
+  60 standalone help invocations. The new immediate changes need the next
+  broad checkpoint. No original P3 row is complete yet.
+
+
+RIL interoperability checkpoint (still in progress):
+
+- Architectural AGFI/CGFI, BRCTH and EXRL dispatch to the existing shared
+  integer/relative execution paths. An independent byte fixture combines signed
+  fullword immediates, a high-half counter loop with preserved low half, and
+  PC-relative EX with a temporary MVC length overlay.
+- Source LGFI/AGFI/CGFI operands require absolute signed fullwords, rejecting
+  silently truncated section references while accepting absolute differences.
+- The preceding RI checkpoint passed 641 related-package tests, zero failures,
+  one ignored corpus test, workspace Clippy, all command builds and 60 standalone
+  help invocations. Eighteen machine tests now cover the additional RIL behavior
+  and fullword source limits; this increment requires the next broad checkpoint.
+- Original P3 rows remain in progress. Remaining work includes LE entry/exit,
+  XPLINK and conditions; specialized floating/exception diagnostics; full
+  object/binder/relocation and machine coverage; complete ADATA and remaining
+  assembler option profiles. Host-native HLASM generation remains excluded.
+
+
+Latest verification checkpoint (P3 remains in progress):
+
+- After RIL and signed-immediate validation, the related-package suite passed
+  643 tests, zero failures, one ignored corpus test (68 test suites).
+- Workspace all-target Clippy with warnings denied, all workspace command
+  builds, formatting checks and 60 standalone help invocations across 14
+  commands passed. This is not a full-workspace test-success claim.
+- PROCESS requirements identified at that checkpoint (implemented below):
+  primary-input initial records (except ICTL), at most ten process statements,
+  no physical continuation, and scanning ends at unquoted whitespace. SYSPARM,
+  ADATA, LIST, GOFF and the other prohibited invocation-only options must not
+  be implemented as process overrides. PCONTROL locks applicable PRINT options;
+  it is more than an initial PRINT state. The normative option tables were
+  consulted; these behaviors are not implemented yet.
+
+
+Invocation PCONTROL checkpoint (still in progress):
+
+- `AssemblyOptions.pcontrol` and `zas --pcontrol OPTIONS` lock named PRINT
+  options throughout expansion. PUSH/POP PRINT and macro/COPY PRINT cannot
+  replace those options. Unspecified options continue to follow source state.
+- PCONTROL(OFF) suppresses the entire expanded-text section, including control
+  lines, while structured rows/calls, xref and original-source archives remain.
+  GEN/NOGEN, DATA/NODATA, MCALL, MSOURCE and UHEAD retain their independent
+  interactions. Initial UHEAD now matches the documented standard PRINT state.
+- Four tests cover all six locked settings, nested calls, stacks, complete
+  suppression, MSOURCE vs object-data display, JSON round trips, unchanged
+  executable modules, invalid profiles/API keys and CLI help-looking values.
+- The new CLI accepts canonical named options and rejects contradictory pairs;
+  At that checkpoint, *PROCESS scanning, source/invocation precedence and
+  duplicate-option warnings remained pending; the later PROCESS checkpoint below
+  implements those paths.
+- The preceding RIL checkpoint passed 643 related-package tests, zero failures,
+  one ignored corpus test, workspace Clippy, all command builds and standalone
+  help checks. This PCONTROL increment requires the next broad checkpoint.
+
+
+NOGEN first-object checkpoint (still in progress):
+
+- The first generated object statement is indexed independently of control,
+  zero-length and non-object directive prefixes. Macro NOGEN data display uses
+  the first DC's eight bytes, and stops at a first executable instruction even
+  though Zeus source templates have no architectural bytes to show. It never
+  borrows the bytes of a later unrelated DC or an empty macro's following row.
+- Selection is linear in expanded rows plus calls. Scope bounds preserve nested
+  and empty call behavior, and old listing JSON keeps its previous fallback.
+- Five PCONTROL and seventeen listing tests pass after this fix. The preceding
+  broad PCONTROL checkpoint passed 647 tests, zero failures, one ignored corpus
+  test; workspace Clippy, command builds and standalone help passed. The next
+  broad check will include the additional first-object test. P3 is not complete.
+
+
+Latest completed check (original P3 work remains pending): 648 related-package
+tests passed, zero failed, one ignored corpus test, across 69 suites. Workspace
+all-target Clippy with warnings denied, all command builds, formatting and 60
+standalone help invocations across 14 commands passed after the NOGEN fix.
+
+
+Initial PROCESS and instruction-table selection:
+
+- Primary input recognizes up to ten initial `*PROCESS` records after optional
+  ICTL, without expanding them into macro statement numbers. Library records
+  remain comments. Continuation and forbidden options receive diagnostics.
+- PCONTROL/NOPCONTROL and OPTABLE/OP support independent precedence:
+  OVERRIDE, invocation, ordinary PROCESS, defaults. Conflicting settings at one
+  level use the last value with severity-4 diagnostics; ignored invocation/source
+  conflicts are reported. Invalid invocation settings cannot be hidden by source.
+- `--optable UNI|ZEUS[,NOLIST]` and ACONTROL select the implemented union;
+  initial/current option macro symbols and ACONTROL stack restoration reflect
+  the selection. Older architecture-specific availability and table LIST output
+  still require implementation. This is not a claim of complete ISA coverage.
+- Listing JSON retains PROCESS locations/options and effective initial options.
+  These additions leave the original four P3 acceptance rows in progress.
+
+
+Additional P3 execution and output work:
+
+- BFP DIEBR/DIDBR use integer-ratio quotient/remainder computation, independent
+  final-quotient/current-FPC rounding, partial results, scaled quotient overflow,
+  NaN precedence and signed zero. Invalid traps suppress both destinations;
+  underflow/inexact traps complete them. Final tiny remainders and iterative
+  partial remainders have distinct underflow behavior. RRF-b architectural fetch
+  and EX opcode overlays preserve register and modifier fields. Implemented from
+  Principles of Operation, sections 19-28 through 19-31.
+- Open-code model statements retain original variable-bearing text separately
+  from every expansion, including repeated conditional-assembly loops. NOGEN
+  prints the model and the first eight generated DC bytes; ordinary escaped
+  ampersands do not mark a statement as a model. A literal pool can also be the
+  first object generated by a macro, without claiming a later DC's bytes.
+- Caller return mode and parameter-list mode are validated before acquiring
+  invocation storage. Repeated failures leave memory and allocation counts intact.
+- GOFF reference type 6 now supports one additive external label per signed
+  halfword/fullword field. The normalized expression retains byte displacement;
+  load initialization checks even alignment and signed range before encoding
+  halfword units. Fetch addends are signed; store clears earlier value and mode
+  attributes. Module format 12 prevents older readers from treating this as an
+  address constant. Forward/backward targets, serialization, repeated linking,
+  load origins and library discovery have synthetic execution tests.
+  Internal/multiple/subtractive referents remain diagnosed. This initial RI-con
+  implementation is based on the published
+  [RLD field definitions](https://www.ibm.com/docs/en/zos/2.5.0?topic=record-relocation-directory-data-item)
+  and [RI operand rules](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=instructions-ri-format),
+  without an IBM-produced object oracle. Broader binder/ABI interoperability
+  remains an original P3 acceptance requirement.
+- No original P3 row is complete yet: LE entry/exit/XPLINK/condition integration,
+  remaining floating-point semantics and families, object output and additional
+  binder relocations/attributes, full ADATA production and remaining assembler
+  options/diagnostic compatibility still require work.
+
+
+ACONTROL macro-operand compatibility:
+
+- COMPAT(MACROCASE/NOMACROCASE), with CPAT(MC/NOMC) abbreviations,
+  controls conversion of unquoted macro operand values before expansion.
+  Fully quoted operands retain case; unquoted character terms are converted
+  in full. Positional/keyword parameter values and SYSLIST agree. Defaults in
+  macro prototypes and original invocation text remain unchanged.
+- The initial behavior is NOMACROCASE. Independent PUSH/POP ACONTROL restores
+  the mode together with AFPR and OPTABLE, without changing PRINT state.
+  Other COMPAT suboptions are still explicitly diagnosed.
+- Behavior follows the public [COMPAT option description](https://www.ibm.com/docs/en/hla-and-tf/1.6.0?topic=options-compat)
+  and Programmer's Guide section COMPAT. Focused operations/macro tests pass.
+
+
+BFP modifier validation:
+
+- Executed RRF-e BFP rounding/conversion forms now reject reserved M3/M4
+  values before changing GPRs, FPRs, FPC or CC. Source parsing already rejected
+  these values; imported machine text and decoded module instructions now use
+  the same restriction. M4=4 remains valid inexact suppression. Synthetic raw
+  instruction bytes and direct state-preservation tests cover invalid modifiers.
+
+
+COMPAT invocation and PROCESS integration:
+
+- `--compat MACROCASE|NOMACROCASE` (MC/NOMC) initializes macro operand
+  compatibility. `*PROCESS COMPAT(...)` and CPAT(...) support the same modes,
+  with independent invocation/source/OVERRIDE precedence and conflict warnings.
+  ACONTROL remains able to change this initial option after assembly starts.
+- Listing JSON records the effective initial `macrocase` option. CLI argument
+  validation treats help-looking values as values; other commands reject this
+  compile/check-only option. Unsupported compatibility suboptions remain errors.
+
+
+Latest verification checkpoint (2026-10-15; original P3 rows still in progress):
+
+- Related packages zeus-cobol, zeus-pli, zeus-jcl, zeus-deps and zeus-native:
+  681 tests passed, zero failed, one corpus test ignored, across 70 suites.
+- Workspace all-target Clippy with warnings denied, workspace binary build,
+  formatting check and standalone embedded-help checks all pass. Standalone
+  help exercised 60 invocations across 14 commands.
+- A workspace all-target test run before the last COMPAT/BFP increments reached
+  816 passing tests, six ignored and five failing IMS TM tests. The failures
+  reproduce the existing Windows access-denied error while persisting the TM
+  queue; no IMS source was changed. This is not a claim that all workspace
+  tests or the original four P3 acceptance rows pass.
+
+
+LE condition-token construction:
+
+- CEENCOD is available from COBOL CALL and HLASM LINK/LOAD dispatch, using
+  shared argument addresses and the existing checked four-byte LE ABI.
+  Conditions preserve the two condition-ID halfwords and instance-information
+  fullword, with case/severity/control and EBCDIC facility fields encoded in
+  the 12-byte token. Case 1 and case 2 are supported.
+- Published feedback conditions 401/402/403/404/452 distinguish invalid fields
+  and the non-alphanumeric-facility warning. Severe errors preserve the token;
+  warning 404 constructs it. Feedback severity is represented correctly rather
+  than forcing every result to severity 3. Without feedback, an unhandled
+  severe constructor error follows the existing U4038 default action.
+- Common LE preflight validates all input/output ranges and output protection
+  before changes. Inputs are read before aliased output is written. Input
+  fields may reside in RSECT. Missing or invalid addresses do not partially
+  change outputs. Native and interpreted COBOL execute the same service.
+- The implementation follows the public
+  [CEENCOD interface and condition table](https://www.ibm.com/docs/en/zos/2.5.0?topic=services-ceencodconstruct-condition-token),
+  using original fixtures rather than IBM macros/copybooks/samples. Condition
+  handler registration, signaling/resumption, LE prolog/epilog and XPLINK
+  remain pending; constructing a token does not complete condition management.
+
+
+Latest CEENCOD verification checkpoint (2026-10-15):
+
+- Related five-package regression: 690 tests passed, zero failed and one
+  corpus test ignored, across 70 suites. Native and interpreted executable
+  coverage exercises the same constructed token bytes.
+- Workspace all-target Clippy with warnings denied, all workspace binaries,
+  formatting and 60 standalone help invocations across 14 commands pass.
+- Full workspace all-target tests: 830 passed, 5 failed and 6 ignored.
+  The only failing target remains zeus-ims/tests/tm.rs, reproducing the five
+  existing Windows access-denied failures during queue persistence. No IMS
+  implementation was changed. Original P3 acceptance remains incomplete.
+
+
+Conventional OBJ output (initial supported subset):
+
+- The public `object_bytes(Module)` API and `zas compile/link --output-format
+  obj` emit actual ESD/TXT/RLD/END card images. The default remains Zeus JSON;
+  compile defaults to `.obj` only when the output format is explicitly selected.
+  Complete encoding precedes file writes, preserving an existing file when
+  instruction/attribute validation fails. Embedded help documents this choice.
+- The writer uses one doubleword-aligned control section, LD exports, ER/WX
+  externals (including unused declarations), 56-byte text chunks and grouped
+  full RLD items. Signed local/external terms and 1..8-byte address fields
+  retain their behavior at different load origins and after external binding.
+  EBCDIC-blank ESD header ambiguity is avoided even in large dictionaries.
+- Source RR/RX integer and HFP, RS shifts/multiple-register transfers, SI byte
+  immediates, SS character/packed decimal, RI/RIL immediates/local relative
+  branches, common RRE 64-bit registers and RXY memory forms have independent
+  IBM architectural encodings. Zeus template bytes are never substituted for
+  missing encodings. Imported architectural text is retained, including bytes
+  that are data rather than executed instructions.
+- Uniform AMODE 24/31/64, RMODE 24/31 and fully read-only images are retained.
+  Unsupported instructions include a source location in the error. Long names,
+  mixed modes, partial RSECT protection, alignment above eight, extended
+  binding/DCB metadata and mode-sensitive/relative-immediate object fixups
+  require further output work and are rejected. The source runtime's extra
+  writable scratch tail is retained, so ordinary source RSECT modules are
+  partially protected and currently rejected by this single-section writer.
+- Tests cover exact independent record/opcode bytes, backward branches,
+  integer/string/packed/HFP/64-bit execution, negative RXY displacements,
+  internal and signed/weak external fixups, all eight field widths, nonzero
+  entry points, multiple text/RLD records, determinism, a 16,500-name external
+  dictionary, imported-text re-emission and failure preservation. Generated
+  objects are also tested through a ten-step JCL job with repeated direct,
+  COBOL and PL/I calls in the original shared storage.
+- The record layout follows Appendix A, figures 6 through 10 of the public
+  [Program Management Advanced Facilities reference](https://publib.boulder.ibm.com/epubs/pdf/iea2b220.pdf).
+  Fixtures and the implementation are original, without IBM macros or sample
+  listings. IBM-produced binder round trips have not been validated.
+- Full scalar encoding, multiple-control-section/GOFF output, remaining
+  binder/record attributes and the other original P3 rows remain unfinished.
+  This emits IBM architectural object bytes, not host-CPU native code.
+
+
+OBJ output verification checkpoint (2026-10-15):
+
+- Related five-package regression: 702 passed, zero failed, one corpus test
+  ignored across 71 suites. The eleven output tests cover the additional ESD
+  boundary and default-entry rejection cases; generated-object JCL integration
+  runs alongside the independent raw OBJ and GOFF fixtures.
+- Workspace all-target tests: 842 passed, 5 failed, 6 ignored across 101 suites.
+  The only failing target remains `zeus-ims --test tm`, with the same five
+  Windows queue-persistence access-denied failures. The final ESD boundary and
+  default-entry checks were additionally verified in the focused output suite.
+- Workspace all-target Clippy with warnings denied, all workspace binaries,
+  formatting and 60 standalone help invocations across 14 commands pass.
+  No IMS implementation or host-native HLASM generator was added or modified.
+  The original four P3 rows remain incomplete.
+
+
+GOFF output and case-sensitive class identity (initial supported subset):
+
+- `goff_bytes(Module)` and `zas compile/link --output-format goff` emit GOFF
+  architecture-level-1 HDR/ESD/TXT/RLD/END records in fixed 80-byte physical
+  records. The default output remains Zeus JSON. Explicit GOFF compile output
+  defaults to `.goff`; complete encoding precedes writes to preserve existing
+  files on encoding failure. Embedded help describes invocation and limits.
+- The encoder shares the independent architectural instruction encoder with
+  conventional OBJ. Long representable CCSID-37 names (up to 32767 bytes),
+  sequential ESDIDs, SD/ED/LD/ER relationships, continuation flags, reserved
+  zeros and logical END record counts are emitted. TXT and RLD data span
+  logical records and physical continuations without interpreting padding.
+  SD identifies the section and the corresponding LD carries its callable
+  addressing mode, following the published OBJ-to-GOFF mapping.
+- The current writer uses one complete loadable concatenating byte-stream
+  element, normally B_TEXT. A complete imported class retains its name;
+  contiguous contributions to the same class may be combined. Uniform
+  AMODE 24/31/64, additional exported label modes, RMODE 24/31, alignment
+  8/16/4096, fully read-only images and non-executable data are retained.
+  Source scratch storage is retained and may make source RSECT partial.
+- Ordinary signed local/external expressions retain 1..8-byte address fields
+  and weak-reference semantics. Mode-sensitive 4/8-byte pointers use LD/ER
+  referents and preserve their tags after linking and load-origin changes.
+  Known modes need an exported label of that mode. Tagged initializers that
+  wrap a field shorter than eight bytes are rejected rather than emitting a
+  value the current normalized loader would misinterpret.
+- Supported source relative instructions may refer to an external symbol
+  before linking. Single-additive-external RI fixups preserve signed 16/32-bit
+  halfword fields, positive/negative addends, forward/backward binding and
+  unresolved weak references. Already resolved PC-relative displacements are
+  materialized as invariant architectural bytes. Unrepresentable expressions,
+  odd addends and out-of-range initializer fields produce errors.
+- The GOFF reader now preserves case-sensitive class names, as required by
+  the public format. Differently cased names remain separate classes; this
+  corrects the earlier reader's unconditional uppercasing. Mixed-case class
+  identity also survives output/reloading.
+- Original fixtures verify independent record/opcode bytes; 170/240/32767-byte
+  names; large TXT and signed RLD dictionaries; all adcon widths; known and
+  external AMODE tags; weak/negative RI values; re-emission; non-executable
+  data and class case. A generated GOFF ten-step JCL test runs repeated direct,
+  COBOL and PL/I calls in shared run-unit storage alongside raw input fixtures.
+- Normative field and mapping references: Appendix C, tables 48-55, 63-67,
+  71 and 73 of the public
+  [Program Management Advanced Facilities reference](https://publib.boulder.ibm.com/epubs/pdf/iea2b2b1.pdf).
+  No IBM macros, source, copybooks or sample listings were used.
+- Partial protection/executability, separate classes or image gaps needing
+  multiple elements, unresolved section quantities/PSECTs/DCBs, XPLINK,
+  complete scalar encodings, structured/NOLOAD and deferred-length output,
+  remaining binder attributes and IBM-produced binder round trips remain
+  pending. Main/section entries currently require the default AMODE. The
+  original four P3 rows remain incomplete. Host-CPU native HLASM generation
+  remains out of scope.
+
+
+GOFF output verification checkpoint (2026-10-15):
+
+- Related five-package regression: 716 passed, zero failed, one corpus test
+  ignored across 72 suites. This includes the generated GOFF ten-step job
+  with direct, COBOL and PL/I calls and the independent raw input jobs.
+- Full workspace all-target tests: 856 passed, 5 failed, 6 ignored across
+  102 suites. Only `zeus-ims --test tm` failed, reproducing the same five
+  Windows queue-persistence access-denied errors. No IMS source was changed.
+- Workspace all-target Clippy with warnings denied, all workspace binaries,
+  formatting and 60 standalone help invocations across 14 commands pass.
+  The final class-metadata rejection checks were also verified in the
+  focused GOFF/OBJ input/output suites after the broader regression.
+- The original four P3 rows remain in progress; this checkpoint does not
+  claim complete GOFF/binder interoperability or complete LE/FP/ADATA support.
+
+
+GOFF multi-element output (in progress):
+
+- GOFF output now plans elements before assigning ESDIDs and writes each LD,
+  TXT, RLD position pointer and END relative to its owning element. Normalized
+  image-relative expressions retain their original meaning at different load
+  origins. Later-element RI fixups account for both the instruction position
+  and the element's position; mode-sensitive pointers use the same mapping.
+- Source/OBJ images without named element metadata split at read-only and
+  executable boundaries. This allows source RSECT code/protected constants,
+  separate writable CSECT data and the writable scratch tail to be emitted.
+  Non-executable bytes retain their contents and offsets. Adjacent fragments
+  with the same protection/executability are combined; byte-aligned later
+  elements avoid introducing padding that would change existing addresses.
+- Generated 16-character Z_ translator class names include a stable module-name
+  fingerprint and fragment ordinal, avoiding identical fragment class names
+  for differently named sections in the covered fixtures. Exported symbol
+  names remain unchanged; IBM binder validation remains pending.
+- Existing named concatenating classes and individual element boundaries may
+  be re-emitted with their names, protection, executability and alignment.
+  Case remains significant. Implicit alignment gaps are retained only when
+  their exact position follows from the next element's alignment and their
+  bytes are zero, writable and non-executable. Class order that would move
+  image bytes is rejected. Synthetic multi-element output can itself be
+  reloaded and re-emitted without losing its layout or protection.
+- Tests exercise writable data reached through a protected address constant,
+  every protected byte, runtime rejection of stores into RSECT data, later
+  element END and external RI fixups, AMODE 24/31/64 pointer tags, nonzero
+  non-executable holes, mixed-case classes with implicit padding, re-emission,
+  generated class-name separation, matching ASCII/EBCDIC ordinal collation
+  and boundary-crossing error paths. The
+  generated GOFF ten-step JCL job now uses real source RSECT modules for
+  repeated direct, COBOL and PL/I calls.
+- Instructions and fixup fields that cross elements, mixed attributes within
+  a pre-existing named element needing a further split, zero-length elements,
+  unowned interior/nonzero/protected alignment gaps and unmapped source/class
+  spans requiring reordering remain diagnosed. PSECT/quantity/DCB, structured/NOLOAD/deferred-LEN output,
+  complete binder/record attributes and IBM-produced binder round trips remain
+  pending, along with the other original P3 rows. No host-native HLASM
+  generation is introduced.
+
+
+- Mixed GOFF/Zeus-source links can now emit trailing source/data contributions
+  as new elements after existing named elements, when class collation preserves
+  their physical order. This includes trailing RSECT code, protected address
+  constants, writable data and alignment bytes. Re-emission preserves the same
+  ranges. CLI coverage links `caller.goff` with `helper.zo` into runnable GOFF;
+  a separate fixture follows a protected pointer to later writable data at
+  multiple load origins. Interior unowned spans and class reorderings remain
+  unsupported. Generated fragment ordinals use letters so both ASCII and
+  EBCDIC comparisons preserve element order across the 10th/26th fragments.
+
+
+GOFF multi-element verification checkpoint:
+
+- Related five-package regression: 725 passed, zero failed, one corpus test
+  ignored across 72 suites. GOFF output has 21 tests, including the mixed
+  source/RSECT link; the generated GOFF JCL job uses protected RSECT code
+  and writable scratch areas through repeated direct, COBOL and PL/I calls.
+- Full workspace all-target tests: 865 passed, 5 failed, 6 ignored across
+  102 suites. The only failing target remains `zeus-ims --test tm`, with the
+  same five Windows queue-persistence access-denied failures. No IMS source
+  was changed. This is not a claim that the full workspace passes.
+- Workspace all-target Clippy with warnings denied, all workspace binaries,
+  formatting and 60 standalone help invocations across 14 commands pass.
+- The original four P3 rows remain incomplete: remaining LE/condition/XPLINK,
+  floating-point conformance edges, binder/record metadata and complete ADATA
+  and option compatibility remain part of the acceptance scope.
+
+
+P3 combined implementation checkpoint (original acceptance scope retained):
+
+- LE: CEEHDLR/CEEHDLU own registrations in dynamic language frames. Newest
+  handlers run first, token values are copied, duplicate registrations refresh
+  their LIFO position with warning 256, missing removals return warning 252 and
+  invalid entries return condition 257. COBOL CALL/RETURN, HLASM LINK/loaded
+  entries, external runtime lends, host callbacks and PL/I activations track
+  lifetimes; normal return, error unwind and STOP RUN discard registrations.
+- CEESGL traverses live handlers and avoids reinvoking an active registration
+  for nested signals. OS 24/31 handlers receive four shared-storage arguments.
+  Actions 10,20,21,30,31,60 are implemented for explicit signalling with the
+  documented restrictions in `zas --help`. CEEGQDT retrieves per-condition
+  qualifying data; instance state is released at the outermost language return.
+  CEEDCOD decomposes both token cases and zero success tokens after complete
+  parameter/protection preflight. Invalid flags report 102. Inputs are copied
+  before outputs so aliasing does not corrupt unread fields.
+- Independent original tests cover HLASM LIFO/explicit removal, saved token
+  values, nested signals and q_data, local duplicate/removal diagnostics,
+  malformed arguments, HLASM child-frame cleanup, direct COBOL handlers via
+  LOAD dispatch and COBOL subprogram cleanup, and direct PL/I LE calls with
+  procedure-return cleanup. These are synchronous service subsets, not complete
+  language exception integration.
+- OBJ/GOFF output now independently encodes implemented floating RR/RRE/RRF/
+  RRD/RXE/RXF/RSL-b families: HFP/BFP/DFP arithmetic, fused/unnormalized forms,
+  conversions/rounding, classification, packed/zoned and digit operations,
+  DIEBR/DIDBR and FPC controls. RSY/SIY output covers long-displacement
+  multiple-register, shifts, masked/conditional/atomic and byte-immediate forms.
+  Successful scalar arithmetic fixtures now also traverse OBJ/GOFF output,
+  loader and architectural decoding and compare complete output data against
+  source execution. Independent opcode/layout expectations cover 26 forms.
+- ADATA physical-record transport preserves every record type (including future
+  opaque types), editions, continuations and common-header length byte order.
+  Optional RDWs and lengths/reserved flags/truncation/continuation chains are
+  checked. Output is bounded to 64 MiB. `zas compile/check --adata FILE
+  --adata-ut UINT64 [--adata-ccsid UINT16] [--adata-rdw]` produces one framed
+  analysis unit. UT is an explicit raw caller value, avoiding an unverified
+  conversion of its epoch. Character fields are encoded in the declared CCSID;
+  unrepresentable text fails before the destination is touched.
+- The generated subset includes 0002/0001/0000/000A/0020/0030/0032/0036/0042/
+  0044/0060/0070. End counts include both unit delimiters; source token spans
+  use encoded byte offsets; instructions use the independent object encoder;
+  user information retains source order; long xref sets use physical
+  continuation records. The producer identifies itself as ZEUS. ESD metadata
+  describes the normalized Zeus image. Library IDs for COPY/macro provenance
+  are separate from primary-input IDs. Complete encoding precedes file writes.
+- ADATA tests use independent readers of headers, offsets, counts, machine
+  bytes, signed user fields and 9001-reference continuations, plus all record
+  families in raw transport, both length byte orders, RDWs, malformed/truncated
+  input, CLI invocation restrictions and preservation on encoding failure.
+
+Remaining original P3 acceptance work is still substantive:
+
+| Area | Remaining acceptance work |
+| --- | --- |
+| LE/linkage | LE prolog/epilog/entry variants and control-block layouts; XPLINK 32/64 and environment descriptors; resume-cursor movement beyond the original signal frame; T_I_U, runtime options, complete HLL/hardware exception translation and remaining condition services. Explicit CEESGL without feedback cannot yet request nonlocal resumption. |
+| Floating point | Inventory every specialized scalar form against the applicable architecture, add missing semantics, validate detailed exceptions/diagnostics independently. The new output coverage is not an architectural completeness proof. |
+| Objects/binder | Complete scalar decoding/encoding; XSD/common/PR/PART/PSECT/quantity/DCB binding and output; remaining class/offset/long-displacement/bitfield/conditional RLD; binder attributes/controls; IBM-produced cross-language ABI and external binder validation. |
+| Outputs/options | Full semantic completeness of generated ADATA records (including option fields, COPY/member-reference roles, source sections, specialized RLD and statistics); complete symbol/source/ESD attributes, conditional/macro-definition record fidelity, automatic UT conversion and full option/ACONTROL/COMPAT/architecture-profile diagnostics. Raw transport support for a record is distinct from generation of its semantic contents. |
+
+No original P3 row is marked complete. No host-CPU native HLASM generator was
+added; the architectural object bytes execute through the shared interpreter.
+
+
+Combined checkpoint verification:
+
+- Full workspace/all-target regression: 877 passed, 5 failed, 6 ignored across
+  103 suites. The only failing target is still `zeus-ims --test tm`; all five
+  failures reproduce Windows access denied (OS error 5) in queue persistence.
+  IMS source has not been modified. This does not claim a clean workspace run.
+- Workspace/all-target Clippy with warnings denied, all workspace binaries,
+  formatting and `git diff --check` pass. All 60 standalone help invocations
+  across 14 commands pass, including rebuilt embedded `zas` documentation.
+- Focused LE tests: 14 integration cases plus 8 LE unit tests. The new PL/I
+  lifetime integration test passes. All 82 floating-point tests pass with the
+  additional architectural object paths for successful arithmetic fixtures;
+  12 conventional OBJ output and 21 GOFF output cases pass. ADATA has 8 cases.
+- Original P3 rows remain incomplete as enumerated above; transport support,
+  recognized names and internal round trips are not external conformance proof.
+
+
+P3 remaining-work implementation checkpoint (2026-10-16):
+
+- LE handler promotion actions 32/33 restart from the first handler of the
+  handle-cursor/original resume-cursor frame respectively. Returning an equivalent
+  condition percolates; promotion cycles have a bounded diagnostic. Original
+  fixtures distinguish the two actions across separate live language frames.
+  This does not implement nonlocal resume-cursor movement or XPLINK descriptors.
+- IBM architectural scalar output/input now additionally covers 30 RI/RIL partial
+  immediate operations, seven RIE-f rotate/select operations, three RIE-g
+  conditional immediate loads, RRF logical/select/conditional register forms,
+  POPCNT controls, carry/borrow/reverse/byte register operations, and additional
+  RXY arithmetic/logical/load/store/reverse/CVBY/CVDY forms. POPCNT's mask is
+  preserved by binary decoding. LLC/LLH now execute on source and binary paths,
+  preserving high register bits and condition code.
+- Listing data retains every DC/DS operand's origin, bit position, duplication,
+  nominal lengths/bytes, program/assembler type and numeric attributes. Implicit
+  character/hex/packed/zoned lengths and ordinary dummy-section constants are
+  handled; repeated location-dependent constants use the final assembled image.
+- ADATA generation now includes records 000B, 0010, 0034, 0035, 0040, 0045,
+  0062, 0080 and 0090. Signed ordinary relocation widths 1..8 and A/V type,
+  general-register references (including USING/DROP and implicit pairs), macro
+  and COPY references (with nested caller identities and assembly-wide member
+  totals), USING maps and retained statistics are reported. Continuations
+  clear previously emitted fixed fields and retain per-record counts/offsets.
+- These are semantic subsets, not full IBM ADATA compatibility. Original section
+  ESD identities, all option fields/metrics, every register/member role, COPY and
+  unexpanded macro/conditional fidelity, dummy-section address relocation layout,
+  all binder attributes/RLD families and automatic UT conversion remain open.
+  The original four P3 acceptance rows therefore remain incomplete. HLASM
+  host-CPU native code generation remains excluded.
+
+
+Verification of the 2026-10-16 remaining-work checkpoint:
+
+- Full workspace/all-target regression: 890 passed, 5 failed, 6 ignored across
+  103 suites. Only `zeus-ims --test tm` failed; the same five queue-persistence
+  tests report Windows access denied (OS error 5). IMS code was not changed.
+- Workspace/all-target Clippy with warnings denied, all workspace binary builds,
+  formatting and diff whitespace checks pass. 98 standalone --help/-h invocations
+  across 14 commands pass, including documented subcommands and the rebuilt
+  ADATA, condition-handler and scalar-object explanations in zas.
+- Focused coverage now includes 17 conventional OBJ output cases, 21 GOFF
+  output cases, 13 ADATA cases, 18 listing cases and 15 LE integration cases.
+  Separate LE unit fixtures verify frame 32/33 distinction, equivalent-condition
+  percolation, bounded cyclic promotion and dispatch-storage cleanup. All 82
+  floating-point integration cases pass in the full regression.
+- No external IBM binder/XPLINK interoperability or architectural completeness
+  is inferred from these checks; the remaining acceptance table is authoritative.

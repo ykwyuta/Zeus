@@ -97,7 +97,10 @@ fn invalid_literal_attributes_report_source_errors_and_enforce_storage_limits() 
     for (body, diagnostic) in [
         ("&L SETA L'=C'unclosed", "unterminated literal"),
         ("&L SETA L'=A(1", "unclosed literal address"),
-        ("&T SETC T'=E'1'", "unsupported storage type E"),
+        (
+            "&T SETC T'=E'1.2.3'",
+            "floating-point nominal requires decimal digits",
+        ),
         ("&L SETA L'=2000000F'1'", "exceeds 1 MiB"),
         (
             "&P SETC '=F''1''oops'\n&D SETA D'&P",

@@ -10,11 +10,19 @@ pub(super) fn expand(
     dirs: &[PathBuf],
     diagnostics: &mut Vec<super::Diagnostic>,
     options: &super::AssemblyOptions,
+    calls: &mut Vec<super::listing::MacroCall>,
+    sources: &mut Vec<super::listing::SourceFile>,
+    copies: &mut Vec<super::listing::CopyCall>,
 ) -> Result<Vec<Statement>, String> {
     let mut state = Expansion {
         options: options.clone(),
         ..Expansion::default()
     };
+    state.controls.set_pcontrol(&options.pcontrol)?;
+    state.controls.macrocase = options.macrocase.unwrap_or(false);
+    state
+        .controls
+        .set_optable(options.optable.as_deref().unwrap_or("ZEUS"))?;
     state.initialize_context(input.first().map(|s| Path::new(&s.file)));
     let result = expand_scope(
         input,
@@ -25,6 +33,9 @@ pub(super) fn expand(
         &mut state,
     );
     diagnostics.extend(state.diagnostics);
+    calls.extend(state.calls);
+    copies.extend(state.copy_calls);
+    sources.extend(state.source_files);
     result
 }
 
@@ -311,6 +322,15 @@ fn expand_scope(
                     parameters,
                     body,
                     definition_file: p.file.clone(),
+                    definition_location: p
+                        .listing
+                        .as_ref()
+                        .and_then(|a| a.definition.clone())
+                        .unwrap_or_else(|| super::listing::SourceLocation {
+                            statement: 0,
+                            file: p.file.clone(),
+                            line: p.line,
+                        }),
                 },
             );
             state.aliases.remove(&p.op);
@@ -465,16 +485,65 @@ fn expand_scope(
         };
         if s.op == "COPY" && !macro_invocation {
             let file = member(&s.args, Path::new(&s.file), dirs).map_err(|e| s.error(e))?;
-            out.extend(expand_scope(
-                super::source::statements(&file, &state.options, true, &mut state.diagnostics)?,
-                dirs,
-                macros,
-                depth + 1,
-                vars,
-                state,
-            )?);
+            let name = s.args.trim_matches('\'').to_ascii_uppercase();
+            if state.options.collect_listing {
+                state.copy_calls.push(super::listing::CopyCall {
+                    location: super::listing::SourceLocation {
+                        statement: state.generated + 1,
+                        file: s.file.clone(),
+                        line: s.line,
+                    },
+                    member: name.clone(),
+                    definition_file: file.to_string_lossy().into_owned(),
+                    parent: state
+                        .member_stack
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| "PRIMARY INPUT".into()),
+                });
+            }
+            let input = super::source::statements(
+                &file,
+                &state.options,
+                true,
+                &mut state.diagnostics,
+                Some(&mut state.source_files),
+            )?;
+            state.member_stack.push(name);
+            let expanded = expand_scope(input, dirs, macros, depth + 1, vars, state);
+            state.member_stack.pop();
+            out.extend(expanded?);
         } else if !macro_invocation && (instruction_size(&s.op).is_some() || directive(&s.op)) {
+            if s.op == "ADATA" {
+                if !s.label.is_empty() && !s.label.starts_with('.') {
+                    return Err(s.error("ADATA permits only a sequence-symbol label"));
+                }
+                let data = super::adata::parse(&s.args).map_err(|e| s.error(e))?;
+                let ccsid = match state.options.source_encoding {
+                    super::SourceEncoding::Utf8 => 37,
+                    super::SourceEncoding::Ebcdic { ccsid, .. } => ccsid,
+                };
+                data.record(ccsid).map_err(|e| s.error(e))?;
+            }
             state.controls.apply(&s).map_err(|e| s.error(e))?;
+            s.afpr = state.controls.afpr;
+            if state.options.collect_listing {
+                s.listing = Some(super::listing::Attributes {
+                    print: state.controls.print_snapshot(),
+                    macro_depth: vars.macro_names.len(),
+                    calls: vec![],
+                    definition: s.listing.as_ref().and_then(|a| a.definition.clone()),
+                    model: (open_code
+                        && [&original.label, &original.op, &original.args]
+                            .iter()
+                            .any(|text| has_variable_symbol(text)))
+                    .then(|| super::listing::ModelStatement {
+                        label: original.label.clone(),
+                        operation: original.op.clone(),
+                        operands: original.args.clone(),
+                    }),
+                });
+            }
             state.observe_attributes(&s);
             if s.op == "END" {
                 state.ended = true;
@@ -504,7 +573,15 @@ fn expand_scope(
                         } else {
                             (None, a.as_str())
                         };
-                        Ok((key, substitute(value, vars, state).map_err(|e| s.error(e))?))
+                        let value = substitute(value, vars, state).map_err(|e| s.error(e))?;
+                        let value = if state.controls.macrocase
+                            && !(value.starts_with('\'') && value.ends_with('\''))
+                        {
+                            value.to_ascii_uppercase()
+                        } else {
+                            value
+                        };
+                        Ok((key, value))
                     })
                     .collect::<Result<Vec<_>, String>>()?
             };
@@ -525,7 +602,13 @@ fn expand_scope(
                     }
                 };
                 if !expand_scope(
-                    super::source::statements(&file, &state.options, true, &mut state.diagnostics)?,
+                    super::source::statements(
+                        &file,
+                        &state.options,
+                        true,
+                        &mut state.diagnostics,
+                        Some(&mut state.source_files),
+                    )?,
                     dirs,
                     macros,
                     depth + 1,
@@ -584,15 +667,65 @@ fn expand_scope(
             local
                 .values
                 .insert("&SYSNDX".into(), format!("{:04}", state.serial));
+            let mut call = state
+                .options
+                .collect_listing
+                .then(|| super::listing::MacroCall {
+                    parent: state
+                        .member_stack
+                        .last()
+                        .cloned()
+                        .unwrap_or_else(|| "PRIMARY INPUT".into()),
+                    statement: state.generated + 1,
+                    generated: 0,
+                    print: state.controls.print_snapshot(),
+                    file: s.file.clone(),
+                    line: s.line,
+                    label: s.label.clone(),
+                    operation: s.op.clone(),
+                    operands: s.args.clone(),
+                    depth: vars.macro_names.len(),
+                    definition_file: m.definition_location.file.clone(),
+                    definition_line: m.definition_location.line,
+                });
+            let call_index = state.calls.len();
+            if let Some(call) = &call {
+                state.calls.push(call.clone());
+            }
             let mut body = m.body;
             for line in &mut body {
+                if state.options.collect_listing {
+                    let definition = super::listing::SourceLocation {
+                        statement: 0,
+                        file: line.file.clone(),
+                        line: line.line,
+                    };
+                    line.listing
+                        .get_or_insert_with(Default::default)
+                        .definition
+                        .get_or_insert(definition);
+                }
                 line.file = s.file.clone();
                 line.line = s.line;
                 line.sequence = s.sequence.clone();
             }
-            let mut body = expand_scope(body, dirs, macros, depth + 1, &mut local, state)?;
+            state.member_stack.push(s.op.clone());
+            let expanded = expand_scope(body, dirs, macros, depth + 1, &mut local, state);
+            state.member_stack.pop();
+            let mut body = expanded?;
+            if let Some(call) = &mut call {
+                call.generated = body.len();
+                state.calls[call_index].generated = body.len();
+            }
             vars.last_macro_severity = local.highest_severity;
             vars.highest_severity = vars.highest_severity.max(local.highest_severity);
+            if let (Some(first), Some(call)) = (body.first_mut(), call) {
+                first
+                    .listing
+                    .get_or_insert_with(Default::default)
+                    .calls
+                    .insert(0, call);
+            }
             if !s.label.is_empty()
                 && !body.iter().any(|b| b.label == s.label)
                 && let Some(first) = body.first_mut()
@@ -618,6 +751,7 @@ struct Macro {
     parameters: Vec<String>,
     body: Vec<Statement>,
     definition_file: String,
+    definition_location: super::listing::SourceLocation,
 }
 
 #[derive(Default, Clone)]
@@ -652,6 +786,10 @@ struct Expansion {
     source_file: PathBuf,
     library_dirs: Vec<PathBuf>,
     diagnostics: Vec<super::Diagnostic>,
+    calls: Vec<super::listing::MacroCall>,
+    copy_calls: Vec<super::listing::CopyCall>,
+    member_stack: Vec<String>,
+    source_files: Vec<super::listing::SourceFile>,
     globals: HashMap<String, SetSymbol>,
     serial: usize,
     steps: usize,
@@ -739,7 +877,7 @@ impl Expansion {
                     let path = member(&member_name, Path::new(&s.file), &state.library_dirs)
                         .map_err(|e| s.error(e))?;
                     if let Some(found) = scan(
-                        &super::source::statements(&path, &state.options, true, &mut vec![])?,
+                        &super::source::statements(&path, &state.options, true, &mut vec![], None)?,
                         name,
                         state,
                         depth + 1,
@@ -785,8 +923,8 @@ impl Expansion {
             ("&SYSOPT_DBCS", u8::from(crate::codepage::active().is_mixed() || matches!(self.options.source_encoding, super::SourceEncoding::Ebcdic { ccsid, .. } if crate::codepage::get(ccsid).is_some_and(|cp| cp.is_mixed()))).to_string()),
             ("&SYSOPT_RENT", "0".into()),
             ("&SYSOPT_XOBJECT", "0".into()),
-            ("&SYSOPT_OPTABLE", "ZEUS".into()),
-            ("&SYSOPT_CURR_OPTABLE", "ZEUS".into()),
+            ("&SYSOPT_OPTABLE", self.controls.optable.clone()),
+            ("&SYSOPT_CURR_OPTABLE", self.controls.optable.clone()),
             ("&SYSCODEPAGE", crate::codepage::active().ccsid.to_string()),
             (
                 "&SYSOPT_CODEPAGE",
@@ -1401,4 +1539,18 @@ impl SetSymbol {
             elements: BTreeMap::new(),
         }
     }
+}
+
+fn has_variable_symbol(text: &str) -> bool {
+    let mut chars = text.chars();
+    while let Some(c) = chars.next() {
+        if c == '&' {
+            match chars.next() {
+                Some('&') => {}
+                Some(c) if c.is_ascii_alphabetic() || "_@$#(".contains(c) => return true,
+                _ => {}
+            }
+        }
+    }
+    false
 }

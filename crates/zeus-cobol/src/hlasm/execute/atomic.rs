@@ -11,10 +11,11 @@ pub(super) fn execute(
     mem: &mut [u8],
     cc: &mut u8,
     storage: &crate::hlasm::DynamicStorage,
+    mode: u8,
 ) -> Result<bool, String> {
     let op = ins.op.as_str();
     if op == "CSST" {
-        csst(ins, low, high, mem, cc, storage)?;
+        csst(ins, low, high, mem, cc, storage, mode)?;
         return Ok(true);
     }
     if matches!(op, "LPD" | "LPDG") {
@@ -201,6 +202,7 @@ fn csst(
     memory: &mut [u8],
     cc: &mut u8,
     storage: &crate::hlasm::DynamicStorage,
+    mode: u8,
 ) -> Result<(), String> {
     let function = low[0] & 255;
     let characteristic = (low[0] >> 8) & 255;
@@ -239,7 +241,7 @@ fn csst(
     storage.check_write(first, width)?;
     storage.check_write(second, count)?;
     // The parameter address ignores its low four bits in AMODE 31.
-    let parameters = (low[1] & 0x7ffffff0) as usize;
+    let parameters = crate::hlasm::abi::register(low, high, 1, mode)? & !15;
     let replacement = memory[range(memory, parameters, width)?].to_vec();
     let footprint = memory[range(memory, parameters + 16, count)?].to_vec();
     let original = memory[first_range.clone()].to_vec();

@@ -28,7 +28,11 @@ pub(super) fn length(spec: &str, symbols: &Symbols) -> Result<Option<(u32, usize
         + 1
         + usize::from(
             (spec[at..].starts_with("FD") || spec[at..].starts_with("AD"))
-                || ["CA", "CE", "CU"].iter().any(|t| spec[at..].starts_with(t)),
+                || [
+                    "CA", "CE", "CU", "EB", "EH", "ED", "DB", "DH", "DD", "LB", "LH", "LD", "LQ",
+                ]
+                .iter()
+                .any(|t| spec[at..].starts_with(t)),
         );
     let Some(tail) = spec[start..].strip_prefix("L.") else {
         return Ok(None);
@@ -64,11 +68,22 @@ pub(super) fn assemble(
     let Some((bits, after_length)) = length(spec, symbols)? else {
         return Ok(None);
     };
+    if let Some(field) = super::float::storage(spec, initialized, symbols)? {
+        return Ok(Some(Constant {
+            bytes: field.bytes,
+            bits: field.bits,
+            length: field.length,
+        }));
+    }
     let (at, count) = constants::duplication(spec, symbols)?;
     let kind = spec.as_bytes()[at];
     let extension = usize::from(
         (spec[at..].starts_with("FD") || spec[at..].starts_with("AD"))
-            || ["CA", "CE", "CU"].iter().any(|t| spec[at..].starts_with(t)),
+            || [
+                "CA", "CE", "CU", "EB", "EH", "ED", "DB", "DH", "DD", "LB", "LH", "LD", "LQ",
+            ]
+            .iter()
+            .any(|t| spec[at..].starts_with(t)),
     );
     let character = kind == b'C';
     let maximum = match kind {

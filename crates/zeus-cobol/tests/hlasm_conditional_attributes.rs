@@ -85,10 +85,13 @@ fn unavailable_lengths_invalid_set_references_and_literal_attributes_are_diagnos
             "&P SETC 'FIELD+1'\n&D SETA D'&P",
             "represent an ordinary symbol",
         ),
-        ("&L SETA L'=E'1'", "unsupported storage type E"),
         (
-            "&P SETC '=E''1'''\n&T SETC T'&P",
-            "unsupported storage type E",
+            "&L SETA L'=E'1.2.3'",
+            "floating-point nominal requires decimal digits",
+        ),
+        (
+            "&P SETC '=E''1.2.3'''\n&T SETC T'&P",
+            "floating-point nominal requires decimal digits",
         ),
         (
             "FIELD DC CL4'ABCD'\nVIEW EQU FIELD,L'FIELD,C'C'\n&T SETC T'VIEW",

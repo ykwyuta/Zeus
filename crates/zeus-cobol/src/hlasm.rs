@@ -1,6 +1,12 @@
-//! Source-level HLASM subset for application subroutines. Modules contain
-//! decoded instructions and Zeus relocations, not IBM object decks. Execution uses the caller's
-//! storage and the 31-bit OS linkage convention, without unsafe host pointers.
+//! HLASM application subroutines and imported IBM OBJ/GOFF records. Source
+//! modules retain decoded instructions; imported text is decoded on fetch.
+//! Execution uses the caller's
+//! storage and AMODE 24/31/64 linkage, without unsafe host pointers.
+pub(crate) mod abi;
+mod adata;
+mod options;
+pub use adata::{AdataRecord, UserData, adata_bytes, decode_adata_records, encode_adata_records};
+pub use options::{ProcessStatement, parse_compat, parse_optable, parse_pcontrol};
 mod assemble;
 mod binding;
 mod bit_constants;
@@ -11,8 +17,12 @@ mod data_management;
 mod diagnostics;
 mod execute;
 mod expression;
+mod float;
 mod link;
+mod listing;
+mod machine;
 mod macros;
+mod object;
 mod operation;
 mod services;
 mod source;
@@ -37,7 +47,13 @@ pub use diagnostics::{AssemblyReport, Diagnostic, compile_report, compile_report
 pub(crate) use execute::execute_entry_with_host;
 pub use execute::{execute, execute_with_storage};
 pub use link::{link_modules, link_with_libraries};
-pub(crate) use services::{Host, Registers};
+pub use listing::{
+    AssemblyListing, CopyCall, DataOperand, DataValue, ListingLiteral, ListingStatement,
+    ListingSymbol, ListingUserData, MacroCall, ModelStatement, SourceFile, SourceLocation,
+    SourceRecord, UsingSummary,
+};
+pub use object::{ObjectAddressMode, ObjectRelocation};
+pub(crate) use services::{Call as AssemblerCall, Host, Registers};
 pub use source::{SourceEncoding, SourceFormat};
 pub use source_refs::{ConstantReference, constant_references};
 pub use storage::DynamicStorage;
@@ -79,15 +95,27 @@ pub struct Module {
     pub alignment: u32,
     #[serde(default)]
     pub instruction_templates: bool,
+    /// Imported architectural text ranges, decoded from shared storage on fetch.
+    /// Zeus source instructions outside these ranges retain their metadata.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub machine_code: Vec<std::ops::Range<u32>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub read_only: Vec<std::ops::Range<u32>>,
     #[serde(default = "default_rmode")]
     pub rmode: u8,
+    #[serde(default = "default_rmode", skip_serializing_if = "is_amode31")]
+    pub amode: u8,
+    /// Non-default entry conventions in a linked image. Executing an internal
+    /// address does not change mode; BSM/BASSM or a runtime call does that.
+    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
+    pub entry_modes: std::collections::BTreeMap<u32, u8>,
     pub storage: Vec<u8>,
     pub entry: u32,
     pub code: Vec<Instruction>,
     #[serde(default)]
     pub relocations: Vec<Relocation>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub object_relocations: Vec<ObjectRelocation>,
     #[serde(default)]
     pub entries: std::collections::HashMap<String, u32>,
     /// Symbol name -> weak reference. Kept separately so EXTRN without an
@@ -120,7 +148,39 @@ pub struct Relocation {
 }
 
 impl Module {
+    pub fn entry_mode(&self, entry: u32) -> u8 {
+        self.entry_modes.get(&entry).copied().unwrap_or(self.amode)
+    }
+    fn validate_modes(&self) -> Result<(), String> {
+        for service in self.code.iter().filter_map(|i| i.module_service.as_ref()) {
+            if service.list_width.is_some_and(|w| !matches!(w, 4 | 8))
+                || service.list_width == Some(8) && service.variable_list
+                || (!service.extended && (service.list_width.is_some() || service.allow_64))
+            {
+                return Err("invalid module-service parameter convention".into());
+            }
+            if (service.extended || service.allow_64 || service.list_width.is_some())
+                && self.zeus_hlasm < 10
+            {
+                return Err("extended module services require HLASM module version 10".into());
+            }
+        }
+        if !matches!(self.amode, 24 | 31 | 64)
+            || self.entry_modes.iter().any(|(entry, mode)| {
+                !matches!(mode, 24 | 31 | 64) || *entry as usize >= self.storage.len()
+            })
+        {
+            return Err("invalid HLASM entry addressing mode".into());
+        }
+        if (self.amode != 31 || !self.entry_modes.is_empty()) && self.zeus_hlasm < 10 {
+            return Err("entry addressing modes require HLASM module version 10".into());
+        }
+        Ok(())
+    }
     pub fn required_alignment(&self) -> Result<usize, String> {
+        machine::validate(self)?;
+        object::fixups::validate(self)?;
+        self.validate_modes()?;
         if !matches!(self.rmode, 24 | 31) {
             return Err("invalid HLASM RMODE".into());
         }
@@ -273,6 +333,7 @@ impl Module {
                 .ok_or("invalid address relocation")?
                 .copy_from_slice(&value.to_be_bytes()[8 - r.width as usize..]);
         }
+        object::fixups::initialize(self, &mut storage, base)?;
         data_management::initialize(self, &mut storage, base)?;
         self.bindings.initialize(self, &mut storage, base)?;
         Ok(storage)
@@ -346,6 +407,12 @@ pub struct ModuleService {
     pub name: ModuleName,
     pub parameters: Option<Vec<StorageOperand>>,
     pub variable_list: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub list_width: Option<u8>,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub extended: bool,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub allow_64: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -482,7 +549,13 @@ impl RelocationExpression {
 }
 
 fn format_version(code: &[Instruction], relocations: &[Relocation]) -> u32 {
-    if relocations.iter().any(|r| r.width != 4) {
+    if code.iter().any(|i| {
+        i.module_service
+            .as_ref()
+            .is_some_and(|s| s.extended || s.allow_64 || s.list_width.is_some())
+    }) {
+        10
+    } else if relocations.iter().any(|r| r.width != 4) {
         7
     } else if relocations.iter().any(|r| r.expression.is_some()) {
         4
@@ -514,19 +587,33 @@ fn default_rmode() -> u8 {
 }
 
 pub fn is_module(bytes: &[u8]) -> bool {
-    bytes.starts_with(b"{\"zeus_hlasm\":")
+    bytes.starts_with(b"{\"zeus_hlasm\":") || object::is_deck(bytes)
 }
 
 pub fn module_bytes(module: &Module) -> Result<Vec<u8>, String> {
     serde_json::to_vec(module).map_err(|e| e.to_string())
 }
 
+/// Emit a conventional IBM OBJ card deck. Supported source instructions are
+/// encoded as IBM architectural bytes; unsupported metadata is diagnosed.
+pub fn object_bytes(module: &Module) -> Result<Vec<u8>, String> {
+    object::write::bytes(module)
+}
+
+/// Emit a GOFF architecture-level-1 object in fixed 80-byte physical records.
+pub fn goff_bytes(module: &Module) -> Result<Vec<u8>, String> {
+    object::goff_write::bytes(module)
+}
+
 pub fn load_module(bytes: &[u8]) -> Result<Module, String> {
+    if object::is_deck(bytes) {
+        return object::load(bytes);
+    }
     if !is_module(bytes) {
         return Err("not a Zeus HLASM module".into());
     }
     let module: Module = serde_json::from_slice(bytes).map_err(|e| e.to_string())?;
-    if !matches!(module.zeus_hlasm, 1..=9) {
+    if !matches!(module.zeus_hlasm, 1..=12) {
         return Err("unsupported HLASM module version".into());
     }
     module.required_alignment()?;
@@ -558,3 +645,10 @@ pub fn load_module(bytes: &[u8]) -> Result<Module, String> {
 pub fn save_module(module: &Module, path: &Path) -> Result<(), String> {
     std::fs::write(path, module_bytes(module)?).map_err(|e| format!("{}: {e}", path.display()))
 }
+
+fn is_amode31(mode: &u8) -> bool {
+    *mode == 31
+}
+
+// Runtime state shared by supervisor-style LINK invocations.
+pub(crate) use execute::floating::State as FloatingState;

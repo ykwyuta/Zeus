@@ -12,6 +12,15 @@ pub struct AssemblyDataSet {
 
 #[derive(Debug, Clone)]
 pub struct AssemblyOptions {
+    pub collect_listing: bool,
+    /// PCONTROL locks on named PRINT options, independent of source stacks.
+    pub pcontrol: BTreeMap<String, bool>,
+    /// Explicit NOPCONTROL must also override an ordinary source option.
+    pub pcontrol_specified: bool,
+    /// Explicit invocation operation table; None leaves source options eligible.
+    pub optable: Option<String>,
+    /// Invocation COMPAT(MACROCASE/NOMACROCASE); None permits source selection.
+    pub macrocase: Option<bool>,
     pub source_encoding: super::SourceEncoding,
     pub source_format: super::SourceFormat,
     pub sysparm: String,
@@ -25,6 +34,11 @@ pub struct AssemblyOptions {
 impl Default for AssemblyOptions {
     fn default() -> Self {
         Self {
+            collect_listing: false,
+            pcontrol: BTreeMap::new(),
+            pcontrol_specified: false,
+            optable: None,
+            macrocase: None,
             source_encoding: super::SourceEncoding::default(),
             source_format: super::SourceFormat::default(),
             sysparm: String::new(),

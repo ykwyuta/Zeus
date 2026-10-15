@@ -622,3 +622,25 @@ fn generated_executable_includes_help_without_running_the_program() {
         );
     }
 }
+
+#[test]
+fn native_and_interpreted_cobol_use_the_same_condition_token_service() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("token.cbl");
+    let text = "IDENTIFICATION DIVISION.\nPROGRAM-ID. TOKENTEST.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 IDONE PIC S9(4) COMP VALUE 2.\n01 IDTWO PIC S9(4) COMP VALUE 931.\n01 STYLE PIC S9(4) COMP VALUE 1.\n01 LEVELNUM PIC S9(4) COMP VALUE 2.\n01 OWNERFLAG PIC S9(4) COMP VALUE 0.\n01 OWNERNAME PIC X(3) VALUE 'Z4m'.\n01 INSTANCEVAL PIC S9(9) COMP VALUE -1.\n01 TOKENOUT PIC X(12).\n01 STATUSOUT PIC X(12).\nPROCEDURE DIVISION.\n    CALL 'CEENCOD' USING IDONE IDTWO STYLE LEVELNUM\n        OWNERFLAG OWNERNAME INSTANCEVAL TOKENOUT STATUSOUT\n    IF TOKENOUT = X'000203A350E9F494FFFFFFFF' AND\n       STATUSOUT = LOW-VALUES\n       MOVE 0 TO RETURN-CODE\n    ELSE MOVE 99 TO RETURN-CODE END-IF\n    STOP RUN.\n";
+    let text: String = text
+        .lines()
+        .map(|line| format!("       {line}\n"))
+        .collect();
+    std::fs::write(&path, text).unwrap();
+    let module = zeus_cobol::compile_file(&path, &Default::default()).unwrap();
+    let image = Image {
+        members: vec![(
+            "TOKENTEST".into(),
+            zeus_cobol::module_bytes(&module).unwrap(),
+        )],
+    };
+    let exe = executable(dir.path(), "condition-token", &image);
+    assert_eq!(run(&exe, &[], "").1, 0);
+    assert_eq!(run_env(&exe, &[], "", true).1, 0);
+}

@@ -33,7 +33,7 @@ fn execute_modifies_register_fields_and_uses_execute_return_address_for_linking(
         .unwrap(),
         9
     );
-    assert_eq!(run("         LR 9,14\n         LA 4,SUB\n         EX 0,TEMPLATE\nAFTER LR 14,9\n         BR 14\nSUB LA 6,AFTER\n         CR 5,6\n         BNE BAD\n         LGHI 15,0\n         BR 5\nBAD LGHI 15,99\n         BR 5", "TEMPLATE BASR 5,4").unwrap(), 0);
+    assert_eq!(run("         LR 9,14\n         LA 4,SUB\n         EX 0,TEMPLATE\nAFTER LR 14,9\n         BR 14\nSUB LA 6,AFTER\n         O 6,=X'80000000'\n         CR 5,6\n         BNE BAD\n         LGHI 15,0\n         BR 5\nBAD LGHI 15,99\n         BR 5", "TEMPLATE BASR 5,4").unwrap(), 0);
 }
 
 #[test]

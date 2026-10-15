@@ -1,5 +1,5 @@
-//! Link Zeus assembler modules without depending on platform or IBM object
-//! formats. The linked image shares one address space and instruction map.
+//! Link normalized Zeus source and imported-object modules. The linked image
+//! shares one address space, source instruction map and architectural text ranges.
 use super::{Module, load_module};
 use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
@@ -31,12 +31,16 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
         name: first.name.clone(),
         alignment: 8,
         instruction_templates: true,
+        machine_code: Vec::new(),
         read_only: Vec::new(),
         rmode: 31,
+        amode: first.amode,
+        entry_modes: Default::default(),
         storage: Vec::new(),
         entry: first.entry,
         code: Vec::new(),
         relocations: Vec::new(),
+        object_relocations: Vec::new(),
         entries: HashMap::new(),
         externals: HashMap::new(),
         dcbs: Vec::new(),
@@ -65,6 +69,12 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
                 dcb.error = dcb.error.map(|value| value + origin as u32);
                 dcb
             }));
+        linked.machine_code.extend(
+            module
+                .machine_code
+                .iter()
+                .map(|r| r.start + origin as u32..r.end + origin as u32),
+        );
         linked.read_only.extend(
             module
                 .read_only
@@ -75,9 +85,16 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
             super::template::initialize(&module.code, &mut linked.storage[origin..end])?;
         }
         debug_assert_eq!(linked.storage.len(), end);
+        for (&entry, &mode) in &module.entry_modes {
+            linked.entry_modes.insert(entry + origin as u32, mode);
+        }
         for (name, entry) in exports(module) {
             if entry as usize >= module.storage.len() {
                 return Err(format!("invalid exported address {name}"));
+            }
+            let mode = module.entry_mode(entry);
+            if mode != linked.amode {
+                linked.entry_modes.insert(entry + origin as u32, mode);
             }
             if linked
                 .entries
@@ -125,6 +142,11 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
                     .ok_or("relocation overflow")?;
             }
             linked.relocations.push(relocation);
+        }
+        for relocation in &module.object_relocations {
+            let mut relocation = relocation.clone();
+            super::object::fixups::rebase(&mut relocation, origin as u32)?;
+            linked.object_relocations.push(relocation);
         }
         for (name, weak) in &module.externals {
             linked
@@ -238,6 +260,9 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
             ins.relative_external = None;
         }
     }
+    for r in &mut linked.object_relocations {
+        super::object::fixups::resolve(r, &linked.entries, &linked.entry_modes, linked.amode)?;
+    }
     for r in &mut linked.relocations {
         if let Some(expression) = &mut r.expression {
             if r.symbol.is_some() || r.target != 0 || r.addend != 0 || r.weak {
@@ -260,7 +285,17 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
         .externals
         .retain(|name, _| !linked.entries.contains_key(name));
     linked.zeus_hlasm = super::format_version(&linked.code, &linked.relocations).max(
-        if linked.bindings.requires_extended() {
+        if linked
+            .object_relocations
+            .iter()
+            .any(|r| r.relative_immediate)
+        {
+            12
+        } else if !linked.machine_code.is_empty() || !linked.object_relocations.is_empty() {
+            11
+        } else if linked.amode != 31 || !linked.entry_modes.is_empty() {
+            10
+        } else if linked.bindings.requires_extended() {
             9
         } else if !linked.dcbs.is_empty() {
             8
@@ -294,6 +329,23 @@ pub fn link_with_libraries(mut modules: Vec<Module>, dirs: &[PathBuf]) -> Result
             .collect();
         let mut required = Vec::new();
         for module in &modules {
+            required.extend(
+                module
+                    .object_relocations
+                    .iter()
+                    .flat_map(|r| &r.expression.terms)
+                    .filter(|t| !t.weak)
+                    .map(|t| t.symbol.clone()),
+            );
+            required.extend(module.object_relocations.iter().filter_map(
+                |r| match &r.addressing_mode {
+                    super::ObjectAddressMode::External {
+                        symbol,
+                        weak: false,
+                    } => Some(symbol.clone()),
+                    _ => None,
+                },
+            ));
             required.extend(
                 module
                     .bindings
@@ -358,7 +410,7 @@ pub fn link_with_libraries(mut modules: Vec<Module>, dirs: &[PathBuf]) -> Result
             let mut found = None;
             'libraries: for dir in dirs {
                 for name in [symbol.clone(), symbol.to_ascii_lowercase()] {
-                    for extension in [".zo", ""] {
+                    for extension in [".zo", ".obj", ".goff", ""] {
                         let path = dir.join(format!("{name}{extension}"));
                         if !path.is_file() {
                             continue;

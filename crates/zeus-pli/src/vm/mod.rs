@@ -114,6 +114,7 @@ struct Act {
     slots: Vec<i64>,
     on: Vec<(Cond, Option<(BlockId, usize)>)>,
     stack_mark: (usize, u32),
+    le_frame: Option<usize>,
     /// Indexes of aggregate assignments and repetitive specifications.
     index: Vec<i64>,
     subject: Option<Value>,
@@ -416,6 +417,7 @@ impl Machine {
             slots: Vec::new(),
             on: Vec::new(),
             stack_mark: mark,
+            le_frame: None,
             index: Vec::new(),
             subject: None,
             cond: None,
@@ -440,11 +442,15 @@ impl Machine {
         for init in &b.inits {
             self.initialize(init, act)?;
         }
+        self.acts[act].le_frame = Some(self.sys().enter_language_frame());
         Ok(act)
     }
 
     fn deactivate(&mut self, act: usize) {
         let mark = self.acts[act].stack_mark;
+        if let Some(frame) = self.acts[act].le_frame {
+            self.sys().leave_language_frame(frame);
+        }
         self.acts.truncate(act);
         self.sp = mark;
     }
@@ -2824,6 +2830,7 @@ impl Machine {
             slots: Vec::new(),
             on: Vec::new(),
             stack_mark: mark,
+            le_frame: None,
             index: Vec::new(),
             subject: None,
             cond: None,

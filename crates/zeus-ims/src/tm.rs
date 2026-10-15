@@ -147,12 +147,23 @@ fn validate_message(data: &[u8]) -> Result<(), String> {
     Ok(())
 }
 
+#[cfg(not(windows))]
 fn replace_queue_file(temp: &Path, path: &Path, directory: &Path) -> Result<(), String> {
-    fs::rename(temp, path).map_err(|e| e.to_string())?;
+    fs::rename(temp, path).map_err(|e| format!("replace IMS TM queue {}: {e}", path.display()))?;
     File::open(directory)
         .and_then(|file| file.sync_all())
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| format!("sync IMS TM queue directory {}: {e}", directory.display()))?;
     Ok(())
+}
+
+#[cfg(windows)]
+fn replace_queue_file(temp: &Path, path: &Path, _directory: &Path) -> Result<(), String> {
+    // Windows cannot fsync a directory through std::fs::File. This safe wrapper
+    // uses MoveFileExW(REPLACE_EXISTING | WRITE_THROUGH); the temporary file's
+    // contents have already been synchronized, and both paths are in the same
+    // directory. Do not turn a failed durable replacement into a successful commit.
+    atomicwrites::replace_atomic(temp, path)
+        .map_err(|e| format!("replace IMS TM queue {}: {e}", path.display()))
 }
 
 impl Queue {
@@ -199,6 +210,7 @@ impl Queue {
                 file.write_all(&serialize(&state)?)
                     .map_err(|e| e.to_string())?;
                 file.sync_all().map_err(|e| e.to_string())?;
+                drop(file);
                 replace_queue_file(&temp, &path, &self.directory)?;
                 Ok(())
             })();

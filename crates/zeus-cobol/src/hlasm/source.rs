@@ -229,6 +229,8 @@ fn parse(area: &str, path: &Path, line: usize, sequence: String) -> Statement {
         })
         .unwrap_or(rest.len());
     Statement {
+        listing: None,
+        afpr: true,
         label,
         op,
         args: rest[..end].into(),
@@ -289,11 +291,53 @@ pub(super) fn statements(
     options: &AssemblyOptions,
     library: bool,
     diagnostics: &mut Vec<Diagnostic>,
+    sources: Option<&mut Vec<super::listing::SourceFile>>,
 ) -> Result<Vec<Statement>, String> {
     let records = records(path, &options.source_encoding)?;
+    if options.collect_listing
+        && let Some(sources) = sources
+    {
+        use super::listing::{SourceFile, SourceRecord};
+        sources.push(SourceFile {
+            file: path.display().to_string(),
+            encoding: match options.source_encoding {
+                SourceEncoding::Utf8 => "utf8".into(),
+                SourceEncoding::Ebcdic {
+                    ccsid,
+                    record_length,
+                } => format!("ebcdic:{ccsid}:{record_length}"),
+            },
+            format: match options.source_format {
+                SourceFormat::Auto => "auto",
+                SourceFormat::Fixed => "fixed",
+            }
+            .into(),
+            library,
+            records: records
+                .iter()
+                .enumerate()
+                .map(|(index, record)| {
+                    let positions: Vec<_> = record
+                        .iter()
+                        .enumerate()
+                        .filter_map(|(at, c)| (*c != '\0').then_some(at + 1))
+                        .collect();
+                    let identity = positions.iter().enumerate().all(|(at, col)| at + 1 == *col);
+                    SourceRecord {
+                        line: index + 1,
+                        columns: record.len(),
+                        text: record.iter().filter(|c| **c != '\0').collect(),
+                        positions: if identity { vec![] } else { positions },
+                    }
+                })
+                .collect(),
+        });
+    }
     let (mut begin, mut end, mut continuation) = (1, 71, Some(16));
     let (mut first, mut at) = (true, 0);
     let mut explicit_columns = false;
+    let mut process_position = true;
+    let mut process_count = 0;
     let mut sequence = Sequence::default();
     let mut result = vec![];
     while let Some(raw) = records.get(at) {
@@ -301,7 +345,33 @@ pub(super) fn statements(
         sequence.check(raw, path, line, diagnostics);
         let mut area = field(raw, begin - 1, end);
         at += 1;
+        if let Some(args) = super::options::scan_process(&area)
+            && !library
+            && process_position
+            && process_count < 10
+        {
+            if end < 80 && raw.get(end).is_some_and(|c| *c != ' ') {
+                diagnostics.push(Diagnostic {
+                    file: path.display().to_string(),
+                    line,
+                    operation: "*PROCESS".into(),
+                    severity: 12,
+                    category: "PROCESS_CONTINUATION".into(),
+                    message: "*PROCESS cannot be continued to another physical record".into(),
+                });
+            }
+            result.push(parse(
+                &format!(" *PROCESS {args}"),
+                path,
+                line,
+                field(raw, 72, 80),
+            ));
+            process_count += 1;
+            first = false;
+            continue;
+        }
         if area.trim().is_empty() || area.starts_with('*') || area.starts_with(".*") {
+            process_position = false;
             continue;
         }
         let mut previous = raw;
@@ -341,6 +411,9 @@ pub(super) fn statements(
             at += 1;
         }
         let mut s = parse(&area, path, line, field(raw, 72, 80));
+        if s.op != "ICTL" {
+            process_position = false;
+        }
         if matches!(s.op.as_str(), "ICTL" | "ISEQ") && library {
             return Err(s.error("input controls are not allowed in COPY or library macro members"));
         }

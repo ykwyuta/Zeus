@@ -146,3 +146,128 @@ fn cnop_alignment_survives_linking_serialization_and_loading() {
     let mut machine = zeus_cobol::vm::Machine::new(vec![]);
     assert_eq!(machine.run_hlasm_main(linked).unwrap(), 6);
 }
+
+#[test]
+fn acontrol_afpr_tracks_each_statement_and_restores_nested_status_across_members() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("afpr.asm");
+    std::fs::write(dir.path().join("ENABLE.cpy"), " ACONTROL AFPR\n LDR 9,1\n").unwrap();
+    std::fs::write(&path, "MAIN CSECT\n USING MAIN,15\n ACONTROL NOAFPR\n LDR 2,6\n PUSH ACONTROL,PRINT,NOPRINT\n COPY ENABLE\n PUSH ACONTROL\n ACONTROL NOAFPR,NOPRINT\n LXDB 4,=DB'1'\n POP ACONTROL\n LDR 15,11\n POP ACONTROL,PRINT\n LDR 0,6\n CFDBR 3,5,0\n LDGR 0,3\n LGDR 3,0\n EFPC 3\n SFPC 3\n EEDTR 3,2\n IEDTR 0,2,3\n RRDTR 0,2,3,8\n BR 14\n END\n").unwrap();
+    let dirs = [dir.path().to_path_buf()];
+    let plain = hlasm::compile_report(&path, &dirs);
+    assert!(plain.module.is_some(), "{:?}", plain.diagnostics);
+    let report = hlasm::compile_report_with_options(
+        &path,
+        &dirs,
+        &hlasm::AssemblyOptions {
+            collect_listing: true,
+            ..Default::default()
+        },
+    );
+    assert_eq!(
+        serde_json::to_value(plain.module).unwrap(),
+        serde_json::to_value(report.module).unwrap()
+    );
+    // POP has restored NOAFPR despite changes in an included member.
+    let source = std::fs::read_to_string(&path)
+        .unwrap()
+        .replace(" LDR 0,6", " LDR 1,6");
+    std::fs::write(&path, source).unwrap();
+    let report = hlasm::compile_report(&path, &dirs);
+    assert!(report.module.is_none());
+    assert!(
+        report
+            .diagnostics
+            .iter()
+            .any(|d| d.line == 13 && d.message.contains("NOAFPR")),
+        "{:?}",
+        report.diagnostics
+    );
+}
+
+#[test]
+fn acontrol_noafpr_restricts_all_floating_roles_but_keeps_gprs_and_masks_unrestricted() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("afpr-roles.asm");
+    for instruction in [
+        "LDR 1,0",
+        "LDR 0,9",
+        "ADBR 0,9",
+        "MADBR 0,2,9",
+        "MADB 0,9,=DB'1'",
+        "LDEB 9,=EB'1'",
+        "LXDB 8,=DB'1'",
+        "LXR 8,0",
+        "LDGR 9,3",
+        "LGDR 3,9",
+        "TBEDR 0,0,9",
+        "CPSDR 0,2,9",
+        "MAY 0,9,=D'1'",
+        "STD 9,OUT",
+        "TDCDT 9,0",
+        "SLDT 0,9,1",
+        "CDPT 9,OUT(1),8",
+    ] {
+        let source = format!(
+            "MAIN CSECT\n USING MAIN,15\n ACONTROL NOAFPR\n {instruction}\n BR 14\nOUT DS 4D\n END\n"
+        );
+        std::fs::write(&path, &source).unwrap();
+        let report = hlasm::compile_report(&path, &[]);
+        assert!(report.module.is_none(), "{instruction}: NOAFPR accepted");
+        assert!(
+            report
+                .diagnostics
+                .iter()
+                .any(|d| d.line == 4 && d.message.contains("NOAFPR")),
+            "{instruction}: {:?}",
+            report.diagnostics
+        );
+        std::fs::write(&path, source.replace("ACONTROL NOAFPR", "ACONTROL AFPR")).unwrap();
+        let report = hlasm::compile_report(&path, &[]);
+        assert!(
+            report.module.is_some(),
+            "{instruction}: AFPR rejected: {:?}",
+            report.diagnostics
+        );
+    }
+}
+
+#[test]
+fn acontrol_macrocase_changes_only_macro_operand_values_and_restores_with_stack() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("macrocase.asm");
+    let text = " MACRO\n PROBE &VALUE,&KEY=defaultCase\n MNOTE 0,'VALUE=&VALUE|KEY=&KEY|LIST=&SYSLIST(1)'\n MEND\nMAIN CSECT\n ACONTROL COMPAT(MACROCASE)\n PROBE mixedCase,KEY=otherCase\n PROBE 'quotedCase',KEY='quotedKey'\n PROBE C'characterCase'\n PUSH ACONTROL\n ACONTROL CPAT(NOMC)\n PROBE mixedCase\n POP ACONTROL\n PROBE mixedCase\n BR 14\n END\n";
+    std::fs::write(&path, text).unwrap();
+    let report = hlasm::compile_report_with_options(
+        &path,
+        &[],
+        &hlasm::AssemblyOptions {
+            collect_listing: true,
+            ..Default::default()
+        },
+    );
+    assert!(report.module.is_some(), "{:?}", report.diagnostics);
+    let messages: Vec<_> = report
+        .diagnostics
+        .iter()
+        .filter(|d| d.operation == "MNOTE")
+        .map(|d| d.message.as_str())
+        .collect();
+    assert_eq!(
+        messages,
+        [
+            "VALUE=MIXEDCASE|KEY=OTHERCASE|LIST=MIXEDCASE",
+            "VALUE='quotedCase'|KEY='quotedKey'|LIST='quotedCase'",
+            "VALUE=C'CHARACTERCASE'|KEY=defaultCase|LIST=C'CHARACTERCASE'",
+            "VALUE=mixedCase|KEY=defaultCase|LIST=mixedCase",
+            "VALUE=MIXEDCASE|KEY=defaultCase|LIST=MIXEDCASE"
+        ]
+    );
+    let listing = report.listing.unwrap();
+    assert!(
+        listing
+            .original_source_text()
+            .contains("PROBE mixedCase,KEY=otherCase")
+    );
+    assert_eq!(listing.macro_calls[0].operands, "mixedCase,KEY=otherCase");
+}

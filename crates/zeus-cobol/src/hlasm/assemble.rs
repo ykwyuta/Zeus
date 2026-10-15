@@ -4,6 +4,8 @@ use std::path::{Path, PathBuf};
 
 #[derive(Clone)]
 pub(super) struct Statement {
+    pub(super) listing: Option<super::listing::Attributes>,
+    pub(super) afpr: bool,
     pub(super) label: String,
     pub(super) op: String,
     pub(super) args: String,
@@ -28,6 +30,15 @@ struct Literal {
     location: u32,
     location_section: String,
     numeric_attributes: Option<(i64, i64)>,
+    references: Vec<usize>,
+}
+
+pub(super) struct EmittedLiteral {
+    pub name: String,
+    pub spec: String,
+    pub pool: usize,
+    pub length: usize,
+    pub references: Vec<usize>,
 }
 
 struct LiteralFixup {
@@ -44,6 +55,8 @@ struct LiteralPool {
     pending: Vec<Literal>,
     names: HashMap<String, String>,
     serial: usize,
+    collect_listing: bool,
+    emitted: Vec<EmittedLiteral>,
 }
 
 impl LiteralPool {
@@ -52,6 +65,7 @@ impl LiteralPool {
         spec: &str,
         location: u32,
         location_section: &str,
+        statement: usize,
         defined: &HashSet<String>,
         symbols: &Symbols,
     ) -> Result<String, String> {
@@ -64,6 +78,12 @@ impl LiteralPool {
             spec.to_string()
         };
         if let Some(name) = self.names.get(&key) {
+            if self.collect_listing
+                && let Some(literal) = self.pending.iter_mut().find(|l| &l.name == name)
+                && literal.references.last() != Some(&statement)
+            {
+                literal.references.push(statement);
+            }
             return Ok(name.clone());
         }
         let name = loop {
@@ -82,6 +102,11 @@ impl LiteralPool {
             location,
             location_section: location_section.into(),
             numeric_attributes: storage_numeric_attributes(spec, length, symbols).ok(),
+            references: if self.collect_listing {
+                vec![statement]
+            } else {
+                vec![]
+            },
         });
         self.names.insert(key, name.clone());
         Ok(name)
@@ -108,6 +133,15 @@ impl LiteralPool {
                 .unwrap_or(4)
         });
         for literal in self.pending.drain(..) {
+            if self.collect_listing {
+                self.emitted.push(EmittedLiteral {
+                    name: literal.name.clone(),
+                    spec: literal.spec.clone(),
+                    pool,
+                    length: literal.bytes.len(),
+                    references: literal.references,
+                });
+            }
             let end = (*offset as usize)
                 .checked_add(literal.bytes.len())
                 .filter(|n| *n <= 16 << 20)
@@ -145,7 +179,13 @@ impl LiteralPool {
 }
 
 pub(super) fn statements(path: &Path) -> Result<Vec<Statement>, String> {
-    super::source::statements(path, &super::AssemblyOptions::default(), false, &mut vec![])
+    super::source::statements(
+        path,
+        &super::AssemblyOptions::default(),
+        false,
+        &mut vec![],
+        None,
+    )
 }
 
 /// Split operands while preserving commas in strings and address subfields.
@@ -220,8 +260,12 @@ pub(super) fn directive(op: &str) -> bool {
             | "AMODE"
             | "RMODE"
             | "TITLE"
+            | "SPACE"
+            | "CEJECT"
+            | "EJECT"
             | "PRINT"
             | "ACONTROL"
+            | "ADATA"
             | "ENTRY"
             | "EXTRN"
             | "WXTRN"
@@ -325,6 +369,8 @@ fn wide_memory(op: &str) -> bool {
             | "LGH"
             | "LLGH"
             | "LLGC"
+            | "LLC"
+            | "LLH"
             | "AG"
             | "SG"
             | "ALG"
@@ -344,6 +390,9 @@ fn wide_memory(op: &str) -> bool {
 }
 
 pub(super) fn instruction_size(op: &str) -> Option<u32> {
+    if let Some(size) = super::float::operations::size(op) {
+        return Some(size);
+    }
     if super::operation::register_logic(op).is_some() || super::operation::select(op).is_some() {
         return Some(4);
     }
@@ -375,18 +424,18 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         return Some(6);
     }
     Some(match op {
-        "POPCNT" | "FLOGR" | "BCTGR" | "ALCR" | "ALCGR" | "SLBR" | "SLBGR" | "LRVR" | "LRVGR"
-        | "LBR" | "LGBR" | "MLR" | "MLGR" | "DLR" | "DLGR" | "DSGR" | "DSGFR" => 4,
+        "IPM" | "POPCNT" | "FLOGR" | "BCTGR" | "ALCR" | "ALCGR" | "SLBR" | "SLBGR" | "LRVR"
+        | "LRVGR" | "LBR" | "LGBR" | "MLR" | "MLGR" | "DLR" | "DLGR" | "DSGR" | "DSGFR" => 4,
         "SLLG" | "SRLG" | "SLAG" | "SRAG" | "RLL" | "RLLG" | "LPD" | "LPDG" | "CSST" => 6,
         "SLDL" | "SRDL" | "SLDA" | "SRDA" => 4,
         "LGR" | "LGFR" | "LLGFR" | "LTGR" | "LCGR" | "LPGR" | "LNGR" | "AGR" | "SGR" | "ALGR"
         | "SLGR" | "CGR" | "CLGR" | "NGR" | "OGR" | "XGR" | "AGFR" | "SGFR" | "CGFR" | "MSGR"
-        | "LGHI" | "AGHI" | "CGHI" | "MGHI" => 4,
+        | "LGHI" | "AGHI" | "CGHI" | "MGHI" | "LHI" | "MHI" | "CHI" => 4,
         "LGFI" | "AGFI" | "CGFI" => 6,
         "MVCLE" | "CLCLE" | "MVST" | "CLST" | "SRST" => 4,
         "MVCL" | "CLCL" | "BCTR" | "LR" | "SR" | "AR" | "CR" | "LTR" | "BR" | "BCR" | "XR"
         | "NR" | "OR" | "CLR" | "ALR" | "SLR" | "LCR" | "LPR" | "LNR" | "MR" | "DR" | "BALR"
-        | "BASR" | "NOPR" => 2,
+        | "BASR" | "BASSM" | "BSM" | "SAM24" | "SAM31" | "SAM64" | "SPM" | "NOPR" => 2,
         "EX" | "L" | "ST" | "LA" | "STM" | "LM" | "CLI" | "MVI" | "B" | "BE" | "BNE" | "BH"
         | "BL" | "BCT" | "AHI" | "A" | "S" | "C" | "CL" | "AL" | "SL" | "N" | "O" | "X" | "AH"
         | "SH" | "CH" | "MH" | "M" | "D" | "LH" | "STH" | "IC" | "STC" | "SLL" | "SRL" | "SLA"
@@ -395,8 +444,9 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         "MVC" | "CLC" | "XC" | "NC" | "OC" | "MVN" | "MVZ" | "TR" | "ZAP" | "AP" | "SP" | "CP"
         | "MP" | "DP" | "PACK" | "UNPK" | "TRT" | "TRTR" | "SRP" | "ED" | "EDMK" => 6,
         // STIMER is implemented as an OS service, not an IBM macro expansion.
-        "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE" | "LINK" | "XCTL" | "LOAD" | "DELETE"
-        | "WTO" | "WAIT" | "POST" | "OPEN" | "CLOSE" | "GET" | "PUT" | "FREEPOOL" => 4,
+        "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE" | "LINK" | "LINKX" | "XCTL" | "XCTLX"
+        | "LOAD" | "DELETE" | "WTO" | "WAIT" | "POST" | "OPEN" | "CLOSE" | "GET" | "PUT"
+        | "FREEPOOL" => 4,
         _ => return None,
     })
 }
@@ -537,6 +587,26 @@ pub(super) fn storage_numeric_attributes(
     let (first, _, _) = super::constants::annotated(&first)?;
     let at = super::constants::type_start(&first)?;
     let kind = first.as_bytes()[at].to_ascii_uppercase();
+    if matches!(kind, b'E' | b'D' | b'L') {
+        let tail = &first[at + 1..];
+        if tail.starts_with(['B', 'D']) {
+            return Ok((0, 0));
+        }
+        let tail = tail.strip_prefix(['H', 'Q']).unwrap_or(tail);
+        let tail = if tail.starts_with("L.") {
+            let (_, used) =
+                super::bit_constants::length(&first, symbols)?.ok_or("bit length required")?;
+            &first[used..]
+        } else {
+            super::constants::modifier(tail, 'L', symbols)?.1
+        };
+        let scale = i64::from(super::constants::modifier(tail, 'S', symbols)?.0);
+        let length = i64::from(length);
+        return Ok((
+            scale,
+            2 * (length - 1) - scale - if length > 8 { 2 } else { 0 },
+        ));
+    }
     let scale = if matches!(kind, b'P' | b'Z') {
         let nominal = first
             .split('\'')
@@ -693,6 +763,9 @@ pub(super) fn storage_item(
 ) -> Result<(Vec<u8>, u32, u32), String> {
     let (clean, _, _) = super::constants::annotated(spec)?;
     let spec = clean.as_ref();
+    if let Some(field) = super::float::storage(spec, initialized, symbols)? {
+        return Ok((field.bytes, field.alignment, field.length));
+    }
     if let Some(field) = super::bit_constants::assemble(spec, initialized, symbols)? {
         return Ok((field.bytes, 1, field.length));
     }
@@ -1157,12 +1230,29 @@ pub fn compile_file(path: &Path, dirs: &[PathBuf]) -> Result<Module, String> {
     })
 }
 
-pub(super) fn compile_statements(lines: Vec<Statement>) -> Result<Module, String> {
+pub(super) fn compile_statements(
+    lines: Vec<Statement>,
+    mut listing: Option<&mut super::AssemblyListing>,
+    diagnostics: &mut Vec<super::Diagnostic>,
+) -> Result<Module, String> {
     let mut phases = HashMap::new();
     for _ in 0..lines.len() + 3 {
-        match compile_layout(lines.clone(), &phases)? {
-            LayoutPass::Complete(module) => return Ok(*module),
-            LayoutPass::Retry(next) => phases = next,
+        let mut pass_diagnostics = Vec::new();
+        match compile_layout(
+            lines.clone(),
+            &phases,
+            listing.as_deref_mut(),
+            &mut pass_diagnostics,
+        ) {
+            Ok(LayoutPass::Complete(module)) => {
+                diagnostics.extend(pass_diagnostics);
+                return Ok(*module);
+            }
+            Ok(LayoutPass::Retry(next)) => phases = next,
+            Err(error) => {
+                diagnostics.extend(pass_diagnostics);
+                return Err(error);
+            }
         }
     }
     Err("location-counter alignment did not converge".into())
@@ -1180,10 +1270,15 @@ enum LayoutPass {
 fn compile_layout(
     mut lines: Vec<Statement>,
     phases: &HashMap<String, u32>,
+    listing: Option<&mut super::AssemblyListing>,
+    diagnostics: &mut Vec<super::Diagnostic>,
 ) -> Result<LayoutPass, String> {
     if let Some(end) = lines.iter().position(|s| s.op == "END") {
         lines.truncate(end + 1);
     }
+    let original = listing.as_ref().map(|_| lines.clone());
+    let mut listing_lengths = HashMap::new();
+    let mut listing_usings = HashMap::new();
     let mut symbols = Symbols::new();
     let mut externals = HashMap::new();
     for s in lines.iter().take_while(|s| s.op != "END") {
@@ -1270,6 +1365,7 @@ fn compile_layout(
     let mut layout_labels: HashMap<String, String> = HashMap::new();
     let mut section_types = HashMap::new();
     let mut rmode = 31;
+    let mut control_modes = HashMap::<String, u8>::new();
     let mut last_areas: HashMap<String, String> = HashMap::new();
     let mut counters: HashMap<String, u32> = HashMap::new();
     let mut high_water: HashMap<String, u32> = HashMap::new();
@@ -1278,7 +1374,10 @@ fn compile_layout(
     let has_cnop = lines.iter().any(|s| s.op == "CNOP");
     let mut image_alignment = 8;
     let mut image = Vec::new();
-    let mut literals = LiteralPool::default();
+    let mut literals = LiteralPool {
+        collect_listing: listing.is_some(),
+        ..Default::default()
+    };
     let mut literal_fixups = Vec::new();
     let mut bindings = super::Bindings::default();
     let mut area_alignment = HashMap::<String, u32>::new();
@@ -1331,12 +1430,22 @@ fn compile_layout(
             );
             continue;
         }
-        if s.op == "AMODE"
-            && !matches!(s.args.to_ascii_uppercase().as_str(), "31" | "ANY" | "ANY31")
-        {
-            return Err(s.error(
-                "the Zeus caller uses AMODE 31; supported declarations are 31, ANY and ANY31",
-            ));
+        if s.op == "AMODE" {
+            let mode = match s.args.to_ascii_uppercase().as_str() {
+                "24" => 24,
+                "31" | "ANY" | "ANY31" => 31,
+                "64" | "ANY64" => 64,
+                _ => return Err(s.error("AMODE must be 24, 31, 64, ANY, ANY31 or ANY64")),
+            };
+            let control = if s.label.is_empty() {
+                parent_control.clone()
+            } else {
+                format!("$C:{}", s.label)
+            };
+            if control.is_empty() {
+                return Err(s.error("AMODE requires a control section"));
+            }
+            control_modes.insert(control, mode);
         }
         if s.op == "RMODE" {
             match s.args.to_ascii_uppercase().as_str() {
@@ -1529,6 +1638,30 @@ fn compile_layout(
         } else {
             None
         };
+        // Collect conversion diagnostics once per source operand. Layout retries
+        // discard this pass's diagnostics, and literal pooling does not erase
+        // the location of the instruction which supplied the nominal.
+        for operand in operands(&s.args) {
+            let spec = if matches!(s.op.as_str(), "DC" | "DS") {
+                Some(operand.as_str())
+            } else if instruction_size(&s.op).is_some() {
+                operand.strip_prefix('=')
+            } else {
+                None
+            };
+            if let Some(spec) = spec {
+                let (clean, _, _) = super::constants::annotated(spec).map_err(|e| s.error(e))?;
+                if let Some(field) =
+                    super::float::storage(&clean, s.op != "DS", &symbols).map_err(|e| s.error(e))?
+                {
+                    diagnostics.extend(
+                        field.warnings.into_iter().map(|message| {
+                            super::Diagnostic::at(s, 4, "FLOAT_CONVERSION", message)
+                        }),
+                    );
+                }
+            }
+        }
         if matches!(s.op.as_str(), "DC" | "DS") {
             super::constants::annotations(&s.args, &symbols).map_err(|e| s.error(e))?;
         }
@@ -1640,6 +1773,9 @@ fn compile_layout(
             }
         }
         if let Some((bytes, _, _)) = data {
+            if listing.is_some() {
+                listing_lengths.insert(statement_index, bytes.len() as u32);
+            }
             *offset = offset
                 .checked_add(bytes.len() as u32)
                 .ok_or_else(|| s.error("section too large"))?;
@@ -1730,7 +1866,14 @@ fn compile_layout(
             for operand in &mut args {
                 if let Some(spec) = operand.strip_prefix('=') {
                     *operand = literals
-                        .add(spec, s.offset, &section, &defined, &attribute_symbols)
+                        .add(
+                            spec,
+                            s.offset,
+                            &section,
+                            statement_index,
+                            &defined,
+                            &attribute_symbols,
+                        )
                         .map_err(|e| s.error(e))?;
                 }
             }
@@ -2053,6 +2196,25 @@ fn compile_layout(
     }
     // Literal pools and save areas are part of the mapped section, not host memory.
     image.resize(image.len() + 256, 0);
+    for statement in &lines {
+        if matches!(statement.op.as_str(), "SPACE" | "CEJECT") && !statement.args.is_empty() {
+            let value = expression(
+                &statement.args,
+                &symbols,
+                &statement.section,
+                statement.offset,
+            )
+            .map_err(|e| statement.error(e))?;
+            if value.section.is_some() || !value.complex.is_empty() || value.value < 0 {
+                return Err(
+                    statement.error("SPACE/CEJECT requires a nonnegative absolute line count")
+                );
+            }
+        }
+        if statement.op == "EJECT" && !statement.args.is_empty() {
+            return Err(statement.error("EJECT takes no operands"));
+        }
+    }
     let mut using = Vec::new();
     let mut using_serial = 0;
     let mut using_stack = Vec::new();
@@ -2074,6 +2236,24 @@ fn compile_layout(
     let mut entries = HashMap::new();
     entries.insert(name.clone(), entry);
     for (statement_index, s) in lines.iter().enumerate() {
+        if listing.is_some() {
+            listing_usings.insert(
+                statement_index,
+                using
+                    .iter()
+                    .map(|u: &Using| super::listing::UsingSummary {
+                        register: u.register,
+                        origin: u.origin.value,
+                        section: u.origin.section.clone(),
+                        label: u.label.clone(),
+                        dependent: u.dependent,
+                        lower: u.lower,
+                        upper: u.upper,
+                    })
+                    .collect(),
+            );
+        }
+
         for literal in literal_fixups
             .iter()
             .filter(|l| l.pool == statement_index || (s.op == "END" && l.pool == usize::MAX))
@@ -2401,6 +2581,297 @@ fn compile_layout(
                 )
             };
             let expected = match canonical_operation(&s.op) {
+                op if super::float::operations::size(op).is_some() => {
+                    use super::float::operations as fp;
+                    let check_float_register = |r: u8, width: usize| -> Result<(), String> {
+                        fp::check_register(r, width)?;
+                        if !(s.afpr || matches!(r, 0 | 4) || width != 16 && matches!(r, 2 | 6)) {
+                            return Err(
+                                "ACONTROL NOAFPR permits only FPR 0,2,4,6 (extended pairs 0 or 4)"
+                                    .into(),
+                            );
+                        }
+                        Ok(())
+                    };
+                    if op == "PFPO" {
+                        0
+                    } else if let Some((_, width)) = fp::divide_integer(op) {
+                        i.registers = vec![reg(0)?, reg(1)?, reg(2)?];
+                        for r in &i.registers {
+                            check_float_register(*r, width)?;
+                        }
+                        if i.registers[0] == i.registers[1]
+                            || i.registers[0] == i.registers[2]
+                            || i.registers[1] == i.registers[2]
+                        {
+                            return Err("DIVIDE TO INTEGER requires three different FPRs".into());
+                        }
+                        i.immediate = u32::from(reg(3)?);
+                        super::float::convert::rounding(
+                            i.immediate,
+                            0,
+                            super::float::Format::Binary,
+                        )?;
+                        4
+                    } else if let Some(spec) = fp::classify(op) {
+                        i.registers = vec![reg(0)?];
+                        check_float_register(i.registers[0], spec.width)?;
+                        i.address = Some(addr(1, false)?.0);
+                        2
+                    } else if let Some(spec) = fp::decimal_shift(op) {
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        for r in &i.registers {
+                            check_float_register(*r, spec.width)?;
+                        }
+                        i.address = Some(addr(2, false)?.0);
+                        3
+                    } else if let Some(spec) = fp::support(op) {
+                        i.registers = vec![
+                            reg(0)?,
+                            reg(if spec.kind == fp::SupportKind::HexToBinary {
+                                2
+                            } else {
+                                1
+                            })?,
+                        ];
+                        check_float_register(i.registers[0], spec.destination)?;
+                        check_float_register(i.registers[1], spec.source)?;
+                        match spec.kind {
+                            fp::SupportKind::CopySign => {
+                                i.registers.push(reg(2)?);
+                                check_float_register(i.registers[2], 8)?;
+                                3
+                            }
+                            fp::SupportKind::HexToBinary => {
+                                i.immediate = u32::from(reg(1)?);
+                                super::float::convert::radix_rounding(i.immediate)?;
+                                3
+                            }
+                            _ => 2,
+                        }
+                    } else if let Some(spec) = fp::decimal_memory(op) {
+                        i.registers = vec![reg(0)?];
+                        check_float_register(i.registers[0], spec.width)?;
+                        let (address, length) = addr(1, true)?;
+                        if !(1..=spec.max_length()).contains(&length) {
+                            return Err(
+                                s.error("DFP memory conversion field length is out of range")
+                            );
+                        }
+                        i.address = Some(address);
+                        i.length = length;
+                        i.immediate = u32::from(reg(2)?);
+                        3
+                    } else if let Some(spec) = fp::hex_unnormalized(op) {
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        if spec.part == fp::HexPart::Full && !spec.add {
+                            check_float_register(i.registers[0], 16)?;
+                        }
+                        check_float_register(i.registers[0], 8)?;
+                        check_float_register(i.registers[1], 8)?;
+                        if spec.memory {
+                            i.address = Some(addr(2, false)?.0);
+                        } else {
+                            i.registers.push(reg(2)?);
+                            check_float_register(i.registers[2], 8)?;
+                        }
+                        3
+                    } else if let Some(spec) = fp::decimal_packed(op) {
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        check_float_register(
+                            i.registers[usize::from(!spec.to_decimal)],
+                            spec.width,
+                        )?;
+                        if spec.width == 16
+                            && !i.registers[usize::from(spec.to_decimal)].is_multiple_of(2)
+                        {
+                            return Err(s.error(
+                                "packed general-register pair must begin with an even register",
+                            ));
+                        }
+                        if spec.mask() {
+                            i.immediate = u32::from(reg(2)?) << 4;
+                            3
+                        } else {
+                            2
+                        }
+                    } else if let Some(spec) = fp::decimal_bits(op) {
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        check_float_register(i.registers[1], spec.width)?;
+                        if matches!(
+                            spec.kind,
+                            fp::DecimalBitKind::Insert
+                                | fp::DecimalBitKind::Quantize
+                                | fp::DecimalBitKind::Reround
+                        ) {
+                            check_float_register(i.registers[0], spec.width)?;
+                            i.registers.push(reg(2)?);
+                            if spec.kind == fp::DecimalBitKind::Quantize {
+                                check_float_register(i.registers[2], spec.width)?;
+                            }
+                            if spec.kind != fp::DecimalBitKind::Insert {
+                                i.immediate = u32::from(reg(3)?);
+                                4
+                            } else {
+                                3
+                            }
+                        } else {
+                            2
+                        }
+                    } else if fp::common(op).is_some() {
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        for (index, r) in i.registers.iter().enumerate() {
+                            if !(op == "LDGR" && index == 1 || op == "LGDR" && index == 0) {
+                                check_float_register(*r, 8)?;
+                            }
+                        }
+                        2
+                    } else if let Some(spec) = fp::decimal(op) {
+                        if matches!(spec.kind, fp::Kind::Convert | fp::Kind::RoundInteger) {
+                            i.registers = vec![reg(0)?, reg(if spec.mask { 2 } else { 1 })?];
+                            check_float_register(
+                                i.registers[0],
+                                spec.destination.max(if spec.mask { spec.width } else { 0 }),
+                            )?;
+                            check_float_register(i.registers[1], spec.width)?;
+                            i.immediate = if spec.mask {
+                                u32::from(reg(1)?) | (u32::from(reg(3)?) << 4)
+                            } else {
+                                u32::from(reg(2)?) << 4
+                            };
+                            if spec.mask { 4 } else { 3 }
+                        } else {
+                            i.registers = vec![reg(0)?, reg(1)?];
+                            if spec.arithmetic {
+                                i.registers.push(reg(2)?);
+                            }
+                            for r in &i.registers {
+                                check_float_register(*r, spec.width)?;
+                            }
+                            if spec.mask {
+                                i.immediate = u32::from(reg(3)?);
+                                4
+                            } else if spec.arithmetic {
+                                3
+                            } else {
+                                2
+                            }
+                        }
+                    } else if let Some(spec) = super::float::convert::instruction(op) {
+                        let modifier = spec.to_integer || spec.masks;
+                        i.registers = vec![reg(0)?, reg(if modifier { 2 } else { 1 })?];
+                        check_float_register(
+                            i.registers[usize::from(spec.to_integer)],
+                            spec.width,
+                        )?;
+                        if modifier {
+                            i.immediate = u32::from(reg(1)?);
+                            super::float::convert::rounding(i.immediate, 0, spec.format)?;
+                        }
+                        if spec.masks {
+                            i.immediate |= u32::from(reg(3)?) << 4;
+                            4
+                        } else if spec.to_integer {
+                            3
+                        } else {
+                            2
+                        }
+                    } else if let Some(spec) = fp::hex(op) {
+                        i.registers = vec![reg(0)?];
+                        check_float_register(i.registers[0], spec.destination.max(spec.width))?;
+                        if matches!(spec.kind, fp::Kind::FusedAdd | fp::Kind::FusedSubtract) {
+                            i.registers.push(reg(1)?);
+                            check_float_register(i.registers[1], spec.width)?;
+                            if spec.memory {
+                                i.address = Some(addr(2, false)?.0);
+                            } else {
+                                i.registers.push(reg(2)?);
+                                check_float_register(i.registers[2], spec.width)?;
+                            }
+                            3
+                        } else {
+                            if spec.memory {
+                                i.address = Some(addr(1, false)?.0);
+                            } else {
+                                i.registers.push(reg(1)?);
+                                check_float_register(i.registers[1], spec.width)?;
+                            }
+                            2
+                        }
+                    } else if let Some((_, dest, source, kind)) = fp::register(op) {
+                        i.registers = vec![reg(0)?];
+                        check_float_register(
+                            i.registers[0],
+                            if kind == fp::Kind::Convert {
+                                dest.max(source)
+                            } else {
+                                dest
+                            },
+                        )?;
+                        if let Some(advanced) = fp::binary_masks(op) {
+                            i.registers.push(reg(2)?);
+                            check_float_register(i.registers[1], source)?;
+                            i.immediate = u32::from(reg(1)?);
+                            super::float::convert::rounding(
+                                i.immediate,
+                                0,
+                                super::float::Format::Binary,
+                            )?;
+                            if advanced {
+                                i.immediate |= u32::from(reg(3)?) << 4;
+                                4
+                            } else {
+                                3
+                            }
+                        } else if kind == fp::Kind::Zero {
+                            1
+                        } else {
+                            i.registers.push(reg(1)?);
+                            check_float_register(i.registers[1], source)?;
+                            if matches!(kind, fp::Kind::FusedAdd | fp::Kind::FusedSubtract) {
+                                i.registers.push(reg(2)?);
+                                check_float_register(i.registers[2], source)?;
+                                3
+                            } else {
+                                2
+                            }
+                        }
+                    } else if matches!(op, "SFPC" | "EFPC") {
+                        i.registers = vec![reg(0)?];
+                        1
+                    } else if matches!(op, "LFPC" | "STFPC" | "SRNM" | "SRNMB" | "SRNMT") {
+                        let a = addr(0, false)?.0;
+                        if a.index != 0 {
+                            return Err("FPC instructions do not accept an index register".into());
+                        }
+                        i.address = Some(a);
+                        1
+                    } else if matches!(op, "LER" | "LDR" | "LXR") {
+                        let width = if op == "LXR" { 16 } else { 8 };
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        for r in &i.registers {
+                            check_float_register(*r, width)?;
+                        }
+                        2
+                    } else if fp::memory(op).is_some_and(|(_, _, kind)| {
+                        matches!(kind, fp::Kind::FusedAdd | fp::Kind::FusedSubtract)
+                    }) {
+                        i.registers = vec![reg(0)?, reg(1)?];
+                        for r in &i.registers {
+                            check_float_register(*r, fp::memory_destination(op).unwrap())?;
+                        }
+                        i.address = Some(addr(2, false)?.0);
+                        3
+                    } else {
+                        i.registers = vec![reg(0)?];
+                        check_float_register(
+                            i.registers[0],
+                            fp::memory_destination(op).unwrap_or(8),
+                        )?;
+                        i.address = Some(addr(1, false)?.0);
+                        2
+                    }
+                }
                 "OPEN" | "CLOSE" | "GET" | "PUT" | "FREEPOOL" => {
                     i.data_service = Some(data_service(s, &args, &symbols, &using)?);
                     args.len()
@@ -2453,8 +2924,13 @@ fn compile_layout(
                     i.system_service = Some(system_service(s, &args, &symbols, &using)?);
                     args.len()
                 }
-                "LINK" | "XCTL" | "LOAD" | "DELETE" => {
+                "LINK" | "LINKX" | "XCTL" | "XCTLX" | "LOAD" | "DELETE" => {
                     i.module_service = Some(module_service(s, &args, &symbols, &using)?);
+                    if s.op == "LINKX" {
+                        i.op = "LINK".into();
+                    } else if s.op == "XCTLX" {
+                        i.op = "XCTL".into();
+                    }
                     args.len()
                 }
                 op if super::operation::interlocked(op).is_some() => {
@@ -2764,21 +3240,22 @@ fn compile_layout(
                 }
                 "LGFI" | "AGFI" | "CGFI" => {
                     i.registers = vec![reg(0)?];
-                    i.immediate = i32::try_from(
-                        expression(
-                            args.get(1).ok_or("missing immediate")?,
-                            &symbols,
-                            &s.section,
-                            s.offset,
-                        )?
-                        .value,
-                    )
-                    .map_err(|_| "invalid signed immediate")?
+                    let immediate = expression(
+                        args.get(1).ok_or("missing immediate")?,
+                        &symbols,
+                        &s.section,
+                        s.offset,
+                    )?;
+                    if immediate.section.is_some() || !immediate.complex.is_empty() {
+                        return Err("fullword immediate must be an absolute expression".into());
+                    }
+                    i.immediate = i32::try_from(immediate.value)
+                        .map_err(|_| "invalid signed immediate")?
                         as u32;
                     2
                 }
                 "LR" | "SR" | "AR" | "CR" | "LTR" | "XR" | "NR" | "OR" | "CLR" | "ALR" | "SLR"
-                | "LCR" | "LPR" | "LNR" | "MR" | "DR" | "BALR" | "BASR" => {
+                | "LCR" | "LPR" | "LNR" | "MR" | "DR" | "BALR" | "BASR" | "BASSM" | "BSM" => {
                     i.registers = vec![reg(0)?, reg(1)?];
                     2
                 }
@@ -2791,6 +3268,11 @@ fn compile_layout(
                     i.registers = vec![reg(1)?];
                     2
                 }
+                "SPM" | "IPM" => {
+                    i.registers = vec![reg(0)?];
+                    1
+                }
+                "SAM24" | "SAM31" | "SAM64" => 0,
                 "NOPR" => {
                     i.op = "BCR".into();
                     i.immediate = 0;
@@ -2809,18 +3291,19 @@ fn compile_layout(
                     i.address = Some(addr(2, false)?.0);
                     3
                 }
-                "AHI" | "LGHI" | "AGHI" | "CGHI" | "MGHI" => {
+                "AHI" | "LGHI" | "AGHI" | "CGHI" | "MGHI" | "LHI" | "MHI" | "CHI" => {
                     i.registers = vec![reg(0)?];
-                    i.immediate = i16::try_from(
-                        expression(
-                            args.get(1).ok_or("missing immediate")?,
-                            &symbols,
-                            &s.section,
-                            s.offset,
-                        )?
-                        .value,
-                    )
-                    .map_err(|_| "invalid signed immediate")?
+                    let immediate = expression(
+                        args.get(1).ok_or("missing immediate")?,
+                        &symbols,
+                        &s.section,
+                        s.offset,
+                    )?;
+                    if immediate.section.is_some() || !immediate.complex.is_empty() {
+                        return Err("halfword immediate must be an absolute expression".into());
+                    }
+                    i.immediate = i16::try_from(immediate.value)
+                        .map_err(|_| "invalid signed immediate")?
                         as u32;
                     2
                 }
@@ -2922,7 +3405,7 @@ fn compile_layout(
                 }
                 _ => return Err("unsupported instruction".into()),
             };
-            if args.len() != expected {
+            if args.len() != expected && !(expected == 0 && s.args.is_empty()) {
                 return Err("wrong operand count".into());
             }
             if matches!(
@@ -3013,9 +3496,32 @@ fn compile_layout(
             });
         }
     }
+    let amode = control_modes
+        .get(&format!("$C:{name}"))
+        .copied()
+        .unwrap_or(31);
+    let mut entry_modes = BTreeMap::new();
+    for (name, offset) in &entries {
+        if let Some(control) = symbol_controls.get(name) {
+            let mode = control_modes
+                .get(control)
+                .or_else(|| {
+                    control
+                        .split_once(":@")
+                        .and_then(|(parent, _)| control_modes.get(parent))
+                })
+                .copied()
+                .unwrap_or(31);
+            if mode != amode {
+                entry_modes.insert(*offset, mode);
+            }
+        }
+    }
     let module = Module {
         zeus_hlasm: super::format_version(&code, &relocations).max(
-            if bindings.requires_extended() {
+            if amode != 31 || !entry_modes.is_empty() {
+                10
+            } else if bindings.requires_extended() {
                 9
             } else if !dcbs.is_empty() {
                 8
@@ -3030,12 +3536,16 @@ fn compile_layout(
         name,
         alignment: image_alignment,
         instruction_templates: true,
+        machine_code: Vec::new(),
         read_only,
         rmode,
+        amode,
+        entry_modes,
         storage: image,
         entry,
         code,
         relocations,
+        object_relocations: Vec::new(),
         entries,
         externals,
         dcbs,
@@ -3043,6 +3553,18 @@ fn compile_layout(
     };
     super::data_management::validate(&module)?;
     module.bindings.validate(&module)?;
+    if let (Some(output), Some(original)) = (listing, original) {
+        *output = super::listing::build(
+            &module,
+            &original,
+            &lines,
+            &symbols,
+            &listing_lengths,
+            &listing_usings,
+        );
+        output.literals =
+            super::listing::build_literals(&module, &original, &symbols, &literals.emitted);
+    }
     Ok(LayoutPass::Complete(Box::new(module)))
 }
 
@@ -3423,6 +3945,9 @@ fn module_service(
         }
     };
     let (mut name, mut parameters, mut variable_list) = (None, None, false);
+    let extended = matches!(s.op.as_str(), "LINKX" | "XCTLX");
+    let mut list_width = None;
+    let mut allow_64 = false;
     let mut seen = HashSet::new();
     for arg in args {
         let (key, value) = arg
@@ -3447,7 +3972,7 @@ fn module_service(
                     return Err("EP and EPLOC are mutually exclusive".into());
                 }
             }
-            "PARAM" if matches!(s.op.as_str(), "LINK" | "XCTL") => {
+            "PARAM" if matches!(s.op.as_str(), "LINK" | "LINKX" | "XCTL" | "XCTLX") => {
                 let value = value
                     .strip_prefix('(')
                     .and_then(|s| s.strip_suffix(')'))
@@ -3461,11 +3986,34 @@ fn module_service(
                         .collect::<Result<Vec<_>, _>>()?
                 });
             }
-            "VL" if value == "1" && matches!(s.op.as_str(), "LINK" | "XCTL") => {
+            "VL" if value == "1"
+                && matches!(s.op.as_str(), "LINK" | "LINKX" | "XCTL" | "XCTLX") =>
+            {
                 variable_list = true
+            }
+            "PLIST4" | "PLIST8" if extended => {
+                let yes = match value.to_ascii_uppercase().as_str() {
+                    "YES" => true,
+                    "NO" => false,
+                    _ => return Err("PLIST4/PLIST8 requires YES or NO".into()),
+                };
+                if list_width.is_some() {
+                    return Err("PLIST4 and PLIST8 are mutually exclusive".into());
+                }
+                list_width = Some(if (key == "PLIST8") == yes { 8 } else { 4 });
+            }
+            "AMODE64OK" if extended => {
+                allow_64 = match value.to_ascii_uppercase().as_str() {
+                    "YES" => true,
+                    "NO" => false,
+                    _ => return Err("AMODE64OK requires YES or NO".into()),
+                }
             }
             _ => return Err(format!("unsupported {} keyword/form {key}={value}", s.op)),
         }
+    }
+    if variable_list && list_width == Some(8) {
+        return Err("VL=1 is invalid with eight-byte parameter lists".into());
     }
     if variable_list && parameters.is_none() {
         return Err("VL=1 requires PARAM".into());
@@ -3477,6 +4025,9 @@ fn module_service(
         name: name.ok_or("module service requires EP or EPLOC")?,
         parameters,
         variable_list,
+        list_width,
+        extended,
+        allow_64,
     })
 }
 
@@ -3635,11 +4186,11 @@ fn storage_service(
     Ok(request)
 }
 
-struct AddressConstants {
+pub(super) struct AddressConstants {
     count: usize,
-    values: Vec<String>,
+    pub(super) values: Vec<String>,
     external: bool,
-    width: u8,
+    pub(super) width: u8,
     alignment: u32,
     wide: bool,
     kind: u8,
@@ -3671,7 +4222,10 @@ fn external_address_names(spec: &str) -> Result<Option<Vec<String>>, String> {
         .map(operands))
 }
 
-fn address_constants(spec: &str, symbols: &Symbols) -> Result<Option<AddressConstants>, String> {
+pub(super) fn address_constants(
+    spec: &str,
+    symbols: &Symbols,
+) -> Result<Option<AddressConstants>, String> {
     let (clean, _, _) = super::constants::annotated(spec)?;
     let spec = clean.as_ref();
     let at = super::constants::type_start(spec)?;
@@ -3833,6 +4387,8 @@ fn fix_base_constants(
     for _ in 0..c.count {
         for nominal in &c.values {
             let statement = Statement {
+                listing: None,
+                afpr: true,
                 label: String::new(),
                 op: if c.wide { "LY" } else { "L" }.into(),
                 args: String::new(),

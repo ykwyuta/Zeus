@@ -10,6 +10,9 @@ enum Format {
     Mask,
     TwoRegisters,
     RegisterIndex,
+    FusedMemory,
+    AddressMode(u8),
+    ProgramMask,
     RegisterOpcode(u8),
     Relative(u8),
     Rre(u8, u8),
@@ -20,7 +23,8 @@ enum Format {
 
 // Fixed opcode bytes in RRE occupy the second byte, while the registers
 // remain in the fourth byte. EXECUTE must not reinterpret them as RR fields.
-const RRE: &[(&str, u8, u8)] = &[
+pub(super) const RRE: &[(&str, u8, u8)] = &[
+    ("IPM", 0xb2, 0x22),
     ("NRK", 0xB9, 0xF4),
     ("NGRK", 0xB9, 0xE4),
     ("ORK", 0xB9, 0xF6),
@@ -88,6 +92,98 @@ const RRE: &[(&str, u8, u8)] = &[
 fn format(ins: &Instruction) -> Format {
     use Format::*;
     let op = assemble::canonical_operation(&ins.op);
+    if let Some(byte) = super::float::operations::common(op) {
+        return Rre(0xb3, byte);
+    }
+    if op == "PFPO" {
+        return AddressMode(10);
+    }
+    if matches!(op, "SAM24" | "SAM31" | "SAM64") {
+        return AddressMode(if op == "SAM24" {
+            12
+        } else if op == "SAM31" {
+            13
+        } else {
+            14
+        });
+    }
+    if super::float::operations::classify(op).is_some() {
+        return RegisterIndex;
+    }
+    if super::float::operations::decimal_shift(op).is_some() {
+        return FusedMemory;
+    }
+    if let Some((opcode, _)) = super::float::operations::divide_integer(op) {
+        return Rre(0xb3, opcode);
+    }
+    if let Some(spec) = super::float::operations::support(op) {
+        return Rre(0xb3, spec.opcode);
+    }
+    if super::float::operations::decimal_memory(op).is_some() {
+        return Length;
+    }
+    if let Some(spec) = super::float::operations::hex_unnormalized(op) {
+        return if spec.memory {
+            FusedMemory
+        } else {
+            Rre((spec.opcode >> 8) as u8, spec.opcode as u8)
+        };
+    }
+    if let Some(spec) = super::float::operations::decimal_packed(op) {
+        return Rre(0xb3, spec.opcode);
+    }
+    if let Some(spec) = super::float::operations::decimal_bits(op) {
+        return Rre(0xb3, spec.opcode);
+    }
+    if let Some(spec) = super::float::operations::decimal(op) {
+        return Rre(0xb3, spec.opcode);
+    }
+    if let Some(spec) = super::float::convert::instruction(op) {
+        return Rre((spec.opcode >> 8) as u8, spec.opcode as u8);
+    }
+    if let Some(spec) = super::float::operations::hex(op) {
+        if !spec.memory && spec.size == 4 {
+            return Rre((spec.opcode >> 8) as u8, spec.opcode as u8);
+        }
+        if spec.size == 2 {
+            return TwoRegisters;
+        }
+    }
+    if let Some((byte, _, _, _)) = super::float::operations::register(op) {
+        return Rre(0xb3, byte);
+    }
+    if op == "LXR" {
+        return Rre(0xb3, 0x65);
+    }
+    if op == "SFPC" {
+        return Rre(0xb3, 0x84);
+    }
+    if op == "EFPC" {
+        return Rre(0xb3, 0x8c);
+    }
+    if matches!(op, "LFPC" | "STFPC" | "SRNM" | "SRNMB" | "SRNMT") {
+        return Ignored;
+    }
+
+    if super::float::operations::hex(op).is_some_and(|s| {
+        s.memory
+            && matches!(
+                s.kind,
+                super::float::operations::Kind::FusedAdd
+                    | super::float::operations::Kind::FusedSubtract
+            )
+    }) || super::float::operations::memory(op).is_some_and(|(_, _, kind)| {
+        matches!(
+            kind,
+            super::float::operations::Kind::FusedAdd
+                | super::float::operations::Kind::FusedSubtract
+        )
+    }) {
+        return FusedMemory;
+    }
+    if op == "SPM" {
+        return ProgramMask;
+    }
     let condition = super::operation::conditional(op);
     let opcode = condition.as_ref().map_or(op, |spec| spec.root);
     if super::operation::rotate_selected(op).is_some() {
@@ -134,6 +230,9 @@ fn format(ins: &Instruction) -> Format {
         "CSST" => RegisterOpcode(2),
         "LPD" => RegisterOpcode(4),
         "LPDG" => RegisterOpcode(5),
+        "LHI" => RegisterOpcode(8),
+        "MHI" => RegisterOpcode(12),
+        "CHI" => RegisterOpcode(14),
         "AHI" => RegisterOpcode(10),
         "LGHI" => RegisterOpcode(9),
         "AGHI" => RegisterOpcode(11),
@@ -203,6 +302,7 @@ pub(super) fn byte(ins: &Instruction) -> u8 {
         Mask => r(0) << 4 | ins.immediate as u8,
         TwoRegisters => r(0) << 4 | r(1),
         RegisterIndex => r(0) << 4 | ins.address.as_ref().map_or(0, |a| a.index),
+        FusedMemory => r(1) << 4 | ins.address.as_ref().map_or(0, |a| a.index),
         RegisterOpcode(op) => r(0) << 4 | op,
         Relative(op) => {
             let high = if matches!(
@@ -216,6 +316,8 @@ pub(super) fn byte(ins: &Instruction) -> u8 {
             high << 4 | op
         }
         Opaque | Ignored => 0,
+        AddressMode(byte) => byte,
+        ProgramMask => r(0) << 4,
         Rre(_, byte) => byte,
         ConditionalImmediate => r(0) << 4 | ins.length as u8,
     }
@@ -255,6 +357,13 @@ pub(super) fn apply(ins: &mut Instruction, byte: u8) -> Result<(), String> {
         TwoRegisters => {
             ins.registers = vec![high, low];
         }
+        FusedMemory => {
+            ins.registers[1] = high;
+            ins.address
+                .as_mut()
+                .ok_or("missing fused template address")?
+                .index = low;
+        }
         RegisterIndex => {
             ins.registers[0] = high;
             ins.address
@@ -290,15 +399,182 @@ pub(super) fn apply(ins: &mut Instruction, byte: u8) -> Result<(), String> {
                 ins.registers = vec![high];
             }
         }
+        AddressMode(_) => {
+            ins.op = match byte {
+                10 => "PFPO",
+                12 => "SAM24",
+                13 => "SAM31",
+                14 => "SAM64",
+                _ => return Err("EX selects an unsupported addressing-mode opcode".into()),
+            }
+            .into();
+        }
+        ProgramMask => ins.registers = vec![high],
         Ignored => {}
         Opaque if byte == 0 => {}
         Opaque => return Err("EX modification of this instruction format is unsupported".into()),
         Rre(first, _) => {
-            let (op, _, _) = RRE
+            let current_hex = super::float::operations::hex(&ins.op);
+            if let Some(spec) = current_hex
+                && spec.opcode == (u16::from(first) << 8) | u16::from(byte)
+            {
+                return Ok(());
+            }
+            let operation = RRE
                 .iter()
                 .find(|(_, primary, secondary)| *primary == first && *secondary == byte)
+                .map(|s| s.0)
+                .or_else(|| {
+                    super::float::operations::hex_name(u16::from(first) << 8 | u16::from(byte))
+                        .or_else(|| {
+                            super::float::operations::hex_unnormalized_name(
+                                u16::from(first) << 8 | u16::from(byte),
+                            )
+                        })
+                })
+                .or_else(|| {
+                    (first == 0xb3)
+                        .then(|| {
+                            super::float::operations::RRE
+                                .iter()
+                                .find(|s| s.1 == byte)
+                                .map(|s| s.0)
+                        })
+                        .flatten()
+                })
+                .or_else(|| {
+                    if first == 0xb3 {
+                        super::float::operations::COMMON
+                            .iter()
+                            .find(|s| s.1 == byte)
+                            .map(|s| s.0)
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| {
+                    if first == 0xb3 {
+                        super::float::operations::support_name(byte)
+                            .or_else(|| super::float::operations::divide_integer_name(byte))
+                            .or_else(|| super::float::operations::decimal_name(byte))
+                            .or_else(|| super::float::operations::decimal_packed_name(byte))
+                            .or_else(|| super::float::operations::decimal_bits_name(byte))
+                    } else {
+                        None
+                    }
+                })
+                .or_else(|| super::float::convert::name(u16::from(first) << 8 | u16::from(byte)))
+                .or({
+                    if first == 0xb3 {
+                        match byte {
+                            0x65 => Some("LXR"),
+                            0x84 => Some("SFPC"),
+                            0x8c => Some("EFPC"),
+                            _ => None,
+                        }
+                    } else {
+                        None
+                    }
+                })
                 .ok_or("EX modification selects an unsupported RRE opcode")?;
-            ins.op = (*op).into();
+            if first == 0xb3
+                || super::float::convert::instruction(operation).is_some()
+                || super::float::operations::decimal_packed(operation).is_some_and(|s| s.mask())
+                || super::float::convert::instruction(&ins.op).is_some()
+                || super::float::operations::decimal_packed(&ins.op).is_some_and(|s| s.mask())
+            {
+                let fused = |op: &str| {
+                    super::float::operations::hex_unnormalized(op).is_some()
+                        || super::float::operations::hex(op).is_some_and(|s| {
+                            matches!(
+                                s.kind,
+                                super::float::operations::Kind::FusedAdd
+                                    | super::float::operations::Kind::FusedSubtract
+                            )
+                        })
+                        || super::float::operations::register(op).is_some_and(|(_, _, _, kind)| {
+                            matches!(
+                                kind,
+                                super::float::operations::Kind::FusedAdd
+                                    | super::float::operations::Kind::FusedSubtract
+                            )
+                        })
+                };
+                let r = |n| ins.registers.get(n).copied().unwrap_or(0);
+                let insert = |op: &str| {
+                    super::float::operations::divide_integer(op).is_some()
+                        || super::float::operations::support(op).is_some_and(|s| {
+                            s.kind == super::float::operations::SupportKind::CopySign
+                        })
+                        || super::float::operations::decimal_bits(op).is_some_and(|s| {
+                            matches!(
+                                s.kind,
+                                super::float::operations::DecimalBitKind::Insert
+                                    | super::float::operations::DecimalBitKind::Quantize
+                                    | super::float::operations::DecimalBitKind::Reround
+                            )
+                        })
+                };
+                let (byte2, byte3) = if insert(&ins.op) {
+                    (r(1) << 4 | (ins.immediate as u8 & 15), r(0) << 4 | r(2))
+                } else if fused(&ins.op) {
+                    (r(0) << 4, r(1) << 4 | r(2))
+                } else if super::float::operations::decimal(&ins.op).is_some_and(|s| s.arithmetic) {
+                    (r(2) << 4 | ins.immediate as u8, r(0) << 4 | r(1))
+                } else if super::float::convert::instruction(&ins.op).is_some()
+                    || super::float::operations::support(&ins.op).is_some_and(|s| {
+                        s.kind == super::float::operations::SupportKind::HexToBinary
+                    })
+                    || super::float::operations::binary_controlled(&ins.op)
+                    || super::float::operations::decimal_packed(&ins.op).is_some_and(|s| s.mask())
+                    || super::float::operations::decimal(&ins.op).is_some_and(|s| {
+                        matches!(
+                            s.kind,
+                            super::float::operations::Kind::Convert
+                                | super::float::operations::Kind::RoundInteger
+                        )
+                    })
+                {
+                    (
+                        (ins.immediate as u8 & 15) << 4 | (ins.immediate >> 4) as u8,
+                        r(0) << 4 | r(1),
+                    )
+                } else {
+                    (0, r(0) << 4 | r(1))
+                };
+                if insert(operation) {
+                    ins.registers = vec![byte3 >> 4, byte2 >> 4, byte3 & 15];
+                    ins.immediate = u32::from(byte2 & 15);
+                } else if fused(operation) {
+                    ins.registers = vec![byte2 >> 4, byte3 >> 4, byte3 & 15];
+                    ins.immediate = 0;
+                } else if super::float::operations::decimal(operation).is_some_and(|s| s.arithmetic)
+                {
+                    ins.registers = vec![byte3 >> 4, byte3 & 15, byte2 >> 4];
+                    ins.immediate = u32::from(byte2 & 15);
+                } else {
+                    ins.registers = vec![byte3 >> 4, byte3 & 15];
+                    ins.immediate = if super::float::convert::instruction(operation).is_some()
+                        || super::float::operations::support(operation).is_some_and(|s| {
+                            s.kind == super::float::operations::SupportKind::HexToBinary
+                        })
+                        || super::float::operations::binary_controlled(operation)
+                        || super::float::operations::decimal_packed(operation)
+                            .is_some_and(|s| s.mask())
+                        || super::float::operations::decimal(operation).is_some_and(|s| {
+                            matches!(
+                                s.kind,
+                                super::float::operations::Kind::Convert
+                                    | super::float::operations::Kind::RoundInteger
+                            )
+                        }) {
+                        u32::from(byte2 >> 4) | u32::from(byte2 & 15) << 4
+                    } else {
+                        0
+                    };
+                }
+            }
+            ins.op = operation.into();
         }
     }
     Ok(())

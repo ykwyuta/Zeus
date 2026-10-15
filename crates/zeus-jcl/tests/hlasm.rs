@@ -383,3 +383,219 @@ SPAN EQU FINISH-BEGIN-4
         );
     }
 }
+
+fn synthetic_obj(name: &str, code: &[u8]) -> Vec<u8> {
+    // Independent OBJ card images assembled from published field definitions.
+    let record = |kind: &str| {
+        let mut c = [0x40u8; 80];
+        c[0] = 2;
+        c[1..4].copy_from_slice(&zeus_cobol::ebcdic::encode(kind));
+        c
+    };
+    let mut esd = record("ESD");
+    esd[10..12].copy_from_slice(&16u16.to_be_bytes());
+    esd[14..16].copy_from_slice(&1u16.to_be_bytes());
+    let text = zeus_cobol::ebcdic::encode(name);
+    esd[16..16 + text.len()].copy_from_slice(&text);
+    esd[24] = 0;
+    esd[25..28].fill(0);
+    esd[28] = 6;
+    esd[29..32].copy_from_slice(&(code.len() as u32).to_be_bytes()[1..]);
+    let mut txt = record("TXT");
+    txt[5..8].fill(0);
+    txt[10..12].copy_from_slice(&(code.len() as u16).to_be_bytes());
+    txt[14..16].copy_from_slice(&1u16.to_be_bytes());
+    txt[16..16 + code.len()].copy_from_slice(code);
+    let mut end = record("END");
+    end[5..8].fill(0);
+    end[14..16].copy_from_slice(&1u16.to_be_bytes());
+    [esd, txt, end].concat()
+}
+
+#[test]
+fn raw_ibm_obj_runs_as_jcl_program_and_from_cobol_and_pli_across_steps() {
+    raw_ibm_object_job(false);
+}
+#[test]
+fn raw_goff_runs_as_jcl_program_and_from_cobol_and_pli_across_steps() {
+    raw_ibm_object_job(true);
+}
+
+fn raw_ibm_object_job(goff: bool) {
+    ibm_object_job(
+        if goff { synthetic_goff } else { synthetic_obj },
+        if goff { "goff" } else { "obj" },
+    );
+}
+
+#[test]
+fn generated_obj_runs_as_jcl_program_and_from_cobol_and_pli_across_steps() {
+    ibm_object_job(|name, _| generated_object(name, false), "obj");
+}
+
+#[test]
+fn generated_goff_runs_as_jcl_program_and_from_cobol_and_pli_across_steps() {
+    ibm_object_job(|name, _| generated_object(name, true), "goff");
+}
+
+fn generated_object(name: &str, goff: bool) -> Vec<u8> {
+    let source = if name == "ASMADD" {
+        "ASMADD CSECT\n L 2,0(1)\n L 3,4(1)\n L 4,0(2)\n AHI 4,7\n ST 4,0(3)\n LA 15,9\n BR 14\n END\n"
+    } else {
+        "RAWMAIN CSECT\n LA 15,17\n BR 14\n END\n"
+    };
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("generated.asm");
+    let source = if goff {
+        source.replace(" CSECT", " RSECT")
+    } else {
+        source.to_owned()
+    };
+    std::fs::write(&path, source).unwrap();
+    let module = zeus_cobol::hlasm::compile_file(&path, &[]).unwrap();
+    if goff {
+        zeus_cobol::hlasm::goff_bytes(&module).unwrap()
+    } else {
+        zeus_cobol::hlasm::object_bytes(&module).unwrap()
+    }
+}
+
+fn ibm_object_job(make_object: fn(&str, &[u8]) -> Vec<u8>, extension: &str) {
+    let dir = tempfile::tempdir().unwrap();
+    let load = dir.path().join("load");
+    std::fs::create_dir(&load).unwrap();
+    let code = [
+        0x58, 0x20, 0x10, 0x00, 0x58, 0x30, 0x10, 0x04, 0x58, 0x40, 0x20, 0x00, 0xa7, 0x4a, 0x00,
+        0x07, 0x50, 0x40, 0x30, 0x00, 0x41, 0xf0, 0x00, 0x09, 0x07, 0xfe,
+    ];
+    std::fs::write(
+        load.join(format!("ASMADD.{extension}")),
+        make_object("ASMADD", &code),
+    )
+    .unwrap();
+    std::fs::write(
+        load.join(format!("RAWMAIN.{extension}")),
+        make_object("RAWMAIN", &[0x41, 0xf0, 0x00, 0x11, 0x07, 0xfe]),
+    )
+    .unwrap();
+    let mut catalog = Catalog::open(&dir.path().join("catalog")).unwrap();
+    catalog
+        .define(Entry {
+            name: "APP.LOAD".into(),
+            kind: EntryKind::Partitioned {
+                recfm: Recfm::U,
+                lrecl: 0,
+            },
+        })
+        .unwrap();
+    let mut env = Env {
+        catalog,
+        spool: dir.path().join("spool"),
+        loadlibs: vec![load],
+        proclibs: vec![],
+    };
+    let job = "//OBJJOB JOB
+//CBL EXEC PGM=IGYCRCTL
+//SYSPRINT DD SYSOUT=*
+//SYSLIN DD DSN=&&CBL,DISP=(NEW,PASS)
+//SYSIN DD *
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. CBLMAIN.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 A PIC S9(9) COMP VALUE 5.
+       01 B PIC S9(9) COMP VALUE 0.
+       PROCEDURE DIVISION.
+           CALL 'ASMADD' USING A B
+           IF B = 12 AND RETURN-CODE = 9
+             MOVE 0 TO RETURN-CODE
+           ELSE MOVE 99 TO RETURN-CODE END-IF
+           STOP RUN.
+/*
+//BINDC EXEC PGM=IEWL
+//SYSPRINT DD SYSOUT=*
+//SYSLIN DD DSN=&&CBL,DISP=(OLD,DELETE)
+//SYSLMOD DD DSN=APP.LOAD(CBLMAIN),DISP=SHR
+//RUNC1 EXEC PGM=CBLMAIN
+//STEPLIB DD DSN=APP.LOAD,DISP=SHR
+//RUNC2 EXEC PGM=CBLMAIN
+//STEPLIB DD DSN=APP.LOAD,DISP=SHR
+//PLI EXEC PGM=IBMZPLI
+//SYSPRINT DD SYSOUT=*
+//SYSLIN DD DSN=&&PLI,DISP=(NEW,PASS)
+//SYSIN DD *
+ PMAIN: PROC OPTIONS(MAIN);
+ DCL ASMADD ENTRY OPTIONS(ASM RETCODE);
+ DCL A FIXED BIN(31) INIT(5), B FIXED BIN(31) INIT(0);
+ CALL ASMADD(A,B);
+ IF B = 12 THEN CALL PLIRETC(0); ELSE CALL PLIRETC(99);
+ END PMAIN;
+/*
+//BINDP EXEC PGM=IEWL
+//SYSPRINT DD SYSOUT=*
+//SYSLIN DD DSN=&&PLI,DISP=(OLD,DELETE)
+//SYSLMOD DD DSN=APP.LOAD(PMAIN),DISP=SHR
+//RUNP1 EXEC PGM=PMAIN
+//STEPLIB DD DSN=APP.LOAD,DISP=SHR
+//RUNP2 EXEC PGM=PMAIN
+//STEPLIB DD DSN=APP.LOAD,DISP=SHR
+//RAW1 EXEC PGM=RAWMAIN
+//RAW2 EXEC PGM=RAWMAIN
+";
+    let mut log = Vec::new();
+    let steps = zeus_jcl::job::run_job(&mut env, job, &mut log).unwrap();
+    assert_eq!(steps.len(), 10, "{}", String::from_utf8_lossy(&log));
+    for (i, step) in steps.iter().enumerate() {
+        assert_eq!(
+            step.outcome,
+            Outcome::Rc(if i < 8 { 0 } else { 17 }),
+            "{step:?}: {}",
+            String::from_utf8_lossy(&log)
+        );
+    }
+}
+
+fn synthetic_goff(name: &str, code: &[u8]) -> Vec<u8> {
+    let mut header = vec![0; 80];
+    header[0] = 3;
+    header[1] = 0xf0;
+    header[51] = 1;
+    let symbol = |id: u8, kind: u8, parent: u8, text: &str, length: u32| {
+        let mut b = vec![0; 80];
+        b[0] = 3;
+        b[3] = kind;
+        b[7] = id;
+        b[11] = parent;
+        b[24..28].copy_from_slice(&length.to_be_bytes());
+        b[40] = 1;
+        b[60] = 2;
+        b[61] = 3;
+        b[63] = 2;
+        b[66] = 3;
+        let encoded = zeus_cobol::ebcdic::encode(text);
+        b[71] = encoded.len() as u8;
+        b[72..72 + encoded.len()].copy_from_slice(&encoded);
+        b
+    };
+    let mut txt = vec![0; 80];
+    txt[0] = 3;
+    txt[1] = 0x10;
+    txt[7] = 2;
+    txt[23] = code.len() as u8;
+    txt[24..24 + code.len()].copy_from_slice(code);
+    let mut end = vec![0; 80];
+    end[0] = 3;
+    end[1] = 0x40;
+    end[3] = 1;
+    end[4] = 2;
+    end[11] = 5;
+    end[15] = 2;
+    [
+        header,
+        symbol(1, 0, 0, name, 0),
+        symbol(2, 1, 1, "B_TEXT", code.len() as u32),
+        txt,
+        end,
+    ]
+    .concat()
+}

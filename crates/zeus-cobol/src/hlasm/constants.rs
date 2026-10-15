@@ -77,7 +77,7 @@ pub(super) fn fixed_modifiers(
     Ok((length, scale, exponent))
 }
 
-fn modifier<'a>(
+pub(super) fn modifier<'a>(
     text: &'a str,
     kind: char,
     symbols: &super::assemble::Symbols,

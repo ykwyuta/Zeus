@@ -318,7 +318,7 @@ fn old_objects_remain_readable_and_unresolved_instruction_fixups_require_format_
             .unwrap_err()
             .contains("requires HLASM module version 2")
     );
-    pending.zeus_hlasm = 10;
+    pending.zeus_hlasm = 13;
     assert!(
         hlasm::load_module(&hlasm::module_bytes(&pending).unwrap())
             .unwrap_err()

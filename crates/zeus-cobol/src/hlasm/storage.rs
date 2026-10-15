@@ -242,6 +242,20 @@ impl DynamicStorage {
         Ok(address)
     }
 
+    pub(crate) fn invocation(
+        &mut self,
+        memory: &mut Vec<u8>,
+        length: usize,
+        mode: u8,
+    ) -> Result<usize, String> {
+        let ceiling = match mode {
+            24 => 1 << 24,
+            31 => 0x7fff_0000,
+            64 => isize::MAX as usize,
+            _ => return Err("invalid invocation addressing mode".into()),
+        };
+        self.reserve(memory, length, 8, 0, ceiling, true)
+    }
     pub(crate) fn frame(&mut self, memory: &mut Vec<u8>, length: usize) -> Result<usize, String> {
         self.reserve(memory, length, 8, 0, 0x7fff_0000, true)
     }

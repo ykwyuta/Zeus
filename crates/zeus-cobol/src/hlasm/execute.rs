@@ -2,6 +2,7 @@ mod atomic;
 mod bits;
 mod conditional;
 mod edit;
+pub(super) mod floating;
 mod integer;
 mod long;
 mod masked;
@@ -10,8 +11,6 @@ mod registers;
 mod wide;
 use super::{Address, Module};
 use std::collections::HashMap;
-
-const RETURN: u32 = 0x7fff_ffff;
 
 fn range(mem: &[u8], addr: usize, len: usize) -> Result<std::ops::Range<usize>, String> {
     let end = addr
@@ -53,7 +52,7 @@ pub(super) fn address(a: &Address, registers: &[u32; 16]) -> Result<usize, Strin
         .map_err(|_| "negative HLASM address".into())
 }
 
-fn branch_address(a: &Address, registers: &[u32; 16]) -> Result<usize, String> {
+fn branch_address(a: &Address, registers: &[u32; 16], mode: u8) -> Result<usize, String> {
     let origin = address(
         &Address {
             displacement: 0,
@@ -62,10 +61,10 @@ fn branch_address(a: &Address, registers: &[u32; 16]) -> Result<usize, String> {
         },
         registers,
     )?;
-    Ok(((origin as i64).wrapping_add(a.displacement) as u64 & 0x7fff_ffff) as usize)
+    Ok(((origin as i64).wrapping_add(a.displacement) as u64 & super::abi::mask(mode)?) as usize)
 }
 
-fn relative_address(ins: &super::Instruction, base: usize) -> Result<usize, String> {
+fn relative_address(ins: &super::Instruction, base: usize, mode: u8) -> Result<usize, String> {
     let spec = super::operation::relative(&ins.op).ok_or("invalid relative instruction")?;
     let relative = ins.address.as_ref().ok_or("missing relative target")?;
     if relative.base != 0 || relative.index != 0 {
@@ -79,7 +78,8 @@ fn relative_address(ins: &super::Instruction, base: usize) -> Result<usize, Stri
     } else {
         (base as i64 + i64::from(ins.offset) + relative.displacement) as u64
     };
-    Ok((target & 0x7fff_ffff) as usize)
+    usize::try_from(target & super::abi::mask(mode)?)
+        .map_err(|_| "relative address exceeds host offset range".into())
 }
 
 /// Run with real addresses (offsets in the shared run-unit Vec). Static
@@ -128,6 +128,8 @@ pub(crate) fn execute_entry(
         &mut super::services::NoHost,
         true,
         None,
+        None,
+        None,
     )
 }
 
@@ -141,7 +143,9 @@ pub(crate) fn execute_entry_with_host(
     storage: &mut super::DynamicStorage,
     host: &mut dyn super::Host,
     terminated: bool,
+    parameter_mode: Option<u8>,
     initial: Option<&mut super::Registers>,
+    mut call_state: Option<&mut floating::State>,
 ) -> Result<i32, String> {
     module.validate_origin(base)?;
     module.validate_relative_references(base)?;
@@ -154,43 +158,81 @@ pub(crate) fn execute_entry_with_host(
     {
         return Err("invalid HLASM module storage".into());
     }
-    if mem
-        .len()
-        .checked_add(args.len().saturating_mul(4))
-        .is_none_or(|end| end > 0x7fff_0000)
-    {
-        return Err("HLASM requires 31-bit run-unit addresses".into());
-    }
+    let mut amode = initial
+        .as_ref()
+        .map_or_else(|| module.entry_mode(entry), |r| r.address_mode);
+    super::abi::mask(amode)?;
+    let parameter_mode = parameter_mode.unwrap_or(amode);
+    super::abi::mask(parameter_mode)?;
+    // Validate the saved caller mode before acquiring an invocation frame.
+    // Every fallible step after frame acquisition must use the cleanup path.
+    let return_target = if let Some(initial) = initial.as_ref() {
+        initial.return_address()? as u64
+    } else {
+        super::abi::return_sentinel(amode)
+    };
+    let save_length = super::abi::save_length(amode);
+    let parameter_width = super::abi::parameter_width(parameter_mode);
     let mark = mem.len();
     let frame_length = args
         .len()
         .max(1)
-        .checked_mul(4)
-        .and_then(|n| n.checked_add(72))
+        .checked_mul(parameter_width)
+        .and_then(|n| n.checked_add(save_length))
         .ok_or("HLASM invocation frame length overflow")?;
-    let frame = storage.frame(mem, frame_length)?;
+    let frame = storage.invocation(mem, frame_length, amode)?;
     let mut registers = initial.as_ref().map_or([0; 16], |r| r.low);
     let mut high = initial.as_ref().map_or([0; 16], |r| r.high);
     let mut cc = initial.as_ref().map_or(0, |r| r.cc);
-    let return_target = initial.as_ref().map_or(RETURN, |r| r.low[14] & 0x7fff_ffff);
+    let mut floating = initial.as_ref().map_or_else(
+        || call_state.as_deref().cloned().unwrap_or_default(),
+        |r| r.floating.clone(),
+    );
+    let original_parameters = initial.as_ref().and_then(|r| r.parameter_list).or_else(|| {
+        initial
+            .is_none()
+            .then_some(((frame + save_length) as u64, args.len(), parameter_mode))
+    });
     if initial.is_none() {
-        registers[1] = (frame + 72) as u32;
-        registers[13] = frame as u32;
-        registers[14] = RETURN;
-        registers[15] = base as u32 + entry;
+        wide::write(&mut registers, &mut high, 1, (frame + save_length) as u64);
+        wide::write(&mut registers, &mut high, 13, frame as u64);
+        wide::write(
+            &mut registers,
+            &mut high,
+            14,
+            if amode == 31 {
+                super::abi::return_sentinel(amode) | 0x80000000
+            } else {
+                super::abi::return_sentinel(amode)
+            },
+        );
+        wide::write(
+            &mut registers,
+            &mut high,
+            15,
+            base as u64 + u64::from(entry),
+        );
     }
     let result = (|| {
-        let save = frame;
-        let list = save + 72;
+        let list = frame + save_length;
         for (i, arg) in args.iter().enumerate() {
-            if arg.is_some_and(|addr| addr >= mark) {
+            if arg.is_some_and(|address| {
+                address >= mark
+                    || parameter_mode != 64
+                        && address as u64 > super::abi::mask(parameter_mode).unwrap_or(0)
+            }) {
                 return Err("invalid HLASM argument address".into());
             }
-            let mut value = arg.map_or(0, |a| a as u32);
-            if terminated && i + 1 == args.len() {
-                value |= 0x8000_0000;
+            let at = list + i * parameter_width;
+            if parameter_width == 8 {
+                mem[at..at + 8].copy_from_slice(&(arg.map_or(0, |a| a as u64)).to_be_bytes());
+            } else {
+                let mut value = arg.map_or(0, |a| a as u32);
+                if terminated && i + 1 == args.len() {
+                    value |= 0x8000_0000;
+                }
+                put_word(mem, at, value)?;
             }
-            put_word(mem, list + i * 4, value)?;
         }
         let targets: HashMap<usize, usize> = module
             .code
@@ -198,14 +240,31 @@ pub(crate) fn execute_entry_with_host(
             .enumerate()
             .map(|(i, ins)| (base + ins.offset as usize, i))
             .collect();
-        let mut pc = *targets
-            .get(&(base + entry as usize))
-            .ok_or("invalid HLASM entry")?;
+        let local = |address: usize| {
+            targets.contains_key(&address)
+                || address
+                    .checked_sub(base)
+                    .and_then(|n| u32::try_from(n).ok())
+                    .is_some_and(|n| super::machine::contains(module, n))
+        };
+        let mut pc = base + entry as usize;
+        if !local(pc) {
+            return Err("invalid HLASM entry".into());
+        }
         for _ in 0..1_000_000 {
-            let fetched = module
-                .code
-                .get(pc)
-                .ok_or("HLASM fell past its last instruction")?;
+            let decoded;
+            let fetched = if pc
+                .checked_sub(base)
+                .and_then(|n| u32::try_from(n).ok())
+                .is_some_and(|n| super::machine::contains(module, n))
+            {
+                decoded = super::machine::fetch(module, mem, base, pc, 0)?;
+                &decoded
+            } else {
+                &module.code[*targets
+                    .get(&pc)
+                    .ok_or("HLASM execution entered data or unmapped instruction storage")?]
+            };
             let next_address = base
                 + fetched.offset as usize
                 + super::assemble::instruction_size(&fetched.op)
@@ -217,20 +276,31 @@ pub(crate) fn execute_entry_with_host(
                     return Err("invalid EX register".into());
                 }
                 let target = if fetched.op == "EXRL" {
-                    relative_address(fetched, base)?
+                    relative_address(fetched, base, amode)?
                 } else {
-                    address(
+                    super::abi::effective(
                         fetched.address.as_ref().ok_or("EX target required")?,
                         &registers,
+                        &high,
+                        amode,
                     )?
                 };
                 if !target.is_multiple_of(2) {
                     return Err("EX target must be halfword aligned".into());
                 }
-                let index = *targets
-                    .get(&target)
-                    .ok_or("EX target is not a compiled instruction template")?;
-                let original = &module.code[index];
+                let machine_target = target
+                    .checked_sub(base)
+                    .and_then(|n| u32::try_from(n).ok())
+                    .is_some_and(|n| super::machine::contains(module, n));
+                let decoded_target;
+                let original = if machine_target {
+                    decoded_target = super::machine::fetch(module, mem, base, target, 0)?;
+                    &decoded_target
+                } else {
+                    &module.code[*targets
+                        .get(&target)
+                        .ok_or("EX target is not a compiled instruction template")?]
+                };
                 if matches!(original.op.as_str(), "EX" | "EXRL") {
                     return Err("execute exception: nested EXECUTE".into());
                 }
@@ -255,29 +325,52 @@ pub(crate) fn execute_entry_with_host(
                 ) {
                     return Err("EX of service instruction templates is unsupported".into());
                 }
-                let size = super::assemble::instruction_size(&original.op)
-                    .ok_or("invalid EX target size")? as usize;
-                let bytes = &mem[range(mem, target, size)?];
-                let initial = module
-                    .storage
-                    .get(original.offset as usize..original.offset as usize + size)
-                    .ok_or("invalid EX template storage")?;
-                if bytes
-                    .iter()
-                    .zip(initial)
-                    .enumerate()
-                    .any(|(n, (a, b))| n != 1 && a != b)
-                {
-                    return Err("EX target changed outside its supported second-byte fields".into());
+                let instruction = if machine_target {
+                    super::machine::fetch(
+                        module,
+                        mem,
+                        base,
+                        target,
+                        if r == 0 { 0 } else { registers[r] as u8 },
+                    )?
+                } else {
+                    let size = super::assemble::instruction_size(&original.op)
+                        .ok_or("invalid EX target size")? as usize;
+                    let bytes = &mem[range(mem, target, size)?];
+                    let initial = module
+                        .storage
+                        .get(original.offset as usize..original.offset as usize + size)
+                        .ok_or("invalid EX template storage")?;
+                    if bytes
+                        .iter()
+                        .zip(initial)
+                        .enumerate()
+                        .any(|(n, (a, b))| n != 1 && a != b)
+                    {
+                        return Err(
+                            "EX target changed outside its supported second-byte fields".into()
+                        );
+                    }
+                    let mut instruction = original.clone();
+                    super::template::apply(
+                        &mut instruction,
+                        bytes[1] | if r == 0 { 0 } else { registers[r] as u8 },
+                    )?;
+                    instruction
+                };
+                if matches!(instruction.op.as_str(), "EX" | "EXRL") {
+                    return Err("execute exception: nested EXECUTE".into());
                 }
-                let mut instruction = original.clone();
-                super::template::apply(
-                    &mut instruction,
-                    bytes[1] | if r == 0 { 0 } else { registers[r] as u8 },
-                )?;
                 modified = Some(instruction);
             }
-            let ins = modified.as_ref().unwrap_or(fetched);
+            let prepared = super::abi::prepare(
+                modified.as_ref().unwrap_or(fetched),
+                &registers,
+                &high,
+                amode,
+            )?;
+            let ins = prepared.as_ref();
+            let mut branch_return_mode = None;
             let mut run = || -> Result<(Option<usize>, bool), String> {
                 let reg = |n: usize| -> Result<usize, String> {
                     let r = *ins.registers.get(n).ok_or("missing register operand")? as usize;
@@ -330,9 +423,38 @@ pub(crate) fn execute_entry_with_host(
                         .as_ref()
                         .ok_or("missing module service metadata")?;
                     let service_name = super::services::module_name(request, &registers, mem)?;
+                    if ins.op == "LINK" && amode == 64 && !request.extended {
+                        return Err("LINK requires AMODE 24/31; use LINKX in AMODE 64".into());
+                    }
+                    let list_mode = match request.list_width {
+                        Some(8) => 64,
+                        Some(4) => 31,
+                        Some(_) => return Err("invalid module parameter width".into()),
+                        None => {
+                            if request.extended || ins.op == "XCTL" {
+                                if amode == 64 { 64 } else { 31 }
+                            } else {
+                                31
+                            }
+                        }
+                    };
+                    if list_mode == 64 && request.variable_list {
+                        return Err("VL=1 is invalid with eight-byte parameter lists".into());
+                    }
+                    let current_list = super::abi::register(&registers, &high, 1, amode)?;
+                    let known = original_parameters
+                        .filter(|(address, _, _)| *address == current_list as u64);
+                    if request.parameters.is_none()
+                        && known.is_some_and(|(_, _, mode)| {
+                            super::abi::parameter_width(mode)
+                                != super::abi::parameter_width(list_mode)
+                        })
+                    {
+                        return Err("inherited parameter width differs from PLIST4/PLIST8".into());
+                    }
                     let count = if request.parameters.is_none() {
-                        if initial.is_none() && (registers[1] & 0x7fff_ffff) as usize == list {
-                            Some(args.len())
+                        if let Some((_, count, _)) = known {
+                            Some(count)
                         } else {
                             host.parameter_count(&service_name, mem, storage)?
                         }
@@ -345,12 +467,18 @@ pub(crate) fn execute_entry_with_host(
                         mem,
                         args.is_empty().then_some(list),
                         count,
+                        current_list,
+                        list_mode,
                     )?;
                     if ins.op == "LOAD" {
                         let (entry, length) = host.load(&name, mem, storage)?;
                         registers[0] = entry;
                         high[0] = 0;
                         registers[1] = length;
+                        if amode == 64 {
+                            high[1] = 0;
+                            high[15] = 0;
+                        }
                         registers[15] = 0;
                         return Ok((None, false));
                     }
@@ -358,24 +486,53 @@ pub(crate) fn execute_entry_with_host(
                         registers[15] = host.delete(&name, mem, storage)? as u32;
                         return Ok((None, false));
                     }
-                    let variable_list = if request.parameters.is_some() {
+                    let variable_list = if list_mode == 64 {
+                        false
+                    } else if request.parameters.is_some() {
                         request.variable_list
                     } else if parameters.is_empty() {
                         true
                     } else {
-                        let last =
-                            (registers[1] & 0x7fff_ffff) as usize + (parameters.len() - 1) * 4;
+                        let last = current_list + (parameters.len() - 1) * 4;
                         word(mem, last)? & 0x8000_0000 != 0
                     };
-                    let rc = host.call(&name, &parameters, mem, storage, variable_list)?;
+                    let rc = host.call(
+                        super::AssemblerCall {
+                            name: &name,
+                            args: &parameters,
+                            terminated: variable_list,
+                            parameter_mode: list_mode,
+                            allow_64: request.allow_64,
+                            floating: Some(&mut floating),
+                        },
+                        mem,
+                        storage,
+                    )?;
                     registers[15] = rc as u32;
                     return Ok((None, ins.op == "XCTL"));
                 }
                 if conditional::execute(ins, &mut registers, &mut high, mem, cc, storage)?
-                    || atomic::execute(ins, &mut registers, &mut high, mem, &mut cc, storage)?
+                    || floating::execute(
+                        ins,
+                        &mut registers,
+                        &mut high,
+                        mem,
+                        storage,
+                        &mut floating,
+                        &mut cc,
+                    )?
+                    || atomic::execute(
+                        ins,
+                        &mut registers,
+                        &mut high,
+                        mem,
+                        &mut cc,
+                        storage,
+                        amode,
+                    )?
                     || masked::execute(ins, &mut registers, &mut high, mem, storage, &mut cc)?
-                    || edit::execute(ins, &mut registers, mem, storage, &mut cc)?
-                    || long::execute(ins, &mut registers, mem, storage, &mut cc)?
+                    || edit::execute(ins, &mut registers, &mut high, mem, storage, &mut cc, amode)?
+                    || long::execute(ins, &mut registers, &mut high, mem, storage, &mut cc, amode)?
                     || registers::execute(ins, &mut registers, &mut high, &mut cc)?
                     || bits::execute(ins, &mut registers, &mut high, mem, &mut cc)?
                     || memory::execute(ins, &mut registers, &mut high, mem, storage)?
@@ -457,7 +614,11 @@ pub(crate) fn execute_entry_with_host(
                         let release_address = if service.obtain {
                             0
                         } else {
-                            value(&service.address)? as usize & 0x7fff_ffff
+                            let address = value(&service.address)?;
+                            if amode == 64 && address > 0x7fff_ffff {
+                                return Err("service parameter address must be below 2 GB".into());
+                            }
+                            address as usize & 0x7fff_ffff
                         };
                         let result = if service.obtain {
                             storage
@@ -481,7 +642,7 @@ pub(crate) fn execute_entry_with_host(
                         let rc = match result {
                             Ok(Some(at)) => {
                                 registers[1] = at as u32;
-                                if ins.op == "STORAGE" {
+                                if ins.op == "STORAGE" || amode == 64 {
                                     high[1] = 0;
                                 }
                                 if let Some(destination) = destination {
@@ -489,7 +650,7 @@ pub(crate) fn execute_entry_with_host(
                                     put_word(mem, destination, at as u32)?;
                                 } else if let StorageOperand::Register(r) = service.address {
                                     registers[r as usize] = at as u32;
-                                    if ins.op == "STORAGE" {
+                                    if ins.op == "STORAGE" || amode == 64 {
                                         high[r as usize] = 0;
                                     }
                                 } else {
@@ -512,7 +673,7 @@ pub(crate) fn execute_entry_with_host(
                     op if super::operation::relative(op).is_some() => {
                         use super::operation::RelativeKind;
                         let spec = super::operation::relative(op).unwrap();
-                        let target = relative_address(ins, base)? as u64;
+                        let target = relative_address(ins, base, amode)? as u64;
                         let count = match spec.kind {
                             RelativeKind::Execute => {
                                 return Err("execute exception: nested EXECUTE".into());
@@ -528,12 +689,23 @@ pub(crate) fn execute_entry_with_host(
                             }
                             RelativeKind::Save => {
                                 let r = reg(0)?;
-                                registers[r] = 0x8000_0000 | (next_address as u32 & 0x7fff_ffff);
+                                if amode == 64 {
+                                    wide::write(&mut registers, &mut high, r, next_address as u64);
+                                } else {
+                                    registers[r] =
+                                        super::abi::tagged_entry(next_address as u64, amode)?
+                                            as u32;
+                                }
                                 branch = Some(target as usize);
                                 None
                             }
                             RelativeKind::LoadAddress => {
-                                registers[reg(0)?] = target as u32;
+                                let r = reg(0)?;
+                                if amode == 64 {
+                                    wide::write(&mut registers, &mut high, r, target);
+                                } else {
+                                    registers[r] = target as u32;
+                                }
                                 None
                             }
                             RelativeKind::Count32 => {
@@ -563,10 +735,11 @@ pub(crate) fn execute_entry_with_host(
                             Some(branch_address(
                                 ins.address.as_ref().ok_or("missing branch address")?,
                                 &registers,
+                                amode,
                             )?)
                         } else {
                             let r2 = reg(1)?;
-                            (r2 != 0).then_some((registers[r2] & 0x7fff_ffff) as usize)
+                            (r2 != 0).then_some(super::abi::register(&registers, &high, r2, amode)?)
                         };
                         let value = if op == "BCTR" {
                             registers[r] = registers[r].wrapping_sub(1);
@@ -597,6 +770,17 @@ pub(crate) fn execute_entry_with_host(
                         storage.check_write(a, len)?;
                         mem[dest].copy_from_slice(&registers[r].to_be_bytes()[4 - len..]);
                     }
+                    "LLC" | "LLH" => {
+                        let r = reg(0)?;
+                        let addr = ea()?;
+                        registers[r] = if op == "LLC" {
+                            u32::from(mem[range(mem, addr, 1)?][0])
+                        } else {
+                            u32::from(u16::from_be_bytes(
+                                mem[range(mem, addr, 2)?].try_into().unwrap(),
+                            ))
+                        };
+                    }
                     "L" => {
                         let (r, a) = (reg(0)?, ea()?);
                         registers[r] = word(mem, a)?;
@@ -608,7 +792,12 @@ pub(crate) fn execute_entry_with_host(
                     }
                     "LA" => {
                         let (r, a) = (reg(0)?, ea()?);
-                        registers[r] = u32::try_from(a).map_err(|_| "address exceeds fullword")?;
+                        if amode == 64 {
+                            wide::write(&mut registers, &mut high, r, a as u64);
+                        } else {
+                            registers[r] =
+                                u32::try_from(a).map_err(|_| "address exceeds fullword")?;
+                        }
                     }
                     "LR" | "LTR" => {
                         let (a, b) = (reg(0)?, reg(1)?);
@@ -750,6 +939,16 @@ pub(crate) fn execute_entry_with_host(
                             };
                         }
                     }
+                    "LHI" | "MHI" | "CHI" => {
+                        let r = reg(0)?;
+                        match op {
+                            "LHI" => registers[r] = ins.immediate,
+                            "MHI" => registers[r] = registers[r].wrapping_mul(ins.immediate),
+                            _ => {
+                                cc = ordering_cc((registers[r] as i32).cmp(&(ins.immediate as i32)))
+                            }
+                        }
+                    }
                     "AHI" => {
                         let r = reg(0)?;
                         let (v, of) = (registers[r] as i32).overflowing_add(ins.immediate as i32);
@@ -831,8 +1030,12 @@ pub(crate) fn execute_entry_with_host(
                             range(mem, function, 1)?;
                             let value = mem[function];
                             if value != 0 {
-                                registers[1] =
-                                    (registers[1] & 0x8000_0000) | (at as u32 & 0x7fff_ffff);
+                                if amode == 64 {
+                                    wide::write(&mut registers, &mut high, 1, at as u64);
+                                } else {
+                                    let mask = super::abi::mask(amode)? as u32;
+                                    registers[1] = (registers[1] & !mask) | (at as u32 & mask);
+                                }
                                 registers[2] = (registers[2] & !255) | u32::from(value);
                                 cc = if scanned + 1 == length { 2 } else { 1 };
                                 break;
@@ -851,6 +1054,7 @@ pub(crate) fn execute_entry_with_host(
                         let raw = branch_address(
                             ins.source.as_ref().ok_or("missing SRP shift")?,
                             &registers,
+                            amode,
                         )? as u32
                             & 63;
                         let shift = if raw >= 32 {
@@ -1041,22 +1245,90 @@ pub(crate) fn execute_entry_with_host(
                             }
                         }
                     }
+                    "SPM" => {
+                        let value = registers[reg(0)?];
+                        floating.program_mask = ((value >> 24) & 15) as u8;
+                        cc = ((value >> 28) & 3) as u8;
+                    }
+                    "IPM" => {
+                        let r = reg(0)?;
+                        registers[r] = (registers[r] & 0x00ffffff)
+                            | (u32::from(floating.program_mask) << 24)
+                            | (u32::from(cc) << 28);
+                    }
+                    "SAM24" | "SAM31" | "SAM64" => {
+                        amode = if op == "SAM24" {
+                            24
+                        } else if op == "SAM31" {
+                            31
+                        } else {
+                            64
+                        };
+                        branch = Some((next_address as u64 & super::abi::mask(amode)?) as usize);
+                    }
+                    "BASSM" | "BSM" => {
+                        let (r, s) = (reg(0)?, reg(1)?);
+                        let raw = wide::read(&registers, &high, s);
+                        let old = amode;
+                        if op == "BASSM" {
+                            let link = super::abi::tagged_entry(next_address as u64, old)?;
+                            if old == 64 {
+                                wide::write(&mut registers, &mut high, r, link);
+                            } else {
+                                registers[r] = link as u32;
+                            }
+                            if r == 14 {
+                                branch_return_mode = Some(old);
+                            }
+                        } else if r != 0 {
+                            if old == 64 {
+                                let v = wide::read(&registers, &high, r) | 1;
+                                wide::write(&mut registers, &mut high, r, v);
+                            } else {
+                                registers[r] = (registers[r] & !0x80000000)
+                                    | if old == 31 { 0x80000000 } else { 0 };
+                            }
+                        }
+                        if s != 0 {
+                            amode = super::abi::branch_mode(raw);
+                            branch = Some(
+                                ((raw & super::abi::mask(amode)?)
+                                    & if amode == 64 { !1 } else { u64::MAX })
+                                    as usize,
+                            );
+                        }
+                    }
                     "BALR" | "BASR" | "BAL" | "BAS" => {
                         let r = reg(0)?;
                         let target = if op.ends_with('R') {
                             let r2 = reg(1)?;
-                            (r2 != 0).then_some((registers[r2] & 0x7fff_ffff) as usize)
+                            (r2 != 0).then_some(super::abi::register(&registers, &high, r2, amode)?)
                         } else {
                             Some(ea()?)
                         };
-                        registers[r] = next_address as u32;
+                        if amode == 64 {
+                            wide::write(&mut registers, &mut high, r, next_address as u64);
+                        } else {
+                            registers[r] =
+                                super::abi::tagged_entry(next_address as u64, amode)? as u32;
+                            if amode == 24 && matches!(op, "BAL" | "BALR") {
+                                let ilc = if modified.is_some() {
+                                    super::assemble::instruction_size(&fetched.op).unwrap() / 2
+                                } else {
+                                    super::assemble::instruction_size(op).unwrap() / 2
+                                };
+                                registers[r] |= (ilc << 30)
+                                    | (u32::from(cc) << 28)
+                                    | (u32::from(floating.program_mask) << 24);
+                            }
+                        }
                         branch = target;
                     }
                     "BR" | "BCR" => {
                         if op == "BR" || (ins.immediate & (8 >> cc)) != 0 {
                             let r = reg(0)?;
                             if r != 0 {
-                                branch = Some((registers[r] & 0x7fff_ffff) as usize);
+                                branch = Some(super::abi::register(&registers, &high, r, amode)?);
                             }
                         }
                     }
@@ -1098,7 +1370,48 @@ pub(crate) fn execute_entry_with_host(
                 }
                 Ok((branch, false))
             };
-            let outcome = run();
+            let outcome = run().and_then(|result| {
+                let op = super::assemble::canonical_operation(&ins.op);
+                if cc == 3
+                    && floating.program_mask & 8 != 0
+                    && matches!(
+                        op,
+                        "A" | "AR"
+                            | "AH"
+                            | "AHI"
+                            | "S"
+                            | "SR"
+                            | "SH"
+                            | "SLA"
+                            | "SLDA"
+                            | "LCR"
+                            | "LPR"
+                            | "AG"
+                            | "AGR"
+                            | "AGH"
+                            | "AGHI"
+                            | "AGFI"
+                            | "AGF"
+                            | "AGFR"
+                            | "SG"
+                            | "SGR"
+                            | "SGF"
+                            | "SGFR"
+                            | "SLAG"
+                            | "LCGR"
+                            | "LPGR"
+                    )
+                {
+                    return Err("fixed-point-overflow exception".into());
+                }
+                if cc == 3
+                    && floating.program_mask & 4 != 0
+                    && matches!(op, "AP" | "SP" | "ZAP" | "SRP")
+                {
+                    return Err("decimal-overflow exception".into());
+                }
+                Ok(result)
+            });
             storage
                 .verify_protection(mem)
                 .map_err(|e| format!("{}:{}: {}: {e}", ins.file, ins.line, ins.op))?;
@@ -1113,39 +1426,57 @@ pub(crate) fn execute_entry_with_host(
                 return Ok(registers[15] as i32);
             }
             pc = match branch {
+                Some(a) if local(a) => a,
                 Some(a) => {
-                    if let Some(pc) = targets.get(&a) {
-                        *pc
-                    } else {
-                        let mut state = super::Registers {
-                            low: registers,
-                            high,
-                            cc,
-                        };
-                        let resume = host.branch(a, &mut state, mem, storage)?;
-                        registers = state.low;
-                        high = state.high;
-                        cc = state.cc;
-                        if resume == return_target as usize {
-                            return Ok(registers[15] as i32);
+                    let mut state = super::Registers {
+                        low: registers,
+                        high,
+                        cc,
+                        floating: floating.clone(),
+                        address_mode: amode,
+                        return_mode: branch_return_mode,
+                        parameter_list: original_parameters,
+                    };
+                    let resume = host.branch(a, &mut state, mem, storage).map_err(|error| {
+                        if error.starts_with('\0') {
+                            error
+                        } else {
+                            format!("{}:{}: {}: {error}", ins.file, ins.line, ins.op)
                         }
-                        *targets
-                            .get(&resume)
-                            .ok_or("loaded entry returned to an unmapped instruction")?
+                    })?;
+                    registers = state.low;
+                    high = state.high;
+                    cc = state.cc;
+                    floating = state.floating;
+                    amode = state.address_mode;
+                    if resume == return_target as usize {
+                        return Ok(registers[15] as i32);
                     }
+                    if !local(resume) {
+                        return Err("loaded entry returned to an unmapped instruction".into());
+                    }
+                    resume
                 }
-                None => *targets
-                    .get(&next_address)
-                    .ok_or("HLASM execution entered data or unmapped instruction storage")?,
+                None if local(next_address) => next_address,
+                None => {
+                    return Err(
+                        "HLASM execution entered data or unmapped instruction storage".into(),
+                    );
+                }
             };
         }
         Err("HLASM instruction limit exceeded".into())
     })();
     storage.release_frame(mem, frame);
+    if let Some(state) = call_state.as_mut() {
+        **state = floating.clone();
+    }
     if let Some(initial) = initial {
         initial.low = registers;
         initial.high = high;
         initial.cc = cc;
+        initial.floating = floating;
+        initial.address_mode = amode;
     }
     result
 }
@@ -1203,5 +1534,54 @@ fn ordering_cc(order: std::cmp::Ordering) -> u8 {
         std::cmp::Ordering::Equal => 0,
         std::cmp::Ordering::Less => 1,
         std::cmp::Ordering::Greater => 2,
+    }
+}
+
+#[cfg(test)]
+mod invocation_tests {
+    use super::*;
+    #[test]
+    fn invalid_caller_or_parameter_modes_do_not_allocate_or_leak_frames() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("own-entry.asm");
+        std::fs::write(&path, "MAIN CSECT\n BR 14\n END\n").unwrap();
+        let module = crate::hlasm::compile_file(&path, &[]).unwrap();
+        let mut memory = vec![0; 128];
+        memory.extend(module.storage_at(128).unwrap());
+        let original = memory.clone();
+        let mut storage = crate::hlasm::DynamicStorage::default();
+        for (caller_mode, parameter_mode) in [(Some(7), None), (None, Some(7))] {
+            let mut registers = crate::hlasm::Registers {
+                return_mode: caller_mode,
+                ..Default::default()
+            };
+            for _ in 0..3 {
+                assert!(
+                    execute_entry_with_host(
+                        &module,
+                        &mut memory,
+                        128,
+                        &[],
+                        module.entry,
+                        &mut storage,
+                        &mut crate::hlasm::services::NoHost,
+                        true,
+                        parameter_mode,
+                        Some(&mut registers),
+                        None
+                    )
+                    .unwrap_err()
+                    .contains("addressing mode")
+                );
+                assert_eq!(memory, original);
+                assert_eq!(storage.allocated_bytes(), 0);
+            }
+        }
+        assert_eq!(
+            execute_entry(&module, &mut memory, 128, &[], module.entry, &mut storage).unwrap(),
+            128
+        );
+        assert_eq!(memory, original);
+        assert_eq!(storage.allocated_bytes(), 0);
     }
 }

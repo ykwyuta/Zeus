@@ -4,9 +4,11 @@ use crate::hlasm::Instruction;
 pub(super) fn execute(
     ins: &Instruction,
     registers: &mut [u32; 16],
+    high: &mut [u32; 16],
     memory: &mut [u8],
     storage: &crate::hlasm::DynamicStorage,
     cc: &mut u8,
+    mode: u8,
 ) -> Result<bool, String> {
     if !matches!(ins.op.as_str(), "ED" | "EDMK") {
         return Ok(false);
@@ -52,7 +54,12 @@ pub(super) fn execute(
                     }
                 };
                 if !significant && digit != 0 && ins.op == "EDMK" {
-                    registers[1] = (registers[1] & 0x8000_0000) | at as u32 & 0x7fff_ffff;
+                    if mode == 64 {
+                        super::wide::write(registers, high, 1, at as u64);
+                    } else {
+                        let mask = crate::hlasm::abi::mask(mode)? as u32;
+                        registers[1] = (registers[1] & !mask) | (at as u32 & mask);
+                    }
                 }
                 memory[at] = if significant || digit != 0 {
                     0xf0 | digit

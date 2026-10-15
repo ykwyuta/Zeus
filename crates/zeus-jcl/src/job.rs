@@ -968,7 +968,14 @@ pub(crate) fn run_program(
 ) -> ProgramResult {
     let path = libs
         .iter()
-        .flat_map(|d| [d.join(program), d.join(format!("{program}.zo"))])
+        .flat_map(|d| {
+            [
+                d.join(program),
+                d.join(format!("{program}.zo")),
+                d.join(format!("{program}.obj")),
+                d.join(format!("{program}.goff")),
+            ]
+        })
         .find(|p| p.is_file())
         .ok_or_else(|| Outcome::Abend("S806".into()))?;
     // a PL/I load module
