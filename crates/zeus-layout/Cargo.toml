@@ -1,0 +1,20 @@
+[package]
+name = "zeus-layout"
+description = "Zeus fixed-length layouts of a COBOL program's files, cards, MQ messages, tables, query results, arguments and maps as copybooks (zlayout)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-bms = { path = "../zeus-bms" }
+zeus-cobol = { path = "../zeus-cobol" }
+tempfile.workspace = true
+
+[[bin]]
+name = "zlayout"
+path = "src/main.rs"
+
+[lints]
+workspace = true

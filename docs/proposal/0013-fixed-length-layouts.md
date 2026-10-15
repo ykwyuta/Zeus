@@ -7,7 +7,7 @@ COBOL プログラムがやり取りするデータ (ファイル、カード、
 用途: 移行先でのデータ変換 (EBCDIC・パック 10 進の変換定義)、テストデータの作成 (0012)、インターフェース仕様の
 棚卸し、プログラム間でのレイアウトの食い違いの検出。
 
-この文書は提案で、実装はまだ行わない。
+段階 A〜C を実装した (`crates/zeus-layout`、`zlayout`)。実装の状況は末尾の「実装 (2026-10)」に書く。
 
 ## 対象とする入出力
 
@@ -162,3 +162,46 @@ zlayout [-I DIR]... [--out DIR] [--kinds file,card,mq,table,sqlresult,parm,call,
 - 判別子はソースの分岐と代入から推定するので、外部の仕様でしか分からない場合は利用者が対応表を与える必要がある。
 - 同じ領域を参照修飾 (`REC(41:460)`) で直接切り出すような使い方は、項目の定義がないため、位置と長さの注記だけを出す。
 - POINTER を通したレイアウト (SET ADDRESS OF で別の構造に重ねる) は、重ねた構造ごとに別レイアウトとして出す。
+
+## 実装 (2026-10)
+
+段階 A〜C と、段階 D の MQ を `crates/zeus-layout` (`zlayout`) に実装した。
+
+```text
+zlayout [-I DIR]... [--bms DIR]... [--out DIR] [--kinds K,...] [--values] [--no-offsets]
+        [--keep-base] [--max-layouts N] [--no-check] PROGRAM.cbl...
+```
+
+- `--bms DIR`: DIR の下の BMS マップセットからシンボリック・マップを作り、COPY メンバーとして使う。
+- 種類 (`--kinds` とファイル名): FILE、CARD、MQ、PARM、CALL、COMMAREA、BMS、TABLE、SQLRESULT。
+  - FILE: FD のレコードと READ INTO / WRITE FROM / REWRITE FROM の作業域、CICS の READ / READNEXT / READPREV /
+    WRITE / REWRITE の INTO / FROM (資源は CICS のファイル名。変数で書かれていれば、その VALUE)。
+  - CARD: ASSIGN が SYSIN・SYSIPT のファイルと、ACCEPT (日付・時刻を除く) の受取り項目。
+  - PARM: PROCEDURE DIVISION USING (CICS の DFHEIBLK・DFHCOMMAREA を除く)。CALL: 呼出し先と引数の位置ごと
+    (呼出し先が変数なら、その VALUE)。MQ: MQGET・MQPUT・MQPUT1 の第 6 引数 (バッファ)。
+  - COMMAREA: `IN` (DFHCOMMAREA と、それを MOVE する作業域)、LINK / XCTL の呼出し先ごと、`RETURN`。
+  - BMS: SEND / RECEIVE MAP の FROM / INTO (省略時は `マップ名O` / `マップ名I`)。シンボリック・マップは各項目が
+    長さと属性を再定義するので分割しない。
+  - TABLE: `DECLARE ... TABLE` の後の DCLGEN のホスト構造。SQLRESULT: FETCH (カーソル名) と SELECT INTO
+    (`SELECT.段落名`) の INTO のホスト変数。1 つの構造ならその構造、別々の項目なら標識変数とともに `…-ROW` の
+    01 の下に 05 で並べ直す。
+- 01 の REDEFINES (作業域の 01 を再定義する 01) は同じデータの別のレコードとして扱う。
+- 判別子は、段落の `MOVE 定数 TO 共通部の項目` (書く側) と、`EVALUATE 項目 WHEN 定数`・`EVALUATE TRUE WHEN 条件名`・
+  `IF 項目 = 定数`・`IF 条件名` (読む側) から推定する。分岐の先と、その先で PERFORM される段落 (2 段まで) で使う
+  項目から、どの形かを決める。複数の形に同じ値が現れるもの (どのレコードにも入れる定数) は判別子にしない。
+- 全レイアウトを zcobc の前処理と意味解析でコンパイルし直し、項目ごとの位置と長さを元のプログラムと比べる
+  (`layouts.csv` の check 列。食い違いは終了コード 4)。
+
+### 確かめたこと
+
+CardDemo・GenApp・Bank of Z の COBOL プログラム 117 本 (`--bms .cache`): 1354 レイアウトを出力し、全件の
+再コンパイルの確認が一致した。読めなかったのは IBTRAN (REPOSITORY 段落: コンパイラの未対応) だけ。
+
+- CBEXPORT (書く側) と CBIMPORT (読む側) の EXPFILE は、どちらも `EXPORT-REC-TYPE = 'C'`・`'A'`・`'T'`・`'X'`・`'D'`
+  で顧客・口座・取引・カード相互参照・カードの 5 レイアウト (と FD の 01) に分かれる。
+- COACTUPC の COMMAREA は日付・金額の小さな REDEFINES が多く、上限 (256) で小さい選択点から REDEFINES のまま残した。
+
+### 未実装
+
+- 段階 D の残り: IMS のセグメントと PCB マスク、プログラム間のレイアウトの食い違いの報告、PL/I。
+- 判別子の対応表の入力 (`--selectors`)、参照修飾だけで切り出す使い方の注記、zdeps からの呼出し (`--layouts`)。

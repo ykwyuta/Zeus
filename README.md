@@ -16,8 +16,8 @@ Plans and design decisions are in [docs/proposal](docs/proposal):
 Each CI run publishes the commands built for Linux (x86-64, glibc 2.35 or
 later) and Windows (x86-64) as the artifacts `zeus-linux-x86_64` and
 `zeus-windows-x86_64` (zip files on the run's page in GitHub Actions):
-`bin/` holds zcobc, zcov, zpli, zjob, zcics, zbms, zims, zmq, zconn, zdeps
-and zeus-rt (the run time `--native` executables are made from, found next
+`bin/` holds zcobc, zcov, zpli, zjob, zcics, zbms, zims, zmq, zconn, zdeps,
+zlayout and zeus-rt (the run time `--native` executables are made from, found next
 to zcobc and zpli). Artifacts are kept for the repository's retention
 period (90 days by default).
 
@@ -168,6 +168,16 @@ type, assets Zeus supplies) and the lists of nodes, edges, node
 attributes, edge attributes, edge locations and missing assets as CSV.
 See [docs/proposal/0011-dependency-analysis.md](docs/proposal/0011-dependency-analysis.md).
 
+Layouts: `zlayout [-I DIR]... [--bms DIR]... [--out DIR] PROGRAM.cbl...`
+writes, as copybooks with COPY expanded, the fixed-length layouts of the
+data a program exchanges: files and cards, MQ message buffers, its
+parameters, call arguments, CICS COMMAREAs, BMS maps, Db2 tables and
+query results. Every REDEFINES splits a record into layouts, one copybook
+each, with the record type selecting it inferred from the procedure
+division; start positions are in columns 73-80, and each copybook is
+checked by compiling it. See
+[docs/proposal/0013-fixed-length-layouts.md](docs/proposal/0013-fixed-length-layouts.md).
+
 IBM MQ: `zeus-mq` runs the MQI calls of COBOL programs (`CALL 'MQCONN'`,
 MQOPEN, MQPUT, MQPUT1, MQGET, MQINQ, MQCMIT, MQBACK, MQCLOSE, MQDISC) on an
 IBM MQ queue manager through IBM's MQ C client library (libmqic_r, loaded at
@@ -216,6 +226,7 @@ and runs programs and utilities, including the compilers and the binder.
 | `crates/zeus-ims` | `zims`: IMS DB (DBD/PSB catalogs, hierarchical store with a write-ahead log, DL/I, GSAM, TM queues) and the CBLTDLI / EXEC DLI / DFSRRC00 run-time glue |
 | `crates/zeus-mq` | MQI calls of COBOL programs on IBM MQ through the IBM MQ C client library; z/OS structure conversion |
 | `crates/zeus-bms` | `zbms`: BMS mapsets, COBOL and PL/I symbolic maps |
+| `crates/zeus-layout` | `zlayout`: fixed-length layouts of a program's files, cards, MQ messages, arguments, COMMAREAs, maps, tables and query results as copybooks |
 | `crates/zeus-deps` | `zdeps`: dependency analysis of COBOL, PL/I, JCL, BMS, IMS and CSD sources; masters, nodes, edges, locations and missing assets as CSV |
 | `crates/zeus-decimal` | Packed / zoned / binary decimal arithmetic (checked against Hercules) |
 | `crates/zeus-ccvs` | CCVS85 extractor, runner and reporter |
