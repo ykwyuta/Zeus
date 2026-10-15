@@ -48,8 +48,10 @@ fn ordinary_literal_attributes_are_numeric_and_do_not_allocate_literal_pools() {
     let module = compile("MAIN CSECT\n         BR 14\nWIDTH EQU L'=FL3'7'\nRESULT DC A(L'=F'1,2',T'=FL3'7',WIDTH,L'=A(MISSING))\n         AIF (D'=FL3'7' AND D'=F'1,2').GOOD\n         MNOTE 8,'ordinary literal attribute did not define metadata'\n.GOOD ANOP\n         ENTRY RESULT\n         END\n").unwrap();
     let at = module.entries["RESULT"] as usize;
     let values: Vec<_> = module.storage[at..at + 16]
-        .chunks_exact(4)
-        .map(|b| u32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| u32::from_be_bytes(*b))
         .collect();
     assert_eq!(
         values,

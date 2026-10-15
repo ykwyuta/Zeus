@@ -118,18 +118,22 @@ fn finite(source: &Ratio, target: Shape, rounding: Rounding, controls: u8, masks
             q >>= 4usize;
             e += 1;
         }
-        let raw;
-        let flags;
-        if e > 63 {
-            raw = hex_max(source.negative, target.width);
-            flags = if controls & 0x20 != 0 { 0x28 } else { 0x80 };
+        let (raw, flags) = if e > 63 {
+            (
+                hex_max(source.negative, target.width),
+                if controls & 0x20 != 0 { 0x28 } else { 0x80 },
+            )
         } else if e < -64 {
-            raw = hex_zero(source.negative, target.width);
-            flags = 8 | if controls & 0x10 != 0 { 0x10 } else { 0 };
+            (
+                hex_zero(source.negative, target.width),
+                8 | if controls & 0x10 != 0 { 0x10 } else { 0 },
+            )
         } else {
-            raw = hex_raw(source.negative, q.to_u128().unwrap(), e, target.width);
-            flags = if different(&rounded, source) { 8 } else { 0 };
-        }
+            (
+                hex_raw(source.negative, q.to_u128().unwrap(), e, target.width),
+                if different(&rounded, source) { 8 } else { 0 },
+            )
+        };
         return Converted {
             raw,
             flags,

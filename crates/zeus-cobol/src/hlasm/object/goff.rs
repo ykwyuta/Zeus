@@ -182,7 +182,7 @@ impl Builder {
                 if !(b.len() - 8).is_multiple_of(12) {
                     return Err("invalid GOFF LEN item length".into());
                 }
-                for item in b[8..].chunks_exact(12) {
+                for item in b[8..].as_chunks::<12>().0.iter() {
                     let def = self
                         .definitions
                         .get_mut(&uint(item, 0))

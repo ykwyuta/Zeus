@@ -518,7 +518,9 @@ fn generated_using_and_gpr_records_distinguish_floating_registers_and_drop_targe
         let n = read_word(&encoded, 20) as usize;
         assert!(
             encoded[at..at + n * 5]
-                .chunks_exact(5)
+                .as_chunks::<5>()
+                .0
+                .iter()
                 .any(|r| read_word(r, 0) == statement && r[4] == flag),
             "register {register}"
         );
@@ -649,7 +651,11 @@ fn member_cross_references_preserve_nested_copy_parents_and_global_totals() {
         assert_eq!(read_word(&r.data, 34), 3);
         let n = read_word(&r.data, 38);
         let start = read_word(&r.data, 42) as usize;
-        for reference in full[start..start + n as usize * 5].chunks_exact(5) {
+        for reference in full[start..start + n as usize * 5]
+            .as_chunks::<5>()
+            .0
+            .iter()
+        {
             assert_eq!(reference[4], 0xc3);
         }
         found.insert((name, parent), n);

@@ -66,7 +66,7 @@ impl Deck {
             return Err("invalid OBJ ESD item length".into());
         }
         let mut id = word(&c[14..16]);
-        for item in c[16..16 + n].chunks_exact(16) {
+        for item in c[16..16 + n].as_chunks::<16>().0.iter() {
             let kind = item[8];
             let text = name(&item[..8]);
             if kind == 1 {
@@ -404,7 +404,7 @@ pub(super) fn load(bytes: &[u8]) -> Result<Module, String> {
     let mut deck = Deck::default();
     let mut modules = Vec::new();
     let mut pending = false;
-    for (index, c) in bytes.chunks_exact(80).enumerate() {
+    for (index, c) in bytes.as_chunks::<80>().0.iter().enumerate() {
         let result = (|| {
             if c[0] != 2 {
                 return Err("invalid OBJ record prefix".into());

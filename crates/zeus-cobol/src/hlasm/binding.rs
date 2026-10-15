@@ -283,10 +283,12 @@ impl Bindings {
         for q in &self.quantities {
             let value = if let Some(index) = q.element {
                 let section = &self.sections[index];
-                let origin = if section.concatenate && section.image.is_some() {
-                    section.image.unwrap() - mapped[&section.name].0
-                } else if section.concatenate {
-                    element_positions[index]
+                let origin = if section.concatenate {
+                    if let Some(image) = section.image {
+                        image - mapped[&section.name].0
+                    } else {
+                        element_positions[index]
+                    }
                 } else {
                     *offsets
                         .get(&section.name)

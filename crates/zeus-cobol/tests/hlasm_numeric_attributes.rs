@@ -18,8 +18,10 @@ fn ordinary_numeric_attributes_match_decimal_storage_and_equ_resets() {
     assert_eq!(bytes(&module, "PACK", 3), [0x01, 0x23, 0x4d]);
     assert_eq!(bytes(&module, "ZONE", 2), [0xf5, 0xc0]);
     let values: Vec<_> = bytes(&module, "VALUES", 44)
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect();
     assert_eq!(values, [0, 31, 15, 63, 23, 2, 3, 2, 0, 0, 0]);
 }
@@ -33,8 +35,10 @@ fn decimal_lists_and_duplication_take_attributes_from_first_nominal() {
     );
     assert_eq!(bytes(&module, "ZONE", 4), [0xf0, 0xf1, 0xf2, 0xd5]);
     let values: Vec<_> = bytes(&module, "VALUES", 24)
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect();
     assert_eq!(values, [2, 1, 2, 4, 2, 2]);
 }

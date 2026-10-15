@@ -12,24 +12,32 @@ fn fixed_scales_decimal_values_rounding_and_attributes() {
     let module = compile("MAIN CSECT\n         BR 14\nDATA DC FS2'1.25,-1.25,1.125,-1.125'\n         DC HS-2'10,-10,9,-9'\n         DC F'1.499999999999999999999,1.5,-1.5'\nATTR DC A(S'DATA,I'DATA,S'=FDS-187'0',I'=FDS346'0')\n         ENTRY DATA,ATTR\n         END\n").unwrap();
     let at = module.entries["DATA"] as usize;
     let fullwords: Vec<_> = module.storage[at..at + 16]
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect();
     assert_eq!(fullwords, [5, -5, 5, -5]);
     let halfwords: Vec<_> = module.storage[at + 16..at + 24]
-        .chunks_exact(2)
-        .map(|b| i16::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|b| i16::from_be_bytes(*b))
         .collect();
     assert_eq!(halfwords, [3, -3, 2, -2]);
     let rounded: Vec<_> = module.storage[at + 24..at + 36]
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect();
     assert_eq!(rounded, [1, 2, -2]);
     let at = module.entries["ATTR"] as usize;
     let attributes: Vec<_> = module.storage[at..at + 16]
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect();
     assert_eq!(attributes, [2, 29, -187, -283]);
 }
@@ -39,8 +47,10 @@ fn exact_conversion_handles_large_intermediates_and_signed_boundaries() {
     let module = compile("MAIN CSECT\n         BR 14\nDATA DC FD'9223372036854775807,-9223372036854775808'\n         DC FDS-64'18446744073709551616'\n         DC FDS100'.000000000000000000000000000001'\n         DC FDS346'0'\n         DC FDS-187'1'\n         ENTRY DATA\n         END\n").unwrap();
     let at = module.entries["DATA"] as usize;
     let values: Vec<_> = module.storage[at..at + 48]
-        .chunks_exact(8)
-        .map(|b| i64::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|b| i64::from_be_bytes(*b))
         .collect();
     assert_eq!(values, [i64::MAX, i64::MIN, 1, 1, 0, 0]);
 }
@@ -68,8 +78,10 @@ fn explicit_lengths_scaling_lists_and_duplication_preserve_layout() {
     );
     let at = module.entries["ATTR"] as usize;
     let values: Vec<_> = module.storage[at..at + 16]
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect();
     assert_eq!(
         values,
