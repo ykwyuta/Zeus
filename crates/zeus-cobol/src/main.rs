@@ -25,6 +25,9 @@ use std::process::ExitCode;
 
 use zeus_cobol::front::FrontOptions;
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn usage() -> ExitCode {
     eprintln!(
         "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] [--nsymbol dbcs|national] -o <artifact> <source>"
@@ -296,6 +299,22 @@ fn run(args: &Args) -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zcobc.txt"),
+        &[
+            "-I",
+            "-o",
+            "--coverage",
+            "--target",
+            "--with",
+            "--nsymbol",
+            "--parm",
+            "--ccsid",
+            "--dd",
+        ],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = args.first() else {
         return usage();

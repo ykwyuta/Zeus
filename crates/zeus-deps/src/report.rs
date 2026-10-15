@@ -1,5 +1,6 @@
 //! The CSV files: the masters and the results of an analysis.
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::io::Write;
 use std::path::{Path, PathBuf};
 
@@ -57,6 +58,9 @@ pub const RESULT_FILES: &[&str] = &[
     "edge_attributes.csv",
     "edge_locations.csv",
     "missing_assets.csv",
+    "unsupported_syntax.csv",
+    "unsupported_syntax_locations.csv",
+    "compile_diagnostics.csv",
 ];
 
 /// Writes the masters to `dir`.
@@ -278,5 +282,113 @@ pub fn write_results(g: &Graph, dir: &Path, base: &Path, bom: bool) -> std::io::
             e.locations.len().to_string(),
         ])?;
     }
-    c.finish()
+    c.finish()?;
+    write_syntax_results(g, dir, base, bom)
+}
+
+/// Compiler-confirmed unsupported constructs, with separate general errors.
+fn write_syntax_results(g: &Graph, dir: &Path, base: &Path, bom: bool) -> std::io::Result<()> {
+    let mut groups = BTreeMap::new();
+    for d in g.diagnostics.iter().filter(|d| d.category == "UNSUPPORTED") {
+        groups
+            .entry((d.language, d.syntax.as_str(), d.stage))
+            .or_insert_with(Vec::new)
+            .push(d);
+    }
+    let mut summary = Csv::create(
+        &dir.join("unsupported_syntax.csv"),
+        &[
+            "syntax_id",
+            "language",
+            "syntax",
+            "stage",
+            "occurrences",
+            "programs",
+            "files",
+        ],
+        bom,
+    )?;
+    let mut locations = Csv::create(
+        &dir.join("unsupported_syntax_locations.csv"),
+        &[
+            "syntax_id",
+            "node_id",
+            "program",
+            "program_path",
+            "language",
+            "syntax",
+            "stage",
+            "path",
+            "line",
+            "statement",
+            "message",
+        ],
+        bom,
+    )?;
+    for (i, ((language, syntax, stage), occurrences)) in groups.iter().enumerate() {
+        let id = (i + 1).to_string();
+        let programs: BTreeSet<_> = occurrences
+            .iter()
+            .map(|d| (d.node_id, &d.program))
+            .collect();
+        let files: BTreeSet<_> = occurrences.iter().map(|d| &d.path).collect();
+        summary.row(&[
+            id.clone(),
+            language.to_string(),
+            syntax.to_string(),
+            stage.to_string(),
+            occurrences.len().to_string(),
+            programs.len().to_string(),
+            files.len().to_string(),
+        ])?;
+        for d in occurrences {
+            let root = &g.nodes[d.node_id - 1];
+            locations.row(&[
+                id.clone(),
+                d.node_id.to_string(),
+                d.program.clone(),
+                shown(&root.path, base),
+                d.language.into(),
+                d.syntax.clone(),
+                d.stage.into(),
+                shown(&Some(d.path.clone()), base),
+                d.line.map(|n| n.to_string()).unwrap_or_default(),
+                d.statement.clone(),
+                d.message.clone(),
+            ])?;
+        }
+    }
+    summary.finish()?;
+    locations.finish()?;
+    let mut diagnostics = Csv::create(
+        &dir.join("compile_diagnostics.csv"),
+        &[
+            "node_id",
+            "program",
+            "program_path",
+            "language",
+            "category",
+            "stage",
+            "path",
+            "line",
+            "statement",
+            "message",
+        ],
+        bom,
+    )?;
+    for d in &g.diagnostics {
+        diagnostics.row(&[
+            d.node_id.to_string(),
+            d.program.clone(),
+            shown(&g.nodes[d.node_id - 1].path, base),
+            d.language.into(),
+            d.category.into(),
+            d.stage.into(),
+            shown(&Some(d.path.clone()), base),
+            d.line.map(|n| n.to_string()).unwrap_or_default(),
+            d.statement.clone(),
+            d.message.clone(),
+        ])?;
+    }
+    diagnostics.finish()
 }

@@ -508,7 +508,7 @@ impl Pp<'_> {
         };
         // assignment
         if se > k + 1
-            && t[k + 1..se].iter().position(|x| is_op(x, "=")).is_some()
+            && t[k + 1..se].iter().any(|x| is_op(x, "="))
             && !matches!(kw.as_str(), "IF" | "DO" | "SELECT" | "DECLARE" | "DCL")
         {
             let eq = k + 1 + t[k + 1..se].iter().position(|x| is_op(x, "=")).unwrap();

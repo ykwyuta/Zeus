@@ -3,6 +3,8 @@
 //! Implemented from the published interface descriptions (parameter
 //! lists and feedback codes):
 //!
+//! * `CEENCOD (c1, c2, case, severity, control, facility, isi, token, fc)`:
+//!   constructs a condition token with checked fields and optional feedback;
 //! * `CEE3ABD (abcode, timing)`: ends the run unit with user abend
 //!   `abcode`;
 //! * `CEEDAYS (input_char_date, picture_string, output_Lilian_date, fc)`:
@@ -22,6 +24,8 @@
 
 use super::{Machine, RResult, RunError};
 use crate::ebcdic;
+mod condition;
+pub(super) mod handlers;
 
 /// Prefix of the error that ends the run unit with an abend.
 pub const ABEND: &str = "\u{0}abend ";
@@ -245,6 +249,19 @@ fn ceedays(date: &str, picture: &str) -> Result<i64, u16> {
     Ok(r)
 }
 
+/// Number of arguments in the supported AMODE 31 callable-service interface.
+pub(super) fn parameter_count(name: &str) -> Option<usize> {
+    match name {
+        "CEENCOD" | "CEEDCOD" => Some(9),
+        "CEEHDLR" | "CEESGL" | "CEEGQDT" => Some(3),
+        "CEEHDLU" => Some(2),
+        "CEE3ABD" => Some(2),
+        "CEEGMT" => Some(3),
+        "CEEDAYS" | "CEELOCT" | "CEEDATM" | "CEEDATE" | "CEESECS" => Some(4),
+        _ => None,
+    }
+}
+
 impl Machine {
     fn read_vstring(&self, a: usize) -> String {
         let n = u16::from_be_bytes([self.mem[a], self.mem[a + 1]]) as usize;
@@ -256,12 +273,16 @@ impl Machine {
     }
 
     fn feedback(&mut self, a: Option<usize>, msg: Option<u16>) {
+        self.condition_feedback(a, msg.map(|message| (3, message)));
+    }
+
+    fn condition_feedback(&mut self, a: Option<usize>, condition: Option<(u16, u16)>) {
         let Some(a) = a else { return };
         let mut fc = [0u8; 12];
-        if let Some(n) = msg {
-            fc[0..2].copy_from_slice(&3u16.to_be_bytes());
-            fc[2..4].copy_from_slice(&n.to_be_bytes());
-            fc[4] = 0x59;
+        if let Some((severity, message)) = condition {
+            fc[0..2].copy_from_slice(&severity.to_be_bytes());
+            fc[2..4].copy_from_slice(&message.to_be_bytes());
+            fc[4] = 0x41 | ((severity as u8) << 3);
             fc[5..8].copy_from_slice(&ebcdic::encode("CEE"));
         }
         self.mem[a..a + 12].copy_from_slice(&fc);
@@ -269,12 +290,80 @@ impl Machine {
 
     /// Runs `name` when it is a callable service; returns false otherwise.
     pub(super) fn le_service(&mut self, name: &str, args: &[Option<usize>]) -> RResult<bool> {
+        let layouts: &[usize] = match name {
+            "CEENCOD" => &[2, 2, 2, 2, 2, 3, 4, 12, 12],
+            "CEEDCOD" => &[12, 2, 2, 2, 2, 2, 3, 4, 12],
+            "CEEHDLR" => &[4, 4, 12],
+            "CEEHDLU" => &[4, 12],
+            "CEESGL" | "CEEGQDT" => &[12, 4, 12],
+            "CEE3ABD" => &[4, 4],
+            "CEEDAYS" => &[0, 0, 4, 12],
+            "CEEGMT" => &[4, 8, 12],
+            "CEELOCT" => &[4, 8, 17, 12],
+            "CEEDATM" => &[8, 0, 80, 12],
+            "CEEDATE" => &[4, 0, 80, 12],
+            "CEESECS" => &[0, 0, 8, 12],
+            _ => return Ok(false),
+        };
+        for (index, &size) in layouts.iter().enumerate() {
+            if let Some(Some(at)) = args.get(index) {
+                let length = if size == 0 {
+                    let bytes = self
+                        .mem
+                        .get(
+                            *at..at.checked_add(2).ok_or_else(|| {
+                                RunError(format!("{name}: parameter address overflow"))
+                            })?,
+                        )
+                        .ok_or_else(|| {
+                            RunError(format!("{name}: string length outside run-unit storage"))
+                        })?;
+                    2 + usize::from(u16::from_be_bytes(bytes.try_into().unwrap()))
+                } else {
+                    size
+                };
+                if at
+                    .checked_add(length)
+                    .is_none_or(|end| end > self.mem.len())
+                {
+                    return super::err(format!(
+                        "{name}: parameter {} outside run-unit storage",
+                        index + 1
+                    ));
+                }
+                let output = match name {
+                    "CEENCOD" => index >= 7,
+                    "CEEDCOD" | "CEEHDLU" | "CEEGQDT" => index >= 1,
+                    "CEEHDLR" | "CEESGL" => index >= 2,
+                    "CEE3ABD" => false,
+                    "CEEGMT" | "CEELOCT" => true,
+                    _ => index >= 2,
+                };
+                if output {
+                    self.hlasm_storage
+                        .check_write(*at, length)
+                        .map_err(RunError)?;
+                }
+            }
+        }
         let fullword = |m: &Machine, a: Option<usize>| -> i64 {
             a.map_or(0, |a| {
                 i32::from_be_bytes([m.mem[a], m.mem[a + 1], m.mem[a + 2], m.mem[a + 3]]) as i64
             })
         };
         match name {
+            "CEEDCOD" => {
+                self.decompose_condition(args)?;
+                Ok(true)
+            }
+            "CEEHDLR" | "CEEHDLU" | "CEESGL" | "CEEGQDT" => {
+                self.condition_service(name, args)?;
+                Ok(true)
+            }
+            "CEENCOD" => {
+                self.construct_condition(args)?;
+                Ok(true)
+            }
             "CEE3ABD" => {
                 let code = fullword(self, args.first().copied().flatten());
                 Err(RunError(format!("{ABEND}U{code:04}")))

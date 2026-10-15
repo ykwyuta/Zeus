@@ -56,6 +56,9 @@ use zeus_cics::csd::Csd;
 use zeus_cics::region::{self, Event, Region, Terminal, aid};
 use zeus_ds::catalog::Catalog;
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn usage() -> ExitCode {
     eprintln!(
         "usage: zcics [--home DIR] [--csd FILE]... [--loadlib DIR]... [--mapsets DIR]... SCRIPT"
@@ -305,7 +308,7 @@ mod server {
                 }
                 DeviceRequest::Associate(d) => {
                     let d = d.to_ascii_uppercase();
-                    if !self.in_use.get(&d).is_some_and(|(_, p)| !p) {
+                    if self.in_use.get(&d).is_none_or(|(_, p)| *p) {
                         return Err(Refusal::InvalidAssociate);
                     }
                     // the PRINTER of the display's TERMINAL definition
@@ -982,6 +985,27 @@ fn submit_jobs(region: &Rc<RefCell<Region>>, home: &std::path::Path) {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zcics.txt"),
+        &[
+            "--home",
+            "--csd",
+            "--loadlib",
+            "--mapsets",
+            "--serve",
+            "--serve-tls",
+            "--tls-cert",
+            "--tls-key",
+            "--model",
+            "--printer",
+            "--ims-lib",
+            "--ims-wal",
+            "--mq-initq",
+            "--event-binding",
+        ],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     // MQGET with MQGMO_WAIT lets the other tasks run while it waits
     zeus_mq::mqi::set_wait_hook(|d| {
         zeus_cics::dispatch::delay_until(std::time::Instant::now() + d)

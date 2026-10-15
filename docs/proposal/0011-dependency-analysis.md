@@ -127,6 +127,30 @@ COBOL と PL/I のプログラムを Zeus のコンパイラ (zcobc・zpli と�
 分析で見つかったメンバーのディレクトリーから探す。BMS のマップセットからは COBOL と PL/I のシンボリック・マップを
 作って使う。コンパイラの誤りは compile_message、実行できない文は unsupported に出る。
 
+`zdeps analyze` は、既存の依存関係CSVに加えて次を出力する。
+
+| ファイル | 内容 |
+|---|---|
+| `unsupported_syntax.csv` | syntax_id, language, syntax, stage, occurrences, programs, files。言語・構文・検出段階ごとの集計 |
+| `unsupported_syntax_locations.csv` | syntax_id, node_id, program, program_path, language, syntax, stage, path, line, statement, message。使用箇所ごとの詳細 |
+| `compile_diagnostics.csv` | node_id, program, program_path, language, category, stage, path, line, statement, message。未対応構文と一般のコンパイル診断 |
+
+`syntax_id` で一覧と使用箇所を結合できる。`node_id` は既存のノードID。
+`program_path` は分析した主ソース、`path` は実際の使用ファイルなので、COPY・%INCLUDE内も区別できる。
+行番号は1から数える。コンパイラが位置を返さない場合は空欄とし、桁位置は推測しない。
+共通COPYを複数プログラムで使用した場合は、各プログラムでの使用を1件ずつ数える。
+
+`stage=RUNTIME` はコンパイルに成功しても実行できない `Instr::Unsupported` 文、
+`stage=COMPILE` はコンパイラが明示的に未対応と診断した構文。
+一般の構文誤り・未定義項目・COPY不足は未対応構文と混ぜず、診断CSVに `category=ERROR` として出す。
+警告・情報・コンパイラ内部失敗はそれぞれ `WARNING`・`INFO`・`COMPILER_FAILURE`。
+コンソールにも未対応構文の種類数と使用件数を表示する。既存の終了コードの扱いは変えない。
+
+`--no-compile` では新しい3ファイルはヘッダーのみ。既定の検査でも、致命的な解析エラーでコンパイラが
+停止すると、その先の構文は網羅できない (COBOLは最初の診断、PL/Iは返された診断をすべて記録)。
+検出はコンパイラ結果に基づき、単語だけで未対応と判定しない。EXECホストの実行時対応などを網羅する保証ではない。
+件数が0でも、言語機能の完全対応や実行成功を保証しない。
+
 ## 制限
 
 - ソースの文字列から読むので、実行時に決まる名前 (ファイルから読んだ値、計算した名前、OCCURS の表から選ぶ名前) は

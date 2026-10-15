@@ -321,6 +321,24 @@ pub fn classify(path: &std::path::Path, text: &str) -> Option<&'static str> {
         "bms" => "BMS_MAPSET",
         "dbd" => "IMS_DBD",
         "psb" => "IMS_PSB",
+        "asm" | "hlasm" | "mac" => {
+            if upper.contains("DFHMSD") {
+                "BMS_MAPSET"
+            } else if upper.contains("PSBGEN") {
+                "IMS_PSB"
+            } else if upper.contains("DBDGEN") {
+                "IMS_DBD"
+            } else if upper.lines().filter(|l| !l.starts_with('*')).any(|l| {
+                matches!(
+                    l.split_whitespace().nth(1),
+                    Some("CSECT" | "RSECT" | "START")
+                )
+            }) {
+                "HLASM_PROGRAM"
+            } else {
+                "HLASM_COPYBOOK"
+            }
+        }
         "csd" => "CICS_CSD",
         "" | "txt" | "src" => {
             if upper.contains("DFHMSD") {
@@ -359,6 +377,7 @@ pub fn scan(node_type: &'static str, path: &std::path::Path, text: &str) -> Scan
         "IMS_DBD" => misc::dbd(text),
         "IMS_PSB" => misc::psb(text),
         "CICS_CSD" => misc::csd(text),
+        "HLASM_PROGRAM" | "HLASM_COPYBOOK" => misc::hlasm(text),
         _ => Scanned::default(),
     };
     s.node_type = node_type;

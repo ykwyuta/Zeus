@@ -1,0 +1,28 @@
+zbms - Generate COBOL or PL/I symbolic maps and physical BMS maps
+
+USAGE
+  zbms MAPSET.bms [--pli] [--copy FILE] [--map FILE]
+  zbms --help
+
+DESCRIPTION
+  Parse a BMS mapset's assembler source. The symbolic layout can be included
+  by application programs; the physical JSON map is loaded by zcics.
+
+OPTIONS
+  --pli        Generate a PL/I include member instead of a COBOL copybook.
+  --copy FILE  Write the symbolic map to FILE.
+  --map FILE   Write the physical mapset as JSON to FILE.
+  With neither output option, print the symbolic map to stdout. With only
+  --map, write the physical map without printing a symbolic map. Supply both
+  --copy and --map to generate both files. Existing output files are replaced.
+
+EXAMPLES
+  zbms screens.bms
+  zbms screens.bms --copy copybooks/SCREENS.cpy --map maps/SCREENS.json
+  zbms screens.bms --pli --copy includes/SCREENS.inc --map maps/SCREENS.json
+  zcobc compile --cics -I copybooks -o screen.zo screen.cbl
+  zcics --csd app.csd --loadlib loadlib --mapsets maps session.txt
+
+EXIT STATUS
+  0 success; 2 missing input/invalid usage; 12 invalid BMS source;
+  16 file read/write failure.

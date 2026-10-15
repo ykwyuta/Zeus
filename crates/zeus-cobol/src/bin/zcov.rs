@@ -17,12 +17,21 @@ use std::process::ExitCode;
 
 use zeus_cobol::coverage;
 
+#[path = "../../../cli_help.rs"]
+mod cli_help;
+
 fn usage() -> ExitCode {
     eprintln!("usage: zcov report [--detail] [--lcov FILE] [--html DIR] DIR...");
     ExitCode::from(2)
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../../docs/help/zcov.txt"),
+        &["--lcov", "--html"],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     if args.first().map(String::as_str) != Some("report") {
         return usage();

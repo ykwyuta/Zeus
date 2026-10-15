@@ -19,6 +19,20 @@ pub struct NodeType {
 
 pub const NODE_TYPES: &[NodeType] = &[
     NodeType {
+        code: "HLASM_PROGRAM",
+        name: "HLASM プログラム",
+        is_file: true,
+        extensions: &["asm", "hlasm"],
+        description: "CSECT / START で始まる実行用アセンブラー",
+    },
+    NodeType {
+        code: "HLASM_COPYBOOK",
+        name: "HLASM COPY / マクロ",
+        is_file: true,
+        extensions: &["mac"],
+        description: "アセンブラーのCOPY・DSECT・マクロ定義",
+    },
+    NodeType {
         code: "JCL_JOB",
         name: "JCL ジョブ",
         is_file: true,
@@ -142,6 +156,7 @@ pub struct EdgeType {
 }
 
 const PROGRAMS: &[&str] = &[
+    "HLASM_PROGRAM",
     "COBOL_PROGRAM",
     "PLI_PROGRAM",
     "SYSTEM_PROGRAM",
@@ -159,6 +174,20 @@ const SOURCES: &[&str] = &[
 ];
 
 pub const EDGE_TYPES: &[EdgeType] = &[
+    EdgeType {
+        code: "HLASM_EXTERNAL",
+        name: "HLASM 外部シンボル",
+        from: &["HLASM_PROGRAM", "HLASM_COPYBOOK"],
+        to: PROGRAMS,
+        description: "EXTRN / WXTRN / V・Q・J・R型定数の参照",
+    },
+    EdgeType {
+        code: "HLASM_COPY",
+        name: "HLASM COPY / マクロ参照",
+        from: &["HLASM_PROGRAM", "HLASM_COPYBOOK"],
+        to: &["HLASM_COPYBOOK"],
+        description: "COPYメンバーと外部マクロ定義",
+    },
     EdgeType {
         code: "COPY",
         name: "COPY",
@@ -185,7 +214,7 @@ pub const EDGE_TYPES: &[EdgeType] = &[
         name: "CALL",
         from: SOURCES,
         to: PROGRAMS,
-        description: "CALL 文 (COBOL は定数か変数、PL/I は外部の手続き)",
+        description: "CALL 文および HLASM LINK / XCTL / LOAD (定数名または動的な入口)",
     },
     EdgeType {
         code: "PLI_FETCH",
@@ -347,6 +376,34 @@ const fn a(
 }
 
 pub const NODE_ATTRS: &[AttrType] = &[
+    a(
+        "HLASM_PROGRAM",
+        "compile_status",
+        "コンパイル結果",
+        "TEXT",
+        "OK・WARNING・ERROR・NOT_CHECKED",
+    ),
+    a(
+        "HLASM_PROGRAM",
+        "compile_message",
+        "コンパイルのメッセージ",
+        "TEXT",
+        "収集した診断メッセージ",
+    ),
+    a(
+        "HLASM_PROGRAM",
+        "compile_diagnostics_complete",
+        "診断完了",
+        "BOOLEAN",
+        "安全に解析を完了できた場合にtrue",
+    ),
+    a(
+        "HLASM_PROGRAM",
+        "compile_return_code",
+        "アセンブル戻り値",
+        "INTEGER",
+        "収集した診断の最大重大度",
+    ),
     a(
         "*",
         "file_name",
@@ -529,6 +586,27 @@ pub const NODE_ATTRS: &[AttrType] = &[
 ];
 
 pub const EDGE_ATTRS: &[AttrType] = &[
+    a(
+        "HLASM_EXTERNAL",
+        "constant_type",
+        "定数型",
+        "TEXT",
+        "V / Q / J / R の参照元定数型",
+    ),
+    a(
+        "CALL",
+        "service",
+        "呼出しサービス",
+        "TEXT",
+        "HLASM LINK / XCTL / LOAD",
+    ),
+    a(
+        "HLASM_EXTERNAL",
+        "weak",
+        "弱い外部参照",
+        "FLAG",
+        "WXTRN の参照。未解決でも必須資産不足に含めない",
+    ),
     a("*", "target_name", "参照名", "TEXT", "ソースに書かれた名前"),
     a(
         "*",
@@ -542,7 +620,7 @@ pub const EDGE_ATTRS: &[AttrType] = &[
         "resolution",
         "解決",
         "TEXT",
-        "FILE (ファイル)・SYSTEM (提供資産)・MISSING (見つからない)・DYNAMIC (変数で値が分からない)",
+        "FILE (ファイル)・SYSTEM (提供資産)・MISSING (見つからない)・OPTIONAL (未解決の弱い参照)・DYNAMIC (変数で値が分からない)",
     ),
     a(
         "*",

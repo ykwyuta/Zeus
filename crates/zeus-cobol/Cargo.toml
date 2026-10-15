@@ -10,6 +10,8 @@ repository.workspace = true
 [dependencies]
 zeus-decimal = { path = "../zeus-decimal", features = ["serde"] }
 zeus-ds = { path = "../zeus-ds" }
+num-bigint = "0.4"
+num-traits = "0.2"
 serde.workspace = true
 serde_json = { workspace = true, features = ["unbounded_depth"] }
 cranelift-codegen = { version = "0.127.4", default-features = false, features = ["std", "x86", "arm64", "unwind"] }
@@ -28,3 +30,7 @@ workspace = true
 [[bin]]
 name = "zcov"
 path = "src/bin/zcov.rs"
+
+[[bin]]
+name = "zas"
+path = "src/bin/zas.rs"

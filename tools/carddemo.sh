@@ -57,6 +57,13 @@ setup() {
         $bin/zcobc compile -I "$src/cpy" -o "$tmp/$m.zo" "$f"
         $zjob catalog put "$hlq.LOADLIB($m)" "$tmp/$m.zo"
     done
+    # Assemble the application sources; loaded modules take precedence over
+    # the legacy Rust fallback routines of the same names.
+    for f in "$src"/asm/*.asm; do
+        m=$(basename "$f" .asm)
+        $bin/zas compile -I "$src/maclib" -o "$tmp/$m.zo" "$f"
+        $zjob catalog put "$hlq.LOADLIB($m)" "$tmp/$m.zo"
+    done
     rm -rf "$tmp"
     echo "CardDemo set up in $home"
 }

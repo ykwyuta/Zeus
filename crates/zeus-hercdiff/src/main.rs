@@ -20,10 +20,12 @@ use zeus_hercdiff::{emulate, image};
 #[derive(Parser)]
 #[command(
     version,
+    after_help = include_str!("../../../docs/help/zeus-hercdiff.txt"),
     about = "Record Hercules results for packed-decimal instructions"
 )]
 enum Cli {
     /// Generate cases, run them on Hercules and write the results.
+    #[command(after_help = include_str!("../../../docs/help/zeus-hercdiff.txt"))]
     Run {
         /// Cases per instruction.
         #[arg(long, default_value_t = 200)]
@@ -46,6 +48,7 @@ enum Cli {
         compare: bool,
     },
     /// Compare a recorded oracle run with zeus-decimal.
+    #[command(after_help = include_str!("../../../docs/help/zeus-hercdiff.txt"))]
     Compare {
         #[arg(long)]
         oracle: PathBuf,

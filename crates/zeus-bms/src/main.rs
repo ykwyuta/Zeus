@@ -9,7 +9,16 @@
 
 use std::process::ExitCode;
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zbms.txt"),
+        &["--copy", "--map"],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut input = None;
     let mut copy = None;

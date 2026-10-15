@@ -1,0 +1,69 @@
+zdeps - Analyze application dependencies and export CSV graphs
+
+USAGE
+  zdeps analyze [options] ROOT...
+  zdeps masters [--out DIR] [--bom]
+  zdeps --help | zdeps analyze --help
+
+COMMANDS
+  analyze  Start from source files or directories and recursively follow
+           dependencies in COBOL, PL/I, HLASM, JCL, BMS, CSD and IMS definitions.
+           Directory roots contribute their source files. Resolve libraries
+           and check COBOL/PL/I/HLASM compilations unless --no-compile is supplied.
+  masters  Write only the CSV master tables describing node/edge types,
+           attributes and assets supplied by Zeus. No roots are required.
+
+OPTIONS
+  --lib DIR, -I DIR, -L DIR  Add a library search directory; repeatable.
+  --out DIR, -o DIR         Output directory (default: deps).
+  --no-compile              Skip compiler validation during analyze.
+                           Syntax/diagnostic reports contain headers only.
+  --bom                     Prefix CSV files with a UTF-8 BOM for spreadsheets.
+
+OUTPUT
+  Both commands write master CSV tables. analyze also writes nodes.csv,
+  edges.csv, node_attributes.csv, edge_attributes.csv, edge_locations.csv
+  and missing_assets.csv. Existing report files are replaced.
+  It also writes:
+    unsupported_syntax.csv            One row per language/syntax/stage;
+                                      occurrences, program and file counts.
+    unsupported_syntax_locations.csv  Each use: program, main source path,
+                                      actual source/COPY/include path, line,
+                                      source line and diagnostic message.
+    compile_diagnostics.csv           All collected compiler diagnostics,
+                                      including ordinary errors and warnings.
+  syntax_id joins the syntax summary to its locations. COMPILE means the
+  compiler explicitly rejected an unsupported construct; RUNTIME means the
+  compiler accepted a statement that Zeus cannot execute. An ordinary syntax
+  error or missing COPY is an error, not unsupported syntax. The console
+  prints unsupported syntax kind and occurrence counts.
+
+  Detection uses compiler results, not a keyword guess. A fatal parse/compile
+  error can stop inspection of the rest of that program; a zero count does
+  not certify full language/runtime support. With --no-compile, checks are
+  disabled. Unknown positions are blank; column numbers are not available.
+  A shared COPY statement is counted for each compiled program using it.
+  This is source analysis; host-specific EXEC behavior is not validated by
+  running the application. Exit status behavior is unchanged by syntax counts.
+  References include COPY, %INCLUDE, SQL INCLUDE, CALL/FETCH, EXEC CICS,
+  EXEC DLI, JCL programs/procedures and IMS/CSD resource relationships.
+  HLASM CSECT/START programs, COPY members and macro invocations are resolved;
+  assembler diagnostics also appear in the syntax/diagnostic CSV reports.
+  Independent unresolved HLASM operations are reported together. HLASM node
+  attributes include compile_return_code and compile_diagnostics_complete;
+  false means the diagnostics cannot be treated as an exhaustive inventory.
+  MNOTE information/warnings are distinguished from compile errors.
+  HLASM_EXTERNAL edges follow EXTRN/WXTRN/V constants and exported entries.
+  Unresolved weak references have OPTIONAL status and weak=true, and do not
+  contribute to missing_assets.csv or exit status 4. A strong reference to
+  the same missing symbol makes it required.
+  Unresolved dynamic targets are reported; the tool does not run applications.
+
+EXAMPLES
+  zdeps analyze --lib copybooks --lib loadsrc --out graph src jobs
+  zdeps analyze --no-compile --bom --out graph jobs/nightly.jcl
+  zdeps masters --bom --out graph-schema
+
+EXIT STATUS
+  0 no missing assets (compiler diagnostics can still appear in CSV);
+  4 missing assets; 2 invalid usage; 8 file/output failure.

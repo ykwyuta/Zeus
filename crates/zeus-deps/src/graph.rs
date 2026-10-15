@@ -65,6 +65,49 @@ pub struct Edge {
 pub struct Graph {
     pub nodes: Vec<Node>,
     pub edges: Vec<Edge>,
+    pub diagnostics: Vec<SyntaxDiagnostic>,
+}
+
+/// A compiler diagnostic or a confirmed statement that cannot be executed.
+/// Missing positions stay absent: they are not guessed from message text.
+#[derive(Debug, Clone)]
+pub struct SyntaxDiagnostic {
+    pub node_id: usize,
+    pub program: String,
+    pub language: &'static str,
+    /// UNSUPPORTED, ERROR, WARNING, INFO or COMPILER_FAILURE.
+    pub category: &'static str,
+    /// COMPILE or RUNTIME (accepted by the compiler, rejected if executed).
+    pub stage: &'static str,
+    pub syntax: String,
+    pub path: PathBuf,
+    pub line: Option<u32>,
+    pub statement: String,
+    pub message: String,
+}
+
+impl SyntaxDiagnostic {
+    fn source_line(&mut self, cache: &mut HashMap<PathBuf, Vec<String>>) {
+        let lines = cache.entry(self.path.clone()).or_insert_with(|| {
+            std::fs::read_to_string(&self.path)
+                .unwrap_or_default()
+                .lines()
+                .map(|s| s.trim().to_string())
+                .collect()
+        });
+        self.statement = self
+            .line
+            .and_then(|line| lines.get(line.checked_sub(1)? as usize))
+            .cloned()
+            .unwrap_or_default();
+    }
+}
+
+fn explicitly_unsupported(message: &str) -> bool {
+    let message = message.to_ascii_lowercase();
+    ["not supported", "unsupported", "not implemented"]
+        .iter()
+        .any(|s| message.contains(s))
 }
 
 struct File {
@@ -134,7 +177,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 /// The program-like node types (a program reference resolves to them).
 fn index_category(t: &str) -> &'static str {
     match t {
-        "COBOL_PROGRAM" | "PLI_PROGRAM" => "PROGRAM",
+        "COBOL_PROGRAM" | "PLI_PROGRAM" | "HLASM_PROGRAM" => "PROGRAM",
+        "HLASM_COPYBOOK" => "HLASM_COPY",
         "BMS_MAPSET" => "MAPSET",
         "IMS_PSB" => "PSB",
         "IMS_DBD" => "DBD",
@@ -249,6 +293,18 @@ impl Analyzer {
         }
         let name = r.target.as_str();
         let t = match r.edge {
+            "HLASM_COPY" => {
+                let mut dirs = vec![from_dir.clone()];
+                dirs.extend(self.opts.libs.iter().cloned());
+                if let Some(path) = Self::search(&dirs, name, &["", ".mac", ".MAC", ".asm", ".ASM"])
+                {
+                    Target::File(path, "HLASM_COPYBOOK")
+                } else if let Some(f) = self.indexed("HLASM_COPY", name) {
+                    Target::File(f.path.clone(), f.scanned.node_type)
+                } else {
+                    Target::Missing(name.into(), "HLASM_COPYBOOK")
+                }
+            }
             "COPY" | "SQL_INCLUDE" | "PLI_INCLUDE" => {
                 let (expected, exts): (&'static str, &[&str]) = if pli {
                     (
@@ -374,6 +430,9 @@ impl Analyzer {
 
     fn virtual_node(&mut self, t: &'static str, name: &str, status: &'static str) -> usize {
         if let Some(&n) = self.virtual_node.get(&(t, name.to_string())) {
+            if status == "MISSING" && self.graph.nodes[n - 1].status == "OPTIONAL" {
+                self.graph.nodes[n - 1].status = "MISSING";
+            }
             return n;
         }
         let id = self.graph.nodes.len() + 1;
@@ -574,6 +633,12 @@ impl Analyzer {
                 }
                 (id, "SYSTEM")
             }
+            Target::Missing(n, t)
+                if r.edge == "HLASM_EXTERNAL"
+                    && r.attrs.iter().any(|(k, v)| *k == "weak" && v == "true") =>
+            {
+                (self.virtual_node(t, &n, "OPTIONAL"), "OPTIONAL")
+            }
             Target::Missing(n, t) => (self.virtual_node(t, &n, "MISSING"), "MISSING"),
             Target::Dynamic(n) => {
                 let id = self.virtual_node("DYNAMIC_TARGET", &n, "DYNAMIC");
@@ -637,11 +702,14 @@ impl Analyzer {
     }
 
     fn node_attributes(&mut self) {
+        let mut diagnostic_sources = HashMap::new();
         // copy / include directories for the compile checks
         let mut copy_dirs: Vec<PathBuf> = self.opts.libs.clone();
         for f in &self.files {
-            if matches!(f.scanned.node_type, "COBOL_COPYBOOK" | "PLI_INCLUDE")
-                && let Some(d) = f.path.parent()
+            if matches!(
+                f.scanned.node_type,
+                "COBOL_COPYBOOK" | "PLI_INCLUDE" | "HLASM_COPYBOOK"
+            ) && let Some(d) = f.path.parent()
                 && !copy_dirs.iter().any(|x| x == d)
             {
                 copy_dirs.push(d.to_path_buf());
@@ -707,8 +775,23 @@ impl Analyzer {
                     }
                 }
                 if self.opts.compile {
-                    attrs.extend(compile_check(node.node_type, &f.path, &copy_dirs));
-                } else if matches!(node.node_type, "COBOL_PROGRAM" | "PLI_PROGRAM") {
+                    let (check_attrs, diagnostics) =
+                        compile_check(node.node_type, &f.path, &copy_dirs);
+                    attrs.extend(check_attrs);
+                    self.graph
+                        .diagnostics
+                        .extend(diagnostics.into_iter().map(|mut d| {
+                            d.node_id = node.id;
+                            if d.program.is_empty() {
+                                d.program = node.name.clone();
+                            }
+                            d.source_line(&mut diagnostic_sources);
+                            d
+                        }));
+                } else if matches!(
+                    node.node_type,
+                    "COBOL_PROGRAM" | "PLI_PROGRAM" | "HLASM_PROGRAM"
+                ) {
                     attrs.push(("compile_status".into(), "NOT_CHECKED".into()));
                 }
             }
@@ -724,9 +807,71 @@ impl Analyzer {
 
 /// Compiles a program with the Zeus compiler: its status, the first error
 /// and the statements Zeus cannot run.
-fn compile_check(node_type: &str, path: &Path, dirs: &[PathBuf]) -> Vec<(String, String)> {
+fn compile_check(
+    node_type: &str,
+    path: &Path,
+    dirs: &[PathBuf],
+) -> (Vec<(String, String)>, Vec<SyntaxDiagnostic>) {
     let mut out = Vec::new();
+    let mut diagnostics = Vec::new();
     match node_type {
+        "HLASM_PROGRAM" => {
+            let report = zeus_cobol::hlasm::compile_report(path, dirs);
+            let rc = report.return_code();
+            out.push((
+                "compile_status".into(),
+                if report.module.is_some() {
+                    if rc > 0 { "WARNING" } else { "OK" }
+                } else {
+                    "ERROR"
+                }
+                .into(),
+            ));
+            out.push((
+                "compile_diagnostics_complete".into(),
+                report.complete.to_string(),
+            ));
+            if !report.diagnostics.is_empty() {
+                out.push((
+                    "compile_message".into(),
+                    report
+                        .diagnostics
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ));
+            }
+            for d in report.diagnostics {
+                let unsupported =
+                    d.category == "UNRESOLVED_OPERATION" || explicitly_unsupported(&d.message);
+                diagnostics.push(SyntaxDiagnostic {
+                    node_id: 0,
+                    program: String::new(),
+                    language: "HLASM",
+                    category: if unsupported {
+                        "UNSUPPORTED"
+                    } else if d.severity >= 8 {
+                        "ERROR"
+                    } else if d.severity > 0 {
+                        "WARNING"
+                    } else {
+                        "INFO"
+                    },
+                    stage: "COMPILE",
+                    syntax: if unsupported {
+                        d.operation
+                    } else {
+                        String::new()
+                    },
+                    path: PathBuf::from(d.file),
+                    line: u32::try_from(d.line).ok().filter(|n| *n > 0),
+                    statement: String::new(),
+                    message: format!("severity {}: {}", d.severity, d.message),
+                });
+            }
+            out.push(("compile_return_code".into(), rc.to_string()));
+        }
         "COBOL_PROGRAM" => {
             let opts = zeus_cobol::front::FrontOptions {
                 copy_dirs: dirs.to_vec(),
@@ -738,11 +883,32 @@ fn compile_check(node_type: &str, path: &Path, dirs: &[PathBuf]) -> Vec<(String,
                     out.push(("compile_status".into(), "OK".into()));
                     let mut unsupported: Vec<String> = Vec::new();
                     for p in &module.programs {
-                        for ins in &p.code {
-                            if let zeus_cobol::zir::Instr::Unsupported(n) = ins
-                                && !unsupported.contains(n)
-                            {
-                                unsupported.push(n.clone());
+                        for (i, ins) in p.code.iter().enumerate() {
+                            if let zeus_cobol::zir::Instr::Unsupported(n) = ins {
+                                if !unsupported.contains(n) {
+                                    unsupported.push(n.clone());
+                                }
+                                let position = p
+                                    .instr_stmt
+                                    .get(i)
+                                    .and_then(|&s| p.stmt_pos.get(s as usize));
+                                diagnostics.push(SyntaxDiagnostic {
+                                    node_id: 0,
+                                    program: p.name.clone(),
+                                    language: "COBOL",
+                                    category: "UNSUPPORTED",
+                                    stage: "RUNTIME",
+                                    syntax: n.clone(),
+                                    path: position
+                                        .and_then(|&(file, _)| module.sources.get(file as usize))
+                                        .map(PathBuf::from)
+                                        .unwrap_or_else(|| path.to_path_buf()),
+                                    line: position.map(|&(_, line)| line),
+                                    statement: String::new(),
+                                    message: format!(
+                                        "Statement {n} is accepted but cannot be executed"
+                                    ),
+                                });
                             }
                         }
                     }
@@ -753,10 +919,35 @@ fn compile_check(node_type: &str, path: &Path, dirs: &[PathBuf]) -> Vec<(String,
                 Ok(Err(d)) => {
                     out.push(("compile_status".into(), "ERROR".into()));
                     out.push(("compile_message".into(), d.to_string()));
+                    diagnostics.push(SyntaxDiagnostic {
+                        node_id: 0,
+                        program: String::new(),
+                        language: "COBOL",
+                        category: if explicitly_unsupported(&d.message) {
+                            "UNSUPPORTED"
+                        } else {
+                            "ERROR"
+                        },
+                        stage: "COMPILE",
+                        syntax: if explicitly_unsupported(&d.message) {
+                            d.message.clone()
+                        } else {
+                            String::new()
+                        },
+                        path: d
+                            .file
+                            .as_ref()
+                            .map(PathBuf::from)
+                            .unwrap_or_else(|| path.to_path_buf()),
+                        line: (d.pos.line > 0).then_some(d.pos.line),
+                        statement: String::new(),
+                        message: d.message,
+                    });
                 }
                 Err(_) => {
                     out.push(("compile_status".into(), "ERROR".into()));
                     out.push(("compile_message".into(), "the compiler failed".into()));
+                    diagnostics.push(compiler_failure("COBOL", path));
                 }
             }
         }
@@ -778,16 +969,74 @@ fn compile_check(node_type: &str, path: &Path, dirs: &[PathBuf]) -> Vec<(String,
                     {
                         out.push(("compile_message".into(), m.clone()));
                     }
+                    for message in &c.messages {
+                        diagnostics.push(pli_diagnostic(message, path));
+                    }
                 }
                 Err(_) => {
                     out.push(("compile_status".into(), "ERROR".into()));
                     out.push(("compile_message".into(), "the compiler failed".into()));
+                    diagnostics.push(compiler_failure("PL/I", path));
                 }
             }
         }
         _ => {}
     }
-    out
+    (out, diagnostics)
+}
+
+fn compiler_failure(language: &'static str, path: &Path) -> SyntaxDiagnostic {
+    SyntaxDiagnostic {
+        node_id: 0,
+        program: String::new(),
+        language,
+        category: "COMPILER_FAILURE",
+        stage: "COMPILE",
+        syntax: String::new(),
+        path: path.to_path_buf(),
+        line: None,
+        statement: String::new(),
+        message: "the compiler failed".into(),
+    }
+}
+
+fn pli_diagnostic(message: &str, fallback: &Path) -> SyntaxDiagnostic {
+    // Split at the severity delimiter first, then split the path from the
+    // right to preserve Windows drive letters and colons in diagnostics.
+    let parsed = ["S", "E", "W", "I"].into_iter().find_map(|severity| {
+        let (prefix, body) = message.split_once(&format!(": {severity}: "))?;
+        let (file, line) = prefix.rsplit_once(':')?;
+        Some((file, line.parse::<u32>().ok()?, severity, body))
+    });
+    let (file, line, severity, body) = match parsed {
+        Some((file, line, severity, body)) => (PathBuf::from(file), Some(line), severity, body),
+        None => (fallback.to_path_buf(), None, "E", message),
+    };
+    let unsupported = explicitly_unsupported(body);
+    SyntaxDiagnostic {
+        node_id: 0,
+        program: String::new(),
+        language: "PL/I",
+        category: if unsupported {
+            "UNSUPPORTED"
+        } else if severity == "W" {
+            "WARNING"
+        } else if severity == "I" {
+            "INFO"
+        } else {
+            "ERROR"
+        },
+        stage: "COMPILE",
+        syntax: if unsupported {
+            body.to_string()
+        } else {
+            String::new()
+        },
+        path: file,
+        line,
+        statement: String::new(),
+        message: body.to_string(),
+    }
 }
 
 /// Analyses the dependencies of the roots.

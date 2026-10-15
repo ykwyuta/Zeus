@@ -684,11 +684,7 @@ impl Compiler {
         if names.len() == 1 && r.locator.is_none() {
             let name = &names[0];
             let args: &Vec<Vec<ast::Expr>> = &r.parts[0].1;
-            let sym = self
-                .lookup(name)
-                .into_iter()
-                .map(|(_, s)| s)
-                .find(|s| !matches!(s, Sym::Var(_)) || true);
+            let sym = self.lookup(name).into_iter().next().map(|(_, s)| s);
             match sym {
                 Some(Sym::Var(v)) => {
                     if let Some((callee, a, returns)) = self.entry_var_call(v, r)? {

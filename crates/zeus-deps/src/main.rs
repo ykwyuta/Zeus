@@ -20,6 +20,9 @@ use std::process::ExitCode;
 
 use zeus_deps::{graph, report};
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 fn usage() -> ExitCode {
     eprintln!("usage: zdeps analyze [--lib DIR]... [--out DIR] [--no-compile] [--bom] ROOT...");
     eprintln!("       zdeps masters [--out DIR] [--bom]");
@@ -27,6 +30,12 @@ fn usage() -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zdeps.txt"),
+        &["--lib", "-I", "-L", "--out", "-o"],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let args: Vec<String> = std::env::args().skip(1).collect();
     let Some(cmd) = args.first().cloned() else {
         return usage();
@@ -94,6 +103,26 @@ fn main() -> ExitCode {
                 g.edges.len(),
                 out.display()
             );
+            if opts.compile {
+                let unsupported: Vec<_> = g
+                    .diagnostics
+                    .iter()
+                    .filter(|d| d.category == "UNSUPPORTED")
+                    .collect();
+                let kinds: std::collections::BTreeSet<_> = unsupported
+                    .iter()
+                    .map(|d| (d.language, &d.syntax, d.stage))
+                    .collect();
+                println!(
+                    "zdeps: {} unsupported syntax kinds, {} occurrences; see unsupported_syntax.csv and unsupported_syntax_locations.csv; all diagnostics: compile_diagnostics.csv",
+                    kinds.len(),
+                    unsupported.len()
+                );
+            } else {
+                println!(
+                    "zdeps: syntax checks disabled (--no-compile); syntax and diagnostic reports contain headers only"
+                );
+            }
             if missing > 0 {
                 ExitCode::from(4)
             } else {

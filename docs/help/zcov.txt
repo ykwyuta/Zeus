@@ -1,0 +1,32 @@
+zcov - Report COBOL and PL/I execution coverage
+
+USAGE
+  zcov report [--detail] [--lcov FILE] [--html DIR] COVERAGE_DIR...
+  zcov --help | zcov report --help
+
+DESCRIPTION
+  Load and merge coverage from all input directories. Print a per-program
+  summary of lines, branches and paragraphs/procedures to stdout. Multiple
+  runs of the same program contribute to the combined coverage counts.
+
+OPTIONS
+  --detail     Also list unexecuted lines, incompletely covered branches and
+               paragraphs/procedures that were never entered.
+  --lcov FILE  Write an LCOV tracefile, replacing FILE if it exists.
+  --html DIR   Write HTML coverage pages per source file in DIR.
+  Input directories are required; this command does not execute programs.
+
+RECORDING COVERAGE
+  Use --coverage DIR with zcobc run or zpli, or set ZEUS_COVERAGE=DIR for
+  zjob, zcics and native executables. Native executables use the interpreter
+  while recording coverage. Source files should remain available for the
+  annotated HTML report.
+
+EXAMPLES
+  zcobc run --coverage coverage/run1 report.zo
+  zpli run --coverage coverage/run2 helper.zo
+  zcov report coverage/run1 coverage/run2
+  zcov report --detail --lcov coverage.info --html html coverage/run1
+
+EXIT STATUS
+  0 success; 2 invalid usage; 4 no coverage data; 8 input/output failure.

@@ -1,0 +1,56 @@
+zconn - Expose CICS programs and IMS transactions through a REST API
+
+USAGE
+  zconn --api DIR [options] serve PORT
+  zconn --api DIR [options] call METHOD PATH [JSON]
+  zconn --api DIR [options] script FILE
+  zconn --help | zconn call --help
+
+OPTIONS
+  --api DIR          Required z/OS Connect API project directory. The project
+                     supplies src/main/api/openapi.yaml, operations and
+                     zosAssets, including request/response mappings.
+  --home DIR         Zeus system directory (ZEUS_HOME, otherwise ./zeus).
+                     The dataset catalog is DIR/catalog.
+  --csd FILE         Load/merge CICS resource definitions; repeatable.
+  --loadlib DIR      COBOL/PL/I program search directory; repeatable.
+  --ims-region FILE  JCL job for an IMS message-processing region, typically
+                     EXEC PGM=DFSRRC00 with PARM='MSG'. Required for IMS APIs.
+  --trace            Print backend request/response bytes and program DISPLAY
+                     output to stderr for troubleshooting.
+
+COMMANDS
+  serve   Answer HTTP/1.1 requests on PORT, one request at a time. This is a
+          long-running server. CICS assets use distributed program LINK;
+          IMS assets queue a message and execute the configured region job.
+  call    Execute one request locally without starting a server. METHOD is
+          the HTTP method; PATH may include a query string. Optional JSON
+          must be a single shell argument. Print HTTP status and JSON body.
+  script  Execute a text request/assertion script; useful for API regression
+          checks without an HTTP client.
+
+SCRIPT LANGUAGE
+  call METHOD PATH [JSON]   Make a request and remember its response.
+  status N                  Assert the last HTTP response status equals N.
+  expect TEXT               Assert the last response JSON contains TEXT.
+  Blank lines and lines beginning with # are ignored.
+
+ENVIRONMENT
+  ZEUS_HOME sets the system directory; ZEUS_CCSID the host/EBCDIC conversion.
+  ZEUS_DB2 configures SQL used by backend programs; ZEUS_MQ configures MQ.
+  Backend calls can update application datasets and databases.
+
+EXAMPLES
+  zconn --api api-project --home demo --csd app.csd --loadlib loadlib serve 8080
+  zconn --api api-project --csd app.csd --loadlib loadlib call GET /accounts
+  zconn --api api-project --csd app.csd --loadlib loadlib script requests.txt
+  Example requests.txt:
+    call GET /accounts
+    status 200
+    expect accounts
+
+EXIT STATUS
+  0 when command completes; 1 request/script/server failure;
+  2 invalid usage; 16 setup or resource-loading failure.
+  An HTTP error status printed by call is a response, not automatically a
+  nonzero process exit status. Use script status assertions to check it.

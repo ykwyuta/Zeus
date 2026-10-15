@@ -1,0 +1,70 @@
+zcics - Run CICS transactions with scripts or TN3270 terminals
+
+USAGE
+  zcics [options] SCRIPT
+  zcics [options] --serve PORT
+  zcics [options] --serve-tls PORT --tls-cert CERT.pem --tls-key KEY.pem
+  zcics --help
+
+SYSTEM AND RESOURCE OPTIONS
+  --home DIR          System directory (ZEUS_HOME, otherwise ./zeus).
+                      Catalog: DIR/catalog; batch output: DIR/spool.
+  --csd FILE          Load CSD resource definitions; repeatable and merged.
+  --loadlib DIR       Program load library; repeatable.
+  --mapsets DIR       Directory of physical JSON maps from zbms; repeatable.
+  --ims-lib LIB       IMS DBD/PSB directory or cataloged PDS; repeatable.
+  --ims-wal FILE      IMS database WAL; default DIR/catalog/ims/ims.wal.
+  --mq-initq QUEUE    Enable CKTI triggering on an MQ initiation queue;
+                      repeatable. Requires ZEUS_MQ and the MQ client library.
+  --event-binding FILE Load an .evbind event binding; repeatable. Captured
+                      LINK events start the configured adapter transaction.
+
+TERMINAL OPTIONS
+  --serve PORT        Listen for TN3270/TN3270E emulator connections.
+  --serve-tls PORT    Listen for TN3270 over TLS; requires certificate/key.
+  --tls-cert FILE     PEM certificate for TLS; with --serve, offer STARTTLS.
+  --tls-key FILE      PEM private key for the certificate.
+  --model N          Script terminal model 2..5: alternate screen sizes
+                      24x80, 32x80, 43x80 and 27x132 respectively.
+  --printer ID        Define a script printer terminal; repeatable. Printed
+                      pages are appended to DIR/print/ID.txt.
+  Plain and TLS listeners can be enabled together. Server mode runs until
+  stopped; each emulator connection is a terminal.
+
+SCRIPT LANGUAGE (one command per line, positions are one-based)
+  tran TRANSID        Clear the screen, type TRANSID and press ENTER.
+  type LINE COL TEXT  Type text into a field.
+  eof LINE COL        Erase from that position to the end of its field.
+  key NAME            Send ENTER, CLEAR, PA1..PA3 or PF1..PF24.
+  sf HEX              Send inbound structured-field bytes (AID X'88').
+  wait SECONDS        Wait, then run started transactions that are due.
+  show                Print the screen.
+  fields              List screen fields and their attributes.
+  expect LINE TEXT    Assert that a line contains TEXT; use * for any line.
+  counter POOL NAME N Set a named counter's next value.
+  # comment           Comments and blank lines are ignored.
+  A RECEIVE waiting for input continues when a key/tran/sf command supplies
+  an attention event. Assertion failures make the script return nonzero.
+
+ENVIRONMENT
+  ZEUS_HOME sets the default system directory; ZEUS_CCSID the text code page.
+  ZEUS_DB2 selects the SQL backend; ZEUS_MQ the MQ queue manager;
+  ZEUS_COVERAGE records COBOL/PL/I coverage for zcov.
+  JOBS transient data records ending in /*EOF submit JCL to the internal
+  reader; its output goes to the system spool.
+
+EXAMPLES
+  zbms screens.bms --copy copybooks/SCREENS.cpy --map maps/SCREENS.json
+  zcics --home demo --csd app.csd --loadlib loadlib --mapsets maps session.txt
+  zcics --home demo --csd app.csd --loadlib loadlib --mapsets maps --serve 3270
+  zcics --csd app.csd --serve-tls 992 --tls-cert server.pem --tls-key key.pem
+  Example session.txt:
+    tran CC00
+    expect * Sign-on
+    type 12 43 USER01
+    key ENTER
+    show
+
+EXIT STATUS
+  0 on completed script/server; 2 invalid usage; 16 setup or I/O failure.
+  Script assertions/errors return a nonzero script status.

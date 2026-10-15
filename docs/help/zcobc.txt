@@ -1,0 +1,70 @@
+zcobc - Compile, inspect and run Enterprise COBOL programs
+
+USAGE
+  zcobc compile [options] SOURCE
+  zcobc compile --native [options] SOURCE
+  zcobc check [options] SOURCE...
+  zcobc inventory [options] SOURCE...
+  zcobc run [options] MODULE
+  zcobc --version
+  zcobc --help | zcobc SUBCOMMAND --help
+
+COMMANDS
+  compile    Compile one source file to a Zeus .zo module. With --native,
+             produce a standalone executable containing the Zeus runtime.
+  check      Compile each source without writing modules; print diagnostics.
+  inventory  Report statement, intrinsic-function and EXEC usage in sources.
+  run        Interpret a compiled .zo module. DISPLAY goes to stdout; ACCEPT
+             reads stdin. Subprograms are searched for alongside the module.
+
+COMPILATION OPTIONS
+  -I DIR, -IDIR       Add a COPY/INCLUDE search directory; repeat as needed.
+  -o FILE            Output file. Default: SOURCE with .zo extension, or
+                     with its extension removed for --native.
+  --subprogram       Compile for use as a called subprogram.
+  --debugging-lines  Include fixed-format source lines marked D.
+  --cics             Translate EXEC CICS and add the CICS program interface.
+  --ccsid N          Select the EBCDIC code page for literals and host text.
+  --nsymbol MODE     national (default): PIC N and N literals use UTF-16;
+                     dbcs: use DBCS data instead.
+
+STANDALONE EXECUTABLE OPTIONS (compile)
+  --native           Embed the main module and runtime in an executable.
+  --with MODULE      Include a separately compiled COBOL or PL/I .zo module;
+                     repeat for multiple subprograms.
+  --target TRIPLE    Rust target triple, e.g. x86_64-pc-windows-msvc or
+                     x86_64-unknown-linux-gnu. Needs a runtime for that target.
+  --no-machine-code  Embed interpreted modules without COBOL machine code.
+  The runtime normally comes from zeus-rt next to zcobc. ZEUS_RUNTIME selects
+  a runtime file; ZEUS_RUNTIME_DIR/TRIPLE/zeus-rt selects a target runtime.
+  PL/I modules remain interpreted. Native binaries have their own --help.
+
+RUN OPTIONS
+  --dd NAME=PATH     Allocate a DD to a dataset file; repeat for multiple DDs.
+  --parm TEXT        Supply the main program's EXEC PARM.
+  --ccsid N          Override the text code page.
+  --coverage DIR    Write statement/branch coverage for zcov report.
+
+ENVIRONMENT
+  ZEUS_CCSID        Default text code page; 37, 930, 939, 1390 or 1399.
+  ZEUS_COVERAGE     Coverage output directory.
+  DD_NAME           Allocate DD NAME to a path, e.g. DD_INPUT=data.bin.
+  ZEUS_DD_CONFIG    Allocation file with one NAME=path entry per line.
+  ZEUS_DB2          SQL server URL: db2://user:password@host:port/DB or
+                    postgres://user:password@host:port/db.
+  Dataset files use Zeus/z/OS record layouts; host text is not automatically
+  a fixed-record dataset. Use zjob catalog import --text when needed.
+
+EXAMPLES
+  zcobc check -I copybooks src/report.cbl
+  zcobc compile -I copybooks -o report.zo src/report.cbl
+  zcobc run --dd INPUT=input.dat --parm NIGHTLY report.zo
+  zcobc run --coverage coverage report.zo
+  zcobc inventory -I copybooks src/report.cbl src/helper.cbl
+  zcobc compile --native --with helper.zo -o report.exe src/report.cbl
+  report.exe --dd INPUT=input.dat --parm NIGHTLY
+
+EXIT STATUS
+  Successful compilation/check returns 0; compilation errors return a
+  nonzero diagnostic status. run returns the program's RETURN-CODE (low
+  byte), 12 on ABEND, or 16 on runtime failure. Invalid usage returns 2.

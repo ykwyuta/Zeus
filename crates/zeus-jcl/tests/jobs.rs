@@ -107,6 +107,41 @@ fn compile_bind_and_conditions() {
     assert!(sysout.contains("HELLO FROM A COMPILED STEP"), "{sysout}");
 }
 
+#[test]
+fn concurrent_compiler_steps_keep_sources_separate() {
+    let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
+    std::thread::scope(|scope| {
+        for worker in 0..8 {
+            let barrier = barrier.clone();
+            scope.spawn(move || {
+                let invalid = worker % 2 != 0;
+                let job = if invalid {
+                    JOB.replace("MOVE 4 TO RETURN-CODE", "THIS IS NOT COBOL")
+                } else {
+                    JOB.to_string()
+                };
+                barrier.wait();
+                for _ in 0..8 {
+                    let dir = tempfile::tempdir().unwrap();
+                    let mut env = env(dir.path());
+                    let mut log = Vec::new();
+                    let results = run_job(&mut env, &job, &mut log).unwrap();
+                    let expected = if invalid { 12 } else { 0 };
+                    assert_eq!(
+                        results[0].outcome,
+                        Outcome::Rc(expected),
+                        "worker {worker}: {}",
+                        String::from_utf8_lossy(&log)
+                    );
+                    if !invalid {
+                        assert_eq!(results[2].outcome, Outcome::Rc(4));
+                    }
+                }
+            });
+        }
+    });
+}
+
 const ABEND: &str = "\
 //ABENDS   JOB
 //S1       EXEC PGM=IEFBR14

@@ -88,6 +88,12 @@ impl ModuleLinker {
 }
 
 impl Linker for ModuleLinker {
+    fn parameter_count(&self, name: &str) -> Option<usize> {
+        self.find(&name.to_ascii_uppercase())?
+            .try_borrow()
+            .ok()?
+            .parameter_count(name)
+    }
     fn call(
         &self,
         name: &str,

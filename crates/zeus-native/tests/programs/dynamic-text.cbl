@@ -1,0 +1,63 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. DYNAMIC-TEXT.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01 I PIC S9(4) COMP VALUE 2.
+       01 START-N PIC S9(4) VALUE 2.
+       01 LENGTH-N PIC S9(4) COMP-3 VALUE 3.
+       01 WORDS.
+          02 WORD-ITEM PIC X(6) OCCURS 3 TIMES.
+       01 RIGHT-ITEM PIC X(8) JUSTIFIED RIGHT.
+       01 OUTPUT-TEXT PIC X(8) VALUE SPACES.
+       01 DIGITS PIC 9(6) VALUE 123456.
+       01 OVERLAP-TEXT PIC X(8) VALUE 'ABCDEFGH'.
+       01 ALIAS-AREA.
+          02 ALIAS-ITEM PIC X(2) OCCURS 2 TIMES.
+          02 AFTER-TABLE PIC X(2) VALUE 'ZZ'.
+       PROCEDURE DIVISION.
+           MOVE 'ABCDEF' TO WORD-ITEM(I)
+           MOVE ALL 'XY' TO WORD-ITEM(I - 1)
+           IF WORD-ITEM(I) NOT = 'ABCDEF'
+             OR WORD-ITEM(I - 1) NOT = ALL 'XY'
+             DISPLAY 'BAD TABLE'
+           END-IF
+           MOVE WORD-ITEM(I)(START-N:LENGTH-N) TO RIGHT-ITEM
+           IF RIGHT-ITEM NOT = '     BCD' DISPLAY 'BAD RIGHT'
+           END-IF
+           DISPLAY '[' RIGHT-ITEM ']'
+           MOVE WORD-ITEM(I)(START-N + 2:) TO OUTPUT-TEXT
+           IF OUTPUT-TEXT NOT = 'DEF' DISPLAY 'BAD TAIL' END-IF
+           MOVE 'UVW' TO OUTPUT-TEXT(START-N:LENGTH-N)
+           DISPLAY '[' OUTPUT-TEXT ']'
+           MOVE DIGITS(START-N:LENGTH-N) TO WORD-ITEM(I)
+           IF WORD-ITEM(I) NOT = '234' DISPLAY 'BAD DIGITS' END-IF
+           MOVE 0 TO LENGTH-N
+           MOVE WORD-ITEM(I)(START-N:LENGTH-N) TO OUTPUT-TEXT
+           IF OUTPUT-TEXT NOT = SPACES DISPLAY 'BAD EMPTY' END-IF
+           MOVE -3 TO LENGTH-N
+           IF WORD-ITEM(I)(START-N:LENGTH-N) NOT = SPACES
+             DISPLAY 'BAD NEGATIVE LENGTH'
+           END-IF
+           MOVE -2 TO START-N I
+           MOVE 'LOW' TO WORD-ITEM(I)(START-N:3)
+           IF WORD-ITEM(1)(1:3) NOT = 'LOW'
+             DISPLAY 'BAD CLAMP'
+           END-IF
+           MOVE 3 TO I START-N
+           MOVE 2 TO LENGTH-N
+           MOVE SPACES TO WORD-ITEM(I)
+           MOVE 'AB' TO WORD-ITEM(I)(START-N:LENGTH-N)
+           IF WORD-ITEM(I)(START-N:LENGTH-N) NOT = 'AB'
+             DISPLAY 'BAD DESTINATION'
+           END-IF
+           IF WORD-ITEM(I)(START-N:LENGTH-N) < 'BA'
+             DISPLAY 'LT' ELSE DISPLAY 'NOT LT' END-IF
+      *    Overlap must use a snapshot, through interpreter fallback.
+           MOVE OVERLAP-TEXT(START-N:LENGTH-N)
+             TO OVERLAP-TEXT(START-N + 1:LENGTH-N)
+           DISPLAY '[' OVERLAP-TEXT ']'
+      *    Declared bounds exceeded, but the storage exists.
+           MOVE 'OK' TO ALIAS-ITEM(I)
+           IF AFTER-TABLE NOT = 'OK' DISPLAY 'BAD ALIAS' END-IF
+           DISPLAY 'DONE'
+           STOP RUN.

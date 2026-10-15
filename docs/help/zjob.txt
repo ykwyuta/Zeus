@@ -1,0 +1,68 @@
+zjob - Submit JCL jobs, manage datasets and exchange IMS messages
+
+USAGE
+  zjob [options] submit JOB.jcl...
+  zjob [options] catalog list
+  zjob [options] catalog import DSN FILE --recfm FORMAT --lrecl N [--text]
+  zjob [options] catalog define-pds DSN [--recfm FORMAT] [--lrecl N]
+  zjob [options] catalog put "DSN(MEMBER)" FILE
+  zjob [options] catalog print DSN
+  zjob [options] ims send TRAN TEXT [--lterm NAME] [--hex]
+  zjob [options] ims receive LTERM
+  zjob --help | zjob catalog --help | zjob submit --help
+
+GLOBAL OPTIONS
+  --home DIR       System directory: default ZEUS_HOME, otherwise ./zeus.
+                   Catalog: DIR/catalog; job logs and SYSOUT: DIR/spool.
+  --proclib DIR    JCL procedure search directory; repeatable.
+  --loadlib DIR    Program load library; repeatable. STEPLIB/JOBLIB in JCL
+                   can also identify libraries.
+  --ccsid N        Text code page: 37, 930, 939, 1390 or 1399; also ZEUS_CCSID.
+
+SUBMIT
+  Jobs are processed in argument order. EXEC PGM runs a compiled program or
+  a supported batch utility. DD statements allocate datasets. Each normal
+  COBOL step gets its own run unit. Output remains in the spool directory.
+  ZEUS_DB2 selects the SQL backend; ZEUS_MQ selects an MQ queue manager.
+  ASMA90/ASMAHL compile HLASM SYSIN with COPY/macros from SYSLIB into SYSLIN;
+  IEWL binds it to SYSLMOD. EXEC PGM can run the result, including PARM.
+  For HLASM, IEWL combines concatenated SYSLIN modules and resolves strong
+  external references using SYSLIB. Missing/duplicate symbols return 12.
+  COBOL and PL/I can call it by reference within the same step. HLASM static
+  storage and all run-unit memory are released when that execution step ends.
+
+CATALOG COMMANDS
+  list        List dataset names and definitions.
+  import      Create/replace a sequential dataset from FILE. --recfm and
+              --lrecl are required. Formats include F, FB, V, VB and U.
+              Without --text, copy the dataset bytes unchanged. With --text,
+              convert host text lines to padded/truncated EBCDIC records
+              of --lrecl bytes. Import replaces an existing dataset.
+  define-pds  Define a partitioned dataset if absent. Defaults: FB, LRECL 80.
+              Use --recfm U for a library of compiled load modules.
+  put         Write/replace one PDS member. Fixed-record members are converted
+              from host text; U members are copied as binary modules.
+  print       Decode a dataset's records as host text for inspection.
+  Quote DSN(MEMBER) in shells where parentheses have special meaning.
+
+IMS COMMANDS
+  send        Queue an input message for TRAN. Default origin LTERM:
+              ZEUSTERM. TEXT is converted to EBCDIC; --hex accepts bytes.
+              A DFSRRC00 message-processing job must process the message.
+  receive     Print and remove the output queued for LTERM, as hex and text.
+              This consumes the messages.
+
+EXAMPLES
+  zjob --home demo catalog import APP.INPUT input.txt --recfm FB --lrecl 80 --text
+  zjob --home demo catalog define-pds APP.LOAD --recfm U
+  zjob --home demo catalog put "APP.LOAD(REPORT)" report.zo
+  zjob --home demo --loadlib loadlib --proclib proclib submit nightly.jcl
+  zjob --home demo catalog list
+  zjob --home demo ims send LOGIN "USER01" --lterm TERM01
+  zjob --home demo submit message-region.jcl
+  zjob --home demo ims receive TERM01
+
+EXIT STATUS
+  submit returns the highest job return code (0..255); ABEND/JCL failure
+  contributes status 16. Catalog/IMS success returns 0, failures 16.
+  Invalid usage returns 2.

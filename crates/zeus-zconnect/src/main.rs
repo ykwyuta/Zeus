@@ -37,6 +37,9 @@ use zeus_ds::catalog::Catalog;
 use zeus_zconnect::api::{Api, project_dir};
 use zeus_zconnect::gateway::{Backend, Request, Response, handle};
 
+#[path = "../../cli_help.rs"]
+mod cli_help;
+
 struct Zeus {
     home: PathBuf,
     region: Rc<RefCell<Region>>,
@@ -221,6 +224,12 @@ fn serve(api: &Api, zeus: &Zeus, port: u16) -> std::io::Result<()> {
 }
 
 fn main() -> ExitCode {
+    if cli_help::show(
+        include_str!("../../../docs/help/zconn.txt"),
+        &["--home", "--api", "--csd", "--loadlib", "--ims-region"],
+    ) {
+        return ExitCode::SUCCESS;
+    }
     let mut home = std::env::var("ZEUS_HOME").map_or_else(|_| PathBuf::from("zeus"), PathBuf::from);
     let mut api_dir = None;
     let mut csd = Csd::default();

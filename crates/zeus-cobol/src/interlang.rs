@@ -40,6 +40,11 @@ pub const ABEND: &str = "\u{0}abend ";
 /// Finds and runs the programs that are not COBOL programs of the run
 /// unit (PL/I modules).
 pub trait Linker {
+    /// Number of raw address arguments for a fixed OS parameter list, when
+    /// the loaded entry has a known signature.
+    fn parameter_count(&self, _name: &str) -> Option<usize> {
+        None
+    }
     /// Calls `name` with the run unit's storage `sys` lent to it; gives
     /// the storage back, and None as the result when no such program is
     /// known.
