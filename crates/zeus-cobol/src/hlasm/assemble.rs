@@ -920,7 +920,9 @@ pub(super) fn storage_item(
                 }
                 (
                     nibbles
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|p| (p[0] << 4) | p[1])
                         .collect(),
                     1,

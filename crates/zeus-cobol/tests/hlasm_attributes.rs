@@ -11,8 +11,10 @@ fn words(module: &hlasm::Module, count: usize) -> Vec<u32> {
     let storage = module.storage_at(128).unwrap();
     let at = module.entries["RESULT"] as usize;
     storage[at..at + count * 4]
-        .chunks_exact(4)
-        .map(|b| u32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| u32::from_be_bytes(*b))
         .collect()
 }
 

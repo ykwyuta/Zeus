@@ -1187,7 +1187,7 @@ pub(crate) fn execute_entry_with_host(
                                 for (i, n) in nibbles.into_iter().take(l1 * 2 - 1).enumerate() {
                                     digits[l1 * 2 - 2 - i] = n;
                                 }
-                                for (i, pair) in digits.chunks_exact(2).enumerate() {
+                                for (i, pair) in digits.as_chunks::<2>().0.iter().enumerate() {
                                     mem[a + i] = pair[0] * 16 + pair[1];
                                 }
                             } else {

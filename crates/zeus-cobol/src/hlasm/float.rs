@@ -391,7 +391,7 @@ pub(super) fn pack_decimal(
         24 | (high << 1) | (msd & 1)
     };
     let mut continuation = 0u128;
-    for triple in digits.as_bytes()[1..].chunks_exact(3) {
+    for triple in digits.as_bytes()[1..].as_chunks::<3>().0.iter() {
         let value = u16::from(triple[0] - b'0') * 100
             + u16::from(triple[1] - b'0') * 10
             + u16::from(triple[2] - b'0');

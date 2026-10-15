@@ -121,8 +121,10 @@ fn floating_attributes_literals_duplication_and_bit_lists() {
     let memory = run(&module);
     let at = 4096 + module.entries["OUT"] as usize;
     let values: Vec<_> = memory[at..at + 32]
-        .chunks_exact(4)
-        .map(|v| u32::from_be_bytes(v.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|v| u32::from_be_bytes(*v))
         .collect();
     assert_eq!(
         values,

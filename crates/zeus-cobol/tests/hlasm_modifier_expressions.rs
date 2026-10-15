@@ -10,8 +10,10 @@ fn compile(source: &str) -> Result<hlasm::Module, String> {
 fn words(module: &hlasm::Module, name: &str, count: usize) -> Vec<i32> {
     let at = module.entries[name] as usize;
     module.storage[at..at + count * 4]
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect()
 }
 

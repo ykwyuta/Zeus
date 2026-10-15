@@ -43,7 +43,7 @@ pub(super) fn read(bytes: &[u8]) -> Result<Vec<Record>, String> {
         if !bytes.len().is_multiple_of(80) {
             return Err("fixed GOFF input requires complete 80-byte records".into());
         }
-        physical.extend(bytes.chunks_exact(80));
+        physical.extend(bytes.as_chunks::<80>().0.iter().map(|card| card.as_slice()));
     } else {
         let mut at = 0;
         while at < bytes.len() {

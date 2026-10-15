@@ -10,8 +10,10 @@ fn compile(source: &str) -> Result<hlasm::Module, String> {
 fn words(module: &hlasm::Module, label: &str, count: usize) -> Vec<i32> {
     let at = module.entries[label] as usize;
     module.storage[at..at + count * 4]
-        .chunks_exact(4)
-        .map(|b| i32::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<4>()
+        .0
+        .iter()
+        .map(|b| i32::from_be_bytes(*b))
         .collect()
 }
 
@@ -30,8 +32,10 @@ fn decimal_exponents_use_exact_digits_across_large_intermediates_and_rounding() 
     let module = compile("MAIN CSECT\n         BR 14\nDATA DC FDE75'9.223372036854775807E-57'\n         DC FDE75'-9.223372036854775808E-57'\n         DC FDS100E-30'1'\n         DC FDE-85'1'\n         DC FDE75'0'\n         DC FDE-18'1499999999999999999'\n         ENTRY DATA\n         END\n").unwrap();
     let at = module.entries["DATA"] as usize;
     let values: Vec<_> = module.storage[at..at + 48]
-        .chunks_exact(8)
-        .map(|b| i64::from_be_bytes(b.try_into().unwrap()))
+        .as_chunks::<8>()
+        .0
+        .iter()
+        .map(|b| i64::from_be_bytes(*b))
         .collect();
     assert_eq!(values, [i64::MAX, i64::MIN, 1, 0, 0, 1]);
 }

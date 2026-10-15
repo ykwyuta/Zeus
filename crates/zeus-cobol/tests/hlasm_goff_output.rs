@@ -239,8 +239,16 @@ fn long_external_names_and_text_cross_logical_and_physical_record_boundaries() {
     source.entries.insert("B".repeat(240), 4);
     source.externals.insert("C".repeat(32767), true);
     let bytes = hlasm::goff_bytes(&source).unwrap();
-    assert!(bytes.chunks_exact(80).any(|b| b[1] == 3));
-    assert!(bytes.chunks_exact(80).filter(|b| b[1] == 0x11).count() >= 3);
+    assert!(bytes.as_chunks::<80>().0.iter().any(|b| b[1] == 3));
+    assert!(
+        bytes
+            .as_chunks::<80>()
+            .0
+            .iter()
+            .filter(|b| b[1] == 0x11)
+            .count()
+            >= 3
+    );
     let object = roundtrip(&source);
     assert_eq!(source.name, object.name);
     assert_eq!(source.externals, object.externals);
@@ -477,7 +485,15 @@ fn large_signed_relocation_dictionary_crosses_multiple_logical_and_physical_reco
         }),
     });
     let bytes = hlasm::goff_bytes(&source).unwrap();
-    assert_eq!(bytes.chunks_exact(80).filter(|b| b[1] == 0x21).count(), 2);
+    assert_eq!(
+        bytes
+            .as_chunks::<80>()
+            .0
+            .iter()
+            .filter(|b| b[1] == 0x21)
+            .count(),
+        2
+    );
     let object = roundtrip(&source);
     for base in [0, 4096, 2 << 20] {
         assert_eq!(
