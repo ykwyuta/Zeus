@@ -36,20 +36,27 @@ COBOL プログラムがやり取りするデータ (ファイル、カード、
 1 つの入出力に複数の形があるとき、レイアウトごとに 1 ファイルにする。
 
 1. **FD の下の複数の 01**: 暗黙の再定義なので、01 ごとに 1 レイアウト。
-2. **大きな REDEFINES**: レコードの可変部を再定義する REDEFINES は、レイアウトの分岐とみなし、
-   「共通部 + その分岐」で 1 つの完全なレコードを作る。例 (CardDemo の CVEXPORT):
+2. **REDEFINES**: 大きさにかかわらず、すべての REDEFINES をレイアウトの分岐とみなし、
+   「共通部 + 選んだ形」で 1 つの完全なレコードを作る (REDEFINES 句のないレコードにする)。例 (CardDemo の CVEXPORT):
 
    ```text
-   EXPORT-RECORD = 共通部 (REC-TYPE, TIMESTAMP, SEQUENCE-NUM, BRANCH-ID, REGION-CODE)
-                 + EXPORT-RECORD-DATA (460) を再定義する 5 つの形
-   -> 顧客・口座・取引・カード相互参照・カードの 5 レイアウト
+   EXPORT-RECORD = 共通部 (REC-TYPE, SEQUENCE-NUM, BRANCH-ID, REGION-CODE)
+                 x EXPORT-TIMESTAMP (26) の形: EXPORT-TIMESTAMP-R (日付・区切り・時刻) の 1 つ
+                 x EXPORT-RECORD-DATA (460) の形: 顧客・口座・取引・カード相互参照・カードの 5 つ
+   -> 1 x 5 = 5 レイアウト
    ```
 
-   小さな REDEFINES (日付 `X(8)` を年月日に分けるなど) は分割せず、そのまま REDEFINES として残す。
-   分割するかどうかの基準:
-   - 再定義される項目がレコードの末尾の可変部である、または 01 そのものを再定義する。
-   - または、その REDEFINES ごとに判別する分岐がある (下の 4)。
-   - 独立した大きな REDEFINES が複数あるときの組合せは、判別子が分かる組合せだけを作る (全組合せは作らない)。
+   分け方の規則:
+   - **選択点**: 同じ領域を共有する項目の組 (元の項目と、それを REDEFINES する項目すべて) を 1 つの選択点とし、
+     その中の 1 つを選ぶ。FD の下の複数の 01 も同じ扱いの選択点。
+   - **元の項目も候補**: 元の項目そのもの (例: `EXPORT-TIMESTAMP PIC X(26)`) も形の 1 つとする。ただし、元の項目が
+     基本項目の英数字 (`PIC X(n)`) で、集団項目に再定義されているときは、内訳のない入れ物なので候補から外す
+     (CVEXPORT の `EXPORT-RECORD-DATA X(460)` と `EXPORT-TIMESTAMP X(26)`)。`--keep-base` で残す。
+   - **入れ子**: ある形の中にさらに REDEFINES があれば、その形を選んだときだけ、その中の選択点を展開する (木構造)。
+   - **組合せ**: 互いに独立な選択点は直積でレイアウトを作る。判別子 (下の 4) が分かる選択点は、判別子の値ごとに
+     1 つの形に対応づけ、ほかの選択点と掛け合わせる。
+   - **上限**: レイアウトの数が上限 (`--max-layouts`、既定 256) を超えるときは、判別子のない選択点のうち領域の小さい
+     ものから順に分割をやめ、元の REDEFINES のまま本文に残す。残した選択点はヘッダーに書き、黙って省かない。
 3. **同じ領域を別の作業域で読む**: ファイルのレコード域を、場所によって別の 01 に `READ INTO` / `MOVE` している
    場合 (データの流れで追う)、それぞれを同じファイルのレイアウトとする。
 4. **判別子 (レコード種別) の推定**: 各レイアウトがどの値で選ばれるかを、次から推定してヘッダーに書く。
@@ -79,10 +86,12 @@ COBOL プログラムがやり取りするデータ (ファイル、カード、
 
   資源の名前は、ファイルは ASSIGN の DD 名、MQ は定数で分かるキュー名 (分からなければバッファの項目名)、
   テーブルは修飾付きの表名、検索結果はカーソル名 (SELECT INTO は段落名と行番号)。
-  レイアウト名は、分割の元の REDEFINES の項目名 (`EXPORT-CUSTOMER-DATA` → `CUSTOMER`) か、01 の名前から付ける。
+  レイアウト名は、形が 2 つ以上ある選択点が 1 つだけなら、選んだ形の項目名から付ける (`EXPORT-CUSTOMER-DATA` →
+  `CUSTOMER`)。複数の選択点の組合せになるときは連番 (`L001`、`L002`、…) とし、選んだ形の一覧はヘッダーと
+  `layouts.csv` に書く (ファイル名が長くなりすぎないため)。
 - **本文**:
-  - 最上位を 01 にし、レベル番号は元のまま (相対関係を保つ)。分割したレイアウトでは、選ばれなかった REDEFINES を
-    除き、選んだ分岐の REDEFINES 句を外して共通部に続けて並べる。
+  - 最上位を 01 にし、レベル番号は元のまま (相対関係を保つ)。各選択点では選んだ形だけを残し、REDEFINES 句を
+    外して元の位置に並べる。出力されるレコードには REDEFINES が残らない (上限で分割をやめた選択点を除く)。
   - PIC・USAGE・SIGN・OCCURS (DEPENDING ON を含む)・SYNC・JUSTIFIED・BLANK WHEN ZERO・88 レベルを残す。
     VALUE はレイアウトに不要なので既定では外す (`--values` で残す)。
   - 項目名は元のまま (COPY REPLACING を適用した後の名前)。同じ名前の重複は修飾がなくても区別できるよう、
@@ -97,13 +106,14 @@ COBOL プログラムがやり取りするデータ (ファイル、カード、
       * KIND      : FILE (OUTPUT)  DD: EXPFILE  ORGANIZATION: SEQUENTIAL
       * LAYOUT    : 1 OF 5  CUSTOMER
       * SELECTED  : EXPORT-REC-TYPE = 'C'   (CBEXPORT 274: MOVE 'C' TO EXPORT-REC-TYPE)
+      * CHOICES   : EXPORT-TIMESTAMP     -> EXPORT-TIMESTAMP-R
+      *             EXPORT-RECORD-DATA   -> EXPORT-CUSTOMER-DATA
       * LENGTH    : 500 BYTES (FIXED)
       * SOURCE    : CVEXPORT.cpy (COPY IN CBEXPORT LINE 96)
       *================================================================
        01  EXPORT-RECORD.
            05  EXPORT-REC-TYPE                 PIC X(1).                00001
-           05  EXPORT-TIMESTAMP                PIC X(26).               00002
-           05  EXPORT-TIMESTAMP-R REDEFINES EXPORT-TIMESTAMP.           00002
+           05  EXPORT-TIMESTAMP-R.                                      00002
                10  EXPORT-DATE                 PIC X(10).               00002
                ...
            05  EXPORT-CUSTOMER-DATA.                                    00041
@@ -142,7 +152,7 @@ zlayout [-I DIR]... [--out DIR] [--kinds file,card,mq,table,sqlresult,parm,call,
 | 段階 | 内容 | 確認 |
 |---|---|---|
 | A | ファイル (FD・INTO / FROM)、カード (ACCEPT・SYSIN)、サブルーチンの引数。COPY 展開、出力の形式、73〜80 桁の位置、再コンパイルでの確認 | CardDemo のバッチ (CBACT01C〜04C、CBTRN02C、CBPAUP0C)、CSUTLDTC とその呼出し元 |
-| B | マルチレイアウト (FD の複数 01、大きな REDEFINES、判別子の推定) | CVEXPORT (CBEXPORT・CBIMPORT)、CardDemo の取引ファイル |
+| B | マルチレイアウト (FD の複数 01、すべての REDEFINES の選択点と組合せ、上限、判別子の推定) | CVEXPORT (CBEXPORT・CBIMPORT)、CardDemo の取引ファイル |
 | C | テーブル・検索結果 (DECLARE TABLE、SELECT / FETCH INTO、VARCHAR、標識変数)、BMS、CICS の COMMAREA・ファイル | CardDemo の Db2 モジュール (COTRTLIC)、オンライン (COSGN00C)、GenApp |
 | D | MQ のバッファ、IMS のセグメントと PCB、プログラム間の食い違いの報告、PL/I (同じ形式で COBOL のコピーブックとして出す) | CardDemo の MQ モジュール (COPAUA0C、COACCT01)、Bank of Z |
 
