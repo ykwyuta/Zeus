@@ -1,5 +1,7 @@
 //! The ZIR interpreter.
 
+mod assembler;
+mod assembler_io;
 pub mod data;
 mod eval;
 pub mod exec;
@@ -123,6 +125,12 @@ pub struct RunState {
 
 pub struct Machine {
     mem: Vec<u8>,
+    hlasm: HashMap<String, (Rc<crate::hlasm::Module>, usize, u32)>,
+    hlasm_storage: crate::hlasm::DynamicStorage,
+    hlasm_call_depth: usize,
+    hlasm_residency: assembler::Residency,
+    hlasm_io: assembler_io::Files,
+    le_conditions: le::handlers::Conditions,
     /// State of FUNCTION RANDOM.
     random: u64,
     instances: Vec<Instance>,
@@ -183,6 +191,105 @@ pub struct Machine {
     ticks: u32,
 }
 
+impl crate::hlasm::Host for Machine {
+    fn data(
+        &mut self,
+        request: crate::hlasm::DataRequest,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<crate::hlasm::DataReply, String> {
+        self.with_hlasm_memory(memory, storage, |machine| machine.assembler_data(request))
+    }
+    fn parameter_count(
+        &mut self,
+        name: &str,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<Option<usize>, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            Ok(machine
+                .find_program(name)
+                .map(|index| machine.instances[index].code.using.len())
+                .or_else(|| le::parameter_count(name))
+                .or_else(|| {
+                    machine
+                        .linker
+                        .as_ref()
+                        .and_then(|linker| linker.parameter_count(name))
+                }))
+        })
+    }
+    fn message(&mut self, message: crate::hlasm::OperatorMessage) -> Result<u32, String> {
+        writeln!(self.stdout, "{}", message.text).map_err(|e| e.to_string())?;
+        self.stdout.flush().map_err(|e| e.to_string())?;
+        self.hlasm_residency.message_id = self.hlasm_residency.message_id.wrapping_add(1).max(1);
+        if self.hlasm_residency.messages.len() == 1024 {
+            self.hlasm_residency.messages.pop_front();
+        }
+        self.hlasm_residency.messages.push_back(message);
+        Ok(self.hlasm_residency.message_id)
+    }
+    fn wait(
+        &mut self,
+        events: &[usize],
+        needed: usize,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<(), String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            while crate::hlasm::completed_events(events, &machine.mem)? < needed {
+                let (ecb, completion) = machine.hlasm_residency.posts.pop_front().ok_or(
+                    "WAIT deadlock: no pending event producer in this serialized run unit",
+                )?;
+                crate::hlasm::post_event(&mut machine.mem, ecb, completion)?;
+                machine.hlasm_storage.verify_protection(&mut machine.mem)?;
+            }
+            Ok(())
+        })
+    }
+    fn load(
+        &mut self,
+        name: &str,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<(u32, u32), String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.load_assembler_service(name)
+        })
+    }
+    fn delete(
+        &mut self,
+        name: &str,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<i32, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.delete_assembler_service(name)
+        })
+    }
+    fn branch(
+        &mut self,
+        target: usize,
+        registers: &mut crate::hlasm::Registers,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<usize, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.branch_assembler_service(target, registers)
+        })
+    }
+    fn call(
+        &mut self,
+        request: crate::hlasm::AssemblerCall<'_>,
+        memory: &mut Vec<u8>,
+        storage: &mut crate::hlasm::DynamicStorage,
+    ) -> Result<i32, String> {
+        self.with_hlasm_memory(memory, storage, |machine| {
+            machine.dispatch_assembler_target(request)
+        })
+    }
+}
+
 /// A program implemented by the host: it gets the storage and the
 /// addresses of the CALL arguments (None: OMITTED) and returns the
 /// return code or an error that ends the run unit.
@@ -238,6 +345,12 @@ impl Machine {
         Machine {
             random: 0x2545_F491_4F6C_DD1D,
             mem: vec![0; PSA_SIZE],
+            hlasm: HashMap::new(),
+            hlasm_storage: crate::hlasm::DynamicStorage::default(),
+            hlasm_call_depth: 0,
+            hlasm_residency: assembler::Residency::default(),
+            hlasm_io: assembler_io::Files::default(),
+            le_conditions: le::handlers::Conditions::default(),
             instances: Vec::new(),
             file_states: Vec::new(),
             externals: HashMap::new(),
@@ -284,6 +397,168 @@ impl Machine {
         self.mem.resize(base, 0);
         self.mem.extend_from_slice(bytes);
         base
+    }
+
+    fn load_hlasm(&mut self, name: &str) -> Result<bool, String> {
+        let key = name.to_ascii_uppercase();
+        if self.hlasm.contains_key(&key) {
+            return Ok(true);
+        }
+        for dir in self.search_dirs.clone() {
+            for filename in [
+                format!("{key}.zo"),
+                format!("{key}.obj"),
+                format!("{key}.goff"),
+                key.clone(),
+                format!("{}.zo", key.to_ascii_lowercase()),
+                format!("{}.obj", key.to_ascii_lowercase()),
+                format!("{}.goff", key.to_ascii_lowercase()),
+            ] {
+                let path = dir.join(filename);
+                let Ok(bytes) = std::fs::read(&path) else {
+                    continue;
+                };
+                if !crate::hlasm::is_module(&bytes) {
+                    continue;
+                }
+                let module = crate::hlasm::load_module(&bytes)?;
+                let module = crate::hlasm::link_with_libraries(vec![module], &self.search_dirs)?;
+                self.install_hlasm(&key, module)?;
+                return Ok(true);
+            }
+        }
+        Ok(false)
+    }
+
+    fn install_hlasm(&mut self, key: &str, module: crate::hlasm::Module) -> Result<(), String> {
+        let base = self.hlasm_storage.module(&mut self.mem, &module)?;
+        let entry = if key == module.name {
+            module.entry
+        } else {
+            module.entries.get(key).copied().unwrap_or(module.entry)
+        };
+        let module = Rc::new(module);
+        for (alias, address) in &module.entries {
+            let alias_entry = if alias == &module.name {
+                module.entry
+            } else {
+                *address
+            };
+            self.hlasm
+                .entry(alias.clone())
+                .or_insert_with(|| (Rc::clone(&module), base, alias_entry));
+        }
+        self.hlasm.insert(key.to_string(), (module, base, entry));
+        Ok(())
+    }
+
+    /// A loaded HLASM module takes precedence over a Rust replacement.
+    pub fn call_hlasm(
+        &mut self,
+        name: &str,
+        args: &[Option<usize>],
+    ) -> Option<Result<i32, String>> {
+        self.call_hlasm_mode(
+            name,
+            args,
+            true,
+            true,
+            assembler::Invocation {
+                parameter_mode: None,
+                allow_64: true,
+                floating: None,
+            },
+        )
+    }
+
+    fn call_hlasm_mode(
+        &mut self,
+        name: &str,
+        args: &[Option<usize>],
+        terminated: bool,
+        pin: bool,
+        invocation: assembler::Invocation<'_>,
+    ) -> Option<Result<i32, String>> {
+        match self.load_hlasm(name) {
+            Ok(false) => None,
+            Err(e) => Some(Err(e)),
+            Ok(true) => {
+                if self.hlasm_call_depth >= 128 {
+                    return Some(Err("HLASM nested call limit exceeded".into()));
+                }
+                let (module, base, entry) = self.hlasm[&name.to_ascii_uppercase()].clone();
+                if module.entry_mode(entry) == 64 && !invocation.allow_64 {
+                    let cleanup = self.discard_hlasm_if_unused(base);
+                    return Some(cleanup.and(Err(
+                        "LINKX/XCTLX requires AMODE64OK=YES for an AMODE 64 target".into(),
+                    )));
+                }
+                if pin {
+                    self.hlasm_residency.pinned.insert(base);
+                }
+                *self.hlasm_residency.active.entry(base).or_default() += 1;
+                let mut memory = std::mem::take(&mut self.mem);
+                let mut storage = std::mem::take(&mut self.hlasm_storage);
+                self.hlasm_call_depth += 1;
+                let frame = self.enter_language_frame();
+                let result = crate::hlasm::execute_entry_with_host(
+                    &module,
+                    &mut memory,
+                    base,
+                    args,
+                    entry,
+                    &mut storage,
+                    self,
+                    terminated,
+                    invocation.parameter_mode,
+                    None,
+                    invocation.floating,
+                );
+                self.leave_language_frame(frame);
+                self.hlasm_call_depth -= 1;
+                self.mem = memory;
+                self.hlasm_storage = storage;
+                let cleanup = self.leave_hlasm(base);
+                Some(result.and_then(|rc| cleanup.map(|_| rc)))
+            }
+        }
+    }
+
+    /// JCL/main entry: R1 addresses a list whose first entry points to the
+    /// halfword-length-prefixed EXEC PARM, unless explicit arguments were set.
+    pub fn run_hlasm_main(&mut self, module: crate::hlasm::Module) -> Result<i32, String> {
+        let module = crate::hlasm::link_with_libraries(vec![module], &self.search_dirs)?;
+        let exec_parameters = self.main_args.is_none();
+        let args = if let Some(args) = self.main_args.take() {
+            args
+        } else {
+            let text = crate::ebcdic::encode(&self.step.parm);
+            let len = u16::try_from(text.len()).map_err(|_| "EXEC PARM exceeds 65535 bytes")?;
+            let mut data = len.to_be_bytes().to_vec();
+            data.extend(text);
+            vec![Some(self.alloc(&data))]
+        };
+        let name = module.name.clone();
+        self.install_hlasm(&name, module)?;
+        let result = self
+            .call_hlasm_mode(
+                &name,
+                &args,
+                true,
+                true,
+                assembler::Invocation {
+                    parameter_mode: exec_parameters.then_some(31),
+                    allow_64: true,
+                    floating: None,
+                },
+            )
+            .ok_or_else(|| "HLASM main not loaded".to_string())?;
+        let result = match result {
+            Err(error) if error == STOP_RUN => Ok(self.return_code),
+            result => result,
+        };
+        let cleanup = self.finish_assembler_io();
+        result.and_then(|rc| cleanup.map(|_| rc))
     }
 
     /// Creates (or returns) the instance of program `index` of `module`.
@@ -409,16 +684,32 @@ impl Machine {
         args: &[crate::interlang::XRef],
     ) -> Option<Result<i32, String>> {
         let name = name.to_ascii_uppercase();
+        let addrs: Vec<_> = args.iter().map(|a| a.addr).collect();
+        if le::parameter_count(&name).is_some() {
+            return Some(self.le_service(&name, &addrs).map(|_| 0).map_err(|e| e.0));
+        }
+        if let Some(result) = self.call_hlasm(&name, &addrs) {
+            return Some(result);
+        }
         if let Some(f) = self.natives_ref.get(&name).copied() {
-            return Some(f(&mut self.mem, args));
+            let frame = self.enter_language_frame();
+            let result = f(&mut self.mem, args);
+            self.leave_language_frame(frame);
+            return Some(result);
         }
         if let Some(f) = self.natives_mach.get(&name).copied() {
             let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
-            return Some(f(self, &addrs));
+            let frame = self.enter_language_frame();
+            let result = f(self, &addrs);
+            self.leave_language_frame(frame);
+            return Some(result);
         }
         let f = self.natives.get(&name).copied()?;
         let addrs: Vec<Option<usize>> = args.iter().map(|a| a.addr).collect();
-        Some(f(&mut self.mem, &addrs))
+        let frame = self.enter_language_frame();
+        let result = f(&mut self.mem, &addrs);
+        self.leave_language_frame(frame);
+        Some(result)
     }
 
     /// Calls program `name`: a COBOL program of the run unit, else one
@@ -436,9 +727,11 @@ impl Machine {
             return Ok(None);
         };
         let _ = self.stdout.flush();
+        let frame = self.enter_language_frame();
         let me = std::mem::replace(self, Machine::placeholder());
         let (back, r) = l.call(&name.to_ascii_uppercase(), me, args);
         *self = back;
+        self.leave_language_frame(frame);
         r.transpose()
     }
 
@@ -565,6 +858,7 @@ impl Machine {
     pub fn finish(&mut self) {
         self.flush_coverage();
         self.close_all();
+        let _ = self.finish_assembler_io();
         let _ = self.stdout.flush();
     }
 
@@ -617,6 +911,7 @@ impl Machine {
         for f in PSA_TCB {
             self.mem[f..f + 4].copy_from_slice(&(tcb_addr as u32).to_be_bytes());
         }
+        self.control_blocks = true;
     }
 
     /// Assigns a file (by ASSIGN name or file name) to a path.
@@ -650,13 +945,15 @@ impl Machine {
         }
         let r = self.run(main);
         self.close_all();
+        let cleanup = self.finish_assembler_io().map_err(RunError);
         let _ = self.stdout.flush();
-        match r {
+        let result = match r {
             Ok(Exit::StopRun(code)) => Ok(code),
             Ok(Exit::Returned) => Ok(self.return_code_value()),
             Err(e) if e.0 == STOP_RUN => Ok(self.return_code_value()),
             Err(e) => Err(e),
-        }
+        };
+        result.and_then(|rc| cleanup.map(|_| rc))
     }
 
     fn close_all(&mut self) {
@@ -716,25 +1013,35 @@ impl Machine {
             .trim()
             .to_ascii_uppercase();
         self.call_exception = false;
-        if matches!(
-            name.as_str(),
-            "CEE3ABD" | "CEEDAYS" | "CEEGMT" | "CEELOCT" | "CEEDATM" | "CEEDATE" | "CEESECS"
-        ) {
+        if le::parameter_count(&name).is_some() {
             let addrs = self.call_args(cur, args)?;
             self.le_service(&name, &addrs)?;
             return Ok(None);
         }
         let Some(callee) = self.resolve_program(cur, &name) else {
+            if self.load_hlasm(&name).map_err(RunError)? {
+                let addrs = self.call_args(cur, args)?;
+                let result = self.call_hlasm(&name, &addrs).expect("loaded HLASM module");
+                self.return_code = result.map_err(RunError)?;
+                self.store_rc(cur);
+                return Ok(None);
+            }
             if let Some(f) = self.natives_mach.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
-                let rc = f(self, &addrs).map_err(RunError)?;
+                let frame = self.enter_language_frame();
+                let result = f(self, &addrs);
+                self.leave_language_frame(frame);
+                let rc = result.map_err(RunError)?;
                 self.return_code = rc;
                 self.store_rc(cur);
                 return Ok(None);
             }
             if let Some(f) = self.natives.get(&name).copied() {
                 let addrs = self.call_args(cur, args)?;
-                self.return_code = f(&mut self.mem, &addrs).map_err(RunError)?;
+                let frame = self.enter_language_frame();
+                let result = f(&mut self.mem, &addrs);
+                self.leave_language_frame(frame);
+                self.return_code = result.map_err(RunError)?;
                 self.store_rc(cur);
                 return Ok(None);
             }
@@ -750,9 +1057,11 @@ impl Machine {
                     .collect();
                 let _ = self.stdout.flush();
                 // the run unit's storage (this machine) is lent to the callee
+                let frame = self.enter_language_frame();
                 let me = std::mem::replace(self, Machine::placeholder());
                 let (back, r) = l.call(&name, me, &refs);
                 *self = back;
+                self.leave_language_frame(frame);
                 if let Some(r) = r {
                     let end = r.map_err(RunError)?;
                     self.return_code = end.rc;
@@ -806,17 +1115,24 @@ impl Machine {
             pc: 0,
             called,
         };
+        let frame = self.enter_language_frame();
+        let result = self.run_loop(&mut s);
+        self.leave_language_frame(frame);
+        result
+    }
+
+    fn run_loop(&mut self, s: &mut RunState) -> RResult<Exit> {
         loop {
             // the program's machine code, when it has some
             if let Some(n) = self.native.clone()
-                && let Some(r) = n.run(self, &mut s)
+                && let Some(r) = n.run(self, s)
             {
                 if let Some(e) = r? {
                     return Ok(e);
                 }
                 continue;
             }
-            if let Some(e) = self.exec_step(&mut s)? {
+            if let Some(e) = self.exec_step(s)? {
                 return Ok(e);
             }
         }
@@ -1058,6 +1374,7 @@ impl Machine {
                 if self.instances[cur].code.initial {
                     self.close_program_files(cur);
                 }
+                self.le_conditions.frames.pop();
                 let f = s.stack.pop().unwrap();
                 s.cur = f.inst;
                 s.pc = f.pc;
@@ -1112,6 +1429,7 @@ impl Machine {
                     if s.stack.len() > 1000 {
                         return err("CALL nesting too deep");
                     }
+                    self.enter_language_frame();
                     s.cur = callee;
                     s.pc = 0;
                 }
@@ -1128,6 +1446,10 @@ impl Machine {
                     self.close_program_files(i);
                     self.reset(i);
                     self.instances[i].initialized = false;
+                }
+                if let Some((module, base, _)) = self.hlasm.get(&name) {
+                    let storage = module.storage_at(*base).map_err(RunError)?;
+                    self.mem[*base..*base + module.storage.len()].copy_from_slice(&storage);
                 }
             }
             Instr::Initialize { .. } => return err("INITIALIZE instruction not expected"),
@@ -1479,6 +1801,7 @@ impl Machine {
     /// Whether program `name` can be called (it is loaded, if need be).
     pub fn load_program(&mut self, name: &str) -> bool {
         self.find_program(name).is_some()
+            || self.load_hlasm(name).unwrap_or(false)
             || self.natives.contains_key(name)
             || self.natives_ref.contains_key(name)
     }

@@ -1,9 +1,9 @@
 //! Application subroutines written in assembler, implemented natively.
 //!
-//! Zeus does not run S/390 machine code yet, so assembler routines that
-//! COBOL programs CALL are reimplemented here from their published
-//! sources and registered with every COBOL step. A program of the same
-//! name found in STEPLIB/JOBLIB takes precedence.
+//! Compatibility fallbacks for installations without assembled modules.
+//! `zas` and ASMA90 now compile these application sources to executable
+//! Zeus HLASM modules. A module of the same name in STEPLIB/JOBLIB takes
+//! precedence; tools/carddemo.sh installs the assembled versions.
 //!
 //! * `COBDATFT` (AWS CardDemo, Apache-2.0): converts a date between
 //!   `YYYYMMDD` and `YYYY-MM-DD`. Parameter: input type (1 byte, `1` =

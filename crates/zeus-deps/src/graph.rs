@@ -177,7 +177,8 @@ fn walk(dir: &Path, out: &mut Vec<PathBuf>) {
 /// The program-like node types (a program reference resolves to them).
 fn index_category(t: &str) -> &'static str {
     match t {
-        "COBOL_PROGRAM" | "PLI_PROGRAM" => "PROGRAM",
+        "COBOL_PROGRAM" | "PLI_PROGRAM" | "HLASM_PROGRAM" => "PROGRAM",
+        "HLASM_COPYBOOK" => "HLASM_COPY",
         "BMS_MAPSET" => "MAPSET",
         "IMS_PSB" => "PSB",
         "IMS_DBD" => "DBD",
@@ -292,6 +293,18 @@ impl Analyzer {
         }
         let name = r.target.as_str();
         let t = match r.edge {
+            "HLASM_COPY" => {
+                let mut dirs = vec![from_dir.clone()];
+                dirs.extend(self.opts.libs.iter().cloned());
+                if let Some(path) = Self::search(&dirs, name, &["", ".mac", ".MAC", ".asm", ".ASM"])
+                {
+                    Target::File(path, "HLASM_COPYBOOK")
+                } else if let Some(f) = self.indexed("HLASM_COPY", name) {
+                    Target::File(f.path.clone(), f.scanned.node_type)
+                } else {
+                    Target::Missing(name.into(), "HLASM_COPYBOOK")
+                }
+            }
             "COPY" | "SQL_INCLUDE" | "PLI_INCLUDE" => {
                 let (expected, exts): (&'static str, &[&str]) = if pli {
                     (
@@ -417,6 +430,9 @@ impl Analyzer {
 
     fn virtual_node(&mut self, t: &'static str, name: &str, status: &'static str) -> usize {
         if let Some(&n) = self.virtual_node.get(&(t, name.to_string())) {
+            if status == "MISSING" && self.graph.nodes[n - 1].status == "OPTIONAL" {
+                self.graph.nodes[n - 1].status = "MISSING";
+            }
             return n;
         }
         let id = self.graph.nodes.len() + 1;
@@ -617,6 +633,12 @@ impl Analyzer {
                 }
                 (id, "SYSTEM")
             }
+            Target::Missing(n, t)
+                if r.edge == "HLASM_EXTERNAL"
+                    && r.attrs.iter().any(|(k, v)| *k == "weak" && v == "true") =>
+            {
+                (self.virtual_node(t, &n, "OPTIONAL"), "OPTIONAL")
+            }
             Target::Missing(n, t) => (self.virtual_node(t, &n, "MISSING"), "MISSING"),
             Target::Dynamic(n) => {
                 let id = self.virtual_node("DYNAMIC_TARGET", &n, "DYNAMIC");
@@ -684,8 +706,10 @@ impl Analyzer {
         // copy / include directories for the compile checks
         let mut copy_dirs: Vec<PathBuf> = self.opts.libs.clone();
         for f in &self.files {
-            if matches!(f.scanned.node_type, "COBOL_COPYBOOK" | "PLI_INCLUDE")
-                && let Some(d) = f.path.parent()
+            if matches!(
+                f.scanned.node_type,
+                "COBOL_COPYBOOK" | "PLI_INCLUDE" | "HLASM_COPYBOOK"
+            ) && let Some(d) = f.path.parent()
                 && !copy_dirs.iter().any(|x| x == d)
             {
                 copy_dirs.push(d.to_path_buf());
@@ -764,7 +788,10 @@ impl Analyzer {
                             d.source_line(&mut diagnostic_sources);
                             d
                         }));
-                } else if matches!(node.node_type, "COBOL_PROGRAM" | "PLI_PROGRAM") {
+                } else if matches!(
+                    node.node_type,
+                    "COBOL_PROGRAM" | "PLI_PROGRAM" | "HLASM_PROGRAM"
+                ) {
                     attrs.push(("compile_status".into(), "NOT_CHECKED".into()));
                 }
             }
@@ -788,6 +815,63 @@ fn compile_check(
     let mut out = Vec::new();
     let mut diagnostics = Vec::new();
     match node_type {
+        "HLASM_PROGRAM" => {
+            let report = zeus_cobol::hlasm::compile_report(path, dirs);
+            let rc = report.return_code();
+            out.push((
+                "compile_status".into(),
+                if report.module.is_some() {
+                    if rc > 0 { "WARNING" } else { "OK" }
+                } else {
+                    "ERROR"
+                }
+                .into(),
+            ));
+            out.push((
+                "compile_diagnostics_complete".into(),
+                report.complete.to_string(),
+            ));
+            if !report.diagnostics.is_empty() {
+                out.push((
+                    "compile_message".into(),
+                    report
+                        .diagnostics
+                        .iter()
+                        .map(ToString::to_string)
+                        .collect::<Vec<_>>()
+                        .join("\n"),
+                ));
+            }
+            for d in report.diagnostics {
+                let unsupported =
+                    d.category == "UNRESOLVED_OPERATION" || explicitly_unsupported(&d.message);
+                diagnostics.push(SyntaxDiagnostic {
+                    node_id: 0,
+                    program: String::new(),
+                    language: "HLASM",
+                    category: if unsupported {
+                        "UNSUPPORTED"
+                    } else if d.severity >= 8 {
+                        "ERROR"
+                    } else if d.severity > 0 {
+                        "WARNING"
+                    } else {
+                        "INFO"
+                    },
+                    stage: "COMPILE",
+                    syntax: if unsupported {
+                        d.operation
+                    } else {
+                        String::new()
+                    },
+                    path: PathBuf::from(d.file),
+                    line: u32::try_from(d.line).ok().filter(|n| *n > 0),
+                    statement: String::new(),
+                    message: format!("severity {}: {}", d.severity, d.message),
+                });
+            }
+            out.push(("compile_return_code".into(), rc.to_string()));
+        }
         "COBOL_PROGRAM" => {
             let opts = zeus_cobol::front::FrontOptions {
                 copy_dirs: dirs.to_vec(),

@@ -24,6 +24,12 @@ SUBMIT
   a supported batch utility. DD statements allocate datasets. Each normal
   COBOL step gets its own run unit. Output remains in the spool directory.
   ZEUS_DB2 selects the SQL backend; ZEUS_MQ selects an MQ queue manager.
+  ASMA90/ASMAHL compile HLASM SYSIN with COPY/macros from SYSLIB into SYSLIN;
+  IEWL binds it to SYSLMOD. EXEC PGM can run the result, including PARM.
+  For HLASM, IEWL combines concatenated SYSLIN modules and resolves strong
+  external references using SYSLIB. Missing/duplicate symbols return 12.
+  COBOL and PL/I can call it by reference within the same step. HLASM static
+  storage and all run-unit memory are released when that execution step ends.
 
 CATALOG COMMANDS
   list        List dataset names and definitions.

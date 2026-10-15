@@ -16,7 +16,7 @@ Plans and design decisions are in [docs/proposal](docs/proposal):
 Each CI run publishes the commands built for Linux (x86-64, glibc 2.35 or
 later) and Windows (x86-64) as the artifacts `zeus-linux-x86_64` and
 `zeus-windows-x86_64` (zip files on the run's page in GitHub Actions):
-`bin/` holds zcobc, zcov, zpli, zjob, zcics, zbms, zims, zmq, zconn, zdeps
+`bin/` holds zcobc, zas, zcov, zpli, zjob, zcics, zbms, zims, zmq, zconn, zdeps
 and zeus-rt (the run time `--native` executables are made from, found next
 to zcobc and zpli). Artifacts are kept for the repository's retention
 period (90 days by default).
@@ -37,6 +37,20 @@ same test counts as the GnuCOBOL baseline (and more programs in IF, where
 GnuCOBOL cannot compile some). The optional modules SG (segmentation), OB
 (obsolete elements), DB (debugging) and RW (Report Writer) pass as well; the
 only module out of scope is CM (communication).
+
+HLASM: `zas` compiles application assembler, including CardDemo's COBDATFT
+and MVSWAIT, conditional macros, integer/character/packed-decimal operations,
+multiple control sections, ORG/LTORG and relocatable address constants.
+`zas link` and the JCL binder resolve external HLASM symbols across Zeus
+modules, including strong/weak references and library inclusion. COBOL
+and PL/I calls pass addresses into the same run-unit storage, so assembler
+updates are visible to the caller. JCL can assemble with ASMA90/ASMAHL, bind
+with IEWL and run the resulting module. Instructions run in a bounded Zeus
+engine; these are Zeus modules, not IBM object decks or native S/390 code.
+Host-CPU native code generation for HLASM is outside the project's scope,
+including future work.
+See [HLASM support and linkage](docs/proposal/0012-hlasm.md) for scope and
+storage lifetime.
 
 Phase 1 continues with Enterprise COBOL extensions for the applications.
 The AWS CardDemo batch process runs end to end: `tools/carddemo.sh all`

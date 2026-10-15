@@ -54,16 +54,92 @@ fn options(parm: &str) -> Vec<String> {
 /// Source text of SYSIN and the source name for messages.
 fn source(ctx: &StepCtx) -> Result<(String, String), String> {
     let lines = ctx.read_text("SYSIN")?;
-    let name = match ctx.dd("SYSIN").map(|d| &d.kind) {
+    let name = source_name(ctx);
+    let mut text = lines.join("\n");
+    text.push('\n');
+    Ok((name, text))
+}
+
+fn source_name(ctx: &StepCtx) -> String {
+    match ctx.dd("SYSIN").map(|d| &d.kind) {
         Some(DdKind::Dataset { dsn, member }) => match member {
             Some(m) => format!("{dsn}({m})"),
             None => dsn.clone(),
         },
         _ => "SYSIN".into(),
+    }
+}
+
+/// Keep physical EBCDIC columns intact, particularly SO/SI and DBCS pairs.
+/// Dataset record framing is removed by the DD layer, not by a text decoder.
+fn assembler_source(ctx: &StepCtx) -> Result<Vec<u8>, String> {
+    use zeus_ds::format::RecordFormat;
+    let dd = ctx.dd("SYSIN").ok_or("DD SYSIN missing")?;
+    let mut bytes = vec![];
+    for dd in std::iter::once(dd).chain(dd.concat.iter()) {
+        let records = if let DdKind::Instream(lines) = &dd.kind {
+            lines
+                .iter()
+                .map(|s| zeus_cobol::ebcdic::encode(s))
+                .collect()
+        } else if dd.format == Some(RecordFormat::Text) {
+            ctx.read_dd(dd)?
+                .iter()
+                .map(|r| {
+                    std::str::from_utf8(r)
+                        .map(zeus_cobol::ebcdic::encode)
+                        .map_err(|e| format!("SYSIN: invalid UTF-8 text: {e}"))
+                })
+                .collect::<Result<Vec<_>, _>>()?
+        } else {
+            ctx.read_dd(dd)?
+        };
+        append_assembler_cards(&mut bytes, records);
+    }
+    Ok(bytes)
+}
+
+fn append_assembler_cards(bytes: &mut Vec<u8>, records: Vec<Vec<u8>>) {
+    for mut record in records {
+        // HLASM source columns and sequence fields end at column 80.
+        record.resize(80, 0x40);
+        bytes.extend(record);
+    }
+}
+
+fn assembler_syslib(ctx: &StepCtx, dir: &Path) -> Result<Vec<PathBuf>, String> {
+    use zeus_ds::format::RecordFormat;
+    let mut dirs = vec![];
+    let Some(dd) = ctx.dd("SYSLIB") else {
+        return Ok(dirs);
     };
-    let mut text = lines.join("\n");
-    text.push('\n');
-    Ok((name, text))
+    for (index, dd) in std::iter::once(dd).chain(dd.concat.iter()).enumerate() {
+        if !dd.path.is_dir() {
+            continue;
+        }
+        let out = dir.join(format!("lib{index}"));
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        for entry in std::fs::read_dir(&dd.path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                continue;
+            }
+            let data = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
+            let records = if let Ok(text) = std::str::from_utf8(&data)
+                && (dd.format == Some(RecordFormat::Text) || data.contains(&b'\n'))
+            {
+                text.lines().map(zeus_cobol::ebcdic::encode).collect()
+            } else {
+                zeus_ds::format::decode(dd.format.unwrap_or(RecordFormat::Fixed(80)), &data)
+                    .map_err(|e| e.to_string())?
+            };
+            let mut cards = vec![];
+            append_assembler_cards(&mut cards, records);
+            std::fs::write(out.join(entry.file_name()), cards).map_err(|e| e.to_string())?;
+        }
+        dirs.push(out);
+    }
+    Ok(dirs)
 }
 
 /// Writes a module to SYSLIN (the file of the data set).
@@ -162,6 +238,147 @@ pub fn pli(ctx: &mut StepCtx) -> ProgramResult {
     Ok(rc)
 }
 
+fn hlasm_sysparm(parm: &str) -> Result<String, String> {
+    let (mut depth, mut quoted, mut start) = (0i32, false, 0);
+    let mut parts = Vec::new();
+    for (at, c) in parm.char_indices() {
+        if c == '\'' {
+            quoted = !quoted;
+        }
+        if !quoted {
+            match c {
+                '(' => depth += 1,
+                ')' => depth -= 1,
+                ',' if depth == 0 => {
+                    parts.push(&parm[start..at]);
+                    start = at + 1;
+                }
+                _ => {}
+            }
+            if depth < 0 {
+                return Err("unbalanced assembly options".into());
+            }
+        }
+    }
+    if depth != 0 || quoted {
+        return Err("unbalanced assembly options".into());
+    }
+    parts.push(&parm[start..]);
+    let mut value = None;
+    for part in parts {
+        let part = part.trim();
+        let name = part.split('(').next().unwrap_or("").trim();
+        if !name.eq_ignore_ascii_case("SYSPARM") {
+            continue;
+        }
+        let text = part
+            .get(name.len()..)
+            .map(str::trim)
+            .and_then(|s| s.strip_prefix('('))
+            .and_then(|s| s.strip_suffix(')'))
+            .ok_or("malformed SYSPARM option")?;
+        let text = text.trim();
+        let text = text
+            .strip_prefix('\'')
+            .and_then(|s| s.strip_suffix('\''))
+            .unwrap_or(text)
+            .replace("''", "'");
+        if value.replace(text).is_some() {
+            return Err("duplicate SYSPARM option".into());
+        }
+    }
+    Ok(value.unwrap_or_default())
+}
+
+/// ASMA90-compatible source assembly for the supported application subset.
+pub fn hlasm(ctx: &mut StepCtx) -> ProgramResult {
+    let mut print = ctx
+        .sysout("SYSPRINT")
+        .map_err(crate::job::Outcome::JclError)?;
+    let tmp = tempdir()?;
+    let name = source_name(ctx);
+    let text = assembler_source(ctx).map_err(crate::job::Outcome::JclError)?;
+    let src = tmp.path().join(source_file(&name, "asm"));
+    std::fs::write(&src, text).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
+    let dirs = assembler_syslib(ctx, tmp.path()).map_err(crate::job::Outcome::JclError)?;
+    let mut assembly_options = zeus_cobol::hlasm::AssemblyOptions {
+        source_encoding: zeus_cobol::hlasm::SourceEncoding::Ebcdic {
+            ccsid: zeus_cobol::codepage::active().ccsid,
+            record_length: 80,
+        },
+        job: Some(ctx.job_name.clone()),
+        step: Some(ctx.step_name.clone()),
+        ..Default::default()
+    };
+    // SYSPARM is a character value, so retain its original case and commas.
+    assembly_options.sysparm = match hlasm_sysparm(&ctx.parm) {
+        Ok(value) => value,
+        Err(e) => {
+            let _ = writeln!(print, "ZEUS HLASM: {e}");
+            return Ok(12);
+        }
+    };
+    for dd in &ctx.dds {
+        if let DdKind::Dataset { dsn, member } = &dd.kind {
+            assembly_options.data_sets.insert(
+                dd.name.clone(),
+                zeus_cobol::hlasm::AssemblyDataSet {
+                    name: dsn.clone(),
+                    member: member.clone().unwrap_or_default(),
+                    volume: String::new(),
+                },
+            );
+        } else {
+            assembly_options.data_sets.insert(
+                dd.name.clone(),
+                zeus_cobol::hlasm::AssemblyDataSet {
+                    name: if matches!(dd.kind, DdKind::Dummy) {
+                        String::new()
+                    } else {
+                        dd.path.display().to_string()
+                    },
+                    ..Default::default()
+                },
+            );
+        }
+    }
+    if let Some(first) = ctx.dd("SYSLIB") {
+        for (index, dd) in std::iter::once(first)
+            .chain(first.concat.iter())
+            .enumerate()
+        {
+            if let DdKind::Dataset { dsn, .. } = &dd.kind {
+                assembly_options.library_data_sets.insert(
+                    tmp.path().join(format!("lib{index}")),
+                    zeus_cobol::hlasm::AssemblyDataSet {
+                        name: dsn.clone(),
+                        ..Default::default()
+                    },
+                );
+            }
+        }
+    }
+    let report = zeus_cobol::hlasm::compile_report_with_options(&src, &dirs, &assembly_options);
+    for diagnostic in &report.diagnostics {
+        let _ = writeln!(print, "{diagnostic}");
+    }
+    if !report.complete {
+        let _ = writeln!(
+            print,
+            "ZEUS HLASM: diagnostics incomplete; no module emitted"
+        );
+    }
+    let rc = report.return_code();
+    if let Some(module) = report.module {
+        let name = module.name.clone();
+        let bytes =
+            zeus_cobol::hlasm::module_bytes(&module).map_err(crate::job::Outcome::JclError)?;
+        write_syslin(ctx, &bytes).map_err(crate::job::Outcome::JclError)?;
+        let _ = writeln!(print, "ZEUS HLASM {name}: ASSEMBLY COMPLETE, RC={rc}");
+    }
+    Ok(i32::from(rc))
+}
+
 /// The binder: the module of SYSLIN into the SYSLMOD library.
 pub fn bind(ctx: &mut StepCtx) -> ProgramResult {
     let mut print = ctx
@@ -171,14 +388,43 @@ pub fn bind(ctx: &mut StepCtx) -> ProgramResult {
         let _ = writeln!(print, "IEW2201E SYSLIN NOT ALLOCATED");
         return Ok(12);
     };
-    let data = std::iter::once(lin)
+    let data: Vec<_> = std::iter::once(lin)
         .chain(lin.concat.iter())
         .filter_map(|d| std::fs::read(&d.path).ok())
-        .find(|d| d.first() == Some(&b'{'));
+        .filter(|d| d.first() == Some(&b'{'))
+        .collect();
     // (COBOL and PL/I modules are both JSON documents)
-    let Some(data) = data else {
+    let Some(first) = data.first() else {
         let _ = writeln!(print, "IEW2202E NO MODULE IN SYSLIN");
         return Ok(12);
+    };
+    let data = if zeus_cobol::hlasm::is_module(first) {
+        let result = (|| -> Result<Vec<u8>, String> {
+            let modules = data
+                .iter()
+                .map(|d| zeus_cobol::hlasm::load_module(d))
+                .collect::<Result<Vec<_>, _>>()?;
+            let dirs = ctx
+                .dd("SYSLIB")
+                .map(|dd| {
+                    std::iter::once(dd)
+                        .chain(dd.concat.iter())
+                        .map(|d| d.path.clone())
+                        .collect::<Vec<_>>()
+                })
+                .unwrap_or_default();
+            let module = zeus_cobol::hlasm::link_with_libraries(modules, &dirs)?;
+            zeus_cobol::hlasm::module_bytes(&module)
+        })();
+        match result {
+            Ok(data) => data,
+            Err(e) => {
+                let _ = writeln!(print, "IEW2205E {e}");
+                return Ok(12);
+            }
+        }
+    } else {
+        first.clone()
     };
     // NAME member(R) in SYSIN
     let named = ctx.read_text("SYSIN").ok().and_then(|lines| {

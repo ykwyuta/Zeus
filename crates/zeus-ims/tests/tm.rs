@@ -168,3 +168,49 @@ fn tp_pcb_metadata_requires_destination_or_modifiability() {
     let invalid_modifier = source.replace("MODIFY=NO", "MODIFY=MAYBE");
     assert!(zeus_ims::catalog::parse_psb(&invalid_modifier).is_err());
 }
+
+#[cfg(windows)]
+#[test]
+fn tm_failed_replacement_keeps_committed_snapshot_and_removes_temporary_file() {
+    use std::os::windows::fs::OpenOptionsExt;
+
+    let directory = tempfile::tempdir().unwrap();
+    let queue = Queue::open(directory.path()).unwrap();
+    let destination = name("TRAN");
+    let first = queue
+        .enqueue(destination, name("TERM"), &message(b"COMMITTED"))
+        .unwrap();
+    let path = directory.path().join("queue.dat");
+    let committed = std::fs::read(&path).unwrap();
+    // Allow readers but deny replacement while this handle is open. This
+    // reproduces a real Windows sharing failure without changing ACLs.
+    let held = std::fs::OpenOptions::new()
+        .read(true)
+        .share_mode(1)
+        .open(&path)
+        .unwrap();
+    let error = queue
+        .enqueue(destination, name("TERM"), &message(b"UNCOMMITTED"))
+        .unwrap_err();
+    assert!(error.contains("replace IMS TM queue"), "{error}");
+    assert_eq!(std::fs::read(&path).unwrap(), committed);
+    assert!(std::fs::read_dir(directory.path()).unwrap().all(|entry| {
+        entry
+            .unwrap()
+            .path()
+            .extension()
+            .is_none_or(|ext| ext != "tmp")
+    }));
+    drop(held);
+    let reopened = Queue::open(directory.path()).unwrap();
+    let pending = reopened.pending(destination).unwrap();
+    assert_eq!(pending.len(), 1);
+    assert_eq!(pending[0].id, first);
+    assert_eq!(pending[0].data, message(b"COMMITTED"));
+    assert_eq!(
+        reopened
+            .enqueue(destination, name("TERM"), &message(b"RETRY"))
+            .unwrap(),
+        first + 1
+    );
+}

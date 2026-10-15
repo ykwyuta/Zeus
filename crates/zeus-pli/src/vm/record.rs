@@ -19,7 +19,7 @@ impl Machine {
                 zeus_ds::relative::RelativeDataset::load(&path)
                     .ok()
                     .flatten()
-                    .filter(|_| !(st.output && !st.update))
+                    .filter(|_| !st.output || st.update)
                     .unwrap_or_default(),
             );
             st.dirty = st.output && !st.update;

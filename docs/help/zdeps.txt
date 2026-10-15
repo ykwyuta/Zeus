@@ -7,9 +7,9 @@ USAGE
 
 COMMANDS
   analyze  Start from source files or directories and recursively follow
-           dependencies in COBOL, PL/I, JCL, BMS, CSD and IMS definitions.
+           dependencies in COBOL, PL/I, HLASM, JCL, BMS, CSD and IMS definitions.
            Directory roots contribute their source files. Resolve libraries
-           and check COBOL/PL/I compilations unless --no-compile is supplied.
+           and check COBOL/PL/I/HLASM compilations unless --no-compile is supplied.
   masters  Write only the CSV master tables describing node/edge types,
            attributes and assets supplied by Zeus. No roots are required.
 
@@ -47,6 +47,16 @@ OUTPUT
   running the application. Exit status behavior is unchanged by syntax counts.
   References include COPY, %INCLUDE, SQL INCLUDE, CALL/FETCH, EXEC CICS,
   EXEC DLI, JCL programs/procedures and IMS/CSD resource relationships.
+  HLASM CSECT/START programs, COPY members and macro invocations are resolved;
+  assembler diagnostics also appear in the syntax/diagnostic CSV reports.
+  Independent unresolved HLASM operations are reported together. HLASM node
+  attributes include compile_return_code and compile_diagnostics_complete;
+  false means the diagnostics cannot be treated as an exhaustive inventory.
+  MNOTE information/warnings are distinguished from compile errors.
+  HLASM_EXTERNAL edges follow EXTRN/WXTRN/V constants and exported entries.
+  Unresolved weak references have OPTIONAL status and weak=true, and do not
+  contribute to missing_assets.csv or exit status 4. A strong reference to
+  the same missing symbol makes it required.
   Unresolved dynamic targets are reported; the tool does not run applications.
 
 EXAMPLES

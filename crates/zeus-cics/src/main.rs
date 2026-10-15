@@ -308,7 +308,7 @@ mod server {
                 }
                 DeviceRequest::Associate(d) => {
                     let d = d.to_ascii_uppercase();
-                    if !self.in_use.get(&d).is_some_and(|(_, p)| !p) {
+                    if self.in_use.get(&d).is_none_or(|(_, p)| *p) {
                         return Err(Refusal::InvalidAssociate);
                     }
                     // the PRINTER of the display's TERMINAL definition
