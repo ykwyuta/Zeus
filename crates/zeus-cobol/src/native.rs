@@ -429,6 +429,7 @@ fn int_item(p: &ProgramCode, loc: &Loc) -> Option<(u32, u32, NumType)> {
     };
     let ok = t.scale == 0
         && match t.usage {
+            NumUsage::National => false,
             NumUsage::Binary | NumUsage::Native => matches!(len, 2 | 4 | 8),
             NumUsage::Packed => len <= 9,
             NumUsage::Display => {

@@ -1,0 +1,98 @@
+      *================================================================*
+      * ZA104A - 18-DIGIT DECIMAL ARITHMETIC & INTERMEDIATE PRECISION  *
+      *================================================================*
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZA104A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD            PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  WS-DEC-FIELDS.
+           05  WS-D18-A             PIC S9(18) COMP-3.
+           05  WS-D18-B             PIC S9(18) COMP-3.
+           05  WS-D18-R             PIC S9(18) COMP-3.
+           05  WS-RATE              PIC S9(3)V9(6) COMP-3.
+           05  WS-PRIN              PIC S9(11)V99 COMP-3.
+           05  WS-AMT               PIC S9(11)V99 COMP-3.
+           05  WS-QUOT              PIC S9(9)V9(6) COMP-3.
+           05  WS-REM               PIC S9(9)V9(6) COMP-3.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZA104A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+      * TEST 01: 18-DIGIT ADDITION UP TO 999,999,999,999,999,999
+           MOVE 'DEC18-ADD-MAX' TO ZCVS-TEST-NAME.
+           MOVE 888888888888888888 TO WS-D18-A.
+           MOVE 111111111111111111 TO WS-D18-B.
+           ADD WS-D18-A WS-D18-B GIVING WS-D18-R.
+           IF WS-D18-R = 999999999999999999
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '999999999999999999' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+      * TEST 02: 18-DIGIT SUBTRACTION TO NEGATIVE
+           MOVE 'DEC18-SUB-NEG' TO ZCVS-TEST-NAME.
+           SUBTRACT WS-D18-R FROM WS-D18-B GIVING WS-D18-A.
+           IF WS-D18-A = -888888888888888888
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '-888888888888888888' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+      * TEST 03: COMPOUND MULTIPLY/DIVIDE IN COMPUTE (> 18 DIGITS)
+           MOVE 'DEC-INTERM-PREC' TO ZCVS-TEST-NAME.
+           MOVE 123456789.12 TO WS-PRIN.
+           MOVE 0.052500 TO WS-RATE.
+           COMPUTE WS-AMT ROUNDED = (WS-PRIN * WS-RATE * 365) / 365.
+           IF WS-AMT = 6481481.43
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '6481481.43' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+      * TEST 04: DIVIDE WITH FRACTIONAL QUOTIENT AND REMAINDER
+           MOVE 'DEC-DIV-REM' TO ZCVS-TEST-NAME.
+           DIVIDE 100 BY 7 GIVING WS-QUOT REMAINDER WS-REM.
+           IF WS-QUOT = 14.285714 AND WS-REM = 0.000002
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '14.285714/0.000002' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+      * TEST 05: CHAINED ADD/SUBTRACT/MULTIPLY IN COMPUTE
+           MOVE 'DEC-CHAIN-COMP' TO ZCVS-TEST-NAME.
+           MOVE 1000000000000 TO WS-D18-A.
+           MOVE 250000000000 TO WS-D18-B.
+           COMPUTE WS-D18-R = (WS-D18-A - WS-D18-B) * 12 / 3.
+           IF WS-D18-R = 3000000000000
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '3000000000000' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           STOP RUN.
+
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.

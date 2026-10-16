@@ -4,10 +4,51 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use crate::report::Counts;
-use crate::runner::{MODULES, ModuleResult, Outcome, SuiteResult, order};
+use crate::runner::{ALL_MODULES, MODULES, ModuleResult, Outcome, SuiteResult, ZCVS_MODULES, order};
 
-/// Modules that must pass (docs/proposal/0003 section 5.2).
+/// CCVS85 modules that must pass (docs/proposal/0003 section 5.2).
 pub const REQUIRED: &[&str] = &["NC", "SM", "IC", "SQ", "RL", "IX", "ST", "IF"];
+
+/// ZCVS modules that must pass (docs/proposal/0019 section 1.2).
+pub const ZCVS_REQUIRED: &[&str] = &["ZD", "ZA", "ZN", "ZP", "ZF", "ZS", "ZE"];
+
+pub fn is_required(module: &str) -> bool {
+    REQUIRED.contains(&module) || ZCVS_REQUIRED.contains(&module)
+}
+
+/// Merges multiple `SuiteResult` sets (for example CCVS85 + ZCVS) into one.
+pub fn merge_results(sets: &[SuiteResult]) -> SuiteResult {
+    let Some(first) = sets.first() else {
+        return SuiteResult {
+            suite: None,
+            toolchain: String::new(),
+            version: String::new(),
+            modules: Vec::new(),
+        };
+    };
+    if sets.len() == 1 {
+        return first.clone();
+    }
+    let mut modules = Vec::new();
+    let mut suite_names = Vec::new();
+    for s in sets {
+        if let Some(name) = &s.suite
+            && !suite_names.contains(name)
+        {
+            suite_names.push(name.clone());
+        }
+        for m in &s.modules {
+            modules.push(m.clone());
+        }
+    }
+    modules.sort_by_key(|m| order(&m.module));
+    SuiteResult {
+        suite: (!suite_names.is_empty()).then(|| suite_names.join("+")),
+        toolchain: first.toolchain.clone(),
+        version: first.version.clone(),
+        modules,
+    }
+}
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
 pub struct ModuleSummary {
@@ -56,7 +97,7 @@ fn status(s: Option<&ModuleSummary>, module: &str) -> &'static str {
     match s {
         None => "-",
         Some(s) if s.passed() => "PASS",
-        Some(_) if REQUIRED.contains(&module) => "FAIL",
+        Some(_) if is_required(module) => "FAIL",
         Some(_) => "fail (optional)",
     }
 }
@@ -101,7 +142,20 @@ pub fn markdown(current: &SuiteResult, baseline: Option<&SuiteResult>) -> String
     let base = baseline.map(summarize);
     let mut out = String::new();
     let label = |r: &SuiteResult| format!("{} ({})", r.toolchain, r.version);
-    let _ = writeln!(out, "### CCVS85 results: {}\n", label(current));
+    let has_ccvs = current
+        .modules
+        .iter()
+        .any(|m| MODULES.contains(&m.module.as_str()));
+    let has_zcvs = current
+        .modules
+        .iter()
+        .any(|m| ZCVS_MODULES.contains(&m.module.as_str()));
+    let title = match (has_ccvs, has_zcvs) {
+        (true, true) => "CCVS85 + ZCVS",
+        (false, true) => "ZCVS",
+        _ => "CCVS85",
+    };
+    let _ = writeln!(out, "### {title} results: {}\n", label(current));
     if let Some(b) = baseline {
         let _ = writeln!(out, "Baseline: {}\n", label(b));
         let _ = writeln!(
@@ -117,13 +171,13 @@ pub fn markdown(current: &SuiteResult, baseline: Option<&SuiteResult>) -> String
         let _ = writeln!(out, "|---|---|---|---|---|---|---|---|");
     }
     let mut total = ModuleSummary::default();
-    for (idx, module) in MODULES.iter().enumerate() {
+    for (idx, module) in ALL_MODULES.iter().enumerate() {
         let c = cur.get(&idx).map(|(_, s)| s);
         let b = base.as_ref().and_then(|b| b.get(&idx)).map(|(_, s)| s);
         if c.is_none() && b.is_none() {
             continue;
         }
-        let req = if REQUIRED.contains(module) { "yes" } else { "" };
+        let req = if is_required(module) { "yes" } else { "" };
         let cells = match c {
             Some(s) => {
                 total.programs += s.programs;
@@ -157,14 +211,19 @@ pub fn markdown(current: &SuiteResult, baseline: Option<&SuiteResult>) -> String
         }
         out.push('\n');
     }
-    let required_passed = REQUIRED
+    let active_required: Vec<&str> = match (has_ccvs, has_zcvs) {
+        (true, true) => REQUIRED.iter().chain(ZCVS_REQUIRED.iter()).copied().collect(),
+        (false, true) => ZCVS_REQUIRED.to_vec(),
+        _ => REQUIRED.to_vec(),
+    };
+    let required_passed = active_required
         .iter()
         .filter(|m| cur.values().any(|(name, s)| name == *m && s.passed()))
         .count();
     let _ = writeln!(
         out,
         "\nRequired modules passed: **{required_passed}/{}** - programs OK {}/{}, tests passed {}/{}",
-        REQUIRED.len(),
+        active_required.len(),
         total.ok,
         total.programs,
         total.counts.pass,
@@ -180,6 +239,7 @@ mod tests {
 
     fn result(toolchain: &str, outcome: Outcome) -> SuiteResult {
         SuiteResult {
+            suite: None,
             toolchain: toolchain.to_string(),
             version: "1".to_string(),
             modules: vec![ModuleResult {

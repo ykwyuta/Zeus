@@ -46,6 +46,7 @@ fn alnum_function(f: Func) -> bool {
             | Func::Reverse
             | Func::Trim
             | Func::WhenCompiled
+            | Func::WhenCompiledRegister
             | Func::NationalOf
             | Func::DisplayOf
     )
@@ -99,6 +100,7 @@ pub fn function(name: &str) -> Option<Func> {
         "UPPER-CASE" => Func::UpperCase,
         "VARIANCE" => Func::Variance,
         "WHEN-COMPILED" => Func::WhenCompiled,
+        "__WHEN-COMPILED-REGISTER" => Func::WhenCompiledRegister,
         "DATE-TO-YYYYMMDD" => Func::DateToYyyymmdd,
         "DAY-TO-YYYYDDD" => Func::DayToYyyyddd,
         "YEAR-TO-YYYY" => Func::YearToYyyy,
@@ -168,12 +170,14 @@ impl Gen<'_> {
     /// Whether an operand has a numeric value (for comparisons).
     pub fn is_numeric_operand(&self, op: &Operand) -> bool {
         match op {
-            Operand::Lit(Literal::Num(_)) => true,
+            Operand::Lit(Literal::Num(_)) | Operand::Null => true,
             Operand::Ref(r) => self.dm.resolve(r).ok().is_some_and(|id| {
                 let it = &self.dm.items[id];
                 it.cond_of.is_none()
                     && r.refmod.is_none()
-                    && self.dm.descs[it.desc as usize].ty.is_numeric()
+                    && (self.dm.descs[it.desc as usize].ty.is_numeric()
+                        || self.dm.descs[it.desc as usize].ty.is_entry_pointer()
+                        || self.dm.descs[it.desc as usize].ty == DataType::Pointer)
             }),
             Operand::Func(f) => {
                 function(&f.name).is_some_and(|f| !alnum_function(f))

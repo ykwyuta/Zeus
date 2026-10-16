@@ -28,6 +28,11 @@ fn sign_position(t: &NumType) -> zoned::SignPosition {
 /// Raw integer held by a numeric item (before applying the scale).
 fn raw_value(t: &NumType, bytes: &[u8]) -> i128 {
     match t.usage {
+        NumUsage::National => {
+            let mut t = *t;
+            t.usage = NumUsage::Display;
+            raw_value(&t, &display_of(bytes))
+        }
         NumUsage::Display => {
             let (v, neg) = zoned::decode_unchecked(bytes, sign_position(t));
             let v = v as i128;
@@ -59,11 +64,25 @@ pub fn num_value(t: &NumType, bytes: &[u8]) -> Dec {
 pub fn value_of(ty: &DataType, bytes: &[u8]) -> Dec {
     match ty {
         DataType::Numeric(t) => num_value(t, bytes),
-        DataType::Index | DataType::Pointer => Dec::new(binary::read(bytes, true), 0),
+        DataType::Index
+        | DataType::Pointer
+        | DataType::ProcedurePointer
+        | DataType::FunctionPointer => Dec::new(binary::read(bytes, true), 0),
         DataType::Float { .. } => float_dec(zeus_decimal::hfp::decode(bytes)),
         DataType::NumericEdited {
-            edit, scale, point, ..
-        } => deedit(edit, *scale, *point, bytes),
+            edit,
+            scale,
+            point,
+            national,
+            ..
+        } => {
+            if *national {
+                deedit(edit, *scale, *point, &display_of(bytes))
+            } else {
+                deedit(edit, *scale, *point, bytes)
+            }
+        }
+        ty if ty.is_national() => alnum_as_number(&display_of(bytes)),
         // Alphanumeric data used as a number: an unsigned integer.
         _ => alnum_as_number(bytes),
     }
@@ -133,14 +152,8 @@ pub fn to_raw(v: Dec, scale: i32, rounded: bool) -> i128 {
 }
 
 /// Maximum magnitude (exclusive) of the raw integer of a numeric item.
-fn capacity(t: &NumType, len: usize) -> i128 {
-    match t.usage {
-        NumUsage::Native => {
-            let (lo, hi) = binary::range(len, t.signed);
-            hi.max(-lo) + 1
-        }
-        _ => pow10(t.digits.min(38)),
-    }
+fn capacity(t: &NumType) -> i128 {
+    pow10(t.digits.min(38))
 }
 
 /// Stores `v` into a numeric item. Returns true on size error (the value
@@ -153,18 +166,38 @@ pub fn store_num(t: &NumType, bytes: &mut [u8], v: Dec, rounded: bool) -> bool {
 /// Whether `v` would cause a size error in the item.
 pub fn would_overflow(t: &NumType, len: usize, v: Dec, rounded: bool) -> bool {
     let raw = to_raw(v, t.scale, rounded);
-    raw.abs() >= capacity(t, len)
+    if t.usage == NumUsage::Native {
+        let (lo, hi) = binary::range(len, t.signed);
+        let raw = if t.signed { raw } else { raw.abs() };
+        return raw < lo || raw > hi;
+    }
+    raw.abs() >= capacity(t)
 }
 
 pub fn store_raw(t: &NumType, bytes: &mut [u8], raw: i128) -> bool {
-    let cap = capacity(t, bytes.len());
+    if t.usage == NumUsage::National {
+        let mut t = *t;
+        t.usage = NumUsage::Display;
+        let mut display = vec![0; bytes.len() / 2];
+        let overflow = store_raw(&t, &mut display, raw);
+        bytes.copy_from_slice(&national_of(&display));
+        return overflow;
+    }
+    if t.usage == NumUsage::Native {
+        let raw = if t.signed { raw } else { raw.abs() };
+        let (lo, hi) = binary::range(bytes.len(), t.signed);
+        // MOVE truncates at the storage boundary, including the sign bit.
+        binary::write(bytes, raw);
+        return raw < lo || raw > hi;
+    }
+    let cap = capacity(t);
     let overflow = raw.abs() >= cap;
     let mut r = raw % cap;
     if !t.signed {
         r = r.abs();
     }
     match t.usage {
-        NumUsage::Display => {
+        NumUsage::Display | NumUsage::National => {
             zoned::store(bytes, Dec::new(r, 0), sign_position(t));
         }
         NumUsage::Packed => {

@@ -974,6 +974,7 @@ impl Parser {
             "DBCS",
             "EGCS",
             "NATIONAL",
+            "NATIONAL-EDITED",
         ])
     }
 
@@ -987,6 +988,7 @@ impl Parser {
             "DBCS",
             "EGCS",
             "NATIONAL",
+            "NATIONAL-EDITED",
         ])
         .map(|c| if c == "EGCS" { "DBCS".into() } else { c })
     }
@@ -1535,6 +1537,9 @@ impl Parser {
             }
             if self.accept("FALSE") {
                 return Ok(Stmt::Set(SetStmt::CondFalse(targets)));
+            }
+            if self.accept("ENTRY") {
+                return Ok(Stmt::Set(SetStmt::Entry(targets, self.operand()?)));
             }
             let v = self.operand()?;
             return Ok(Stmt::Set(SetStmt::To(targets, v)));

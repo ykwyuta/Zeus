@@ -442,6 +442,7 @@ impl Parser {
                 if !(1..=49).contains(&n) {
                     return self.err("SEGMENT-LIMIT must be in 1..49");
                 }
+                env.segment_limit = Some(n);
             } else {
                 return self.err("invalid computer paragraph clause");
             }
@@ -713,6 +714,9 @@ impl Parser {
                 self.expect("STATUS")?;
                 self.accept("IS");
                 fc.file_status = Some(self.data_ref()?);
+                if !self.is_period() && !self.is_select_clause() {
+                    fc.vsam_status = Some(self.data_ref()?);
+                }
             } else if self.accept("RESERVE") {
                 fc.reserve = Some(self.integer()?);
                 self.accept("AREA");

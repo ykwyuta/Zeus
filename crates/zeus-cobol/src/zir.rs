@@ -22,6 +22,9 @@ pub struct Module {
     /// the file numbers of `ProgramCode::stmt_pos` (for coverage).
     #[serde(default)]
     pub sources: Vec<String>,
+    /// UTC compilation timestamp; absent in modules produced by older Zeus.
+    #[serde(default)]
+    pub compiled_at: Option<String>,
 }
 
 fn default_ccsid() -> u32 {
@@ -54,6 +57,9 @@ pub struct ProgramCode {
     pub externals: Vec<ExternalArea>,
     /// Linkage base numbers bound by PROCEDURE DIVISION USING.
     pub using: Vec<u32>,
+    /// PROCEDURE DIVISION RETURNING result in LINKAGE storage.
+    #[serde(default)]
+    pub result: Option<Loc>,
     /// Number of temporary numeric registers.
     pub temps: u32,
     /// Number of ALTER-able GO TO slots.
@@ -328,6 +334,7 @@ pub enum SignPos {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NumUsage {
     Display,
+    National,
     Packed,
     /// Binary truncated to the picture (COMP, COMP-4, BINARY).
     Binary,
@@ -359,6 +366,8 @@ pub enum DataType {
     National,
     Numeric(NumType),
     NumericEdited {
+        #[serde(default)]
+        national: bool,
         edit: Vec<EditSym>,
         digits: u32,
         scale: i32,
@@ -367,11 +376,15 @@ pub enum DataType {
         point: u8,
     },
     AlphanumericEdited {
+        #[serde(default)]
+        national: bool,
         edit: Vec<EditSym>,
     },
     /// USAGE INDEX / index-name: 4-byte binary occurrence number.
     Index,
     Pointer,
+    ProcedurePointer,
+    FunctionPointer,
     /// COMP-1 (short) / COMP-2 (long): IBM hexadecimal floating point.
     Float {
         long: bool,
@@ -379,6 +392,22 @@ pub enum DataType {
 }
 
 impl DataType {
+    pub fn is_entry_pointer(&self) -> bool {
+        matches!(self, Self::ProcedurePointer | Self::FunctionPointer)
+    }
+    pub fn is_national(&self) -> bool {
+        matches!(
+            self,
+            Self::National
+                | Self::Numeric(NumType {
+                    usage: NumUsage::National,
+                    ..
+                })
+                | Self::NumericEdited { national: true, .. }
+                | Self::AlphanumericEdited { national: true, .. }
+        )
+    }
+
     pub fn is_numeric(&self) -> bool {
         matches!(
             self,
@@ -507,6 +536,7 @@ pub enum Func {
     UpperCase,
     Variance,
     WhenCompiled,
+    WhenCompiledRegister,
     DateToYyyymmdd,
     DayToYyyyddd,
     YearToYyyy,
@@ -647,6 +677,8 @@ pub struct FileDef {
     pub same_area: Vec<String>,
     pub record_depending: Option<Loc>,
     pub status: Option<Loc>,
+    #[serde(default)]
+    pub vsam_status: Option<Loc>,
     pub relative_key: Option<Loc>,
     pub record_key: Option<Loc>,
     pub alternate_keys: Vec<(Loc, bool)>,
@@ -771,6 +803,7 @@ pub enum Instr {
     Segment(u8),
     /// SET ADDRESS OF a linkage record (linkage base number) TO value.
     SetAddress(u32, Ex),
+    SetEntry(Vec<Loc>, Src),
     /// Report Writer statements (report index; group index for GENERATE
     /// of a detail, None for summary reporting).
     Initiate(u32),

@@ -483,6 +483,31 @@ impl Machine {
             let v = Val::Alnum(ebcdic::encode(code));
             self.move_val(cur, &v, loc)?;
         }
+        if let Some(loc) = &def.vsam_status {
+            let (addr, len) = self.addr(cur, loc)?;
+            self.mem[addr..addr + len].fill(0);
+        }
+        Ok(())
+    }
+
+    /// A logical failure from the virtual VSAM access method. Validation
+    /// failures detected before accessing it keep the extended status zero.
+    fn set_vsam_status(
+        &mut self,
+        cur: usize,
+        def: &FileDef,
+        code: &str,
+        reason: u16,
+        component: u16,
+    ) -> RResult<()> {
+        self.set_status(cur, def, code)?;
+        if let Some(loc) = &def.vsam_status {
+            let (addr, _) = self.addr(cur, loc)?;
+            for (slot, value) in [8u16, component, reason].iter().enumerate() {
+                self.mem[addr + slot * 2..addr + slot * 2 + 2]
+                    .copy_from_slice(&value.to_be_bytes());
+            }
+        }
         Ok(())
     }
 
@@ -1195,7 +1220,7 @@ impl Machine {
                 self.set_status(cur, def, "00")
             }
             Err(DsError::InvalidRecordNumber) => self.set_status(cur, def, "24"),
-            Err(_) => self.set_status(cur, def, "22"),
+            Err(_) => self.set_vsam_status(cur, def, "22", 8, 0),
         }
     }
 
@@ -1213,7 +1238,7 @@ impl Machine {
         let pos = st.pos;
         let Some((n, rec)) = st.rel().next_from(pos).map(|(n, r)| (n, r.to_vec())) else {
             st.at_end = true;
-            return self.set_status(cur, def, "10");
+            return self.set_vsam_status(cur, def, "10", 4, 0);
         };
         // the record number must fit the RELATIVE KEY item
         if let Some(k) = &def.relative_key
@@ -1248,7 +1273,7 @@ impl Machine {
                 self.put_record(cur, def, &r, into)?;
                 self.set_status(cur, def, "00")
             }
-            None => self.set_status(cur, def, "23"),
+            None => self.set_vsam_status(cur, def, "23", 16, 0),
         }
     }
 
@@ -1268,7 +1293,7 @@ impl Machine {
         };
         let st = self.state(cur, f);
         if st.rel().replace(slot, rec).is_err() {
-            return self.set_status(cur, def, "23");
+            return self.set_vsam_status(cur, def, "23", 16, 0);
         }
         st.modified = true;
         self.set_status(cur, def, "00")
@@ -1280,7 +1305,7 @@ impl Machine {
         };
         let st = self.state(cur, f);
         if st.rel().delete(slot).is_err() {
-            return self.set_status(cur, def, "23");
+            return self.set_vsam_status(cur, def, "23", 16, 0);
         }
         st.modified = true;
         self.set_status(cur, def, "00")
@@ -1295,7 +1320,7 @@ impl Machine {
                 st.at_end = false;
                 self.set_status(cur, def, "00")
             }
-            None => self.set_status(cur, def, "23"),
+            None => self.set_vsam_status(cur, def, "23", 16, 0),
         }
     }
 
@@ -1321,8 +1346,13 @@ impl Machine {
             return self.set_status(cur, def, "21");
         }
         let st = self.state(cur, f);
-        if st.keyed().insert(rec).is_err() {
-            return self.set_status(cur, def, "22");
+        if let Err(e) = st.keyed().insert(rec) {
+            let component = if e == DsError::DuplicateAlternateKey {
+                2
+            } else {
+                0
+            };
+            return self.set_vsam_status(cur, def, "22", 8, component);
         }
         st.modified = true;
         self.set_status(cur, def, "00")
@@ -1348,7 +1378,7 @@ impl Machine {
                 self.put_record(cur, def, &found.record, into)?;
                 self.set_status(cur, def, "00")
             }
-            None => self.set_status(cur, def, "23"),
+            None => self.set_vsam_status(cur, def, "23", 16, if which == 0 { 0 } else { 2 }),
         }
     }
 
@@ -1377,7 +1407,7 @@ impl Machine {
             }
             None => {
                 st.at_end = true;
-                self.set_status(cur, def, "10")
+                self.set_vsam_status(cur, def, "10", 4, if which == 0 { 0 } else { 2 })
             }
         }
     }
@@ -1398,8 +1428,18 @@ impl Machine {
                 st.modified = true;
                 self.set_status(cur, def, "00")
             }
-            Err(DsError::NotFound) => self.set_status(cur, def, "23"),
-            Err(_) => self.set_status(cur, def, "22"),
+            Err(DsError::NotFound) => self.set_vsam_status(cur, def, "23", 16, 0),
+            Err(e) => self.set_vsam_status(
+                cur,
+                def,
+                "22",
+                8,
+                if e == DsError::DuplicateAlternateKey {
+                    2
+                } else {
+                    0
+                },
+            ),
         }
     }
 
@@ -1415,7 +1455,7 @@ impl Machine {
         };
         let st = self.state(cur, f);
         if st.keyed().delete(&key).is_err() {
-            return self.set_status(cur, def, "23");
+            return self.set_vsam_status(cur, def, "23", 16, 0);
         }
         st.modified = true;
         self.set_status(cur, def, "00")
@@ -1457,7 +1497,7 @@ impl Machine {
                 st.at_end = false;
                 self.set_status(cur, def, "00")
             }
-            None => self.set_status(cur, def, "23"),
+            None => self.set_vsam_status(cur, def, "23", 16, if which == 0 { 0 } else { 2 }),
         }
     }
 

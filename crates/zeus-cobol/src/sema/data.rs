@@ -204,8 +204,20 @@ impl DataModel {
     /// Storage length of an elementary item.
     fn elementary_len(&self, id: usize) -> Result<u32> {
         let it = &self.items[id];
+        if matches!(it.usage, Usage::ProcedurePointer | Usage::FunctionPointer)
+            && (it.pic.is_some()
+                || it.entry.sign.is_some()
+                || it.entry.justified
+                || it.entry.blank_when_zero)
+        {
+            return Err(Diag::error(
+                it.pos,
+                "procedure/function-pointer cannot have PICTURE, SIGN, JUSTIFIED or BLANK WHEN ZERO",
+            ));
+        }
         Ok(match it.usage {
-            Usage::Index | Usage::Pointer | Usage::Float => 4,
+            Usage::Index | Usage::Pointer | Usage::FunctionPointer | Usage::Float => 4,
+            Usage::ProcedurePointer => 8,
             Usage::Double => 8,
             Usage::Binary | Usage::NativeBinary => {
                 let p = it
@@ -231,10 +243,36 @@ impl DataModel {
                         ),
                     )
                 })?;
+                if it.usage == Usage::National
+                    && (matches!(p.category, Category::Alphabetic | Category::Alphanumeric)
+                        || (p.category == Category::AlphanumericEdited
+                            && !it.entry.picture.as_ref().is_some_and(|s| s.contains('N')))
+                        || it.entry.picture.as_ref().is_some_and(|s| s.contains('G')))
+                {
+                    return Err(Diag::error(
+                        it.pos,
+                        "USAGE NATIONAL requires a national or numeric PICTURE",
+                    ));
+                }
                 let sign = it.entry.sign.or_else(|| self.inherited_sign(id));
                 let sep =
                     matches!(sign, Some((_, true))) && p.category == Category::Numeric && p.signed;
-                p.size + u32::from(sep)
+                if it.usage == Usage::National && p.category != Category::Dbcs {
+                    if p.signed && !sep {
+                        return Err(Diag::error(
+                            it.pos,
+                            "signed NATIONAL numeric items require SIGN SEPARATE",
+                        ));
+                    }
+                    let national_edit = it.entry.picture.as_ref().is_some_and(|s| s.contains('N'));
+                    if national_edit {
+                        p.size
+                    } else {
+                        2 * (p.size + u32::from(sep))
+                    }
+                } else {
+                    p.size + u32::from(sep)
+                }
             }
         })
     }
@@ -242,9 +280,63 @@ impl DataModel {
     /// Computes lengths and offsets of `id` and its subordinates, placed at
     /// `offset`. Returns the item's total size (all occurrences).
     fn layout(&mut self, id: usize, offset: u32) -> Result<u32> {
+        if !self.items[id].children.is_empty()
+            && matches!(
+                self.items[id].usage,
+                Usage::ProcedurePointer | Usage::FunctionPointer
+            )
+        {
+            return Err(Diag::error(
+                self.items[id].pos,
+                "procedure/function-pointer must be elementary",
+            ));
+        }
+        let inherited_national = self.items[id]
+            .parent
+            .is_some_and(|p| self.items[p].entry.group_national);
+        if inherited_national || self.items[id].entry.group_national {
+            let item = &mut self.items[id];
+            if item.entry.usage.is_some_and(|u| u != Usage::National)
+                || (!item.children.is_empty()
+                    && (item.entry.usage.is_some() || item.entry.justified))
+                || (item.children.is_empty() && item.entry.group_national)
+            {
+                return Err(Diag::error(
+                    item.pos,
+                    "invalid USAGE/JUSTIFIED or elementary GROUP-USAGE NATIONAL",
+                ));
+            }
+            if !item.children.is_empty() {
+                item.entry.group_national = true;
+            }
+            item.usage = Usage::National;
+        }
+        if self.items[id]
+            .pic
+            .as_ref()
+            .is_some_and(|p| p.category == Category::AlphanumericEdited)
+            && self.items[id]
+                .entry
+                .picture
+                .as_ref()
+                .is_some_and(|s| s.contains('N'))
+        {
+            if self.items[id]
+                .entry
+                .usage
+                .is_some_and(|u| u != Usage::National)
+            {
+                return Err(Diag::error(
+                    self.items[id].pos,
+                    "national-edited items require USAGE NATIONAL",
+                ));
+            }
+            self.items[id].usage = Usage::National;
+        }
         // Inherit USAGE from groups.
         if let Some(parent) = self.items[id].parent
             && self.items[id].entry.usage.is_none()
+            && self.items[id].usage != Usage::National
             && self.items[id].cond_of.is_none()
         {
             let pu = self.items[parent].usage;
@@ -259,6 +351,8 @@ impl DataModel {
                 | Usage::NativeBinary
                 | Usage::Index
                 | Usage::Pointer
+                | Usage::ProcedurePointer
+                | Usage::FunctionPointer
                 | Usage::Float => self.elementary_len(id)?,
                 Usage::Double => 8,
                 _ => 1,
@@ -320,11 +414,17 @@ impl DataModel {
     fn data_type(&self, id: usize) -> DataType {
         let it = &self.items[id];
         if !it.children.is_empty() || it.renames.is_some() {
-            return DataType::Group;
+            return if it.entry.group_national {
+                DataType::National
+            } else {
+                DataType::Group
+            };
         }
         match it.usage {
             Usage::Index => return DataType::Index,
             Usage::Pointer => return DataType::Pointer,
+            Usage::ProcedurePointer => return DataType::ProcedurePointer,
+            Usage::FunctionPointer => return DataType::FunctionPointer,
             Usage::Float => return DataType::Float { long: false },
             Usage::Double => return DataType::Float { long: true },
             _ => {}
@@ -354,9 +454,11 @@ impl DataModel {
                 }
             }
             Category::AlphanumericEdited => DataType::AlphanumericEdited {
+                national: it.usage == Usage::National,
                 edit: p.edit.clone(),
             },
             Category::NumericEdited => DataType::NumericEdited {
+                national: it.usage == Usage::National,
                 edit: p.edit.clone(),
                 digits: p.digits,
                 scale: p.scale,
@@ -365,6 +467,7 @@ impl DataModel {
                 point: ebcdic::from_latin1(if self.decimal_comma { b',' } else { b'.' }),
             },
             Category::Numeric if it.entry.blank_when_zero => DataType::NumericEdited {
+                national: it.usage == Usage::National,
                 edit: (0..p.digits)
                     .map(|_| super::picture::EditSym::Digit)
                     .collect(),
@@ -377,6 +480,10 @@ impl DataModel {
             Category::Numeric => {
                 let usage = match it.usage {
                     Usage::Packed => NumUsage::Packed,
+                    Usage::National => NumUsage::National,
+                    Usage::Binary if crate::front::trunc() == crate::front::Trunc::Bin => {
+                        NumUsage::Native
+                    }
                     Usage::Binary => NumUsage::Binary,
                     Usage::NativeBinary => NumUsage::Native,
                     _ => NumUsage::Display,
@@ -604,6 +711,25 @@ impl DataModel {
         pos: Pos,
     ) -> Result<()> {
         let value = lit::constant(v, self.decimal_comma).map_err(|m| Diag::error(pos, m))?;
+        if ty.is_entry_pointer() && !matches!(value, lit::Const::Null) {
+            return Err(Diag::error(
+                pos,
+                "procedure/function-pointer VALUE must be NULL",
+            ));
+        }
+        if ty.is_national() && *ty != DataType::National {
+            match &value {
+                lit::Const::Num(d, _) => {
+                    crate::vm::eval::move_into(&crate::vm::eval::Val::Num(*d), ty, field)
+                }
+                lit::Const::National(b) => vdata::move_national(b, field),
+                lit::Const::Bytes(b) => vdata::move_national(&vdata::national_of(b), field),
+                lit::Const::Fig(f) => vdata::fill_pattern(field, &vdata::national_fig(f.byte())),
+                lit::Const::All(b) => vdata::fill_pattern(field, &vdata::national_of(b)),
+                lit::Const::Null => field.fill(0),
+            }
+            return Ok(());
+        }
         match (&value, ty) {
             // national items: national literals as they are, other
             // literals and figurative constants converted (national spaces)
@@ -630,6 +756,7 @@ impl DataModel {
                     blank_zero,
                     currency,
                     point,
+                    ..
                 },
             ) => {
                 vdata::edit_num(
@@ -667,7 +794,12 @@ fn default_value(ty: &DataType, field: &mut [u8]) {
         DataType::Numeric(t) => {
             vdata::store_num(t, field, Dec::ZERO, false);
         }
-        DataType::Index | DataType::Pointer | DataType::Float { .. } => field.fill(0),
+        ty if ty.is_national() => vdata::fill_pattern(field, &vdata::national_fig(ebcdic::SPACE)),
+        DataType::Index
+        | DataType::Pointer
+        | DataType::ProcedurePointer
+        | DataType::FunctionPointer
+        | DataType::Float { .. } => field.fill(0),
         _ => field.fill(ebcdic::SPACE),
     }
 }

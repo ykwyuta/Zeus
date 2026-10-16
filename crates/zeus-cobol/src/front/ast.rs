@@ -38,6 +38,7 @@ pub struct Environment {
     pub apply_write_only: Vec<String>,
     /// WITH DEBUGGING MODE: debugging sections are active.
     pub debugging_mode: bool,
+    pub segment_limit: Option<u32>,
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +107,7 @@ pub struct FileControl {
     pub record_key: Option<DataRef>,
     pub alternate_keys: Vec<(DataRef, bool)>,
     pub file_status: Option<DataRef>,
+    pub vsam_status: Option<DataRef>,
     pub reserve: Option<u32>,
     pub padding: Option<Operand>,
     pub record_delimiter: bool,
@@ -223,6 +225,8 @@ pub enum Usage {
     NativeBinary,
     Index,
     Pointer,
+    ProcedurePointer,
+    FunctionPointer,
     /// COMP-1 / COMP-2 (hexadecimal floating point)
     Float,
     Double,
@@ -255,6 +259,7 @@ pub struct DataEntry {
     pub global: bool,
     pub picture: Option<String>,
     pub usage: Option<Usage>,
+    pub group_national: bool,
     /// SIGN clause: (leading, separate)
     pub sign: Option<(bool, bool)>,
     pub occurs: Option<Occurs>,
@@ -670,6 +675,7 @@ pub enum ReplaceMode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SetStmt {
+    Entry(Vec<DataRef>, Operand),
     /// SET targets TO value
     To(Vec<DataRef>, Operand),
     /// SET targets UP/DOWN BY value

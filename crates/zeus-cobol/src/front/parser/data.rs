@@ -524,6 +524,8 @@ impl Parser {
             "COMP-2" | "COMPUTATIONAL-2" => Usage::Double,
             "INDEX" => Usage::Index,
             "POINTER" => Usage::Pointer,
+            "PROCEDURE-POINTER" => Usage::ProcedurePointer,
+            "FUNCTION-POINTER" => Usage::FunctionPointer,
             _ => return None,
         };
         self.i += 1;
@@ -562,6 +564,10 @@ impl Parser {
                     Some(Tok::Pic(p)) => e.picture = Some(p),
                     _ => return self.err("picture string expected"),
                 }
+            } else if self.accept("GROUP-USAGE") {
+                self.accept("IS");
+                self.expect("NATIONAL")?;
+                e.group_national = true;
             } else if self.accept("USAGE") {
                 self.accept("IS");
                 e.usage = Some(match self.usage_word() {
@@ -661,6 +667,7 @@ impl Parser {
             "PIC",
             "PICTURE",
             "USAGE",
+            "GROUP-USAGE",
             "SIGN",
             "OCCURS",
             "SYNC",
@@ -684,6 +691,8 @@ impl Parser {
             "DISPLAY",
             "INDEX",
             "POINTER",
+            "PROCEDURE-POINTER",
+            "FUNCTION-POINTER",
             "LEADING",
             "TRAILING",
         ])

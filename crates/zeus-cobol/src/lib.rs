@@ -25,6 +25,7 @@ use front::{FileTable, FrontOptions};
 
 /// Compiles a source file into a ZIR module. Diagnostics carry file names.
 pub fn compile_file(path: &Path, opts: &FrontOptions) -> Result<zir::Module, Diag> {
+    let compiled_at = vm::timestamp();
     let mut files = FileTable::default();
     let name = |d: Diag, files: &FileTable| {
         let mut d = d;
@@ -33,6 +34,7 @@ pub fn compile_file(path: &Path, opts: &FrontOptions) -> Result<zir::Module, Dia
     };
     let programs = front::parse_file(path, opts, &mut files).map_err(|d| name(d, &files))?;
     let mut module = sema::codegen::compile(&programs).map_err(|d| name(d, &files))?;
+    module.compiled_at = Some(compiled_at);
     // the source files, as absolute paths (coverage reports)
     module.sources = files
         .names

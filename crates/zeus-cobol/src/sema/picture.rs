@@ -144,6 +144,25 @@ pub fn analyze(pic: &str, decimal_comma: bool, currency: char) -> Result<Picture
             edit: Vec::new(),
         });
     }
+    if has('N') && chars.iter().all(|c| matches!(c, 'N' | 'B' | '0' | '/')) {
+        let edit = chars
+            .iter()
+            .map(|c| match c {
+                'B' => EditSym::Insert(b' '),
+                '0' => EditSym::Insert(b'0'),
+                '/' => EditSym::Insert(b'/'),
+                _ => EditSym::Char,
+            })
+            .collect::<Vec<_>>();
+        return Ok(Picture {
+            category: Category::AlphanumericEdited,
+            size: edit.len() as u32 * 2,
+            digits: 0,
+            scale: 0,
+            signed: false,
+            edit,
+        });
+    }
     if chars
         .iter()
         .all(|c| matches!(c, 'X' | 'A' | '9' | 'B' | '0' | '/'))

@@ -29,7 +29,8 @@ RUN
   inspect the result counts rather than assuming exit 0 means every test passed.
 
 REPORT
-  zeus-ccvs report --results results.json [--baseline baseline.json] [--programs]
+  zeus-ccvs report --results results.json [--results zcvs.json] [--baseline baseline.json] [--programs]
+  --results FILE   Suite result JSON file (repeatable to merge CCVS85 + ZCVS).
   --baseline FILE  Compare counts with another recorded run.
   --programs       Include the detailed per-program results in the report.
 
@@ -37,11 +38,17 @@ MANIFEST
   zeus-ccvs manifest --out manifest.txt EXEC85_OUTPUT...
   Build a reference extraction manifest from EXEC85 output files.
 
+EXPORT-JCL
+  zeus-ccvs export-jcl --suite zcvs --out work/zcvs-zos [--hlq USER.ZCVS] [--modules LIST]
+  Export a suite into 80-column PDS members (COPY/, SRCLIB/) and z/OS
+  IGYCRCTL+IEWL JCL job streams (JCL/).
+
 EXAMPLES
   zeus-ccvs extract --newcob newcob.val --out work/suite --overlay ccvs85/exec85-zeus.conf
   zeus-ccvs run --suite work/suite --toolchain zeus --out results.json
-  zeus-ccvs run --suite work/suite --toolchain zeus-native --modules NC,SM --out native.json
-  zeus-ccvs report --results native.json --baseline results.json --programs
+  zeus-ccvs run --suite zcvs --toolchain zeus --out zcvs.json
+  zeus-ccvs export-jcl --suite zcvs --out work/zcvs-zos --hlq USER.ZCVS
+  zeus-ccvs report --results results.json --results zcvs.json --programs
 
 EXIT STATUS
   0 command completed; 2 invalid usage or harness failure. Test failures and
