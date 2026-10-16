@@ -453,7 +453,7 @@ fn calls_between_languages() {
     assert_eq!(lines(spool("RCMAIN", "SYSPRINT")), ["PSUB 7 HELLO"]);
     assert_eq!(
         lines(spool("RCMAIN", "SYSOUT")),
-        ["CSUB 001 HELLO", "BACK 00000012A COBOL RC 000B"]
+        ["CSUB 001 HELLO", "BACK 000000121 COBOL RC 0002"]
     );
     assert_eq!(
         lines(spool("RPMAIN", "SYSPRINT")),
@@ -1362,7 +1362,7 @@ fn ims_batch_regions() {
         [
             "DBD SHOPDB   PROCOPT A",
             "ISRT DUPLICATE II",
-            "GHU    BOB                       CUSTOMER 01 0000E C0002",
+            "GHU    BOB                       CUSTOMER 01 00005 C0002",
             "REPL",
             "GU C0009 GE",
             "DLET",

@@ -116,6 +116,24 @@ impl<'a> Gen<'a> {
                 "RECURSIVE cannot be INITIAL, nested, or contain nested programs",
             ));
         }
+        if prog.recursive
+            && (prog.env.segment_limit.is_some()
+                || prog
+                    .procedure
+                    .sections
+                    .iter()
+                    .chain(&prog.procedure.declaratives)
+                    .any(|s| {
+                    s.segment.is_some() || matches!(s.use_stmt, Some(UseStmt::Debugging(_)))
+                        || s.paragraphs.iter().flat_map(|p| &p.sentences).flatten()
+                            .any(|st| matches!(st, Stmt::GoTo { targets, .. } if targets.is_empty()))
+                    }))
+        {
+            return Err(Diag::error(
+                prog.pos,
+                "RECURSIVE cannot use segmentation, USE FOR DEBUGGING, or GO TO without a procedure name",
+            ));
+        }
         let settings = Settings {
             decimal_comma: prog.env.decimal_point_comma,
             currency: prog
@@ -497,6 +515,34 @@ impl<'a> Gen<'a> {
             }
         };
         let status = opt_loc(self, &fc.file_status)?;
+        let vsam_status = opt_loc(self, &fc.vsam_status)?;
+        if owner.is_none()
+            && let Some(r) = &fc.vsam_status
+        {
+            let id = self.dm.resolve(r)?;
+            let item = &self.dm.items[id];
+            let desc = &self.dm.descs[item.desc as usize];
+            let local = self.dm.local_storage.is_some_and(|(start, len)| {
+                item.area == Area::Working && item.offset >= start && item.offset < start + len
+            });
+            if !matches!(
+                fc.organization,
+                Organization::Indexed | Organization::Relative
+            ) || !matches!(item.area, Area::Working | Area::Linkage(_))
+                || local
+                || desc.ty != DataType::Group
+                || desc.len != 6
+                || !desc.dims.is_empty()
+                || desc.odo.is_some()
+                || !r.subscripts.is_empty()
+                || r.refmod.is_some()
+            {
+                return Err(Diag::error(
+                    r.pos,
+                    "second FILE STATUS item requires a fixed 6-byte WORKING-STORAGE/LINKAGE group for a VSAM file",
+                ));
+            }
+        }
         let relative_key = opt_loc(self, &fc.relative_key)?;
         let record_key =
             opt_loc(self, &fc.record_key)?.map(|l| self.key_in_record(l, area, rec_desc));
@@ -576,6 +622,7 @@ impl<'a> Gen<'a> {
             },
             record_depending,
             status,
+            vsam_status,
             relative_key,
             record_key,
             alternate_keys,
@@ -1132,6 +1179,32 @@ impl<'a> Gen<'a> {
                 }
             })
             .collect::<Result<Vec<_>>>()?;
+        let result = if let Some(r) = &self.prog.procedure.giving {
+            let id = self.dm.resolve(r)?;
+            let item = &self.dm.items[id];
+            if parent.is_some()
+                || !matches!(item.level, 1 | 77)
+                || !matches!(item.area, Area::Linkage(_))
+                || !r.subscripts.is_empty()
+                || r.refmod.is_some()
+            {
+                return Err(Diag::error(
+                    r.pos,
+                    "PROCEDURE RETURNING requires a level 01/77 LINKAGE item in a non-nested program",
+                ));
+            }
+            if let Area::Linkage(slot) = item.area
+                && using.contains(&slot)
+            {
+                return Err(Diag::error(
+                    r.pos,
+                    "RETURNING item cannot also appear in USING",
+                ));
+            }
+            Some(self.loc(r)?)
+        } else {
+            None
+        };
         Ok(zir::ProgramCode {
             name: self.prog.name.clone(),
             recursive: self.prog.recursive,
@@ -1146,6 +1219,7 @@ impl<'a> Gen<'a> {
             files: self.files,
             linkage_count: self.dm.linkage_count,
             using,
+            result,
             temps: self.temps,
             alter_slots: alter_init.len() as u32,
             alter_init,
@@ -1946,6 +2020,15 @@ impl<'a> Gen<'a> {
     }
 
     fn stmt_code(&mut self, s: &Stmt) -> Result<()> {
+        if self.prog.recursive
+            && (matches!(s, Stmt::Alter(_))
+                || matches!(s, Stmt::GoTo { targets, .. } if targets.is_empty()))
+        {
+            return Err(Diag::error(
+                self.pos,
+                "RECURSIVE cannot use ALTER or GO TO without a procedure name",
+            ));
+        }
         match s {
             Stmt::Initiate(names) | Stmt::Terminate(names) => {
                 for n in names {
@@ -2695,7 +2778,14 @@ impl<'a> Gen<'a> {
             }
             // Alternate entry points are recorded only; executed in line,
             // ENTRY does nothing.
-            Stmt::Entry { .. } => {}
+            Stmt::Entry { .. } => {
+                if self.prog.procedure.giving.is_some() {
+                    return Err(Diag::error(
+                        self.pos,
+                        "PROCEDURE RETURNING cannot be combined with ENTRY",
+                    ));
+                }
+            }
             Stmt::Exec(e) => {
                 self.pos = e.pos;
                 let def = self.exec_def(e)?;
@@ -2712,6 +2802,40 @@ impl<'a> Gen<'a> {
 
     fn set(&mut self, set: &SetStmt) -> Result<()> {
         match set {
+            SetStmt::Entry(targets, name) => {
+                let valid_name = match name {
+                    Operand::Lit(Literal::Str(_)) => true,
+                    Operand::Ref(r) => {
+                        let loc = self.loc(r)?;
+                        matches!(
+                            self.dm.descs[loc.desc as usize].ty,
+                            DataType::Alphanumeric { .. }
+                        )
+                    }
+                    _ => false,
+                };
+                if !valid_name {
+                    return Err(Diag::error(
+                        self.pos,
+                        "SET TO ENTRY requires an alphanumeric program name",
+                    ));
+                }
+                let mut locs = Vec::new();
+                for target in targets {
+                    let loc = self.loc(target)?;
+                    if !self.dm.descs[loc.desc as usize].ty.is_entry_pointer()
+                        || target.refmod.is_some()
+                    {
+                        return Err(Diag::error(
+                            target.pos,
+                            "SET TO ENTRY requires a procedure/function-pointer receiver",
+                        ));
+                    }
+                    locs.push(loc);
+                }
+                let name = self.src(name)?;
+                self.emit(Instr::SetEntry(locs, name));
+            }
             SetStmt::To(targets, value) => {
                 let v = match value {
                     Operand::Ref(r) => {
@@ -2818,7 +2942,13 @@ impl<'a> Gen<'a> {
         }
         let base = self.loc_of(id, target)?;
         let base_desc = self.dm.descs[base.desc as usize].clone();
-        if matches!(base_desc.ty, DataType::Index | DataType::Pointer) {
+        if matches!(
+            base_desc.ty,
+            DataType::Index
+                | DataType::Pointer
+                | DataType::ProcedurePointer
+                | DataType::FunctionPointer
+        ) {
             return Err(Diag::error(
                 target.pos,
                 "INITIALIZE receiver cannot be INDEX or POINTER",
@@ -2841,8 +2971,12 @@ impl<'a> Gen<'a> {
                 DataType::National => "NATIONAL",
                 DataType::Numeric(_) | DataType::Float { .. } => "NUMERIC",
                 DataType::NumericEdited { .. } => "NUMERIC-EDITED",
+                DataType::AlphanumericEdited { national: true, .. } => "NATIONAL-EDITED",
                 DataType::AlphanumericEdited { .. } => "ALPHANUMERIC-EDITED",
-                DataType::Index | DataType::Pointer => continue,
+                DataType::Index
+                | DataType::Pointer
+                | DataType::ProcedurePointer
+                | DataType::FunctionPointer => continue,
             };
             let value = if options
                 .value_categories
@@ -3608,6 +3742,7 @@ fn handlers_of(s: &Stmt) -> Vec<&Vec<Stmt>> {
 
 /// Compiles all programs of a source file into a module.
 pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
+    let compiled_at = crate::vm::timestamp();
     let mut out = Vec::new();
     for p in programs {
         compile_nested(p, None, &[], &mut out)?;
@@ -3616,6 +3751,7 @@ pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
         programs: out,
         ccsid: crate::codepage::active().ccsid,
         sources: Vec::new(),
+        compiled_at: Some(compiled_at),
     })
 }
 

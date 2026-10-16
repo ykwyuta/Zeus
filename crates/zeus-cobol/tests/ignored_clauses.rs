@@ -105,7 +105,7 @@ fn source_options_change_picture_category_and_unknown_settings_fail() {
         );
     }
     for opt in [
-        "TRUNC(BIN)",
+        "TRUNC(BAD)",
         "ARITH(EXTEND)",
         "NUMPROC(PFD)",
         "NS(BAD)",

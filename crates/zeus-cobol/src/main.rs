@@ -131,6 +131,7 @@ fn check(args: &Args) -> ExitCode {
         debugging_lines: args.debugging_lines,
         cics: args.cics,
         nsymbol_dbcs: args.nsymbol_dbcs,
+        ..Default::default()
     };
     let mut worst = 0;
     for input in &args.inputs {
@@ -157,6 +158,7 @@ fn inventory(args: &Args) -> ExitCode {
         debugging_lines: args.debugging_lines,
         cics: args.cics,
         nsymbol_dbcs: args.nsymbol_dbcs,
+        ..Default::default()
     };
     let paths: Vec<&std::path::Path> = args.inputs.iter().map(|p| p.as_path()).collect();
     let (inv, failed) = zeus_cobol::inventory::inventory(&paths, &opts);
@@ -176,6 +178,7 @@ fn compile(args: &Args) -> ExitCode {
         debugging_lines: args.debugging_lines,
         cics: args.cics,
         nsymbol_dbcs: args.nsymbol_dbcs,
+        ..Default::default()
     };
     match zeus_cobol::compile_file(input, &opts) {
         Ok(module) if args.native => {

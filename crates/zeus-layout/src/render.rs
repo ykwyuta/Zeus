@@ -48,6 +48,9 @@ pub fn clauses(e: &DataEntry, redefines: bool, values: bool) -> Vec<String> {
     if let Some(p) = &e.picture {
         c.push(format!("PIC {p}"));
     }
+    if e.group_national {
+        c.push("GROUP-USAGE NATIONAL".into());
+    }
     if let Some(u) = e.usage {
         let u = match u {
             Usage::Display => "",
@@ -58,6 +61,8 @@ pub fn clauses(e: &DataEntry, redefines: bool, values: bool) -> Vec<String> {
             Usage::NativeBinary => "COMP-5",
             Usage::Index => "INDEX",
             Usage::Pointer => "POINTER",
+            Usage::ProcedurePointer => "PROCEDURE-POINTER",
+            Usage::FunctionPointer => "FUNCTION-POINTER",
             Usage::Float => "COMP-1",
             Usage::Double => "COMP-2",
         };

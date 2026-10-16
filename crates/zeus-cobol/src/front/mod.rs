@@ -34,10 +34,25 @@ pub struct FrontOptions {
     /// NSYMBOL(DBCS): N literals and PICTURE N are DBCS (default
     /// NSYMBOL(NATIONAL): national, UTF-16).
     pub nsymbol_dbcs: bool,
+    pub trunc: Trunc,
+}
+
+/// Binary truncation selected by CBL/PROCESS TRUNC.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum Trunc {
+    #[default]
+    Std,
+    Opt,
+    Bin,
 }
 
 thread_local! {
     static NSYMBOL_DBCS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static TRUNC: std::cell::Cell<Trunc> = const { std::cell::Cell::new(Trunc::Std) };
+}
+
+pub(crate) fn trunc() -> Trunc {
+    TRUNC.get()
 }
 
 /// NSYMBOL(DBCS) in effect for the compilation (`FrontOptions`).
@@ -214,8 +229,9 @@ pub fn source_tokens(
     })?;
     let text = String::from_utf8_lossy(&text).into_owned();
     let (text, options) = process_statements(&text);
-    let (cics_option, nsymbol_dbcs) = options::parse(&options, opts)?;
+    let (cics_option, nsymbol_dbcs, trunc) = options::parse(&options, opts)?;
     NSYMBOL_DBCS.set(nsymbol_dbcs);
+    TRUNC.set(trunc);
     let (debugging, comma) = prescan(&text);
     let debugging = debugging || opts.debugging_lines;
     let tokens = preprocess(path, &text, opts, files, debugging, comma)?;

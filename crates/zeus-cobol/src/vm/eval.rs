@@ -135,7 +135,7 @@ impl Machine {
         }
         if let Some((start, l)) = &loc.refmod {
             // national items are positioned in characters (two bytes)
-            let w = if desc.ty == DataType::National { 2 } else { 1 };
+            let w = if desc.ty.is_national() { 2 } else { 1 };
             let s = self.int_of(cur, start)?.max(1) as usize;
             let total = len / w;
             let l = match l {
@@ -156,8 +156,12 @@ impl Machine {
 
     pub(super) fn loc_type(&self, cur: usize, loc: &Loc) -> DataType {
         let ty = &self.instances[cur].code.descs[loc.desc as usize].ty;
-        if loc.refmod.is_some() && *ty != DataType::National {
-            DataType::Alphanumeric { just: false }
+        if loc.refmod.is_some() {
+            if ty.is_national() {
+                DataType::National
+            } else {
+                DataType::Alphanumeric { just: false }
+            }
         } else {
             ty.clone()
         }
@@ -250,7 +254,7 @@ impl Machine {
     /// alphanumeric data converted from the code page.
     pub(super) fn national_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
         Ok(match v {
-            Val::Item(DataType::National, b) => b.clone(),
+            Val::Item(ty, b) if ty.is_national() => b.clone(),
             Val::Item(DataType::Dbcs, b) => d::utf16(&crate::codepage::active().decode_dbcs(b)),
             Val::Fig(f) => d::national_fig(fig_byte(*f)),
             Val::All(p) => d::national_of(p),
@@ -295,16 +299,27 @@ impl Machine {
     /// Bytes shown by DISPLAY.
     pub(super) fn display_bytes(&self, _cur: usize, v: &Val) -> RResult<Vec<u8>> {
         Ok(match v {
+            Val::Item(ty, b) if ty.is_national() => d::display_of(b),
             Val::Item(DataType::Numeric(t), b) => match t.usage {
                 NumUsage::Display => b.clone(),
                 _ => {
                     let x = d::value_of(&DataType::Numeric(*t), b);
                     let raw = d::to_raw(x, t.scale, false);
-                    let mut digits = d::display_digits(raw, t.digits as usize);
+                    let width = if t.usage == NumUsage::Native {
+                        match b.len() {
+                            2 => 5,
+                            4 => 10,
+                            _ => 20,
+                        }
+                    } else {
+                        t.digits as usize
+                    };
+                    let mut digits = d::display_digits(raw, width);
                     if t.signed
+                        && raw < 0
                         && let Some(last) = digits.last_mut()
                     {
-                        *last = (if raw < 0 { 0xD0 } else { 0xC0 }) | (*last & 0xF);
+                        *last = 0xD0 | (*last & 0xF);
                     }
                     digits
                 }
@@ -371,14 +386,7 @@ impl Machine {
                 }
                 d::store_num(t, field, v, rounded);
             }
-            DataType::NumericEdited {
-                edit,
-                digits,
-                scale,
-                blank_zero,
-                currency,
-                point,
-            } => {
+            DataType::NumericEdited { digits, scale, .. } => {
                 let raw = d::to_raw(v, *scale, rounded);
                 if raw.unsigned_abs() >= 10u128.pow((*digits).min(38)) {
                     self.size_error = true;
@@ -387,16 +395,7 @@ impl Machine {
                     }
                 }
                 let vv = d::scaled(raw, *scale);
-                d::edit_num(
-                    edit,
-                    *digits,
-                    *scale,
-                    *blank_zero,
-                    *currency,
-                    *point,
-                    vv,
-                    field,
-                );
+                move_into(&Val::Num(vv), &ty, field);
             }
             DataType::Index => binary::write(field, d::to_raw(v, 0, rounded)),
             DataType::Float { .. } => d::store_float(field, v),
@@ -461,7 +460,10 @@ impl Machine {
         let (a, l) = self.addr(cur, loc)?;
         let field = &mut self.mem[a..a + l];
         match &ty {
-            DataType::Index | DataType::Pointer => {
+            DataType::Index
+            | DataType::Pointer
+            | DataType::ProcedurePointer
+            | DataType::FunctionPointer => {
                 binary::write(field, d::to_raw(v, 0, false));
             }
             DataType::Numeric(t) => {
@@ -513,8 +515,8 @@ impl Machine {
                     // national comparison: both operands as national
                     // data, the shorter padded with national spaces
                     CmpMode::Alnum
-                        if matches!(va, Val::Item(DataType::National, _))
-                            || matches!(vb, Val::Item(DataType::National, _)) =>
+                        if matches!(&va, Val::Item(t, _) if t.is_national())
+                            || matches!(&vb, Val::Item(t, _) if t.is_national()) =>
                     {
                         let x = self.national_bytes(cur, &va)?;
                         let y = self.national_bytes(cur, &vb)?;
@@ -595,8 +597,9 @@ impl Machine {
                 };
                 // The data is transferred as alphanumeric data, whatever
                 // the receiving item's class (national: converted).
-                let national =
-                    self.instances[cur].code.descs[dst.desc as usize].ty == DataType::National;
+                let national = self.instances[cur].code.descs[dst.desc as usize]
+                    .ty
+                    .is_national();
                 let (a, l) = self.addr(cur, dst)?;
                 if national {
                     d::move_national(&d::utf16(&line), &mut self.mem[a..a + l]);
@@ -822,6 +825,11 @@ fn class_test(v: &Val, k: &ClassKind) -> bool {
     match k {
         ClassKind::Numeric => match v {
             Val::Item(DataType::Numeric(t), b) => match t.usage {
+                NumUsage::National => {
+                    let mut t = *t;
+                    t.usage = NumUsage::Display;
+                    class_test(&Val::Item(DataType::Numeric(t), d::display_of(b)), k)
+                }
                 NumUsage::Display => {
                     let pos = if !t.signed {
                         zoned::SignPosition::Unsigned
@@ -859,9 +867,50 @@ fn class_test(v: &Val, k: &ClassKind) -> bool {
 
 /// The MOVE statement's data conversion into a receiving field.
 pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
+    if let DataType::NumericEdited { national: true, .. } = ty {
+        let mut display_type = ty.clone();
+        if let DataType::NumericEdited { national, .. } = &mut display_type {
+            *national = false;
+        }
+        let mut display = vec![0; out.len() / 2];
+        move_into(v, &display_type, &mut display);
+        out.copy_from_slice(&d::national_of(&display));
+        return;
+    }
+    if let DataType::AlphanumericEdited {
+        national: true,
+        edit,
+    } = ty
+    {
+        let src = match v {
+            Val::Item(t, b) if t.is_national() => b.clone(),
+            Val::Fig(f) => {
+                let mut src = vec![0; out.len()];
+                d::fill_pattern(&mut src, &d::national_fig(fig_byte(*f)));
+                src
+            }
+            Val::All(b) => {
+                let mut src = vec![0; out.len()];
+                d::fill_pattern(&mut src, &d::national_of(b));
+                src
+            }
+            _ => d::national_of(&alnum_source(v)),
+        };
+        let mut source = src.chunks_exact(2);
+        for (sym, target) in edit.iter().zip(out.chunks_exact_mut(2)) {
+            match sym {
+                crate::zir::EditSym::Char => {
+                    target.copy_from_slice(source.next().unwrap_or(&[0, 32]))
+                }
+                crate::zir::EditSym::Insert(b) => target.copy_from_slice(&[0, *b]),
+                _ => target.copy_from_slice(&[0, 32]),
+            }
+        }
+        return;
+    }
     // Into an alphanumeric-edited item, a figurative constant or ALL
     // literal is the sending item of the receiver's size, then edited.
-    if let DataType::AlphanumericEdited { edit } = ty
+    if let DataType::AlphanumericEdited { edit, .. } = ty
         && matches!(v, Val::Fig(_) | Val::All(_))
     {
         let mut src = vec![0u8; out.len()];
@@ -951,7 +1000,10 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             let val = numeric_src.unwrap_or_else(|| numeric_val(v));
             d::store_num(t, out, val, false);
         }
-        DataType::Index | DataType::Pointer => {
+        DataType::Index
+        | DataType::Pointer
+        | DataType::ProcedurePointer
+        | DataType::FunctionPointer => {
             let val = numeric_src.unwrap_or_else(|| numeric_val(v));
             binary::write(out, d::to_raw(val, 0, false));
         }
@@ -966,6 +1018,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             blank_zero,
             currency,
             point,
+            ..
         } => {
             let val = numeric_src.unwrap_or_else(|| numeric_val(v));
             d::edit_num(
@@ -991,7 +1044,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         // national: converted from the code page (DBCS and mixed data),
         // padded with national spaces
         DataType::National => match v {
-            Val::Item(DataType::National, b) => d::move_national(b, out),
+            Val::Item(ty, b) if ty.is_national() => d::move_national(b, out),
             Val::Item(DataType::Dbcs, b) => {
                 d::move_national(&d::utf16(&crate::codepage::active().decode_dbcs(b)), out)
             }
@@ -999,7 +1052,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             Val::All(p) => d::fill_pattern(out, &d::national_of(p)),
             _ => d::move_national(&d::national_of(&alnum_source(v)), out),
         },
-        DataType::AlphanumericEdited { edit } => {
+        DataType::AlphanumericEdited { edit, .. } => {
             let bytes = alnum_source(v);
             d::edit_alnum(edit, &bytes, out);
         }
@@ -1033,7 +1086,7 @@ fn alnum_source(v: &Val) -> Vec<u8> {
         }
         Val::Item(DataType::Index, b) => int_digits(Dec::new(binary::read(b, true), 0)),
         // national data moves to alphanumeric data in the code page
-        Val::Item(DataType::National, b) => d::display_of(b),
+        Val::Item(ty, b) if ty.is_national() => d::display_of(b),
         Val::Item(_, b) | Val::Alnum(b) => b.clone(),
         Val::NumLit(_, digits) => digits.clone(),
         Val::Num(x) => int_digits(*x),

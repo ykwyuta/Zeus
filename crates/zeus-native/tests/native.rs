@@ -13,6 +13,32 @@ fn programs() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/programs")
 }
 
+#[test]
+fn returning_national_trunc_and_entry_pointers_match_interpreted_execution() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("compat.cbl");
+    let text = "CBL TRUNC(BIN)\nID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 B PIC 9(4) BINARY VALUE 12345.\n01 P PROCEDURE-POINTER.\n01 F FUNCTION-POINTER.\n01 NAT-G GROUP-USAGE NATIONAL.\n05 A PIC NN.\n05 N PIC 99.\nPROCEDURE DIVISION.\nDISPLAY B\nMOVE N'AB12' TO NAT-G\nADD 1 TO N\nDISPLAY NAT-G\nSET P TO ENTRY 'SUB'\nSET F TO P\nCALL F RETURNING B\nADD 1 TO B\nDISPLAY B\nDISPLAY FUNCTION WHEN-COMPILED\nSTOP RUN.\nEND PROGRAM MAIN.\nID DIVISION.\nPROGRAM-ID. SUB.\nDATA DIVISION.\nLINKAGE SECTION.\n01 RESULT PIC 9(4) COMP-5.\nPROCEDURE DIVISION RETURNING RESULT.\nMOVE 54321 TO RESULT\nGOBACK.\nEND PROGRAM SUB.";
+    std::fs::write(
+        &source,
+        text.lines()
+            .map(|s| format!("       {s}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    let mut module = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    module.compiled_at = Some("2000010203040567+0000".into());
+    let image = Image {
+        members: vec![("MAIN".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "compat", &image);
+    let native = run_env(&exe, &[], "", false);
+    assert_eq!(native, run_env(&exe, &[], "", true));
+    assert_eq!(
+        native,
+        ("12345\nAB13\n54322\n2000010203040567+0000".into(), 0)
+    );
+}
+
 fn pli(name: &str) -> (String, Vec<u8>) {
     let (rc, c) = zeus_pli::compile_file(
         &programs().join(format!("{name}.pli")),
@@ -393,7 +419,7 @@ fn cobol_main_with_pli_subprogram() {
     assert_eq!(rc, 3, "{out}");
     assert_eq!(
         out,
-        "PARM=WORLD\nIN PL/I 25\nN=00000002E T=PL/I\nIN=typed line"
+        "PARM=WORLD\nIN PL/I 25\nN=000000025 T=PL/I\nIN=typed line"
     );
 }
 
@@ -479,12 +505,12 @@ fn machine_code_matches_the_interpreter() {
     assert_eq!(native, interp);
     assert_eq!(
         native,
-        // P = 0, J = 8, R = -33, N = 4 (zoned signs as overpunches); the
+        // P = 0, J = 8, R = -33, N = 4 (negative signs as overpunches); the
         // size errors truncate (H = 004, R = 8765); L leaves 64 bits
-        "P=000000{ J=000H R=003L N=00000000D\n\
+        "P=0000000 J=0008 R=003L N=000000004\n\
          U=1234 Q=54321\n\
-         H=00D R=876E\n\
-         L=99999999999999999I\n\
+         H=004 R=8765\n\
+         L=999999999999999999\n\
          V=STAR W=START JR= XY\n\
          OK"
     );
@@ -562,7 +588,7 @@ fn tables_and_fixed_reference_modification_match_the_interpreter() {
     let interpreted = run_env(&exe, &[], "", true);
     assert_eq!(native, interpreted);
     assert_eq!(native.1, 0, "{}", native.0);
-    assert_eq!(native.0, "TOTAL=00004B\n[BCXYZ ]\n[AABCDF]\nDONE");
+    assert_eq!(native.0, "TOTAL=000042\n[BCXYZ ]\n[AABCDF]\nDONE");
 }
 
 #[test]

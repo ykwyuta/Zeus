@@ -3,7 +3,7 @@
 mod assembler;
 mod assembler_io;
 pub mod data;
-mod eval;
+pub(crate) mod eval;
 pub mod exec;
 mod files;
 mod func;
@@ -12,6 +12,7 @@ mod report;
 mod text;
 
 pub use eval::{civil_from_days, days_from_civil};
+pub(crate) use func::timestamp;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -75,6 +76,15 @@ struct Instance {
 struct Frame {
     inst: usize,
     pc: u32,
+    result: Option<PendingResult>,
+}
+
+struct PendingResult {
+    dst: zir::Loc,
+    src: Option<zir::Loc>,
+    saved_rc: i32,
+    resolved: bool,
+    foreign_value: Option<Vec<u8>>,
 }
 
 /// A program's coverage counts: executions of each instruction, and the
@@ -93,6 +103,126 @@ impl Drop for Machine {
 }
 
 impl Machine {
+    fn set_entry(&mut self, cur: usize, targets: &[zir::Loc], name: &zir::Src) -> RResult<()> {
+        let value = self.eval_src(cur, name)?;
+        let bytes = self.alnum_bytes(cur, &value, 0)?;
+        let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&bytes))
+            .trim()
+            .to_ascii_uppercase();
+        let address =
+            if let Some((&address, _)) = self.entry_pointers.iter().find(|(_, n)| **n == name) {
+                address
+            } else {
+                let known = if let Some(callee) = self.resolve_program(cur, &name) {
+                    if self.instances[callee].code.parent.is_some() {
+                        return err("SET TO ENTRY cannot reference a nested program");
+                    }
+                    true
+                } else {
+                    le::parameter_count(&name).is_some()
+                        || self.natives.contains_key(&name)
+                        || self.natives_mach.contains_key(&name)
+                        || self.linker.as_ref().is_some_and(|l| l.load(&name))
+                        || self.load_hlasm(&name).map_err(RunError)?
+                };
+                if !known {
+                    return err(format!("SET TO ENTRY: program {name} not found"));
+                }
+                // A run-unit address identifies an entry; it is not a host CPU address.
+                let address = self.alloc(&[0; 4]) as u32;
+                self.entry_pointers.insert(address, name);
+                address
+            };
+        for target in targets {
+            self.set_value(cur, target, Dec::from_i64(address as i64))?;
+        }
+        Ok(())
+    }
+
+    fn rc_before_call(&mut self, cur: usize) -> RResult<i32> {
+        if let Some(loc) = self.rc_loc(cur) {
+            return Ok(self
+                .eval_ex(cur, &zir::Ex::Load(loc))?
+                .rescale(0, zeus_decimal::Rounding::Truncate)
+                .map_or(0, |d| d.coef as i32));
+        }
+        Ok(self.return_code)
+    }
+
+    fn bind_program_result(&mut self, callee: usize) -> RResult<Option<zir::Loc>> {
+        let Some(loc) = self.instances[callee].code.result.clone() else {
+            return Ok(None);
+        };
+        let desc = self.instances[callee].code.descs[loc.desc as usize].clone();
+        let zir::Base::Linkage(slot) = desc.base else {
+            return err("invalid RETURNING descriptor");
+        };
+        let base = self.alloc(&vec![0; (desc.offset + desc.len) as usize]);
+        self.instances[callee].linkage[slot as usize] = Some(base);
+        Ok(Some(loc))
+    }
+
+    fn pending_result(
+        &mut self,
+        cur: usize,
+        callee: Option<usize>,
+        dst: &zir::Loc,
+        saved_rc: i32,
+    ) -> RResult<PendingResult> {
+        let src = match callee {
+            Some(c) => self.bind_program_result(c)?,
+            None => None,
+        };
+        if callee.is_some() && src.is_none() {
+            return err(
+                "CALL RETURNING requires PROCEDURE DIVISION RETURNING in the called COBOL program",
+            );
+        }
+        if let (Some(c), Some(src)) = (callee, &src) {
+            let from = &self.instances[c].code.descs[src.desc as usize];
+            let to = &self.instances[cur].code.descs[dst.desc as usize];
+            if from.ty != to.ty || from.len != to.len {
+                return err("CALL and PROCEDURE RETURNING attributes must match");
+            }
+        }
+        Ok(PendingResult {
+            dst: dst.clone(),
+            src,
+            saved_rc,
+            resolved: !self.call_exception,
+            foreign_value: self.call_value.take(),
+        })
+    }
+
+    fn finish_result(
+        &mut self,
+        cur: usize,
+        callee: Option<usize>,
+        result: PendingResult,
+    ) -> RResult<()> {
+        if result.resolved {
+            let value = match (callee, result.src) {
+                (Some(c), Some(src)) => self.eval_src(c, &zir::Src::Loc(src))?,
+                _ => {
+                    if let Some(bytes) = result.foreign_value {
+                        let ty = self.loc_type(cur, &result.dst);
+                        let (_, len) = self.addr(cur, &result.dst)?;
+                        if bytes.len() != len {
+                            return err("foreign CALL RETURNING representation length mismatch");
+                        }
+                        eval::Val::Item(ty, bytes)
+                    } else {
+                        eval::Val::Num(Dec::from_i64(self.return_code as i64))
+                    }
+                }
+            };
+            self.move_val(cur, &value, &result.dst)?;
+        }
+        self.return_code = result.saved_rc;
+        self.store_rc(cur);
+        self.call_exception = !result.resolved;
+        Ok(())
+    }
     /// The coverage counts so far go to the process's totals (counting
     /// goes on afresh).
     pub fn flush_coverage(&mut self) {
@@ -144,6 +274,7 @@ pub struct Machine {
     /// EXTERNAL files by name (slot in `file_states`).
     ext_files: HashMap<String, usize>,
     by_name: HashMap<String, usize>,
+    entry_pointers: HashMap<u32, String>,
     search_dirs: Vec<PathBuf>,
     switches: HashMap<String, bool>,
     size_error: bool,
@@ -168,6 +299,7 @@ pub struct Machine {
     /// Mode of the last OPEN attempted.
     last_open_mode: Option<zir::OpenMode>,
     call_exception: bool,
+    call_value: Option<Vec<u8>>,
     overflow: bool,
     stdout: Box<dyn Write>,
     stdin_lines: Option<Box<dyn Iterator<Item = std::io::Result<String>>>>,
@@ -362,6 +494,7 @@ impl Machine {
             externals: HashMap::new(),
             ext_files: HashMap::new(),
             by_name: HashMap::new(),
+            entry_pointers: HashMap::new(),
             search_dirs,
             switches,
             size_error: false,
@@ -388,6 +521,7 @@ impl Machine {
             last_status: *b"00",
             last_open_mode: None,
             call_exception: false,
+            call_value: None,
             overflow: false,
             stdout: Box::new(std::io::BufWriter::new(std::io::stdout())),
             stdin_lines: None,
@@ -815,6 +949,7 @@ impl Machine {
         }
         ci.active = true;
         ci.perform.clear();
+        let result = self.bind_program_result(callee).map_err(|e| e.0)?;
         self.return_code = 0;
         let r = self.run_from(callee, true);
         self.instances[callee].active = false;
@@ -827,7 +962,13 @@ impl Machine {
         };
         Ok(Some(crate::interlang::XEnd {
             rc: self.return_code,
-            ret: None,
+            ret: result
+                .map(|loc| {
+                    let (addr, len) = self.addr(callee, &loc)?;
+                    Ok(self.mem[addr..addr + len].to_vec())
+                })
+                .transpose()
+                .map_err(|e: RunError| e.0)?,
             stop,
         }))
     }
@@ -941,6 +1082,9 @@ impl Machine {
     }
 
     pub fn run_main(&mut self, module: Module) -> RResult<i32> {
+        if module.programs.first().is_some_and(|p| p.result.is_some()) {
+            return err("a program with PROCEDURE RETURNING must be called as a subprogram");
+        }
         self.build_control_blocks();
         self.control_blocks = true;
         let module = Rc::new(module);
@@ -1024,11 +1168,21 @@ impl Machine {
         handled: bool,
     ) -> RResult<Option<usize>> {
         let v = self.eval_src(cur, program)?;
-        let name_bytes = self.alnum_bytes(cur, &v, 0)?;
-        let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
-            .trim()
-            .to_ascii_uppercase();
+        let name = if let eval::Val::Item(ty, bytes) = &v
+            && ty.is_entry_pointer()
+        {
+            let address = binary::read(bytes, false) as u32;
+            self.entry_pointers.get(&address).cloned().ok_or_else(|| {
+                RunError("CALL through a null or invalid procedure/function-pointer".into())
+            })?
+        } else {
+            let name_bytes = self.alnum_bytes(cur, &v, 0)?;
+            String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
+                .trim()
+                .to_ascii_uppercase()
+        };
         self.call_exception = false;
+        self.call_value = None;
         if le::parameter_count(&name).is_some() {
             let addrs = self.call_args(cur, args)?;
             self.le_service(&name, &addrs)?;
@@ -1081,6 +1235,7 @@ impl Machine {
                 if let Some(r) = r {
                     let end = r.map_err(RunError)?;
                     self.return_code = end.rc;
+                    self.call_value = end.ret;
                     self.store_rc(cur);
                     if end.stop {
                         return err(STOP_RUN);
@@ -1357,6 +1512,7 @@ impl Machine {
             }
             Instr::Segment(seg) => self.enter_segment(cur, *seg),
             Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex)?,
+            Instr::SetEntry(targets, name) => self.set_entry(cur, targets, name)?,
             Instr::Initiate(r) => self.report_initiate(cur, *r)?,
             Instr::Generate { report, group } => self.report_generate(cur, *report, *group)?,
             Instr::Terminate(r) => self.report_terminate(cur, *r)?,
@@ -1378,7 +1534,11 @@ impl Machine {
                     if inst == cur {
                         self.instances[cur].perform.push((end, pc));
                     } else {
-                        s.stack.push(Frame { inst: cur, pc });
+                        s.stack.push(Frame {
+                            inst: cur,
+                            pc,
+                            result: None,
+                        });
                         s.cur = inst;
                         self.instances[cur].perform.push((end, USE_RETURN));
                     }
@@ -1441,7 +1601,11 @@ impl Machine {
                 let f = s.stack.pop().unwrap();
                 s.cur = f.inst;
                 s.pc = f.pc;
-                self.store_rc(s.cur);
+                if let Some(result) = f.result {
+                    self.finish_result(s.cur, Some(cur), result)?;
+                } else {
+                    self.store_rc(s.cur);
+                }
             }
             Instr::Display {
                 items,
@@ -1493,19 +1657,34 @@ impl Machine {
             Instr::Call {
                 program,
                 args,
-                returning: _,
+                returning,
             } => {
                 // ON EXCEPTION / ON OVERFLOW handles a missing program.
                 let next = code.code.get(pc as usize);
                 let handled = matches!(next, Some(Instr::JumpUnless(zir::Cx::CallException, _)));
-                if let Some(callee) = self.prepare_call(cur, program, args, handled)? {
-                    s.stack.push(Frame { inst: cur, pc });
+                let saved_rc = self.rc_before_call(cur)?;
+                let callee = self.prepare_call(cur, program, args, handled)?;
+                let result = returning
+                    .as_ref()
+                    .map(|dst| self.pending_result(cur, callee, dst, saved_rc))
+                    .transpose()?;
+                if let Some(callee) = callee {
+                    if returning.is_none() && self.instances[callee].code.result.is_some() {
+                        self.bind_program_result(callee)?;
+                    }
+                    s.stack.push(Frame {
+                        inst: cur,
+                        pc,
+                        result,
+                    });
                     if s.stack.len() > 1000 {
                         return err("CALL nesting too deep");
                     }
                     self.enter_language_frame();
                     s.cur = callee;
                     s.pc = 0;
+                } else if let Some(result) = result {
+                    self.finish_result(cur, None, result)?;
                 }
             }
             Instr::Cancel(src) => {
@@ -1842,6 +2021,7 @@ impl Machine {
                 Ok(())
             }
             Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex),
+            Instr::SetEntry(targets, name) => self.set_entry(cur, targets, name),
             Instr::Initiate(r) => self.report_initiate(cur, *r),
             Instr::Generate { report, group } => self.report_generate(cur, *report, *group),
             Instr::Terminate(r) => self.report_terminate(cur, *r),
@@ -1849,12 +2029,30 @@ impl Machine {
                 self.suppress_printing = true;
                 Ok(())
             }
-            Instr::Call { program, args, .. } => {
-                if let Some(callee) = self.prepare_call(cur, program, args, false)? {
+            Instr::Call {
+                program,
+                args,
+                returning,
+            } => {
+                let saved_rc = self.rc_before_call(cur)?;
+                let callee = self.prepare_call(cur, program, args, false)?;
+                let result = returning
+                    .as_ref()
+                    .map(|dst| self.pending_result(cur, callee, dst, saved_rc))
+                    .transpose()?;
+                if let Some(callee) = callee {
+                    if returning.is_none() && self.instances[callee].code.result.is_some() {
+                        self.bind_program_result(callee)?;
+                    }
                     match self.run_from(callee, true)? {
-                        Exit::Returned => self.store_rc(cur),
+                        Exit::Returned => {}
                         Exit::StopRun(_) => return err(STOP_RUN),
                     }
+                }
+                if let Some(result) = result {
+                    self.finish_result(cur, callee, result)?;
+                } else {
+                    self.store_rc(cur);
                 }
                 Ok(())
             }

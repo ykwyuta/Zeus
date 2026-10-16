@@ -181,13 +181,13 @@ zcov report --detail --lcov coverage.lcov --html coverage-html coverage
 
 ## 互換性と制約
 
-COBOL-85 の主要な文と z/OS のデータ表現には広く対応しています。追加対応には LOCAL-STORAGE の初期化、再帰 CALL、INITIALIZE の追加句、SET TO FALSE、部分語の COPY/REPLACE などがあります。
+COBOL-85 の主要な文と z/OS のデータ表現には広く対応しています。再帰 CALL、CALL RETURNING、手続き・関数ポインターによる間接 CALL、NATIONAL の固定小数点数・編集項目・グループ、VSAM 詳細状態に対応しています。WHEN-COMPILED はコンパイル日時をモジュールに保存します。
 
 | 項目 | 現在の範囲 |
 |---|---|
 | IBM COBOL の言語全体 | OO/Java、XML、DATEPROC、特殊なデータカテゴリーなどに未対応・部分対応あり |
-| コンパイラー設定 | CBL/PROCESS の NSYMBOL、CICS/NOCICS などに対応。TRUNC、ARITH、NUMPROC 等の未対応指定は診断。IBM のリスト出力も完全には再現しない |
-| 呼び出し規約 | RECURSIVE に対応。PROCEDURE DIVISION RETURNING の ABI は未対応 |
+| コンパイラー設定 | CBL/PROCESS の NSYMBOL、CICS/NOCICS、TRUNC(STD/OPT/BIN) に対応。ARITH、NUMPROC 等の未対応指定は診断。IBM のリスト出力も完全には再現しない |
+| 呼び出し規約 | RECURSIVE、PROCEDURE DIVISION RETURNING と結果転送、仮想エントリーへの間接CALLに対応。IBMのロードモジュール・実アドレスABIの直接実行は対象外 |
 | ファイル・テープ | 物理ブロックと単一巻の仮想テープに対応。チェックポイント再始動や自動複数巻交換などは未対応 |
 | アセンブラー | 対応するアプリケーション命令を Zeus の実行エンジンで処理。IBM オブジェクトデック／ロードモジュールの直接実行、HLASM のホスト CPU 向けネイティブ生成は対象外 |
 | システム環境 | OS、JES、CICS、Db2、IMS、各種ユーティリティの全機能を置き換えるものではなく、実装したアプリケーション向けの機能を提供 |
@@ -197,6 +197,7 @@ COBOL-85 の主要な文と z/OS のデータ表現には広く対応してい�
 - [IBM COBOL の構文・実行対応一覧](docs/proposal/0014-cobol-ibm-conformance.md)
 - [句・設定の読み飛ばし監査](docs/proposal/0015-cobol-ignored-clauses.md)
 - [RESERVE・物理ブロック・仮想テープ・再帰 CALL](docs/proposal/0016-cobol-physical-tape-recursion.md)
+- [戻り値・TRUNC・NATIONAL・ポインターなどの追加実装と残件](docs/proposal/0017-cobol-remaining-compatibility.md)
 
 NIST CCVS85 の必須 8 モジュールと一部の任意モジュールの合格実績は [コンパイラーの進捗](docs/proposal/0003-cobol-compiler.md#進捗-2026-10) に記録しています。直近の追加対応を含むローカル全体試験は **970 件成功（2026-10-16）** でした。CCVS85 の再実行や IBM 実機との差分実行を示すものではなく、IBM 方言の完全互換の証明ではありません。
 

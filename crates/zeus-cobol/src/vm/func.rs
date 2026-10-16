@@ -7,6 +7,21 @@ use super::{Machine, RResult, err};
 use crate::ebcdic;
 use crate::zir::{Arg, DataType, Ex, Func, Loc};
 
+pub(crate) fn timestamp() -> String {
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let seconds = now.as_secs() as i64;
+    let (y, m, d) = civil_from_days(seconds / 86400);
+    format!(
+        "{y:04}{m:02}{d:02}{:02}{:02}{:02}{:02}+0000",
+        seconds / 3600 % 24,
+        seconds / 60 % 60,
+        seconds % 60,
+        now.subsec_millis() / 10
+    )
+}
+
 /// Integer date (day 1 = 1601-01-01) to days since 1970-01-01.
 fn int_to_unix_days(n: i64) -> i64 {
     n - 1 + days_from_civil(1601, 1, 1)
@@ -99,7 +114,9 @@ impl Machine {
                 let vals = self.arg_values(cur, args)?;
                 let n = match vals.first() {
                     // national data: characters (two bytes each)
-                    Some(Val::Item(DataType::National, b)) if func == Func::Length => b.len() / 2,
+                    Some(Val::Item(ty, b)) if ty.is_national() && func == Func::Length => {
+                        b.len() / 2
+                    }
                     Some(Val::Item(DataType::Numeric(_), b) | Val::Item(_, b)) => b.len(),
                     Some(Val::Alnum(b) | Val::All(b)) => b.len(),
                     Some(Val::NumLit(_, d)) => d.len(),
@@ -223,7 +240,7 @@ impl Machine {
                     None => crate::codepage::active(),
                 };
                 match (func, vals.first()) {
-                    (Func::NationalOf, Some(Val::Item(DataType::National, b))) => b.clone(),
+                    (Func::NationalOf, Some(Val::Item(ty, b))) if ty.is_national() => b.clone(),
                     (Func::NationalOf, Some(Val::Item(DataType::Dbcs, b))) => {
                         super::data::utf16(&cp.decode_dbcs(b))
                     }
@@ -303,7 +320,14 @@ impl Machine {
                 }
                 b
             }
-            Func::CurrentDate | Func::WhenCompiled => {
+            Func::WhenCompiled => ebcdic::encode(self.instances[cur].module.compiled_at.as_deref()
+                .ok_or_else(|| super::RunError("WHEN-COMPILED is unavailable in this legacy module; recompile the source".into()))?),
+            Func::WhenCompiledRegister => {
+                let t = self.instances[cur].module.compiled_at.as_deref().filter(|s| s.len() == 21 && s.is_ascii())
+                    .ok_or_else(|| super::RunError("WHEN-COMPILED timestamp unavailable; recompile the source".into()))?;
+                ebcdic::encode(&format!("{}/{}/{}{}.{}.{}", &t[4..6], &t[6..8], &t[2..4], &t[8..10], &t[10..12], &t[12..14]))
+            },
+            Func::CurrentDate => {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs_f64())

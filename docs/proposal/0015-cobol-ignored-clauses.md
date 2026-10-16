@@ -24,7 +24,7 @@ RESERVE・物理ブロック・テープ・再帰 CALL の追加実装は
 
 | ID | 句・設定 / 実装箇所 | 監査前の動作 | IBM の仕様 | 今回の結果 |
 |---|---|---|---|---|
-| I01 | `CBL` / `PROCESS`, `src/front/mod.rs::process_statements`, `source_tokens` | CICS という単語以外を破棄。NSYMBOL も無効 | コンパイル設定。NSYMBOL は N リテラルと PIC N を変更 | NSYMBOL/NS の NATIONAL/NAT/DBCS を字句解析前に適用。CICS/NOCICS を順に処理。未知・未対応・不正なオプションは診断 |
+| I01 | `CBL` / `PROCESS`, `src/front/mod.rs::process_statements`, `source_tokens` | CICS という単語以外を破棄。NSYMBOL も無効 | コンパイル設定。NSYMBOL は N リテラルと PIC N を変更 | NSYMBOL/NSのNATIONAL/NAT/DBCSを字句解析前に適用。CICS/NOCICS、TRUNC(STD/OPT/BIN)を処理。未知・未対応・不正な設定は診断 |
 | I02 | `SOURCE-COMPUTER`, `OBJECT-COMPUTER`, `front/parser/mod.rs::computer_paragraph` | 不明トークンも無条件に消費 | LR pp.116–118。前者は DEBUGGING MODE、後者は COLLATING SEQUENCE だけ実行に影響 | コンピューター名を読み、句を構文解析。MEMORY の数値・単位、SEGMENT-LIMIT の 1–49 を検査。不明句を拒否 |
 | I03 | 複数 `ASSIGN` 名, `front/parser/mod.rs::select` | 最初以外を破棄 | LR p.137。最初以外は構文検査だけ | 実行上の扱いを維持。後続名を任意の語として受けるため、予約語等の厳密な検査は残る |
 | I04 | `RESERVE`, `select` → AST `reserve` | 値を保存するが下流で不使用 | LR p.141。I/O バッファー数を指定。LINE SEQUENTIAL では不可 | OPEN 中の I/O バッファープールに反映。RESERVE > DD BUFNO > Zeus 既定 2。LINE SEQUENTIAL と EXTERNAL 不一致を診断。詳細は 0016 |
@@ -49,7 +49,7 @@ RESERVE・物理ブロック・テープ・再帰 CALL の追加実装は
 | I23 | AUTHOR 等のコメント段落、EJECT/SKIP/TITLE, `front/source.rs`, parser | 内容をコード化しない | LR の comment-entry / compiler-directing statements。文書・リスト用 | 正しい無処理を維持 |
 | I24 | `COPY SUPPRESS`, `front/copy.rs::expand_copy` | キーワードだけ消費 | LR COPY statement。コピー内容のソースリスト出力抑制 | 実行意味は不変。IBM 形式のリスト出力自体は未提供 |
 | I25 | `PROGRAM-ID ... RECURSIVE`, `front/parser/mod.rs` → AST `recursive` | 属性を保存するが ZIR に伝播しない | LR pp.111–112。アクティブなプログラムへの再入を許可 | 共有 WS と呼出し別 LS/LINKAGE/PERFORM を持つ再帰 CALL を実装。外部言語経由の再入も対応。細かな制約とネイティブ実行の範囲は 0016 |
-| I26 | `PROCEDURE DIVISION RETURNING`, parser → AST `procedure.giving` | 受け取り項目を保存するが呼び出し規約に接続しない | LR p.266。LINKAGE の level 01/77 を結果項目にする。主／入れ子プログラム等には制約 | **未実装**。既存 CALL RETURNING / RETURN-CODE による戻り値処理とは別機能。IBM の関数結果 ABI は未対応 |
+| I26 | `PROCEDURE DIVISION RETURNING`, parser → AST `procedure.giving` | 受け取り項目を保存するが呼び出し規約に接続しない | LR p.266。LINKAGE の level 01/77 を結果項目にする。主／入れ子プログラム等には制約 | **0017で実装**。結果用領域、CALLの受信値転送、RETURN-CODE保持、外部言語インターフェース、基本制約の検査を追加 |
 
 `src/` は `crates/zeus-cobol/src/`。上表の parser パスも同ディレクトリー配下。
 オプション処理は新設 `front/options.rs`。ファイルの実行処理は `sema/codegen.rs` → `zir.rs` → `vm/files.rs`。
@@ -58,13 +58,13 @@ RESERVE・物理ブロック・テープ・再帰 CALL の追加実装は
 
 - CBL/PROCESS は先頭の連続した文だけを処理する既存構成を維持。バッチ内の途中の再設定、継続行、全オプションの略記、CICS のサブオプションは未対応。
 - LIST/NOLIST、SOURCE/NOSOURCE、MAP/NOMAP、OFFSET/NOOFFSET、XREF/NOXREF、VBREF/NOVBREF は実行に影響しない設定として受理する。IBM 形式のコンパイラーリスト生成を実装したわけではない。
-- TRUNC、ARITH、NUMPROC、CODEPAGE、YEARWINDOW、APOST など、サポートしていないソース内の設定を黙って捨てない。今回から明示指定はコンパイルエラーになる。既定時の全演算意味が IBM の既定に一致するとの保証でもない。
+- TRUNC(STD/OPT/BIN)は0017で実装した。ARITH、NUMPROC、CODEPAGE、YEARWINDOW、APOSTなどの未対応設定は診断する。既定時の全演算意味がIBMの既定に一致する保証ではない。
 - NSYMBOL の内部設定をプロセス全体の atomic からスレッドローカルへ変更した。並行コンパイル時に異なる指定が混ざる問題を回避する。同一ソースの解析・意味解析は現在と同じスレッドで実施する前提。
 - 従来の F/V ホスト表現を維持しつつ、明示的なブロック指定・テープ等には物理ブロック層を追加した。詳しい選択条件、DD 属性との関係、残る FILE STATUS 39 検査は 0016 を参照。
 - CODE-SET はホスト上の順次レコード媒体へ適用する。磁気テープだけに許可する装置検査、EXTERNAL 定義間の一致、変換不能文字の IBM と同一の取り扱いは未検証。試験対象は CCSID 37 と 7-bit ASCII 範囲。
 - SAME の重複グループ、EXTERNAL/GLOBAL 制約、SORT グループの参照整合性などは完全には検査していない。同時 OPEN 違反は Zeus の実行エラーであり、IBM の診断メッセージ／番号の再現ではない。
 - RESERVE、基本的な物理ブロック、標準媒体ラベル、再帰 CALL は 0016 で追加対応した。複数巻交換、ユーザーラベル、RERUN などの残件は 0016 を参照。
-- PROCEDURE DIVISION RETURNING の ABI は引き続き未対応。再帰 CALL と分けて扱う。
+- PROCEDURE DIVISION RETURNINGは0017でZeusの呼出し規約に接続した。実機のバイナリーABI、全属性制約等は別途残る。
 
 ## 検証
 
