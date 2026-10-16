@@ -35,7 +35,13 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<(bool, bool, 
         };
         match (name, arg) {
             ("CICS", None) => cics = true,
+            ("CICS", Some(arg)) if cics_options(arg) => cics = true,
             ("NOCICS", None) => cics = false,
+            // SQL is translated by the integrated EXEC SQL front end. Literal
+            // CALLs already reuse the program bound by the Zeus module loader.
+            // Code is immutable and each Machine owns its data (RENT).
+            ("SQL" | "NODYNAM" | "RENT", None) => {}
+            ("FLAG", Some("I" | "W" | "E" | "S" | "U")) => {}
             ("NSYMBOL" | "NS", Some("DBCS")) => dbcs = true,
             ("NSYMBOL" | "NS", Some("NATIONAL" | "NAT")) => dbcs = false,
             ("TRUNC", Some("STD")) => trunc = Trunc::Std,
@@ -59,4 +65,14 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<(bool, bool, 
         }
     }
     Ok((cics, dbcs, trunc))
+}
+
+fn cics_options(arg: &str) -> bool {
+    let Some(options) = arg.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) else {
+        return false;
+    };
+    !options.is_empty()
+        && options
+            .split(',')
+            .all(|option| matches!(option.trim(), "SP" | "EDF" | "DLI"))
 }

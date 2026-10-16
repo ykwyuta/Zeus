@@ -123,6 +123,36 @@ fn source_options_change_picture_category_and_unknown_settings_fail() {
 }
 
 #[test]
+fn application_source_options_use_the_integrated_translators() {
+    for option in [
+        "SQL",
+        "NODYNAM",
+        "RENT",
+        "FLAG(I)",
+        "CICS('SP,EDF')",
+        "CICS('SP,EDF,DLI')",
+    ] {
+        compile(&format!(
+            "CBL {option}\nID DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nGOBACK."
+        ))
+        .unwrap();
+    }
+    for option in [
+        "SQL(BOGUS)",
+        "FLAG(BOGUS)",
+        "CICS('BOGUS')",
+        "CICS('SP,,EDF')",
+    ] {
+        assert!(
+            compile(&format!(
+                "CBL {option}\nID DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nGOBACK."
+            ))
+            .is_err()
+        );
+    }
+}
+
+#[test]
 fn computer_no_effect_clauses_are_checked() {
     let source = |clauses: &str| {
         format!(

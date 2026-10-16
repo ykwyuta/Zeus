@@ -56,7 +56,8 @@ RESERVE・物理ブロック・テープ・再帰 CALL の追加実装は
 
 ## 実装の範囲と残る制約
 
-- CBL/PROCESS は先頭の連続した文だけを処理する既存構成を維持。バッチ内の途中の再設定、継続行、全オプションの略記、CICS のサブオプションは未対応。
+- CBL/PROCESS は先頭の連続した文だけを処理する既存構成を維持。バッチ内の途中の再設定、継続行、全オプションの略記は未対応。
+- 対象アプリで使用する SQL、NODYNAM、RENT、FLAG(I/W/E/S/U)、CICS('SP,EDF,DLI') の組み合わせを受理する。SQL は既存の EXEC SQL 処理へ、CICS は既存の統合変換へ接続する。FLAG はリスト用の設定であり、エラーの拒否を緩めない。RENT は命令列が不変で VM ごとに領域を分離する既存方式、NODYNAM はロード済みプログラムの束縛を再利用する既存方式で扱う。z/OS の静的リンク編集や EDF デバッガー自体の再現ではない。不正なサブオプションは引き続き拒否する。
 - LIST/NOLIST、SOURCE/NOSOURCE、MAP/NOMAP、OFFSET/NOOFFSET、XREF/NOXREF、VBREF/NOVBREF は実行に影響しない設定として受理する。IBM 形式のコンパイラーリスト生成を実装したわけではない。
 - TRUNC(STD/OPT/BIN)は0017で実装した。ARITH、NUMPROC、CODEPAGE、YEARWINDOW、APOSTなどの未対応設定は診断する。既定時の全演算意味がIBMの既定に一致する保証ではない。
 - NSYMBOL の内部設定をプロセス全体の atomic からスレッドローカルへ変更した。並行コンパイル時に異なる指定が混ざる問題を回避する。同一ソースの解析・意味解析は現在と同じスレッドで実施する前提。
