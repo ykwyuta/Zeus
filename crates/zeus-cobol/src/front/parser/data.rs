@@ -605,7 +605,10 @@ impl Parser {
                 self.accept("ARE");
                 if level == 88 {
                     let mut vals = Vec::new();
-                    while !self.is_period() && !self.eof() && !self.is("WHEN") {
+                    while !self.is_period()
+                        && !self.eof()
+                        && !self.is_any(&["WHEN", "SET", "TO", "FALSE"])
+                    {
                         let from = self.operand()?;
                         let thru = if self.accept("THRU") || self.accept("THROUGH") {
                             Some(self.operand()?)
@@ -618,9 +621,10 @@ impl Parser {
                         return self.err("condition-name VALUE requires a value");
                     }
                     e.value = Some(ValueClause::Condition(vals));
-                    if self.accept("WHEN") {
-                        self.expect("SET")?;
-                        self.expect("TO")?;
+                    if self.is_any(&["WHEN", "SET", "TO", "FALSE"]) {
+                        self.accept("WHEN");
+                        self.accept("SET");
+                        self.accept("TO");
                         self.expect("FALSE")?;
                         self.accept("IS");
                         e.false_value = Some(self.operand()?);

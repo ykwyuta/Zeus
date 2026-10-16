@@ -1,6 +1,6 @@
 # Proposal 0014: IBM Enterprise COBOL 構文適合性の監査
 
-- 状態: **C01〜C11 対応完了・回帰検証済み**。IBM 方言全体の準拠監査は継続。
+- 状態: **C01〜C11・X01〜X05 対応完了・回帰検証済み**。IBM 方言全体の準拠監査は継続。
 - 確認日: 2026-10-16
 - 監査開始時点: `bf4ee09688e89a4d2df92ff76004a1da06d7b535`
 - 対象: `crates/zeus-cobol` のソース読込、前処理、AST、意味解析、ZIR、VM。
@@ -22,6 +22,8 @@ PDF ビューアのページ番号とは異なる。本文の転載・仕様書�
 | SF | [SET for condition-names](https://www.ibm.com/docs/en/cobol-zos/6.3.0?topic=statement-format-4-set-condition-names), [APAR PI97160](https://www.ibm.com/support/pages/apar/PI97160) | SET TO FALSE と対応する VALUE 句。4.2 との差分 |
 | I61 | [Changes in Version 6 Release 1](https://www.ibm.com/docs/en/cobol-zos/6.4.0?topic=sccc-changes-in-enterprise-cobol-zos-version-6-release-1) | INITIALIZE の FILLER/VALUE/DEFAULT 拡張 |
 | CP | [COPY comparison/replacement rules](https://www.ibm.com/docs/en/cobol-zos/6.3.0?topic=statement-comparison-replacement-rules) / [REPLACE](https://www.ibm.com/docs/en/cobol-zos/6.3.0?topic=statements-replace-statement) | 部分語置換とその制約 |
+| PE | [PERFORM with UNTIL phrase](https://www.ibm.com/docs/en/cobol-zos/6.3.0?topic=statement-perform-until-phrase) | UNTIL EXIT と TEST/VARYING の併用制限、out-of-line 形式の終了 |
+| IN | [INITIALIZE statement](https://www.ibm.com/docs/en/cobol-zos/6.4.0?topic=statements-initialize-statement) | 新しい句でも適用される受信項目の制約 |
 
 R42 は公式配布元から取得して本文を抽出した。取得 PDF の SHA-256:
 `0be04068649dc68474e6bef1daab873993835beefcecbbc83ded10d0508acf86`。
@@ -226,9 +228,36 @@ DBCS/EGCS は受理だけでなく実際の格納バイトを確認し、表の�
 
 C10 の単体テストには、窓の終了年 1700/9999 の受理、1699/10000 の拒否、負の 2 桁年の拒否も追加した。
 
+### X01〜X05 の追加対応
+
+X 系も上表で定義した修正対象について対応完了。既存の実装に対して 14 件の回帰テストを追加し、
+そのうち検証で見つかった X03〜X05 の不足を修正した。
+
+| ID | 追加対応・確認 | 回帰テスト |
+|---|---|---|
+| X01 | CYCLE が最内側のループに作用し、VARYING/AFTER の増分・繰り上がりまで実行することを確認 | `exit_perform_cycle_handles_after_varying_and_nested_loops` |
+| X01 | TEST AFTER VARYING とループ外の CYCLE の動作を確認 | `exit_perform_cycle_test_after_varying_tests_before_increment` |
+| X02 | out-of-line UNTIL EXIT が EXIT PARAGRAPH で終了せず GOBACK で終了することを確認（PE） | `perform_until_exit_out_of_line_reenters_until_goback` |
+| X02 | TEST BEFORE/AFTER、WITH の有無、VARYING との不正な組合せを確認（PE） | `perform_until_exit_rejects_test_phrases_and_varying` |
+| X03 | FALSE 句の WHEN/SET/TO/IS 省略形を受理（SF） | `condition_false_phrase_allows_ibm_optional_words` |
+| X03 | 複数の添字付き条件名に対する SET TO FALSE/TRUE を確認 | `set_false_accepts_multiple_subscripted_condition_names` |
+| X03 | FALSE 値にデータ項目を指定した宣言を、SET が実行されなくても診断 | `condition_false_value_requires_a_literal_even_if_not_executed` |
+| X03 | NATIONAL/SYMBOLIC の FALSE 定数を確認し、SYMBOLIC は宣言時に定数へ解決 | `set_false_preserves_national_and_symbolic_literal_values` |
+| X03 | GLOBAL 条件名を入れ子プログラムから設定する場合も宣言元の定数を保持 | `set_false_global_condition_keeps_declaring_program_symbolic_literal` |
+| X04 | TO VALUE/TO DEFAULT に RENAMES 項目を指定した場合に診断（IN） | `initialize_to_value_rejects_renames_receiver` |
+| X04 | 複数カテゴリの VALUE 選択を確認。条件名・INDEX・POINTER を直接の受信項目に指定した場合に診断（IN） | `initialize_value_phrases_select_categories_and_reject_invalid_receivers` |
+| X05 | 部分語置換時に PICTURE トークンの形式を保持し、単独ハイフンの部分語を処理。PICTURE 全体を削除したときは空トークンを残さない | `partial_word_replace_preserves_picture_token_and_hyphen_fragments` |
+| X05 | 部分語の置換元・置換先に必須の疑似テキスト区切りを検査（CP） | `partial_word_replace_requires_pseudotext_delimiters` |
+| X05 | COPY REPLACING でも PICTURE の変換と、置換結果を再置換しない順序を確認 | `copy_partial_replacement_handles_picture_and_does_not_cascade` |
+
+X01/X02 は既存の実行経路が追加テストにも合格し、製品コードの追加変更は不要だった。
+X03 は parser と宣言の意味解析、X04 は受信項目の意味解析、X05 は COPY/REPLACE 処理を修正した。
+NATIONAL-EDITED/UTF-8 のデータ型や IBM 方言全体の残存課題は、引き続き別節で追跡する。
+
 `X*` は新しい版の拡張であり、4.2 の欠陥としては数えない。
 REPLACE ALSO / LAST OFF は今回参照した IBM の文法にないため実装対象にしない。
-部分語置換は SBCS の識別子・数字を対象にし、DBCS 語・文字列リテラル内部は置換しない。
+部分語置換は SBCS の識別子・数字・ハイフンを含む部分語と PICTURE を対象にし、
+DBCS 語・文字列リテラル内部は置換しない。
 
 LOCAL-STORAGE は非再帰呼出しで記憶域を再利用し初期値を復元する。
 値を持たない項目の初期内容は IBM でも未定義。既存 `.zo` は追加メタデータを持たないため、
@@ -258,17 +287,18 @@ LOCAL-STORAGE は非再帰呼出しで記憶域を再利用し初期値を復元
 
 | 検証 | 結果 |
 |---|---|
-| 専用の IBM 仕様回帰テスト（C01〜C11 追加確認後） | 30 passed |
+| 専用の IBM 仕様回帰テスト（X01〜X05 追加対応後） | 44 passed |
 | zeus-cobol のライブラリテスト | 77 passed（世紀窓の公式例テストを含む） |
-| programs / national / japanese の統合テスト | 5 / 1 / 1 passed。上記と合わせて 114 passed |
-| 初回の実装修正時の `cargo test --workspace` | 925 passed、失敗なし。今回の追加はテストと文書のみで、製品コードの変更なし |
-| `cargo clippy -p zeus-cobol --all-targets -- -D warnings` | 成功。最終の JUSTIFIED 修正後も lib/ibm_conformance 対象で再確認し成功 |
+| programs / national / japanese の統合テスト | 5 / 1 / 1 passed。上記と合わせて 128 passed |
+| X01〜X05 の最終コードでの `cargo test --workspace` | 945 passed、失敗なし |
+| `cargo clippy -p zeus-cobol --all-targets -- -D warnings` | X01〜X05 の最終コードで成功 |
 | `cargo fmt --all --check` / `git diff --check` | 成功 |
 
 全体テストは、最初のサンドボックス内実行では IMS TM の一時ファイル置換に対する
 アクセス拒否で 6 件失敗した。該当テストをサンドボックス外で再実行して 8 件成功した後、
 最終コードの全体テストもサンドボックス外で再実行して成功した。
-今回の C01〜C11 追加確認では、上記の関連 114 件と lib/ibm_conformance 対象の clippy を再実行した。
+C01〜C11 の追加確認時点では専用 30 件・関連合計 114 件に合格した。
+今回の X01〜X05 の追加対応後は、専用 44 件と全体 945 件、および全 target の clippy を再実行し成功した。
 外部サービスを要求するテストは、各テストの既存の接続設定・スキップ条件に従う。
 今回は CCVS85 全件と IBM 処理系との実機比較は再実行していない。
 

@@ -773,3 +773,344 @@ PROCEDURE DIVISION.
     );
     assert_eq!(run(&src), "2018\n1919\n19980101\n1998001\n");
 }
+
+// X01: CYCLE applies to the nearest loop and still carries nested VARYINGs.
+#[test]
+fn exit_perform_cycle_handles_after_varying_and_nested_loops() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 I PIC 9.
+01 J PIC 9.
+01 N PIC 99 VALUE 0.
+PROCEDURE DIVISION.
+    PERFORM VARYING I FROM 1 BY 1 UNTIL I > 2
+        AFTER J FROM 1 BY 1 UNTIL J > 3
+        PERFORM 2 TIMES
+            ADD 1 TO N
+            EXIT PERFORM CYCLE
+            ADD 50 TO N
+        END-PERFORM
+        EXIT PERFORM CYCLE
+        ADD 50 TO N
+    END-PERFORM
+    DISPLAY N
+    STOP RUN."#),
+        "12\n"
+    );
+}
+
+#[test]
+fn exit_perform_cycle_test_after_varying_tests_before_increment() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 I PIC 9.
+01 N PIC 99 VALUE 0.
+PROCEDURE DIVISION.
+    PERFORM TEST AFTER VARYING I FROM 1 BY 1 UNTIL I = 3
+        ADD I TO N
+        EXIT PERFORM CYCLE
+        ADD 50 TO N
+    END-PERFORM
+    DISPLAY N "/" I
+    EXIT PERFORM CYCLE
+    DISPLAY "OK"
+    STOP RUN."#),
+        "06/3\nOK\n"
+    );
+}
+
+// X02: GOBACK escapes an out-of-line UNTIL EXIT; EXIT PARAGRAPH does not.
+#[test]
+fn perform_until_exit_out_of_line_reenters_until_goback() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 N PIC 9 VALUE 0.
+PROCEDURE DIVISION.
+MAIN-P.
+    PERFORM LOOP-P UNTIL EXIT
+    DISPLAY "BAD"
+    STOP RUN.
+LOOP-P.
+    ADD 1 TO N
+    DISPLAY N
+    IF N = 2 GOBACK END-IF
+    EXIT PARAGRAPH.
+"#),
+        "1\n2\n"
+    );
+}
+
+// X03: WHEN, SET, TO and IS are optional noise words in the FALSE phrase.
+#[test]
+fn condition_false_phrase_allows_ibm_optional_words() {
+    for phrase in [
+        "FALSE 0",
+        "WHEN FALSE IS 0",
+        "SET TO FALSE 0",
+        "TO FALSE 0",
+        "WHEN SET TO FALSE IS 0",
+    ] {
+        let src = format!(
+            r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 F PIC 9 VALUE 1.
+   88 ACTIVE VALUE 1 {phrase}.
+PROCEDURE DIVISION.
+    SET ACTIVE TO FALSE
+    DISPLAY F
+    STOP RUN."#
+        );
+        assert_eq!(run(&src), "0\n", "{phrase}");
+    }
+}
+
+#[test]
+fn set_false_accepts_multiple_subscripted_condition_names() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 R.
+   02 F PIC X VALUE "Y" OCCURS 2 TIMES.
+      88 ACTIVE VALUE "Y" WHEN SET TO FALSE "N".
+PROCEDURE DIVISION.
+    SET ACTIVE(1) ACTIVE(2) TO FALSE
+    DISPLAY R
+    SET ACTIVE(2) TO TRUE
+    DISPLAY R
+    STOP RUN."#),
+        "NN\nNY\n"
+    );
+}
+
+#[test]
+fn condition_false_value_requires_a_literal_even_if_not_executed() {
+    let err = compile(
+        r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 OTHER-VALUE PIC 9 VALUE 0.
+01 F PIC 9.
+   88 ACTIVE VALUE 1 WHEN SET TO FALSE OTHER-VALUE.
+PROCEDURE DIVISION.
+    STOP RUN."#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("literal"), "{err}");
+}
+
+// X04: INITIALIZE's general receiver rules also apply to its new phrases.
+#[test]
+fn initialize_to_value_rejects_renames_receiver() {
+    let err = compile(
+        r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 R.
+   02 A PIC X VALUE "A".
+   02 B PIC X VALUE "B".
+66 ALIAS-R RENAMES A THRU B.
+PROCEDURE DIVISION.
+    INITIALIZE ALIAS-R ALL TO VALUE THEN TO DEFAULT.
+    STOP RUN."#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("RENAMES"), "{err}");
+}
+
+// X05: pictures must keep their lexer context after partial replacement.
+#[test]
+fn partial_word_replace_preserves_picture_token_and_hyphen_fragments() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+REPLACE LEADING ==X== BY ==9==.
+01 N PIC X(3) VALUE 123.
+REPLACE OFF.
+REPLACE TRAILING ==-== BY ==-ITEM==.
+01 A- PIC X VALUE "A".
+REPLACE OFF.
+PROCEDURE DIVISION.
+    ADD 1 TO N
+    DISPLAY N A-ITEM
+    STOP RUN."#),
+        "124A\n"
+    );
+    let err = compile(
+        r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+REPLACE LEADING ==X== BY ====.
+01 A PIC X VALUE "A".
+REPLACE OFF.
+PROCEDURE DIVISION.
+    STOP RUN."#,
+    )
+    .unwrap_err();
+    assert!(err.to_string().contains("picture string expected"), "{err}");
+}
+
+#[test]
+fn partial_word_replace_requires_pseudotext_delimiters() {
+    for src in [
+        "REPLACE LEADING ==A== BY B.",
+        "REPLACE TRAILING A BY ==B==.",
+    ] {
+        let program =
+            format!("ID DIVISION.\nPROGRAM-ID. T.\n{src}\nPROCEDURE DIVISION.\n    STOP RUN.");
+        let err = compile(&program).unwrap_err();
+        assert!(err.to_string().contains("pseudo-text delimiters"), "{err}");
+    }
+}
+
+#[test]
+fn perform_until_exit_rejects_test_phrases_and_varying() {
+    for perform in [
+        "PERFORM TEST BEFORE UNTIL EXIT CONTINUE END-PERFORM",
+        "PERFORM TEST AFTER UNTIL EXIT CONTINUE END-PERFORM",
+        "PERFORM WITH TEST BEFORE UNTIL EXIT CONTINUE END-PERFORM",
+        "PERFORM WITH TEST AFTER UNTIL EXIT CONTINUE END-PERFORM",
+        "PERFORM VARYING I FROM 1 BY 1 UNTIL EXIT END-PERFORM",
+    ] {
+        let src = format!(
+            "ID DIVISION.\nPROGRAM-ID. T.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 I PIC 9.\nPROCEDURE DIVISION.\n    {perform}.\n    STOP RUN."
+        );
+        // Keep long statement forms inside the fixed-format text area.
+        let src = src.replace(" CONTINUE END-PERFORM", "\n    CONTINUE END-PERFORM");
+        assert!(compile(&src).is_err(), "{perform}");
+    }
+}
+
+#[test]
+fn set_false_preserves_national_and_symbolic_literal_values() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+ENVIRONMENT DIVISION.
+CONFIGURATION SECTION.
+SPECIAL-NAMES.
+    SYMBOLIC CHARACTERS FALSE-CHAR IS 214.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 F PIC X VALUE "Y".
+   88 ACTIVE VALUE "Y" FALSE FALSE-CHAR.
+01 N PIC N VALUE N"Y".
+   88 N-ACTIVE VALUE N"Y" FALSE N"N".
+PROCEDURE DIVISION.
+    SET ACTIVE N-ACTIVE TO FALSE
+    DISPLAY F N
+    STOP RUN."#),
+        "NN\n"
+    );
+}
+
+#[test]
+fn initialize_value_phrases_select_categories_and_reject_invalid_receivers() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 R.
+   02 A PIC X VALUE "A".
+   02 N PIC 9 VALUE 3.
+   02 FILLER PIC X VALUE "F".
+PROCEDURE DIVISION.
+    MOVE "Z9Z" TO R
+    INITIALIZE R ALPHANUMERIC NUMERIC TO VALUE
+    DISPLAY R
+    INITIALIZE R FILLER ALL VALUE
+    DISPLAY R
+    STOP RUN."#),
+        "A3Z\nA3F\n"
+    );
+    for (declaration, receiver) in [
+        ("01 P USAGE POINTER.", "P"),
+        ("01 I USAGE INDEX.", "I"),
+        ("01 F PIC 9.\n   88 ACTIVE VALUE 1.", "ACTIVE"),
+    ] {
+        let src = format!(
+            "ID DIVISION.\nPROGRAM-ID. T.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n{declaration}\nPROCEDURE DIVISION.\n    INITIALIZE {receiver} ALL TO VALUE.\n    STOP RUN."
+        );
+        let err = compile(&src).unwrap_err();
+        assert!(err.to_string().contains("INITIALIZE receiver"), "{err}");
+    }
+}
+
+#[test]
+fn copy_partial_replacement_handles_picture_and_does_not_cascade() {
+    let dir = tempfile::tempdir().unwrap();
+    std::fs::write(
+        dir.path().join("REC.cpy"),
+        "       01 OLD-N PIC X(3) VALUE 123.\n",
+    )
+    .unwrap();
+    let path = dir.path().join("T.cbl");
+    std::fs::write(
+        &path,
+        r#"       ID DIVISION.
+       PROGRAM-ID. T.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+           COPY REC REPLACING LEADING ==OLD-== BY ==NEW-==
+               LEADING ==NEW-== BY ==BAD-==
+               LEADING ==X== BY ==9==.
+       PROCEDURE DIVISION.
+           ADD 1 TO NEW-N
+           DISPLAY NEW-N
+           STOP RUN.
+"#,
+    )
+    .unwrap();
+    let module = zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap();
+    let out = Capture::default();
+    let mut vm = Machine::new(vec![]);
+    vm.set_stdout(Box::new(out.clone()));
+    vm.run_main(module).unwrap();
+    assert_eq!(&*out.0.borrow(), b"124\n");
+}
+
+#[test]
+fn set_false_global_condition_keeps_declaring_program_symbolic_literal() {
+    assert_eq!(
+        run(r#"ID DIVISION.
+PROGRAM-ID. T.
+ENVIRONMENT DIVISION.
+CONFIGURATION SECTION.
+SPECIAL-NAMES.
+    SYMBOLIC CHARACTERS FALSE-CHAR IS 214.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+01 F GLOBAL PIC X VALUE "Y".
+   88 ACTIVE VALUE "Y" FALSE FALSE-CHAR.
+PROCEDURE DIVISION.
+    CALL "U"
+    DISPLAY F
+    STOP RUN.
+ID DIVISION.
+PROGRAM-ID. U.
+PROCEDURE DIVISION.
+    SET ACTIVE TO FALSE
+    GOBACK.
+END PROGRAM U.
+END PROGRAM T."#),
+        "N\n"
+    );
+}

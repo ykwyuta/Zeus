@@ -161,6 +161,39 @@ impl<'a> Gen<'a> {
             pos: prog.pos,
         };
         g.environment()?;
+        // A FALSE value is a declaration-time literal, never a data item
+        // evaluated when SET executes. SYMBOLIC CHARACTERS are literals too.
+        let normalize_symbolic = |value: &mut Operand| {
+            if let Operand::Ref(r) = value
+                && r.qualifiers.is_empty()
+                && r.subscripts.is_empty()
+                && r.refmod.is_none()
+                && let Some(&byte) = g.symbolics.get(&r.name)
+            {
+                *value = Operand::Lit(Literal::Hex(vec![byte]));
+            }
+        };
+        for item in &mut g.dm.items {
+            if let Some(value) = &mut item.entry.false_value {
+                normalize_symbolic(value);
+                if let Operand::All(inner) = value {
+                    normalize_symbolic(inner);
+                }
+                let literal = match value {
+                    Operand::Lit(_) | Operand::Fig(_) => true,
+                    Operand::All(inner) => {
+                        matches!(inner.as_ref(), Operand::Lit(_) | Operand::Fig(_))
+                    }
+                    _ => false,
+                };
+                if !literal {
+                    return Err(Diag::error(
+                        item.pos,
+                        "literal required for WHEN SET TO FALSE",
+                    ));
+                }
+            }
+        }
         // GLOBAL files of containing programs
         for f in g.dm.global_files.clone() {
             if g.file_index.contains_key(&f) {
@@ -2542,8 +2575,26 @@ impl<'a> Gen<'a> {
         options: &InitializeOptions,
     ) -> Result<()> {
         let id = self.dm.resolve(target)?;
+        if self.dm.items[id].entry.renames.is_some() {
+            return Err(Diag::error(
+                target.pos,
+                "INITIALIZE receiver cannot have a RENAMES clause",
+            ));
+        }
+        if self.dm.items[id].cond_of.is_some() {
+            return Err(Diag::error(
+                target.pos,
+                "INITIALIZE receiver cannot be a condition-name",
+            ));
+        }
         let base = self.loc_of(id, target)?;
         let base_desc = self.dm.descs[base.desc as usize].clone();
+        if matches!(base_desc.ty, DataType::Index | DataType::Pointer) {
+            return Err(Diag::error(
+                target.pos,
+                "INITIALIZE receiver cannot be INDEX or POINTER",
+            ));
+        }
         let mut repl = Vec::new();
         for (cat, v) in replacing {
             repl.push((cat.as_str(), self.src(v)?));
