@@ -22,8 +22,10 @@ pub mod catalog;
 pub mod dd;
 pub mod format;
 pub mod keyed;
+pub mod physical;
 pub mod relative;
 pub mod seq;
+pub mod tape;
 
 use std::fmt;
 

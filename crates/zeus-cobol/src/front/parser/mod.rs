@@ -372,9 +372,13 @@ impl Parser {
             if (self.is("CONFIGURATION") || self.is("INPUT-OUTPUT")) && self.is_at(1, "SECTION") {
                 self.i += 2;
                 self.expect_period()?;
-            } else if self.accept("SOURCE-COMPUTER") || self.accept("OBJECT-COMPUTER") {
+            } else if self.is("SOURCE-COMPUTER") || self.is("OBJECT-COMPUTER") {
+                let source = self.accept("SOURCE-COMPUTER");
+                if !source {
+                    self.expect("OBJECT-COMPUTER")?;
+                }
                 self.opt_period();
-                self.computer_paragraph(&mut env)?;
+                self.computer_paragraph(&mut env, source)?;
             } else if self.accept("SPECIAL-NAMES") {
                 self.expect_period()?;
                 self.special_names(&mut env)?;
@@ -393,13 +397,27 @@ impl Parser {
         Ok(env)
     }
 
-    fn computer_paragraph(&mut self, env: &mut Environment) -> Result<()> {
+    fn computer_paragraph(&mut self, env: &mut Environment, source: bool) -> Result<()> {
         // computer-name [WITH DEBUGGING MODE] [MEMORY SIZE ...]
         // [PROGRAM COLLATING SEQUENCE IS alphabet] [SEGMENT-LIMIT IS n] .
+        // Empty paragraphs are allowed; any nonempty paragraph starts with
+        // the system-name, followed by the documented clauses only.
+        if self.is_any(&[
+            "SPECIAL-NAMES",
+            "FILE-CONTROL",
+            "I-O-CONTROL",
+            "SOURCE-COMPUTER",
+            "OBJECT-COMPUTER",
+        ]) || self.is_at(1, "SECTION")
+            || self.is_at(1, "DIVISION")
+        {
+            return Ok(());
+        }
+        self.name()?;
         while !self.is_period() && !self.eof() {
-            if self.is("PROGRAM") || self.is("COLLATING") {
+            if !source && (self.is("PROGRAM") || self.is("COLLATING")) {
                 self.accept("PROGRAM");
-                self.accept("COLLATING");
+                self.expect("COLLATING")?;
                 self.expect("SEQUENCE")?;
                 self.accept("IS");
                 env.program_collating = Some(self.name()?);
@@ -408,11 +426,24 @@ impl Parser {
                 || self.is_at(1, "DIVISION")
             {
                 return Ok(());
-            } else if self.is("DEBUGGING") && self.is_at(1, "MODE") {
+            } else if source && (self.accept("WITH") || self.is("DEBUGGING")) {
+                self.expect("DEBUGGING")?;
+                self.expect("MODE")?;
                 env.debugging_mode = true;
-                self.i += 2;
+            } else if !source && self.accept("MEMORY") {
+                self.accept("SIZE");
+                self.integer()?;
+                if !(self.accept("WORDS") || self.accept("CHARACTERS") || self.accept("MODULES")) {
+                    return self.err("WORDS, CHARACTERS or MODULES expected");
+                }
+            } else if !source && self.accept("SEGMENT-LIMIT") {
+                self.accept("IS");
+                let n = self.integer()?;
+                if !(1..=49).contains(&n) {
+                    return self.err("SEGMENT-LIMIT must be in 1..49");
+                }
             } else {
-                self.i += 1;
+                return self.err("invalid computer paragraph clause");
             }
         }
         self.opt_period();
@@ -747,9 +778,8 @@ impl Parser {
             }
             if self.accept("SAME") {
                 let record = self.accept("RECORD");
-                self.accept("SORT");
-                self.accept("SORT-MERGE");
-                self.accept("AREA");
+                let sort = self.accept("SORT") || self.accept("SORT-MERGE");
+                self.expect("AREA")?;
                 self.accept("FOR");
                 let mut files = Vec::new();
                 while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
@@ -757,23 +787,45 @@ impl Parser {
                 {
                     files.push(self.name()?);
                 }
+                if files.len() < 2 {
+                    return self.err("SAME AREA requires at least two file names");
+                }
                 if record {
                     env.same_record_area.push(files);
+                } else if !sort {
+                    env.same_area.push(files);
                 }
             } else if self.accept("MULTIPLE") {
                 env.multiple_file_tape = true;
-                self.accept("FILE");
-                self.accept("TAPE");
+                self.expect("FILE")?;
+                self.expect("TAPE")?;
                 self.accept("CONTAINS");
                 while matches!(
                     self.peek().map(|t| &t.tok),
                     Some(Tok::Word(_)) | Some(Tok::Num(_))
                 ) && !self.is_any(&["SAME", "MULTIPLE", "RERUN", "APPLY"])
                 {
-                    self.i += 1;
+                    self.name()?;
+                    if self.accept("POSITION") {
+                        self.integer()?;
+                    }
                 }
+            } else if self.accept("APPLY") {
+                self.expect("WRITE-ONLY")?;
+                self.accept("ON");
+                let start = env.apply_write_only.len();
+                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !self.is_any(&["SAME", "MULTIPLE", "RERUN", "APPLY"])
+                {
+                    env.apply_write_only.push(self.name()?);
+                }
+                if env.apply_write_only.len() == start {
+                    return self.err("APPLY WRITE-ONLY file expected");
+                }
+            } else if self.is("RERUN") {
+                return self.err("RERUN checkpoint/restart is not implemented");
             } else {
-                self.i += 1;
+                return self.err("I-O-CONTROL clause expected");
             }
         }
         Ok(())

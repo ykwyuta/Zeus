@@ -86,11 +86,7 @@ impl Parser {
                     dd.reports.push(self.report_description()?);
                 }
             } else if self.is("SCREEN") && self.is_at(1, "SECTION") {
-                // Not supported: skip to the next section or division.
-                self.i += 2;
-                while !self.eof() && !self.is_at(1, "SECTION") && !self.is_at(1, "DIVISION") {
-                    self.i += 1;
-                }
+                return self.err("SCREEN SECTION is not supported by IBM Enterprise COBOL or Zeus");
             } else {
                 break;
             }
@@ -136,6 +132,7 @@ impl Parser {
             name: self.name()?,
             pos,
             sort,
+            label_standard: true,
             ..FileDescription::default()
         };
         while !self.is_period() && !self.eof() {
@@ -159,6 +156,7 @@ impl Parser {
             } else if self.accept("RECORD") {
                 if self.accept("IS") || self.is("VARYING") {
                     self.expect("VARYING")?;
+                    fd.record_varying = true;
                     self.accept("IN");
                     self.accept("SIZE");
                     if self.accept("FROM") || self.is_integer() {
@@ -192,12 +190,14 @@ impl Parser {
                 self.accept("IS");
                 if self.accept("STANDARD") {
                     fd.label_standard = true;
-                } else if !self.accept("OMITTED") {
-                    // data-names
+                } else if self.accept("OMITTED") {
+                    fd.label_standard = false;
+                } else {
+                    // Preserve user label names: these require tape support.
                     while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
                         && !self.is_fd_clause()
                     {
-                        self.i += 1;
+                        fd.label_records.push(self.name()?);
                     }
                 }
             } else if self.accept("VALUE") {
@@ -271,7 +271,11 @@ impl Parser {
             } else if self.accept("RECORDING") {
                 self.accept("MODE");
                 self.accept("IS");
-                self.name()?;
+                let mode = self.name()?;
+                if !matches!(mode.as_str(), "F" | "V" | "U" | "S") {
+                    return self.err("RECORDING MODE must be F, V, U or S");
+                }
+                fd.recording_mode = mode.chars().next();
             } else {
                 return self.err("FD clause expected");
             }

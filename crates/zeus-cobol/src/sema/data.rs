@@ -769,14 +769,26 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     }
     // SAME RECORD AREA: the files of a group share one record area.
     let mut same_start: HashMap<usize, u32> = HashMap::new();
+    let mut shared_groups = prog.env.same_record_area.clone();
+    // Plain SAME AREA is documentation for QSAM, record sharing for VSAM.
+    shared_groups.extend(prog.env.same_area.iter().map(|g| {
+        g.iter()
+            .filter(|n| {
+                prog.env.files.iter().any(|f| {
+                    &f.name == *n
+                        && matches!(
+                            f.organization,
+                            ast::Organization::Indexed | ast::Organization::Relative
+                        )
+                })
+            })
+            .cloned()
+            .collect::<Vec<_>>()
+    }));
     for (fi, recs) in file_records.iter().enumerate() {
         let external = prog.data.files[fi].external;
         let fname = &prog.data.files[fi].name;
-        let group = prog
-            .env
-            .same_record_area
-            .iter()
-            .position(|g| g.contains(fname));
+        let group = shared_groups.iter().position(|g| g.contains(fname));
         cursor = align(cursor, 8);
         let shared = group.and_then(|g| same_start.get(&g).copied());
         let start = if external {

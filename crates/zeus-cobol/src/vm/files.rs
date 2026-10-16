@@ -19,8 +19,11 @@ use std::path::PathBuf;
 use zeus_ds::DsError;
 use zeus_ds::format::RecordFormat;
 use zeus_ds::keyed::{KeySpec, KeyedDataset, Position};
+use zeus_ds::physical::Layout;
 use zeus_ds::relative::RelativeDataset;
+use zeus_ds::seq::BufferPool;
 use zeus_ds::seq::SequentialDataset;
+use zeus_ds::tape::{self, Entry};
 
 use super::data as d;
 use super::eval::Val;
@@ -46,6 +49,12 @@ enum Data {
 
 #[derive(Default)]
 pub struct FileState {
+    buffers: BufferPool,
+    tape_start: usize,
+    tape_next: usize,
+    tape_entries: Vec<Entry>,
+    no_rewind: bool,
+    removed: bool,
     open: Option<OpenMode>,
     path: Option<PathBuf>,
     data: Data,
@@ -124,7 +133,8 @@ fn is_text(def: &FileDef) -> bool {
 fn seq_format(def: &FileDef) -> RecordFormat {
     if is_text(def) {
         RecordFormat::Text
-    } else if fixed_length(def) {
+    } else if def.recording_mode == Some('F') || (def.recording_mode.is_none() && fixed_length(def))
+    {
         RecordFormat::Fixed(def.max_len)
     } else {
         RecordFormat::Variable
@@ -136,6 +146,203 @@ fn ds_err(e: DsError) -> super::RunError {
 }
 
 impl Machine {
+    fn tape_label(
+        &self,
+        def: &FileDef,
+        layout: Layout,
+        id: &str,
+        number: u8,
+        blocks: usize,
+        sequence: usize,
+    ) -> Vec<u8> {
+        let mut label = vec![b' '; 80];
+        label[..3].copy_from_slice(id.as_bytes());
+        label[3] = b'0' + number;
+        if number == 1 {
+            let name = def.assign.as_bytes();
+            let len = name.len().min(17);
+            label[4..4 + len].copy_from_slice(&name[..len]);
+            label[21..27].copy_from_slice(b"ZEUS01");
+            label[27..41].copy_from_slice(b"00010001000100");
+            label[31..35].copy_from_slice(format!("{:04}", sequence.min(9999)).as_bytes());
+            // Current creation date in the IBM century/year/day form.
+            let days = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_secs() as i64
+                / 86400;
+            let (year, _, _) = super::civil_from_days(days);
+            let day = days - super::days_from_civil(year, 1, 1) + 1;
+            let date = format!(
+                "{}{:02}{:03}",
+                if year >= 2000 { '0' } else { ' ' },
+                year % 100,
+                day
+            );
+            label[41..47].copy_from_slice(date.as_bytes());
+            label[47..53].copy_from_slice(b" 00000");
+            label[53] = b'0';
+            label[54..60].copy_from_slice(format!("{:06}", blocks.min(999999)).as_bytes());
+            label[60..64].copy_from_slice(b"ZEUS");
+        } else {
+            label[4] = if layout.mode == 'S' {
+                b'V'
+            } else {
+                layout.mode as u8
+            };
+            label[5..10].copy_from_slice(format!("{:05}", layout.block_size).as_bytes());
+            label[10..15].copy_from_slice(
+                format!(
+                    "{:05}",
+                    layout.record_len
+                        + if matches!(layout.mode, 'V' | 'S') {
+                            4
+                        } else {
+                            0
+                        }
+                )
+                .as_bytes(),
+            );
+            label[38] = match layout.mode {
+                'S' => b'R',
+                'F' | 'V' => b'B',
+                _ => b' ',
+            };
+        }
+        ebcdic::from_host(&label)
+    }
+
+    fn tape_headers(&self, def: &FileDef, layout: Layout, entries: &mut Vec<Entry>) {
+        let sequence = 1 + entries
+            .iter()
+            .filter(
+                |entry| matches!(entry, Entry::Block(b) if b.starts_with(&ebcdic::encode("EOF1"))),
+            )
+            .count();
+        if entries.is_empty() {
+            let mut volume = vec![ebcdic::SPACE; 80];
+            volume[..10].copy_from_slice(&ebcdic::encode("VOL1ZEUS01"));
+            entries.push(Entry::Block(volume));
+        }
+        entries.push(Entry::Block(
+            self.tape_label(def, layout, "HDR", 1, 0, sequence),
+        ));
+        entries.push(Entry::Block(
+            self.tape_label(def, layout, "HDR", 2, 0, sequence),
+        ));
+        entries.push(Entry::Mark);
+    }
+
+    fn tape_trailers(&self, def: &FileDef, layout: Layout, count: usize, entries: &mut Vec<Entry>) {
+        let sequence = 1 + entries
+            .iter()
+            .filter(
+                |entry| matches!(entry, Entry::Block(b) if b.starts_with(&ebcdic::encode("EOF1"))),
+            )
+            .count();
+        entries.push(Entry::Block(
+            self.tape_label(def, layout, "EOF", 1, count, sequence),
+        ));
+        entries.push(Entry::Block(
+            self.tape_label(def, layout, "EOF", 2, count, sequence),
+        ));
+        entries.push(Entry::Mark);
+    }
+    fn is_tape(&self, def: &FileDef, path: &std::path::Path) -> bool {
+        self.dd.io_attributes(&[&def.assign, &def.name]).tape
+            || path
+                .extension()
+                .is_some_and(|s| s.eq_ignore_ascii_case("aws"))
+    }
+
+    fn physical_layout(&self, def: &FileDef, path: &std::path::Path) -> Option<Layout> {
+        if def.org != Org::Sequential || def.print {
+            return None;
+        }
+        let dd = self.dd.io_attributes(&[&def.assign, &def.name]);
+        let tape = self.is_tape(def, path);
+        if !tape
+            && def.block_size.is_none()
+            && dd.block_size.is_none()
+            && !matches!(def.recording_mode, Some('U' | 'S'))
+        {
+            return None;
+        }
+        let mode = def
+            .recording_mode
+            .unwrap_or(if fixed_length(def) { 'F' } else { 'V' });
+        let automatic = match mode {
+            'F' => (32760 / def.max_len.max(1)).max(1) * def.max_len,
+            'U' => def.max_len,
+            _ => 32760,
+        };
+        let block_size = dd
+            .block_size
+            .or(def.block_size)
+            .filter(|&n| n != 0)
+            .unwrap_or(if def.block_size.is_none() && dd.block_size.is_none() {
+                def.max_len + if matches!(mode, 'V' | 'S') { 8 } else { 0 }
+            } else {
+                automatic
+            });
+        Some(Layout {
+            mode,
+            record_len: def.max_len as usize,
+            block_size: block_size as usize,
+            write_only: def.write_only,
+        })
+    }
+
+    pub(super) fn open_tape_options(
+        &mut self,
+        cur: usize,
+        f: u32,
+        mode: OpenMode,
+        reversed: bool,
+        no_rewind: bool,
+    ) -> RResult<()> {
+        let def = self.file_def(cur, f);
+        let path = self.file_path(&def);
+        let tape = self.is_tape(&def, &path);
+        // On direct access media these phrases have no effect per IBM.
+        let old = self.tape_positions.get(&path).copied();
+        if tape && !no_rewind {
+            self.tape_positions.insert(path.clone(), 0);
+        }
+        self.open_file(cur, f, mode)?;
+        if self.state(cur, f).open.is_none() {
+            if let Some(pos) = old {
+                self.tape_positions.insert(path, pos);
+            }
+            return Ok(());
+        }
+        if tape && reversed {
+            if self.file_def(cur, f).recording_mode != Some('F') {
+                return err("OPEN REVERSED requires fixed-format tape records");
+            }
+            self.state(cur, f).seq().records.reverse();
+        }
+        Ok(())
+    }
+
+    pub(super) fn close_tape_options(
+        &mut self,
+        cur: usize,
+        f: u32,
+        no_rewind: bool,
+        removal: bool,
+    ) -> RResult<()> {
+        let def = self.file_def(cur, f);
+        let tape = self.is_tape(&def, &self.file_path(&def));
+        if tape {
+            self.state(cur, f).no_rewind = no_rewind;
+        }
+        self.close_file(cur, f, false)?;
+        if tape {
+            self.state(cur, f).removed = removal;
+        }
+        Ok(())
+    }
     fn file_def(&self, cur: usize, f: u32) -> FileDef {
         self.instances[cur].code.files[f as usize].clone()
     }
@@ -194,6 +401,7 @@ impl Machine {
         cur: usize,
         def: &FileDef,
         path: &std::path::Path,
+        buffers: &mut BufferPool,
     ) -> RResult<Option<Data>> {
         Ok(match def.org {
             Org::Indexed => {
@@ -205,12 +413,48 @@ impl Machine {
             Org::Relative => RelativeDataset::load(path).map_err(ds_err)?.map(Data::Rel),
             Org::Sequential | Org::LineSequential => {
                 let text = self.file_format(def) == RecordFormat::Text;
-                SequentialDataset::load(path, self.file_format(def), ebcdic::SPACE)
+                if let Some(layout) = self.physical_layout(def, path) {
+                    let Some(bytes) = buffers.read(path).map_err(ds_err)? else {
+                        return Ok(None);
+                    };
+                    let blocks = if self.is_tape(def, path) {
+                        let entries = tape::decode(&bytes).map_err(ds_err)?;
+                        let pos = self.tape_positions.get(path).copied().unwrap_or(0);
+                        tape::file_with_labels(&entries, pos, def.label_standard)
+                            .map_err(ds_err)?
+                            .blocks
+                    } else {
+                        layout.split(&bytes).map_err(ds_err)?
+                    };
+                    let mut data = SequentialDataset::new(self.file_format(def), ebcdic::SPACE);
+                    data.records = layout.decode(&blocks).map_err(ds_err)?;
+                    if def.code_set_ascii {
+                        for r in &mut data.records {
+                            *r = r.iter().map(|&b| ebcdic::from_latin1(b)).collect();
+                        }
+                    }
+                    return Ok(Some(Data::Seq(data)));
+                }
+                buffers
+                    .read(path)
+                    .and_then(|data| {
+                        data.map(|bytes| {
+                            let mut data =
+                                SequentialDataset::new(self.file_format(def), ebcdic::SPACE);
+                            data.records = zeus_ds::format::decode(self.file_format(def), &bytes)?;
+                            Ok(data)
+                        })
+                        .transpose()
+                    })
                     .map_err(ds_err)?
                     .map(|mut d| {
-                        if text {
+                        if text || def.code_set_ascii {
                             for r in &mut d.records {
-                                *r = ebcdic::from_host(r);
+                                *r = if text {
+                                    ebcdic::from_host(r)
+                                } else {
+                                    r.iter().map(|&b| ebcdic::from_latin1(b)).collect()
+                                };
                             }
                         }
                         Data::Seq(d)
@@ -264,6 +508,33 @@ impl Machine {
     pub(super) fn open_file(&mut self, cur: usize, f: u32, mode: OpenMode) -> RResult<()> {
         self.last_open_mode = Some(mode);
         let def = self.file_def(cur, f);
+        if def.external
+            && self
+                .instances
+                .iter()
+                .flat_map(|i| i.code.files.iter())
+                .any(|other| {
+                    other.external && other.name == def.name && other.reserve != def.reserve
+                })
+        {
+            return err("EXTERNAL file RESERVE declarations disagree");
+        }
+        let peers: Vec<u32> = self.instances[cur]
+            .code
+            .files
+            .iter()
+            .enumerate()
+            .filter(|(_, d)| def.same_area.contains(&d.name))
+            .map(|(i, _)| i as u32)
+            .collect();
+        for peer in peers {
+            if self.state(cur, peer).open.is_some() {
+                return err(format!(
+                    "SAME AREA: {} cannot be opened while another file in its area is open",
+                    def.name
+                ));
+            }
+        }
         if self.state(cur, f).open.is_some() {
             return self.io_error(cur, &def, "41", "OPEN");
         }
@@ -279,11 +550,53 @@ impl Machine {
             return self.io_error(cur, &def, "35", "OPEN");
         }
         let path = self.file_path(&def);
+        if self.state(cur, f).removed {
+            return self.io_error(cur, &def, "30", "OPEN (tape removed)");
+        }
+        let attributes = self.dd.io_attributes(&[&def.assign, &def.name]);
+        let layout = self.physical_layout(&def, &path);
+        if let Some(layout) = layout {
+            layout.validate().map_err(ds_err)?;
+            if layout.mode == 'U' && !self.is_tape(&def, &path) {
+                return self.io_error(cur, &def, "39", "OPEN U requires AWSTAPE");
+            }
+        }
+        let count = def
+            .reserve
+            .filter(|&n| n != 0)
+            .or(attributes.buffers.filter(|&n| n != 0))
+            .unwrap_or(2);
+        let buffer_size = layout.map_or(def.max_len.max(1) as usize, |l| l.block_size);
         let mut st = FileState {
             path: Some(path.clone()),
+            buffers: BufferPool::new(count, buffer_size).map_err(ds_err)?,
             pos: 1,
             ..FileState::default()
         };
+        if self.is_tape(&def, &path) {
+            st.tape_entries = st
+                .buffers
+                .read(&path)
+                .map_err(ds_err)?
+                .map(|b| tape::decode(&b).map_err(ds_err))
+                .transpose()?
+                .unwrap_or_default();
+            let position = if let Some(number) = attributes.file_sequence {
+                tape::sequence_with_labels(&st.tape_entries, number, def.label_standard)
+                    .map_err(ds_err)?
+            } else {
+                self.tape_positions.get(&path).copied().unwrap_or(0)
+            };
+            st.tape_start = position;
+            st.tape_next = if position < st.tape_entries.len() && mode != OpenMode::Output {
+                tape::file_with_labels(&st.tape_entries, position, def.label_standard)
+                    .map_err(ds_err)?
+                    .next
+            } else {
+                position
+            };
+            self.tape_positions.insert(path.clone(), position);
+        }
         if mode == OpenMode::Output {
             st.modified = true;
             st.data = self.empty_data(cur, &def)?;
@@ -291,7 +604,7 @@ impl Machine {
             let data = if unallocated {
                 None
             } else {
-                self.load_data(cur, &def, &path)?
+                self.load_data(cur, &def, &path, &mut st.buffers)?
             };
             match data {
                 Some(data) => st.data = data,
@@ -317,6 +630,8 @@ impl Machine {
                 .unwrap_or_default();
         }
         st.open = Some(mode);
+        self.opened_buffers
+            .push((def.assign.clone(), count, buffer_size as u32));
         let code = if st.absent && def.optional {
             "05"
         } else {
@@ -437,6 +752,9 @@ impl Machine {
     /// CLOSE REEL/UNIT: no effect on a non-reel file (status 07).
     pub(super) fn close_reel(&mut self, cur: usize, f: u32) -> RResult<()> {
         let def = self.file_def(cur, f);
+        if self.is_tape(&def, &self.file_path(&def)) {
+            return self.close_tape_options(cur, f, false, true);
+        }
         if self.state(cur, f).open.is_none() {
             return self.io_error(cur, &def, "42", "CLOSE");
         }
@@ -445,7 +763,7 @@ impl Machine {
 
     pub(super) fn close_file(&mut self, cur: usize, f: u32, lock: bool) -> RResult<()> {
         let def = self.file_def(cur, f);
-        let st = std::mem::take(self.state(cur, f));
+        let mut st = std::mem::take(self.state(cur, f));
         let Some(_mode) = st.open else {
             *self.state(cur, f) = st;
             return self.io_error(cur, &def, "42", "CLOSE");
@@ -453,7 +771,45 @@ impl Machine {
         if st.modified
             && let Some(path) = &st.path
         {
-            let r = if def.print {
+            let r = if let Some(layout) = self.physical_layout(&def, path) {
+                let Data::Seq(data) = &st.data else {
+                    return err("physical file is not sequential");
+                };
+                let mut records = data.records.clone();
+                if def.code_set_ascii {
+                    for r in &mut records {
+                        *r = ebcdic::decode_latin1(r);
+                    }
+                }
+                let blocks = layout
+                    .encode(
+                        &records,
+                        if def.code_set_ascii {
+                            b' '
+                        } else {
+                            ebcdic::SPACE
+                        },
+                    )
+                    .map_err(ds_err)?;
+                let bytes = if self.is_tape(&def, path) {
+                    let mut entries =
+                        st.tape_entries[..st.tape_start.min(st.tape_entries.len())].to_vec();
+                    if def.label_standard {
+                        self.tape_headers(&def, layout, &mut entries);
+                    }
+                    entries.extend(blocks.iter().cloned().map(Entry::Block));
+                    entries.push(Entry::Mark);
+                    if def.label_standard {
+                        self.tape_trailers(&def, layout, blocks.len(), &mut entries);
+                    }
+                    st.tape_next = entries.len();
+                    entries.push(Entry::Mark);
+                    tape::encode(&entries).map_err(ds_err)?
+                } else {
+                    blocks.concat()
+                };
+                st.buffers.write(path, &bytes)
+            } else if def.print {
                 let mut t = st.text.clone();
                 if def.linage.is_some() && st.line_used {
                     t.push(b'\n');
@@ -470,15 +826,28 @@ impl Machine {
                             }
                             *r = line;
                         }
-                        text.store(path)
+                        st.buffers.write(path, &text.to_bytes())
                     }
-                    Data::Seq(d) => d.store(path),
+                    Data::Seq(d) if def.code_set_ascii => {
+                        let mut converted = d.clone();
+                        for r in &mut converted.records {
+                            *r = ebcdic::decode_latin1(r);
+                        }
+                        st.buffers.write(path, &converted.to_bytes())
+                    }
+                    Data::Seq(d) => st.buffers.write(path, &d.to_bytes()),
                     Data::Rel(d) => d.store(path),
                     Data::Keyed(d) => d.store(path),
                     Data::None => Ok(()),
                 }
             };
             r.map_err(ds_err)?;
+        }
+        if let Some(path) = &st.path
+            && self.is_tape(&def, path)
+        {
+            self.tape_positions
+                .insert(path.clone(), if st.no_rewind { st.tape_next } else { 0 });
         }
         self.state(cur, f).locked = lock;
         self.set_status(cur, &def, "00")
@@ -1122,7 +1491,8 @@ impl Machine {
             r.resize(len, ebcdic::SPACE);
             m.sort_records.push(r);
         };
-        match self.load_data(cur, &def, &path)? {
+        let mut buffers = BufferPool::new(2, def.max_len.max(1) as usize).map_err(ds_err)?;
+        match self.load_data(cur, &def, &path, &mut buffers)? {
             Some(Data::Seq(d)) => d.records.iter().for_each(|r| add(self, r)),
             Some(Data::Rel(d)) => {
                 let mut n = 1;

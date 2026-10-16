@@ -87,6 +87,7 @@ pub struct Dd {
     /// Host file holding the data.
     pub path: PathBuf,
     pub format: Option<RecordFormat>,
+    pub io: zeus_ds::dd::IoAttributes,
     status: Status,
     normal: End,
     abnormal: End,
@@ -355,6 +356,47 @@ fn disp_of(dd: &Stmt) -> (Status, Option<End>, Option<End>) {
 
 /// DCB attributes of a DD statement: RECFM and LRECL (DCB=(...),
 /// DCB=*.ddname or the keywords directly).
+fn io_attributes(dd: &Stmt, earlier: &[Dd]) -> zeus_ds::dd::IoAttributes {
+    let mut io = zeus_ds::dd::IoAttributes::default();
+    if let Some(Value::Str(s)) = dd.get("DCB")
+        && s.starts_with("*.")
+        && let Some(d) = earlier
+            .iter()
+            .find(|d| Some(d.name.as_str()) == s.rsplit('.').next())
+    {
+        io = d.io.clone();
+    }
+    let parameter = |name| {
+        dd.get_str(name).or_else(|| match dd.get("DCB") {
+            Some(Value::List(params)) => parse::get(params, name).and_then(Value::as_str),
+            _ => None,
+        })
+    };
+    io.buffers = parameter("BUFNO")
+        .and_then(|n| n.parse().ok())
+        .or(io.buffers);
+    io.block_size = parameter("BLKSIZE")
+        .and_then(|n| n.parse().ok())
+        .or(io.block_size);
+    if let Some(unit) = dd
+        .get("UNIT")
+        .and_then(|v| v.items().first().and_then(|v| v.as_str()))
+    {
+        io.tape = matches!(
+            unit.to_ascii_uppercase().as_str(),
+            "TAPE" | "TAPEFILE" | "3420" | "3480" | "3490" | "3590"
+        );
+    }
+    if let Some(label) = dd.get("LABEL") {
+        io.file_sequence = label
+            .items()
+            .first()
+            .and_then(|v| v.as_str())
+            .and_then(|s| s.parse().ok());
+    }
+    io
+}
+
 fn dcb_of(dd: &Stmt, earlier: &[Dd], catalog: &Catalog) -> (Option<Recfm>, Option<u32>) {
     let mut recfm = dd.get_str("RECFM").and_then(Recfm::parse);
     let mut lrecl = dd.get_str("LRECL").and_then(|s| s.parse().ok());
@@ -488,6 +530,7 @@ impl Runner<'_> {
             kind: DdKind::Dummy,
             path: PathBuf::from("/dev/null"),
             format: None,
+            io: io_attributes(st, earlier),
             status,
             normal: normal.unwrap_or(End::Keep),
             abnormal: abnormal.or(normal).unwrap_or(End::Keep),
@@ -698,8 +741,10 @@ fn cobol_factory(
 ) -> Box<dyn Fn() -> zeus_cobol::vm::Machine> {
     let libs = libs.to_vec();
     let mut allocs = Vec::new();
+    let mut io = Vec::new();
     let mut tiot = Vec::new();
     for dd in &ctx.dds {
+        io.push((dd.name.clone(), dd.io.clone()));
         allocs.push((
             dd.name.clone(),
             Allocation {
@@ -729,6 +774,9 @@ fn cobol_factory(
         }
         for (n, a) in &allocs {
             m.allocate(n, a.clone());
+        }
+        for (n, attributes) in &io {
+            m.set_dd_io(n, attributes.clone());
         }
         m.set_step(info.clone());
         if let Ok(out) = open_append(&sysout) {

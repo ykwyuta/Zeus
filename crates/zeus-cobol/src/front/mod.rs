@@ -4,6 +4,7 @@ pub mod ast;
 pub mod cics;
 pub mod copy;
 pub mod lexer;
+mod options;
 pub mod parser;
 pub mod source;
 pub mod syslib;
@@ -35,11 +36,13 @@ pub struct FrontOptions {
     pub nsymbol_dbcs: bool,
 }
 
-static NSYMBOL_DBCS: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+thread_local! {
+    static NSYMBOL_DBCS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
 
 /// NSYMBOL(DBCS) in effect for the compilation (`FrontOptions`).
 pub fn nsymbol_dbcs() -> bool {
-    NSYMBOL_DBCS.load(std::sync::atomic::Ordering::Relaxed)
+    NSYMBOL_DBCS.get()
 }
 
 /// Source-wide settings that must be known before lexing: WITH DEBUGGING
@@ -151,9 +154,17 @@ fn process_statements(text: &str) -> (String, String) {
                 .collect::<String>()
                 .trim_start()
                 .to_ascii_uppercase();
-            let is_process = is_process || t7.starts_with("CBL ") || t7.starts_with("PROCESS ");
+            let is_process = (is_process || t7.starts_with("CBL ") || t7.starts_with("PROCESS "))
+                && ind != '*'
+                && ind != '/';
             if is_process {
-                options.push_str(&t);
+                let statement = if t.starts_with("CBL ") || t.starts_with("PROCESS ") || t == "CBL"
+                {
+                    &t
+                } else {
+                    &t7
+                };
+                options.push_str(statement.split_once(' ').map_or("", |(_, rest)| rest));
                 options.push(' ');
                 out.push('\n');
                 continue;
@@ -173,9 +184,8 @@ pub fn parse_file(
     opts: &FrontOptions,
     files: &mut FileTable,
 ) -> Result<Vec<ast::Program>> {
-    NSYMBOL_DBCS.store(opts.nsymbol_dbcs, std::sync::atomic::Ordering::Relaxed);
     let (tokens, cics_option) = source_tokens(path, opts, files)?;
-    let cics = opts.cics || cics_option || cics::uses(&tokens, "CICS");
+    let cics = cics_option || cics::uses(&tokens, "CICS");
     let dli = cics::uses(&tokens, "DLI");
     let mut programs = parser::parse(tokens)?;
     for p in &mut programs {
@@ -204,9 +214,8 @@ pub fn source_tokens(
     })?;
     let text = String::from_utf8_lossy(&text).into_owned();
     let (text, options) = process_statements(&text);
-    let cics_option = options
-        .split(|c: char| !c.is_ascii_alphanumeric())
-        .any(|w| w == "CICS");
+    let (cics_option, nsymbol_dbcs) = options::parse(&options, opts)?;
+    NSYMBOL_DBCS.set(nsymbol_dbcs);
     let (debugging, comma) = prescan(&text);
     let debugging = debugging || opts.debugging_lines;
     let tokens = preprocess(path, &text, opts, files, debugging, comma)?;

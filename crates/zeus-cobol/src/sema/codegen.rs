@@ -110,6 +110,12 @@ impl<'a> Gen<'a> {
         outer: Option<(u32, &DataModel)>,
         ancestors: &[(u32, &'a ast::Program)],
     ) -> Result<Gen<'a>> {
+        if prog.recursive && (outer.is_some() || !prog.nested.is_empty() || prog.initial) {
+            return Err(Diag::error(
+                prog.pos,
+                "RECURSIVE cannot be INITIAL, nested, or contain nested programs",
+            ));
+        }
         let settings = Settings {
             decimal_comma: prog.env.decimal_point_comma,
             currency: prog
@@ -204,7 +210,12 @@ impl<'a> Gen<'a> {
                     continue;
                 };
                 if let Some(pos) = anc.env.files.iter().position(|fc| fc.name == f) {
-                    g.declare_file_from(&anc.env.files[pos], fd, Some((idx, pos as u32)))?;
+                    g.declare_file_from(
+                        &anc.env.files[pos],
+                        fd,
+                        &anc.env,
+                        Some((idx, pos as u32)),
+                    )?;
                 }
                 break;
             }
@@ -264,7 +275,7 @@ impl<'a> Gen<'a> {
             .iter()
             .find(|f| f.name == fc.name)
             .ok_or_else(|| Diag::error(fc.pos, format!("no FD for file {}", fc.name)))?;
-        self.declare_file_from(fc, fd, None)
+        self.declare_file_from(fc, fd, &prog.env, None)
     }
 
     /// A RECORD KEY described outside the file's records (in WORKING-
@@ -297,6 +308,7 @@ impl<'a> Gen<'a> {
         &mut self,
         fc: &FileControl,
         fd: &FileDescription,
+        file_env: &Environment,
         owner: Option<(u32, u32)>,
     ) -> Result<()> {
         let (area, records) = self
@@ -306,12 +318,172 @@ impl<'a> Gen<'a> {
             .cloned()
             .ok_or_else(|| Diag::error(fc.pos, "file record area missing"))?;
         let rec_desc = self.dm.items[area].desc;
+        if fc.reserve.is_some() && fc.organization == Organization::LineSequential {
+            return Err(Diag::error(
+                fc.pos,
+                "RESERVE is not supported for LINE SEQUENTIAL",
+            ));
+        }
+        if file_env.apply_write_only.contains(&fc.name)
+            && fc.organization != Organization::Sequential
+        {
+            return Err(Diag::error(
+                fc.pos,
+                "APPLY WRITE-ONLY requires QSAM sequential organization",
+            ));
+        }
+        if fc.organization == Organization::Sequential && !fd.sort && !fd.label_records.is_empty() {
+            return Err(Diag::error(
+                fd.pos,
+                "user LABEL RECORDS require unsupported tape label processing",
+            ));
+        }
+        if let Some(padding) = &fc.padding
+            && owner.is_none()
+        {
+            let valid = match padding {
+                Operand::Lit(Literal::Str(s)) => s.chars().count() == 1,
+                Operand::Lit(Literal::Hex(b)) => b.len() == 1,
+                Operand::Lit(Literal::National(b)) => b.len() == 2,
+                Operand::Fig(
+                    Figurative::Space
+                    | Figurative::HighValue
+                    | Figurative::LowValue
+                    | Figurative::Quote,
+                ) => true,
+                Operand::Ref(r) => {
+                    let id = self.dm.resolve(r)?;
+                    let item = &self.dm.items[id];
+                    let ty = &self.dm.descs[item.desc as usize].ty;
+                    !matches!(item.area, Area::File(_))
+                        && (item.len == 1 && matches!(ty, DataType::Alphanumeric { .. })
+                            || item.len == 2 && matches!(ty, DataType::National))
+                        && (!fd.external || matches!(item.area, Area::External(_)))
+                }
+                _ => false,
+            };
+            if !valid {
+                return Err(Diag::error(
+                    fc.pos,
+                    "PADDING CHARACTER requires a one-character alphanumeric/national literal or non-file data item",
+                ));
+            }
+        }
         let max_len = self.dm.items[area].len;
         let min_len = records
             .iter()
             .map(|&r| self.dm.items[r].len)
             .min()
             .unwrap_or(max_len);
+        // Physical QSAM format is independent of the logical record lengths:
+        // even equal-length records can explicitly request an RDW with mode V.
+        let qsam = fc.organization == Organization::Sequential && !fd.sort;
+        let recording_mode = if qsam {
+            let block_small = fd
+                .block_contains
+                .is_some_and(|(_, b, records)| !records && b > 0 && b < max_len);
+            let inferred = if block_small {
+                'S'
+            } else if fd.record_min.is_some()
+                && fd.record_min == fd.record_max
+                && !fd.record_varying
+            {
+                'F'
+            } else if fd.record_varying
+                || fd.record_depending.is_some()
+                || records
+                    .iter()
+                    .any(|&r| self.dm.descs[self.dm.items[r].desc as usize].odo.is_some())
+                || min_len != max_len
+                || fd
+                    .record_min
+                    .zip(fd.record_max)
+                    .is_some_and(|(a, b)| a != b)
+            {
+                'V'
+            } else {
+                'F'
+            };
+            let mode = fd.recording_mode.unwrap_or(inferred);
+            if mode == 'U' && fd.block_contains.is_some() {
+                return Err(Diag::error(
+                    fd.pos,
+                    "RECORDING MODE U cannot specify BLOCK CONTAINS",
+                ));
+            }
+            if mode == 'S' && fd.block_contains.is_none_or(|(_, _, records)| records) {
+                return Err(Diag::error(
+                    fd.pos,
+                    "RECORDING MODE S requires BLOCK CONTAINS CHARACTERS",
+                ));
+            }
+            Some(mode)
+        } else {
+            None
+        };
+        let code_set_ascii = if let Some(name) = &fd.code_set {
+            let alphabet = file_env
+                .alphabets
+                .iter()
+                .find(|a| &a.name == name)
+                .ok_or_else(|| {
+                    Diag::error(fd.pos, format!("CODE-SET alphabet {name} not defined"))
+                })?;
+            let ascii = match alphabet.kind {
+                AlphabetKind::Native => false,
+                AlphabetKind::StandardOne | AlphabetKind::StandardTwo => true,
+                _ => {
+                    return Err(Diag::error(
+                        fd.pos,
+                        "CODE-SET requires NATIVE, EBCDIC, STANDARD-1 or STANDARD-2",
+                    ));
+                }
+            };
+            if ascii && !fd.sort && crate::codepage::active().ccsid != 37 {
+                return Err(Diag::error(
+                    fd.pos,
+                    "CODE-SET ASCII conversion currently requires internal CCSID 37",
+                ));
+            }
+            if ascii && recording_mode == Some('S') {
+                return Err(Diag::error(
+                    fd.pos,
+                    "RECORDING MODE S cannot use ASCII CODE-SET",
+                ));
+            }
+            if !fd.sort {
+                fn check(dm: &DataModel, id: usize) -> Result<()> {
+                    let item = &dm.items[id];
+                    if item.level == 66 || item.level == 88 {
+                        return Ok(());
+                    }
+                    if item.children.is_empty()
+                        && (item.usage != Usage::Display
+                            || matches!(
+                                dm.descs[item.desc as usize].ty,
+                                DataType::National | DataType::Dbcs
+                            )
+                            || matches!(dm.descs[item.desc as usize].ty,
+                                DataType::Numeric(n) if n.signed && !matches!(n.sign, zir::SignPos::LeadingSeparate | zir::SignPos::TrailingSeparate)))
+                    {
+                        return Err(Diag::error(
+                            item.pos,
+                            "CODE-SET requires USAGE DISPLAY and SIGN SEPARATE for signed numeric data",
+                        ));
+                    }
+                    for &child in &item.children {
+                        check(dm, child)?;
+                    }
+                    Ok(())
+                }
+                for &record in &records {
+                    check(&self.dm, record)?;
+                }
+            }
+            ascii && !fd.sort
+        } else {
+            false
+        };
         // Items of a containing program that are not GLOBAL cannot be
         // named here; such clauses are dropped from the imported file.
         let opt_loc = |g: &mut Gen, r: &Option<DataRef>| -> Result<Option<Loc>> {
@@ -369,6 +541,39 @@ impl<'a> Gen<'a> {
             record: rec_desc,
             min_len: fd.record_min.unwrap_or(min_len).min(max_len),
             max_len,
+            recording_mode,
+            block_size: if qsam {
+                fd.block_contains.map(|(_, max, records)| {
+                    if records && max != 0 {
+                        max.saturating_mul(
+                            max_len + if recording_mode == Some('V') { 4 } else { 0 },
+                        )
+                        .saturating_add(if recording_mode == Some('V') { 4 } else { 0 })
+                    } else {
+                        max
+                    }
+                })
+            } else {
+                None
+            },
+            reserve: fc.reserve,
+            write_only: file_env.apply_write_only.contains(&fc.name),
+            label_standard: fd.label_standard,
+            code_set_ascii,
+            same_area: if matches!(
+                fc.organization,
+                Organization::Relative | Organization::Indexed
+            ) {
+                file_env
+                    .same_area
+                    .iter()
+                    .filter(|g| g.contains(&fc.name))
+                    .flat_map(|g| g.iter().cloned())
+                    .filter(|n| n != &fc.name)
+                    .collect()
+            } else {
+                Vec::new()
+            },
             record_depending,
             status,
             relative_key,
@@ -929,6 +1134,7 @@ impl<'a> Gen<'a> {
             .collect::<Result<Vec<_>>>()?;
         Ok(zir::ProgramCode {
             name: self.prog.name.clone(),
+            recursive: self.prog.recursive,
             initial: self.prog.initial,
             common: self.prog.common,
             parent,
@@ -2171,8 +2377,23 @@ impl<'a> Gen<'a> {
                         OpenMode::Extend => zir::OpenMode::Extend,
                     };
                     for f in files {
-                        let fi = self.file(f)?;
-                        self.emit(Instr::Open(fi, m));
+                        let fi = self.file(&f.name)?;
+                        if f.reversed || f.no_rewind {
+                            if self.files[fi as usize].org != zir::Org::Sequential {
+                                return Err(Diag::error(
+                                    self.pos,
+                                    "tape OPEN options require sequential organization",
+                                ));
+                            }
+                            self.emit(Instr::OpenTape {
+                                file: fi,
+                                mode: m,
+                                reversed: f.reversed,
+                                no_rewind: f.no_rewind,
+                            });
+                        } else {
+                            self.emit(Instr::Open(fi, m));
+                        }
                         self.debug_file(fi, false);
                         self.emit(Instr::UseCheck {
                             file: fi,
@@ -2185,7 +2406,15 @@ impl<'a> Gen<'a> {
                 for (f, opt) in files {
                     let fi = self.file(f)?;
                     let lock = opt.as_deref() == Some("LOCK");
-                    if matches!(opt.as_deref(), Some(o) if o.starts_with("REEL") || o.starts_with("UNIT"))
+                    if opt.as_deref() == Some("NO REWIND")
+                        || opt.as_deref() == Some("REEL FOR REMOVAL")
+                    {
+                        self.emit(Instr::CloseTape {
+                            file: fi,
+                            no_rewind: opt.as_deref() == Some("NO REWIND"),
+                            removal: opt.as_deref() == Some("REEL FOR REMOVAL"),
+                        });
+                    } else if matches!(opt.as_deref(), Some(o) if o.starts_with("REEL") || o.starts_with("UNIT"))
                     {
                         self.emit(Instr::CloseReel(fi));
                     } else {
