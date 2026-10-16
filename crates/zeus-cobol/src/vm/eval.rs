@@ -896,8 +896,8 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             }
             _ => d::national_of(&alnum_source(v)),
         };
-        let mut source = src.chunks_exact(2);
-        for (sym, target) in edit.iter().zip(out.chunks_exact_mut(2)) {
+        let mut source = src.as_chunks::<2>().0.iter();
+        for (sym, target) in edit.iter().zip(out.as_chunks_mut::<2>().0) {
             match sym {
                 crate::zir::EditSym::Char => {
                     target.copy_from_slice(source.next().unwrap_or(&[0, 32]))
