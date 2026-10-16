@@ -61,6 +61,8 @@ pub struct DataModel {
     pub items: Vec<Item>,
     pub descs: Vec<Desc>,
     pub static_init: Vec<u8>,
+    /// LOCAL-STORAGE bytes within the image; restored on each invocation.
+    pub local_storage: Option<(u32, u32)>,
     pub linkage_count: u32,
     pub by_name: HashMap<String, Vec<usize>>,
     /// File name -> record area item, all record items.
@@ -594,7 +596,7 @@ impl DataModel {
         Ok(())
     }
 
-    fn store_value(
+    pub(super) fn store_value(
         &self,
         ty: &DataType,
         field: &mut [u8],
@@ -702,6 +704,11 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         }
     }
     let ws = dm.build_tree(&working, &mut |_| Area::Working)?;
+    for e in &prog.data.local {
+        if e.external {
+            return Err(Diag::error(e.pos, "LOCAL-STORAGE cannot specify EXTERNAL"));
+        }
+    }
     let ls = dm.build_tree(&prog.data.local, &mut |_| Area::Working)?;
     let mut n = 0u32;
     let lk = dm.build_tree(&prog.data.linkage, &mut |_| {
@@ -755,7 +762,11 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         Ok(())
     };
     place(&mut dm, &ws, &mut cursor)?;
+    let local_start = cursor;
     place(&mut dm, &ls, &mut cursor)?;
+    if cursor > local_start {
+        dm.local_storage = Some((local_start, cursor - local_start));
+    }
     // SAME RECORD AREA: the files of a group share one record area.
     let mut same_start: HashMap<usize, u32> = HashMap::new();
     for (fi, recs) in file_records.iter().enumerate() {

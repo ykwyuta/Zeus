@@ -339,8 +339,27 @@ impl Parser {
         }
         if self.is("END") && self.is_at(1, "PROGRAM") {
             self.i += 2;
-            self.name()?;
-            self.opt_period();
+            let end_pos = self.pos();
+            let end_name = match self.peek().map(|t| &t.tok) {
+                Some(Tok::Str(s)) => {
+                    let s = s.to_ascii_uppercase();
+                    self.i += 1;
+                    s
+                }
+                _ => self.name()?,
+            };
+            if end_name != prog.name {
+                return Err(Diag::error(
+                    end_pos,
+                    format!(
+                        "END PROGRAM {end_name} does not match PROGRAM-ID {}",
+                        prog.name
+                    ),
+                ));
+            }
+            self.expect_period()?;
+        } else if !prog.nested.is_empty() {
+            return self.err("END PROGRAM required for a containing program");
         }
         Ok(prog)
     }

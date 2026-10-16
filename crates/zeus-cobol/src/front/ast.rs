@@ -257,6 +257,8 @@ pub struct DataEntry {
     pub justified: bool,
     pub blank_when_zero: bool,
     pub value: Option<ValueClause>,
+    /// Level 88: value moved by SET condition-name TO FALSE.
+    pub false_value: Option<Operand>,
     /// Level 66: RENAMES a [THRU b]
     pub renames: Option<(DataRef, Option<DataRef>)>,
     /// Report group description clauses (REPORT SECTION).
@@ -664,8 +666,19 @@ pub enum SetStmt {
     Switch(Vec<(String, bool)>),
     /// SET condition-name TO TRUE
     CondTrue(Vec<DataRef>),
+    /// SET condition-name TO FALSE (requires WHEN SET TO FALSE).
+    CondFalse(Vec<DataRef>),
     /// SET ADDRESS OF linkage-items TO pointer value
     Address(Vec<DataRef>, Operand),
+}
+
+/// Enterprise COBOL INITIALIZE selection phrases.
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct InitializeOptions {
+    pub with_filler: bool,
+    /// Category names, or ALL, selected by TO VALUE.
+    pub value_categories: Vec<String>,
+    pub to_default: bool,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -742,6 +755,10 @@ pub enum Stmt {
     ExitProgram,
     ExitParagraph,
     ExitSection,
+    /// EXIT PERFORM [CYCLE], scoped to the nearest inline PERFORM.
+    ExitPerform {
+        cycle: bool,
+    },
     Exit,
     GoBack,
     GoTo {
@@ -757,6 +774,7 @@ pub enum Stmt {
     Initialize {
         targets: Vec<DataRef>,
         replacing: Vec<(String, Operand)>,
+        options: InitializeOptions,
     },
     Inspect {
         target: DataRef,
