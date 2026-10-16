@@ -31,6 +31,8 @@ fn default_ccsid() -> u32 {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramCode {
     pub name: String,
+    #[serde(default)]
+    pub recursive: bool,
     pub initial: bool,
     pub common: bool,
     /// Index of the containing program (nested programs).
@@ -626,6 +628,23 @@ pub struct FileDef {
     pub record: u32,
     pub min_len: u32,
     pub max_len: u32,
+    /// Explicit or inferred QSAM F/V mode; absent in legacy object files.
+    #[serde(default)]
+    pub recording_mode: Option<char>,
+    #[serde(default)]
+    pub block_size: Option<u32>,
+    #[serde(default)]
+    pub reserve: Option<u32>,
+    #[serde(default)]
+    pub write_only: bool,
+    #[serde(default)]
+    pub label_standard: bool,
+    /// CODE-SET STANDARD-1/2: external ASCII, internal EBCDIC.
+    #[serde(default)]
+    pub code_set_ascii: bool,
+    /// SAME AREA peers (VSAM only): at most one can be open.
+    #[serde(default)]
+    pub same_area: Vec<String>,
     pub record_depending: Option<Loc>,
     pub status: Option<Loc>,
     pub relative_key: Option<Loc>,
@@ -805,6 +824,17 @@ pub enum Instr {
         from: AcceptFrom,
     },
     Open(u32, OpenMode),
+    OpenTape {
+        file: u32,
+        mode: OpenMode,
+        reversed: bool,
+        no_rewind: bool,
+    },
+    CloseTape {
+        file: u32,
+        no_rewind: bool,
+        removal: bool,
+    },
     Close(u32, bool),
     /// CLOSE REEL / UNIT.
     CloseReel(u32),

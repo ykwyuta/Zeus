@@ -71,7 +71,17 @@ impl Machine {
         let code = self.instances[cur].code.clone();
         let desc = &code.descs[loc.desc as usize];
         let base = match desc.base {
-            Base::Static => self.instances[cur].static_base,
+            Base::Static => {
+                let ci = &self.instances[cur];
+                match (ci.local_base, ci.code.local_storage) {
+                    (Some(base), Some((offset, len)))
+                        if desc.offset >= offset && desc.offset < offset + len =>
+                    {
+                        base - offset as usize
+                    }
+                    _ => ci.static_base,
+                }
+            }
             Base::Linkage(n) => match self.instances[cur].linkage[n as usize] {
                 Some(a) => a,
                 None => {

@@ -309,8 +309,8 @@ pub fn find(p: &Program, dm: &DataModel) -> Vec<Iface> {
                     OpenMode::Extend => "EXTEND",
                 };
                 for f in files {
-                    if !modes.iter().any(|(n, x)| n == f && *x == m) {
-                        modes.push((f.clone(), m));
+                    if !modes.iter().any(|(n, x)| n == &f.name && *x == m) {
+                        modes.push((f.name.clone(), m));
                     }
                 }
             }

@@ -30,9 +30,30 @@ impl Allocation {
 pub struct DdTable {
     explicit: HashMap<String, Allocation>,
     config: HashMap<String, PathBuf>,
+    io: HashMap<String, IoAttributes>,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct IoAttributes {
+    pub buffers: Option<u32>,
+    pub block_size: Option<u32>,
+    pub tape: bool,
+    /// One-based data set sequence within the tape volume.
+    pub file_sequence: Option<usize>,
 }
 
 impl DdTable {
+    pub fn set_io(&mut self, name: &str, attributes: IoAttributes) {
+        self.io.insert(name.to_ascii_uppercase(), attributes);
+    }
+
+    pub fn io_attributes(&self, names: &[&str]) -> IoAttributes {
+        names
+            .iter()
+            .find_map(|n| self.io.get(&n.to_ascii_uppercase()))
+            .cloned()
+            .unwrap_or_default()
+    }
     /// A table with the allocation file named by `ZEUS_DD_CONFIG`, if any.
     pub fn from_env() -> std::io::Result<DdTable> {
         let mut t = DdTable::default();
@@ -74,6 +95,7 @@ impl DdTable {
     /// [`DdTable::allocate`].
     pub fn clear(&mut self) {
         self.explicit.clear();
+        self.io.clear();
     }
 
     /// Names allocated explicitly or by the allocation file, sorted.

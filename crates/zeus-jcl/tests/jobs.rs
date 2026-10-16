@@ -108,6 +108,32 @@ fn compile_bind_and_conditions() {
 }
 
 #[test]
+fn cobol_tape_dd_passes_unit_and_block_size_to_virtual_media() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let program = "       ID DIVISION.\n       PROGRAM-ID. TAPETEST.\n       ENVIRONMENT DIVISION.\n       INPUT-OUTPUT SECTION.\n       FILE-CONTROL.\n       SELECT F ASSIGN TO OUTFILE RESERVE 3 AREAS.\n       DATA DIVISION.\n       FILE SECTION.\n       FD F RECORDING MODE F LABEL RECORDS OMITTED.\n       01 R PIC X(3).\n       PROCEDURE DIVISION.\n       OPEN OUTPUT F\n       WRITE R FROM 'ABC'\n       WRITE R FROM 'DEF'\n       CLOSE F\n       GOBACK.\n";
+    let job = format!(
+        "//TAPEJOB JOB\n//COMP EXEC PGM=IGYCRCTL\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&OBJ,DISP=(MOD,PASS)\n//SYSIN DD *\n{program}/*\n//LINK EXEC PGM=IEWL\n//SYSLIN DD DSN=&&OBJ,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=ZEUS.LOADLIB(TAPETEST),DISP=SHR\n//RUN EXEC PGM=TAPETEST\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//OUTFILE DD DSN=ZEUS.TAPE,DISP=(NEW,CATLG),UNIT=3480,\n// DCB=(RECFM=FB,LRECL=3,BLKSIZE=6,BUFNO=5)\n"
+    );
+    let mut log = Vec::new();
+    let result = run_job(&mut env, &job, &mut log).unwrap();
+    assert!(
+        result.iter().all(|s| s.outcome == Outcome::Rc(0)),
+        "{result:?}\n{}",
+        String::from_utf8_lossy(&log)
+    );
+    let bytes = std::fs::read(env.catalog.path("ZEUS.TAPE")).unwrap();
+    assert_eq!(
+        zeus_ds::tape::decode(&bytes).unwrap(),
+        vec![
+            zeus_ds::tape::Entry::Block(vec![0xc1, 0xc2, 0xc3, 0xc4, 0xc5, 0xc6]),
+            zeus_ds::tape::Entry::Mark,
+            zeus_ds::tape::Entry::Mark
+        ]
+    );
+}
+
+#[test]
 fn concurrent_compiler_steps_keep_sources_separate() {
     let barrier = std::sync::Arc::new(std::sync::Barrier::new(8));
     std::thread::scope(|scope| {

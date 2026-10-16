@@ -359,6 +359,7 @@ impl Parser {
                         opt = Some("REEL".to_string());
                         if self.accept("FOR") {
                             self.expect("REMOVAL")?;
+                            opt = Some("REEL FOR REMOVAL".into());
                         }
                     }
                     if self.accept("WITH") || self.is("NO") || self.is("LOCK") {
@@ -639,14 +640,26 @@ impl Parser {
                         && !self.is_verb()
                         && !self.is_any(&["INPUT", "OUTPUT", "I-O", "EXTEND"])
                     {
-                        if self.accept("REVERSED") || self.accept("WITH") {
-                            continue;
-                        }
-                        if self.accept("NO") {
+                        let name = self.name()?;
+                        let reversed = self.accept("REVERSED");
+                        let no_rewind = if self.accept("WITH") || self.is("NO") {
+                            self.expect("NO")?;
                             self.expect("REWIND")?;
-                            continue;
+                            true
+                        } else {
+                            false
+                        };
+                        if reversed && mode != OpenMode::Input {
+                            return self.err("REVERSED requires OPEN INPUT");
                         }
-                        files.push(self.name()?);
+                        if reversed && no_rewind {
+                            return self.err("REVERSED and NO REWIND cannot be combined");
+                        }
+                        files.push(OpenFile {
+                            name,
+                            reversed,
+                            no_rewind,
+                        });
                     }
                     groups.push((mode, files));
                 }

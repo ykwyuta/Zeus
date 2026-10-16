@@ -313,3 +313,6 @@ cargo fmt --all --check
 専用テストは通常の `cargo test --all` に含まれるため CI に追加設定は不要。
 アプリの構文使用一覧は [docs/inventory/apps.md](../inventory/apps.md) を参照する。
 これは使用している構文の一覧であり、本書の仕様準拠一覧とは目的が異なる。
+
+句・コンパイラー設定を読み飛ばしていた実装の追加監査と対応範囲は
+[0015-cobol-ignored-clauses.md](0015-cobol-ignored-clauses.md) を参照する。

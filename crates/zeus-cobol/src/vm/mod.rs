@@ -42,12 +42,16 @@ pub fn err<T>(msg: impl Into<String>) -> RResult<T> {
 }
 
 /// An activated program.
+#[derive(Clone)]
 struct Instance {
     code: Rc<ProgramCode>,
     /// Module the program came from (for nested program calls).
     module: Rc<Module>,
     module_index: u32,
     static_base: usize,
+    /// Invocation-specific LOCAL-STORAGE; WORKING-STORAGE stays shared.
+    local_base: Option<usize>,
+    activation_of: Option<usize>,
     linkage: Vec<Option<usize>>,
     perform: Vec<(u32, u32)>,
     temps: Vec<Dec>,
@@ -149,6 +153,8 @@ pub struct Machine {
     /// Record formats of the sequential files opened (by assignment name):
     /// format and maximum record length.
     opened: Vec<(String, zeus_ds::format::RecordFormat, u32)>,
+    opened_buffers: Vec<(String, u32, u32)>,
+    tape_positions: HashMap<PathBuf, usize>,
     /// Job, step and procedure step names, and the DD names of the step
     /// with whether each has a device (shown in the TIOT).
     step: StepInfo,
@@ -363,6 +369,8 @@ impl Machine {
             suppress_printing: false,
             step: StepInfo::default(),
             opened: Vec::new(),
+            opened_buffers: Vec::new(),
+            tape_positions: HashMap::new(),
             natives: HashMap::new(),
             natives_ref: HashMap::new(),
             natives_mach: HashMap::new(),
@@ -616,6 +624,8 @@ impl Machine {
             module: module.clone(),
             module_index: index,
             static_base,
+            local_base: None,
+            activation_of: None,
             code,
         };
         self.instances.push(inst);
@@ -648,9 +658,16 @@ impl Machine {
         &self.opened
     }
 
+    pub fn opened_buffer_counts(&self) -> &[(String, u32, u32)] {
+        &self.opened_buffers
+    }
+
     /// Allocates a DD name with the data set's attributes.
     pub fn allocate(&mut self, name: &str, a: zeus_ds::dd::Allocation) {
         self.dd.allocate(name, a);
+    }
+    pub fn set_dd_io(&mut self, name: &str, attributes: zeus_ds::dd::IoAttributes) {
+        self.dd.set_io(name, attributes);
     }
 
     /// Input of ACCEPT (the SYSIN data of the step).
@@ -782,9 +799,7 @@ impl Machine {
         let Some(callee) = self.find_program(&name) else {
             return Ok(None);
         };
-        if self.instances[callee].active {
-            return Err(format!("recursive CALL of active program {name}"));
-        }
+        let callee = self.activation(callee).map_err(|e| e.0)?;
         let ci = &mut self.instances[callee];
         if ci.code.initial || !ci.initialized {
             let first = !ci.initialized;
@@ -1079,10 +1094,8 @@ impl Machine {
             self.call_exception = true;
             return Ok(None);
         };
-        if self.instances[callee].active {
-            return err(format!("recursive CALL of active program {name}"));
-        }
         let addrs = self.call_args(cur, args)?;
+        let callee = self.activation(callee)?;
         let ci = &mut self.instances[callee];
         if ci.code.initial || !ci.initialized {
             let first = !ci.initialized;
@@ -1108,9 +1121,44 @@ impl Machine {
         if let Some((offset, len)) = ci.code.local_storage {
             let start = offset as usize;
             let end = start + len as usize;
-            let base = ci.static_base;
-            self.mem[base + start..base + end].copy_from_slice(&ci.code.static_init[start..end]);
+            let base = ci.local_base.unwrap_or(ci.static_base + start);
+            self.mem[base..base + len as usize].copy_from_slice(&ci.code.static_init[start..end]);
         }
+    }
+
+    /// Allocate or reuse an inactive invocation without copying shared WS.
+    fn activation(&mut self, root: usize) -> RResult<usize> {
+        if !self.instances[root].active {
+            return Ok(root);
+        }
+        if !self.instances[root].code.recursive {
+            return err(format!(
+                "recursive CALL of active program {}",
+                self.instances[root].code.name
+            ));
+        }
+        if self.instances.iter().filter(|i| i.active).count() >= 1000 {
+            return err("CALL nesting too deep");
+        }
+        if let Some(i) = self
+            .instances
+            .iter()
+            .position(|i| i.activation_of == Some(root) && !i.active)
+        {
+            return Ok(i);
+        }
+        let mut instance = self.instances[root].clone();
+        instance.active = false;
+        instance.activation_of = Some(root);
+        instance.local_base = instance.code.local_storage.map(|(offset, len)| {
+            self.alloc(&instance.code.static_init[offset as usize..(offset + len) as usize])
+        });
+        instance.perform.clear();
+        instance.linkage.fill(None);
+        instance.temps.fill(Dec::ZERO);
+        let index = self.instances.len();
+        self.instances.push(instance);
+        Ok(index)
     }
 
     /// Executes from the entry of instance `main` until STOP RUN.
@@ -1139,6 +1187,7 @@ impl Machine {
         loop {
             // the program's machine code, when it has some
             if let Some(n) = self.native.clone()
+                && !self.instances[s.cur].code.recursive
                 && let Some(r) = n.run(self, s)
             {
                 if let Some(e) = r? {
@@ -1411,6 +1460,17 @@ impl Machine {
             }
             Instr::Accept { dst, from } => self.accept(cur, dst, *from)?,
             Instr::Open(f, mode) => self.open_file(cur, *f, *mode)?,
+            Instr::OpenTape {
+                file,
+                mode,
+                reversed,
+                no_rewind,
+            } => self.open_tape_options(cur, *file, *mode, *reversed, *no_rewind)?,
+            Instr::CloseTape {
+                file,
+                no_rewind,
+                removal,
+            } => self.close_tape_options(cur, *file, *no_rewind, *removal)?,
             Instr::Close(f, lock) => self.close_file(cur, *f, *lock)?,
             Instr::CloseReel(f) => self.close_reel(cur, *f)?,
             Instr::Write {
@@ -1724,6 +1784,17 @@ impl Machine {
                 Ok(())
             }
             Instr::Open(f, mode) => self.open_file(cur, *f, *mode),
+            Instr::OpenTape {
+                file,
+                mode,
+                reversed,
+                no_rewind,
+            } => self.open_tape_options(cur, *file, *mode, *reversed, *no_rewind),
+            Instr::CloseTape {
+                file,
+                no_rewind,
+                removal,
+            } => self.close_tape_options(cur, *file, *no_rewind, *removal),
             Instr::Close(f, lock) => self.close_file(cur, *f, *lock),
             Instr::CloseReel(f) => self.close_reel(cur, *f),
             Instr::Write {

@@ -10,7 +10,7 @@ pub struct Program {
     pub pos: Pos,
     pub initial: bool,
     pub common: bool,
-    /// RECURSIVE attribute (recursive CALLs are not supported yet).
+    /// RECURSIVE attribute: shared WS and invocation-specific LS/linkage.
     pub recursive: bool,
     pub env: Environment,
     pub data: DataDivision,
@@ -33,7 +33,9 @@ pub struct Environment {
     pub files: Vec<FileControl>,
     /// I-O-CONTROL SAME RECORD AREA groups.
     pub same_record_area: Vec<Vec<String>>,
+    pub same_area: Vec<Vec<String>>,
     pub multiple_file_tape: bool,
+    pub apply_write_only: Vec<String>,
     /// WITH DEBUGGING MODE: debugging sections are active.
     pub debugging_mode: bool,
 }
@@ -182,11 +184,14 @@ pub struct FileDescription {
     pub external: bool,
     pub global: bool,
     pub block_contains: Option<(u32, u32, bool)>,
+    pub recording_mode: Option<char>,
+    pub record_varying: bool,
     /// RECORD CONTAINS min TO max / RECORD IS VARYING ...
     pub record_min: Option<u32>,
     pub record_max: Option<u32>,
     pub record_depending: Option<DataRef>,
     pub label_standard: bool,
+    pub label_records: Vec<String>,
     /// REPORT IS / REPORTS ARE
     pub reports: Vec<String>,
     pub value_of: Vec<(String, Operand)>,
@@ -585,6 +590,13 @@ pub enum OpenMode {
 }
 
 #[derive(Debug, Clone, PartialEq)]
+pub struct OpenFile {
+    pub name: String,
+    pub reversed: bool,
+    pub no_rewind: bool,
+}
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum Advancing {
     Lines(Operand),
     Mnemonic(String),
@@ -805,7 +817,7 @@ pub enum Stmt {
         size_error: Handlers,
         pos: Pos,
     },
-    Open(Vec<(OpenMode, Vec<String>)>),
+    Open(Vec<(OpenMode, Vec<OpenFile>)>),
     Perform {
         body: PerformBody,
         kind: PerformKind,
