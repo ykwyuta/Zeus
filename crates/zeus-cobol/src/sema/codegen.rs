@@ -10,7 +10,7 @@ use crate::diag::{Diag, Result};
 use crate::ebcdic;
 use crate::front::ast::{self, *};
 use crate::front::source::Pos;
-use crate::zir::{self, Category, Cx, DataType, Ex, FileDef, Instr, Loc, Op, Src};
+use crate::zir::{self, Cx, DataType, Ex, FileDef, Instr, Loc, Op, Src};
 
 /// A jump target, resolved to an instruction index after generation.
 type Label = u32;
@@ -47,6 +47,8 @@ pub struct Gen<'a> {
     current_para: u32,
     current_section: Option<String>,
     sentence_end: Option<Label>,
+    /// Lexically enclosing inline PERFORMs: (exit, cycle).
+    inline_performs: Vec<(Label, Label)>,
     temps: u32,
     alter_slots: HashMap<u32, u32>,
     alter_init: Vec<Label>,
@@ -138,6 +140,7 @@ impl<'a> Gen<'a> {
             current_para: 0,
             current_section: None,
             sentence_end: None,
+            inline_performs: Vec::new(),
             temps: 0,
             alter_slots: HashMap::new(),
             alter_init: Vec::new(),
@@ -897,6 +900,7 @@ impl<'a> Gen<'a> {
             common: self.prog.common,
             parent,
             static_init: self.dm.static_init.clone(),
+            local_storage: self.dm.local_storage,
             descs: self.dm.descs.clone(),
             code: self.code,
             paragraphs,
@@ -1978,6 +1982,12 @@ impl<'a> Gen<'a> {
                 self.emit(Instr::Jump(l));
             }
             Stmt::Continue | Stmt::Exit => {}
+            Stmt::ExitPerform { cycle } => {
+                // IBM ignores EXIT PERFORM outside an inline PERFORM.
+                if let Some(&(end, next)) = self.inline_performs.last() {
+                    self.emit(Instr::Jump(if *cycle { next } else { end }));
+                }
+            }
             Stmt::ExitParagraph => {
                 let l = self.para_end_labels[self.current_para as usize];
                 self.emit(Instr::Jump(l));
@@ -2332,9 +2342,13 @@ impl<'a> Gen<'a> {
                 }
             }
             Stmt::Set(set) => self.set(set)?,
-            Stmt::Initialize { targets, replacing } => {
+            Stmt::Initialize {
+                targets,
+                replacing,
+                options,
+            } => {
                 for t in targets {
-                    self.initialize(t, replacing)?;
+                    self.initialize(t, replacing, options)?;
                 }
             }
             Stmt::Inspect { target, ops } => self.inspect(target, ops)?,
@@ -2487,7 +2501,7 @@ impl<'a> Gen<'a> {
                     }
                 }
             }
-            SetStmt::CondTrue(targets) => {
+            SetStmt::CondTrue(targets) | SetStmt::CondFalse(targets) => {
                 for t in targets {
                     let id = self.dm.resolve(t)?;
                     let Some(var) = self.dm.items[id].cond_of else {
@@ -2496,10 +2510,16 @@ impl<'a> Gen<'a> {
                             format!("{} is not a condition-name", t.name),
                         ));
                     };
-                    let value = match &self.dm.items[id].entry.value {
-                        Some(ValueClause::Condition(v)) => v[0].0.clone(),
-                        Some(ValueClause::Literal(v)) => v.clone(),
-                        None => return Err(Diag::error(t.pos, "condition-name without VALUE")),
+                    let value = if matches!(set, SetStmt::CondFalse(_)) {
+                        self.dm.items[id].entry.false_value.clone().ok_or_else(|| {
+                            Diag::error(t.pos, "SET TO FALSE requires WHEN SET TO FALSE")
+                        })?
+                    } else {
+                        match &self.dm.items[id].entry.value {
+                            Some(ValueClause::Condition(v)) => v[0].0.clone(),
+                            Some(ValueClause::Literal(v)) => v.clone(),
+                            None => return Err(Diag::error(t.pos, "condition-name without VALUE")),
+                        }
                     };
                     let mut vr = t.clone();
                     vr.name = self.dm.items[var].name.clone().unwrap_or_default();
@@ -2515,49 +2535,73 @@ impl<'a> Gen<'a> {
 
     /// INITIALIZE: moves SPACES/ZEROS (or the REPLACING values) to every
     /// elementary item, all occurrences included.
-    fn initialize(&mut self, target: &DataRef, replacing: &[(String, Operand)]) -> Result<()> {
+    fn initialize(
+        &mut self,
+        target: &DataRef,
+        replacing: &[(String, Operand)],
+        options: &InitializeOptions,
+    ) -> Result<()> {
         let id = self.dm.resolve(target)?;
         let base = self.loc_of(id, target)?;
         let base_desc = self.dm.descs[base.desc as usize].clone();
         let mut repl = Vec::new();
         for (cat, v) in replacing {
-            let c = match cat.as_str() {
-                "ALPHABETIC" => Category::Alphabetic,
-                "ALPHANUMERIC" => Category::Alphanumeric,
-                "NUMERIC" => Category::Numeric,
-                "ALPHANUMERIC-EDITED" => Category::AlphanumericEdited,
-                _ => Category::NumericEdited,
-            };
-            repl.push((c, self.src(v)?));
+            repl.push((cat.as_str(), self.src(v)?));
         }
         // Collect elementary items (excluding FILLER, REDEFINES, indexes).
         let mut leaves = Vec::new();
-        self.leaves(id, true, &mut leaves);
+        self.leaves(id, true, options.with_filler, &mut leaves);
         for leaf in leaves {
             let desc_idx = self.dm.items[leaf].desc;
             let d = self.dm.descs[desc_idx as usize].clone();
             let cat = match &d.ty {
-                DataType::Alphabetic { .. } => Category::Alphabetic,
-                DataType::Alphanumeric { .. } | DataType::Group => Category::Alphanumeric,
-                DataType::Dbcs => Category::Dbcs,
-                // initialized to national spaces, as alphanumeric data to
-                // spaces
-                DataType::National => Category::Alphanumeric,
-                DataType::Numeric(_) => Category::Numeric,
-                DataType::NumericEdited { .. } => Category::NumericEdited,
-                DataType::AlphanumericEdited { .. } => Category::AlphanumericEdited,
-                DataType::Index | DataType::Pointer | DataType::Float { .. } => continue,
+                DataType::Alphabetic { .. } => "ALPHABETIC",
+                DataType::Alphanumeric { .. } | DataType::Group => "ALPHANUMERIC",
+                DataType::Dbcs => "DBCS",
+                DataType::National => "NATIONAL",
+                DataType::Numeric(_) | DataType::Float { .. } => "NUMERIC",
+                DataType::NumericEdited { .. } => "NUMERIC-EDITED",
+                DataType::AlphanumericEdited { .. } => "ALPHANUMERIC-EDITED",
+                DataType::Index | DataType::Pointer => continue,
             };
-            let src = if replacing.is_empty() {
+            let value = if options
+                .value_categories
+                .iter()
+                .any(|c| c == "ALL" || c == cat)
+            {
+                match self.dm.items[leaf].entry.value.clone() {
+                    Some(ValueClause::Literal(v)) => {
+                        // VALUE initialization ignores JUSTIFIED. A full-width
+                        // sending value preserves that initial layout on MOVE.
+                        if matches!(
+                            d.ty,
+                            DataType::Alphanumeric { just: true }
+                                | DataType::Alphabetic { just: true }
+                        ) {
+                            let mut initial = vec![0; d.len as usize];
+                            self.dm.store_value(&d.ty, &mut initial, &v, target.pos)?;
+                            Some(Src::Alnum(initial))
+                        } else {
+                            Some(self.src(&v)?)
+                        }
+                    }
+                    _ => None,
+                }
+            } else {
+                None
+            };
+            let replacement = repl.iter().find(|(c, _)| *c == cat).map(|(_, s)| s.clone());
+            let src = if let Some(s) = value.or(replacement) {
+                s
+            } else if options.to_default
+                || (replacing.is_empty() && options.value_categories.is_empty())
+            {
                 match cat {
-                    Category::Numeric | Category::NumericEdited => Src::Fig(zir::Fig::Zero),
+                    "NUMERIC" | "NUMERIC-EDITED" => Src::Fig(zir::Fig::Zero),
                     _ => Src::Fig(zir::Fig::Space),
                 }
             } else {
-                match repl.iter().find(|(c, _)| *c == cat) {
-                    Some((_, s)) => s.clone(),
-                    None => continue,
-                }
+                continue;
             };
             // Every combination of the dimensions below the target.
             let extra = &d.dims[base_desc.dims.len().min(d.dims.len())..];
@@ -2601,16 +2645,18 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
-    fn leaves(&self, id: usize, top: bool, out: &mut Vec<usize>) {
+    fn leaves(&self, id: usize, top: bool, with_filler: bool, out: &mut Vec<usize>) {
         let it = &self.dm.items[id];
-        if !top && (it.entry.redefines.is_some() || it.name.is_none()) {
+        if !top && (it.entry.redefines.is_some() || it.entry.renames.is_some()) {
             return;
         }
         if it.children.is_empty() {
-            out.push(id);
+            if top || with_filler || it.name.is_some() {
+                out.push(id);
+            }
         } else {
             for &c in &it.children {
-                self.leaves(c, false, out);
+                self.leaves(c, false, with_filler, out);
             }
         }
     }
@@ -2978,14 +3024,22 @@ impl<'a> Gen<'a> {
     }
 
     fn perform(&mut self, body: &PerformBody, kind: &PerformKind) -> Result<()> {
+        let end = self.label();
+        let cycle = self.label();
+        let inline = matches!(body, PerformBody::Inline(_));
+        if inline {
+            self.inline_performs.push((end, cycle));
+        }
         match kind {
-            PerformKind::Once => self.perform_call(body)?,
+            PerformKind::Once => {
+                self.perform_call(body)?;
+                self.bind(cycle);
+            }
             PerformKind::Times(n) => {
                 let t = self.temp();
                 let v = self.ex_operand(n)?;
                 self.emit(Instr::SetTemp(t, v));
                 let top = self.label();
-                let end = self.label();
                 self.bind(top);
                 self.emit(Instr::JumpIf(
                     Cx::Cmp(
@@ -3005,24 +3059,23 @@ impl<'a> Gen<'a> {
                     ),
                 ));
                 self.perform_call(body)?;
+                self.bind(cycle);
                 self.emit(Instr::Jump(top));
-                self.bind(end);
             }
             PerformKind::Until { test_after, cond } => {
                 let c = self.cond(cond)?;
                 let top = self.label();
-                let end = self.label();
                 self.bind(top);
                 if !test_after {
                     self.emit(Instr::JumpIf(c.clone(), end));
                 }
                 self.perform_call(body)?;
+                self.bind(cycle);
                 if *test_after {
                     self.emit(Instr::JumpUnless(c, top));
                 } else {
                     self.emit(Instr::Jump(top));
                 }
-                self.bind(end);
             }
             PerformKind::Varying { test_after, loops } => {
                 let mut vars = Vec::new();
@@ -3062,7 +3115,6 @@ impl<'a> Gen<'a> {
                         Box::new(by.clone()),
                     )
                 };
-                let end = self.label();
                 if !test_after {
                     for (var, from, _, _) in &vars {
                         set(self, var, from.clone());
@@ -3087,6 +3139,7 @@ impl<'a> Gen<'a> {
                         self.bind(cont);
                     }
                     self.perform_call(body)?;
+                    self.bind(cycle);
                     let (lv, _, lb, _) = vars.last().unwrap().clone();
                     set(self, &lv, inc(&lv, &lb));
                     self.emit(Instr::Jump(*tests.last().unwrap()));
@@ -3097,6 +3150,7 @@ impl<'a> Gen<'a> {
                     let body_l = self.label();
                     self.bind(body_l);
                     self.perform_call(body)?;
+                    self.bind(cycle);
                     // innermost to outermost
                     for k in (0..vars.len()).rev() {
                         let next = self.label();
@@ -3111,8 +3165,11 @@ impl<'a> Gen<'a> {
                         self.bind(next);
                     }
                 }
-                self.bind(end);
             }
+        }
+        self.bind(end);
+        if inline {
+            self.inline_performs.pop();
         }
         Ok(())
     }

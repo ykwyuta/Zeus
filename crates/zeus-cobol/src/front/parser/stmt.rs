@@ -429,6 +429,10 @@ impl Parser {
                     Stmt::ExitParagraph
                 } else if self.accept("SECTION") {
                     Stmt::ExitSection
+                } else if self.accept("PERFORM") {
+                    Stmt::ExitPerform {
+                        cycle: self.accept("CYCLE"),
+                    }
                 } else {
                     Stmt::Exit
                 }
@@ -496,24 +500,61 @@ impl Parser {
             }
             "INITIALIZE" => {
                 let mut targets = Vec::new();
-                while self.is_operand_start() {
+                while self.is_operand_start()
+                    && !self.is_any(&["FILLER", "ALL"])
+                    && !self.is_initialize_category()
+                {
                     targets.push(self.data_ref()?);
                 }
+                if targets.is_empty() {
+                    return self.err("INITIALIZE receiving identifier expected");
+                }
+                let mut options = InitializeOptions::default();
+                if self.accept("WITH") || self.is("FILLER") {
+                    self.expect("FILLER")?;
+                    options.with_filler = true;
+                }
+                if self.accept("ALL") {
+                    options.value_categories.push("ALL".into());
+                } else {
+                    while let Some(cat) = self.initialize_category() {
+                        if options.value_categories.contains(&cat) {
+                            return self.err("duplicate category in INITIALIZE VALUE");
+                        }
+                        options.value_categories.push(cat);
+                    }
+                }
+                if !options.value_categories.is_empty() {
+                    self.accept("TO");
+                    self.expect("VALUE")?;
+                }
                 let mut replacing = Vec::new();
+                if self.is("THEN") && self.is_at(1, "REPLACING") {
+                    self.i += 1;
+                }
                 if self.accept("REPLACING") {
-                    while let Some(cat) = self.accept_any(&[
-                        "ALPHANUMERIC-EDITED",
-                        "NUMERIC-EDITED",
-                        "ALPHABETIC",
-                        "ALPHANUMERIC",
-                        "NUMERIC",
-                    ]) {
+                    while let Some(cat) = self.initialize_category() {
+                        if replacing.iter().any(|(c, _)| c == &cat) {
+                            return self.err("duplicate category in INITIALIZE REPLACING");
+                        }
                         self.accept("DATA");
                         self.expect("BY")?;
                         replacing.push((cat, self.operand()?));
                     }
+                    if replacing.is_empty() {
+                        return self.err("INITIALIZE REPLACING category expected");
+                    }
                 }
-                Stmt::Initialize { targets, replacing }
+                if self.accept("THEN") || self.is("TO") || self.is("DEFAULT") {
+                    self.accept("TO");
+                    self.expect("DEFAULT")?;
+                    options.to_default = true;
+                }
+                Stmt::Initialize {
+                    targets,
+                    replacing,
+                    options,
+                }
             }
             "INSPECT" => self.inspect()?,
             "MERGE" => {
@@ -910,6 +951,33 @@ impl Parser {
         )
     }
 
+    fn is_initialize_category(&self) -> bool {
+        self.is_any(&[
+            "ALPHABETIC",
+            "ALPHANUMERIC",
+            "ALPHANUMERIC-EDITED",
+            "NUMERIC",
+            "NUMERIC-EDITED",
+            "DBCS",
+            "EGCS",
+            "NATIONAL",
+        ])
+    }
+
+    fn initialize_category(&mut self) -> Option<String> {
+        self.accept_any(&[
+            "ALPHABETIC",
+            "ALPHANUMERIC",
+            "ALPHANUMERIC-EDITED",
+            "NUMERIC",
+            "NUMERIC-EDITED",
+            "DBCS",
+            "EGCS",
+            "NATIONAL",
+        ])
+        .map(|c| if c == "EGCS" { "DBCS".into() } else { c })
+    }
+
     fn add(&mut self, pos: crate::front::source::Pos) -> Result<Stmt> {
         if self.accept("CORRESPONDING") || self.accept("CORR") {
             let from = Expr::Operand(Operand::Ref(self.data_ref()?));
@@ -1289,6 +1357,7 @@ impl Parser {
 
     fn perform_kind(&mut self) -> Result<PerformKind> {
         let mut test_after = false;
+        let explicit_test = self.is("WITH") || self.is("TEST");
         if self.accept("WITH") || self.is("TEST") {
             self.expect("TEST")?;
             test_after = if self.accept("AFTER") {
@@ -1299,6 +1368,19 @@ impl Parser {
             };
         }
         if self.accept("UNTIL") {
+            if self.accept("EXIT") {
+                if explicit_test {
+                    return self.err("UNTIL EXIT cannot specify TEST BEFORE or TEST AFTER");
+                }
+                return Ok(PerformKind::Until {
+                    test_after: false,
+                    cond: Cond::Rel(
+                        Expr::Operand(Operand::Lit(Literal::Num("0".into()))),
+                        RelOp::Eq,
+                        Expr::Operand(Operand::Lit(Literal::Num("1".into()))),
+                    ),
+                });
+            }
             return Ok(PerformKind::Until {
                 test_after,
                 cond: self.cond()?,
@@ -1437,6 +1519,9 @@ impl Parser {
         if self.accept("TO") {
             if self.accept("TRUE") {
                 return Ok(Stmt::Set(SetStmt::CondTrue(targets)));
+            }
+            if self.accept("FALSE") {
+                return Ok(Stmt::Set(SetStmt::CondFalse(targets)));
             }
             let v = self.operand()?;
             return Ok(Stmt::Set(SetStmt::To(targets, v)));

@@ -16,6 +16,21 @@ fn unix_days_to_int(d: i64) -> i64 {
     d - days_from_civil(1601, 1, 1) + 1
 }
 
+/// The 100-year interval ends at current_year + window (IBM LR YEAR-TO-YYYY).
+fn expand_year(yy: i64, window: i64, current_year: i64) -> RResult<i64> {
+    let Some(end) = current_year
+        .checked_add(window)
+        .filter(|y| (1700..10000).contains(y))
+    else {
+        return err("year window must end between 1700 and 9999");
+    };
+    if !(0..100).contains(&yy) {
+        return err("windowed year must be between 0 and 99");
+    }
+    let year = end / 100 * 100 + yy;
+    Ok(if year > end { year - 100 } else { year })
+}
+
 fn f(v: f64) -> RResult<Dec> {
     Dec::from_f64(v, 18)
         .map(|d| d.normalize())
@@ -584,17 +599,16 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
         Func::DateToYyyymmdd | Func::DayToYyyyddd | Func::YearToYyyy => {
             let x = int(a(0)?);
             let window = v.get(1).map(|w| int(*w)).unwrap_or(50);
-            let cur_year = 2026;
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map_err(|e| super::RunError(e.to_string()))?;
+            let cur_year = civil_from_days((now.as_secs() / 86400) as i64).0;
             let (yy, rest, mult) = match func {
                 Func::DateToYyyymmdd => (x / 10000, x % 10000, 10000),
                 Func::DayToYyyyddd => (x / 1000, x % 1000, 1000),
                 _ => (x, 0, 1),
             };
-            let max_year = cur_year + window;
-            let mut y = (max_year / 100) * 100 + yy;
-            if y > max_year {
-                y -= 100;
-            }
+            let y = expand_year(yy, window, cur_year)?;
             Dec::from_i64(y * mult + rest)
         }
         _ => return err(format!("function {func:?} is not supported yet")),
@@ -604,6 +618,25 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ibm_year_to_yyyy_reference_examples_and_window_boundaries() {
+        assert_eq!(expand_year(4, 23, 1995).unwrap(), 2004);
+        assert_eq!(expand_year(4, -15, 1995).unwrap(), 1904);
+        assert_eq!(expand_year(98, 23, 2008).unwrap(), 1998);
+        assert_eq!(expand_year(98, -15, 2008).unwrap(), 1898);
+        assert_eq!(expand_year(76, 50, 2026).unwrap(), 2076);
+        assert_eq!(expand_year(77, 50, 2026).unwrap(), 1977);
+        assert_eq!(expand_year(76, 50, 2027).unwrap(), 2076);
+        assert_eq!(expand_year(77, 50, 2027).unwrap(), 2077);
+        assert!(expand_year(0, -301, 2000).is_err());
+        assert_eq!(expand_year(0, -300, 2000).unwrap(), 1700);
+        assert_eq!(expand_year(99, 7999, 2000).unwrap(), 9999);
+        assert!(expand_year(0, 8000, 2000).is_err());
+        assert!(expand_year(-1, 50, 2000).is_err());
+        assert!(expand_year(100, 50, 2000).is_err());
+        assert!(expand_year(0, i64::MAX, 2000).is_err());
+    }
 
     #[test]
     fn test_numval_positions() {

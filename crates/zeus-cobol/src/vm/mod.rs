@@ -793,6 +793,7 @@ impl Machine {
                 self.reset(callee);
             }
         }
+        self.reset_local_storage(callee);
         let ci = &mut self.instances[callee];
         for (k, slot) in ci.code.using.clone().iter().enumerate() {
             ci.linkage[*slot as usize] = args.get(k).and_then(|a| a.addr);
@@ -1090,6 +1091,7 @@ impl Machine {
                 self.reset(callee);
             }
         }
+        self.reset_local_storage(callee);
         let ci = &mut self.instances[callee];
         for (k, slot) in ci.code.using.clone().iter().enumerate() {
             ci.linkage[*slot as usize] = addrs.get(k).copied().flatten();
@@ -1097,6 +1099,18 @@ impl Machine {
         ci.active = true;
         ci.perform.clear();
         Ok(Some(callee))
+    }
+
+    /// Nonrecursive invocations can reuse their LOCAL-STORAGE addresses,
+    /// but must restore the initial values independently of WORKING-STORAGE.
+    fn reset_local_storage(&mut self, inst: usize) {
+        let ci = &self.instances[inst];
+        if let Some((offset, len)) = ci.code.local_storage {
+            let start = offset as usize;
+            let end = start + len as usize;
+            let base = ci.static_base;
+            self.mem[base + start..base + end].copy_from_slice(&ci.code.static_init[start..end]);
+        }
     }
 
     /// Executes from the entry of instance `main` until STOP RUN.

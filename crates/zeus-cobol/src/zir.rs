@@ -38,6 +38,10 @@ pub struct ProgramCode {
     /// Initial image of the static storage (working-storage with VALUEs,
     /// file record areas, index items).
     pub static_init: Vec<u8>,
+    /// LOCAL-STORAGE (offset, length) in the image, initialized per call.
+    /// Older modules did not distinguish LOCAL-STORAGE from WORKING-STORAGE.
+    #[serde(default)]
+    pub local_storage: Option<(u32, u32)>,
     pub descs: Vec<Desc>,
     pub code: Vec<Instr>,
     pub paragraphs: Vec<Paragraph>,

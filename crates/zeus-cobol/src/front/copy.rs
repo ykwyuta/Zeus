@@ -11,7 +11,33 @@ pub type Loader<'a> =
     dyn FnMut(&str, Option<&str>, &Token, &[(String, String)]) -> Result<Vec<Token>> + 'a;
 
 /// A replacement pair: tokens to match and their replacement.
-type Pair = (Vec<Token>, Vec<Token>);
+struct Pair {
+    from: Vec<Token>,
+    to: Vec<Token>,
+    /// None: whole text; Some(true): LEADING; Some(false): TRAILING.
+    edge: Option<bool>,
+}
+
+fn partial_word(tokens: &[Token]) -> Option<String> {
+    match tokens {
+        [
+            Token {
+                tok: Tok::Word(w) | Tok::Num(w),
+                ..
+            },
+        ] if w.is_ascii() => Some(w.clone()),
+        [
+            Token {
+                tok: Tok::Minus, ..
+            },
+            Token {
+                tok: Tok::Word(w), ..
+            },
+        ] if w.is_ascii() => Some(format!("-{w}")),
+        [] => Some(String::new()),
+        _ => None,
+    }
+}
 
 fn same(a: &Token, b: &Token) -> bool {
     match (&a.tok, &b.tok) {
@@ -33,26 +59,56 @@ fn matches_at(text: &[Token], at: usize, pattern: &[Token]) -> bool {
 
 /// Applies replacement pairs to a token sequence (each source token is
 /// replaced at most once; pairs are tried in order).
-fn replace(text: Vec<Token>, pairs: &[Pair]) -> Vec<Token> {
+fn replace(text: Vec<Token>, pairs: &[Pair]) -> Result<Vec<Token>> {
     if pairs.is_empty() {
-        return text;
+        return Ok(text);
     }
     let mut out = Vec::with_capacity(text.len());
     let mut i = 0;
     while i < text.len() {
-        if let Some((from, to)) = pairs.iter().find(|(from, _)| matches_at(&text, i, from)) {
+        let mut matched = false;
+        for Pair { from, to, edge } in pairs {
+            if let Some(leading) = edge {
+                let Some(word) = partial_word(&text[i..i + 1]) else {
+                    continue;
+                };
+                let pattern = partial_word(from).unwrap();
+                let rest = if *leading {
+                    word.strip_prefix(&pattern)
+                } else {
+                    word.strip_suffix(&pattern)
+                };
+                let Some(rest) = rest else { continue };
+                let by = partial_word(to).unwrap();
+                let value = if *leading {
+                    format!("{by}{rest}")
+                } else {
+                    format!("{rest}{by}")
+                };
+                let stream: Vec<_> = value.chars().map(|c| (c, text[i].pos)).collect();
+                out.extend(super::lexer::lex(&stream, false)?);
+                i += 1;
+                matched = true;
+                break;
+            }
+            if !matches_at(&text, i, from) {
+                continue;
+            }
             let pos = text[i].pos;
             out.extend(to.iter().cloned().map(|mut t| {
                 t.pos = pos;
                 t
             }));
             i += from.len();
-        } else {
+            matched = true;
+            break;
+        }
+        if !matched {
             out.push(text[i].clone());
             i += 1;
         }
     }
-    out
+    Ok(out)
 }
 
 /// An operand of REPLACING / REPLACE: pseudo-text, or a single literal or
@@ -116,17 +172,43 @@ fn replacing_pairs(tokens: &[Token], i: &mut usize, end_period: bool) -> Result<
                 }
                 break;
             }
-            None => break,
+            None => {
+                return Err(Diag::error(
+                    tokens[*i - 1].pos,
+                    "REPLACE statement must end with a period",
+                ));
+            }
             Some(_) => {}
         }
+        let edge = match tokens.get(*i).and_then(Token::word) {
+            Some("LEADING") => {
+                *i += 1;
+                Some(true)
+            }
+            Some("TRAILING") => {
+                *i += 1;
+                Some(false)
+            }
+            _ => None,
+        };
+        let pos = tokens.get(*i).map(|t| t.pos).unwrap_or_default();
         let from = operand(tokens, i, &["BY"])?;
+        if from.is_empty() {
+            return Err(Diag::error(pos, "empty replacement search operand"));
+        }
         match tokens.get(*i) {
             Some(t) if t.is_word("BY") => *i += 1,
             Some(t) => return Err(Diag::error(t.pos, "BY expected in REPLACING")),
             None => return Err(Diag::error(tokens[*i - 1].pos, "BY expected")),
         }
         let to = operand(tokens, i, &[])?;
-        pairs.push((from, to));
+        if edge.is_some() && (partial_word(&from).is_none() || partial_word(&to).is_none()) {
+            return Err(Diag::error(
+                pos,
+                "partial-word replacement requires one SBCS text word",
+            ));
+        }
+        pairs.push(Pair { from, to, edge });
     }
     Ok(pairs)
 }
@@ -197,7 +279,10 @@ pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Resul
         // `(tag)` and `:tag:` pseudo-text replace part of a word: done on
         // the member's text.
         let mut partial = Vec::new();
-        pairs.retain(|(from, to)| {
+        pairs.retain(|Pair { from, to, edge }| {
+            if edge.is_some() {
+                return true;
+            }
             let tag = match from.as_slice() {
                 [
                     a,
@@ -222,7 +307,7 @@ pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Resul
         });
         let text = load(&name, library.as_deref(), &copy_tok, &partial)?;
         let text = expand_copy(text, load, depth + 1)?;
-        out.extend(replace(text, &pairs));
+        out.extend(replace(text, &pairs)?);
     }
     Ok(out)
 }
@@ -254,31 +339,54 @@ pub fn apply_replace(tokens: Vec<Token>) -> Result<Vec<Token>> {
     let mut pairs: Vec<Pair> = Vec::new();
     let mut segment: Vec<Token> = Vec::new();
     let mut i = 0;
+    let mut program_depth = 0usize;
     while i < tokens.len() {
         let t = &tokens[i];
+        if (t.is_word("IDENTIFICATION") || t.is_word("ID"))
+            && tokens.get(i + 1).is_some_and(|t| t.is_word("DIVISION"))
+        {
+            program_depth += 1;
+        }
+        if t.is_word("END")
+            && tokens.get(i + 1).is_some_and(|t| t.is_word("PROGRAM"))
+            && tokens.get(i + 3).is_some_and(|t| t.tok == Tok::Period)
+        {
+            segment.extend_from_slice(&tokens[i..i + 4]);
+            i += 4;
+            program_depth = program_depth.saturating_sub(1);
+            if program_depth == 0 {
+                out.extend(replace(std::mem::take(&mut segment), &pairs)?);
+                pairs.clear();
+            }
+            continue;
+        }
         // REPLACE starts a statement only when followed by pseudo-text or OFF.
         let starts = t.is_word("REPLACE")
-            && tokens
-                .get(i + 1)
-                .is_some_and(|n| matches!(n.tok, Tok::Pseudo(_)) || n.is_word("OFF"));
+            && tokens.get(i + 1).is_some_and(|n| {
+                matches!(n.tok, Tok::Pseudo(_))
+                    || n.is_word("OFF")
+                    || n.is_word("LEADING")
+                    || n.is_word("TRAILING")
+            });
         if !starts {
             segment.push(t.clone());
             i += 1;
             continue;
         }
-        out.extend(replace(std::mem::take(&mut segment), &pairs));
+        out.extend(replace(std::mem::take(&mut segment), &pairs)?);
         i += 1;
         if tokens[i].is_word("OFF") {
             pairs.clear();
             i += 1;
-            if tokens.get(i).is_some_and(|t| t.tok == Tok::Period) {
-                i += 1;
+            if !tokens.get(i).is_some_and(|t| t.tok == Tok::Period) {
+                return Err(Diag::error(t.pos, "REPLACE OFF must end with a period"));
             }
+            i += 1;
         } else {
             pairs = replacing_pairs(&tokens, &mut i, true)?;
         }
     }
-    out.extend(replace(segment, &pairs));
+    out.extend(replace(segment, &pairs)?);
     Ok(out)
 }
 

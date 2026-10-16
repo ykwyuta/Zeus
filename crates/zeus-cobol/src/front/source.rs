@@ -119,6 +119,42 @@ fn comment_paragraph(text: &[char]) -> Option<usize> {
     })
 }
 
+/// Listing directives occupy a whole source line and do not affect the
+/// object program. Leave malformed forms in the stream for a diagnostic.
+fn listing_directive(text: &[char]) -> bool {
+    let line: String = text.iter().collect();
+    let line = line.trim();
+    let upper = line.to_ascii_uppercase();
+    if ["EJECT", "SKIP1", "SKIP2", "SKIP3"].iter().any(|word| {
+        upper
+            .strip_prefix(word)
+            .is_some_and(|rest| matches!(rest.trim(), "" | "."))
+    }) {
+        return true;
+    }
+    let Some(rest) = upper.strip_prefix("TITLE") else {
+        return false;
+    };
+    if !rest.starts_with(' ') {
+        return false;
+    }
+    let rest = rest.trim_start();
+    let Some(quote @ ('\'' | '"')) = rest.chars().next() else {
+        return false;
+    };
+    let mut chars = rest.char_indices().skip(1).peekable();
+    while let Some((i, c)) = chars.next() {
+        if c == quote {
+            if chars.peek().is_some_and(|(_, c)| *c == quote) {
+                chars.next();
+            } else {
+                return matches!(rest[i + 1..].trim(), "" | ".");
+            }
+        }
+    }
+    false
+}
+
 /// Joins the lines of a source file into a positioned character stream.
 pub fn read(text: &str, file: u32, debugging_mode: bool) -> Vec<(char, Pos)> {
     let mut out: Vec<(char, Pos)> = Vec::new();
@@ -148,6 +184,9 @@ pub fn read(text: &str, file: u32, debugging_mode: bool) -> Vec<(char, Pos)> {
             for c in &mut text[k..] {
                 *c = ' ';
             }
+        }
+        if ind != '-' && open.is_none() && !in_comment_entry && listing_directive(&text) {
+            continue;
         }
         let line = line.clone();
         if let Some(header) = comment_paragraph(&text) {

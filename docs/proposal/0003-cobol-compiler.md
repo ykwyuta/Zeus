@@ -61,6 +61,10 @@ COBOL ソース + copybook
 
 ## 4. 対応する言語範囲
 
+IBM 公式 Language Reference と現実装を照合した一覧・差分修正・残存課題は
+[0014 IBM Enterprise COBOL 構文適合性の監査](0014-cobol-ibm-conformance.md) を参照。
+CCVS85 合格を、Enterprise COBOL 4.2 全体への完全準拠とは扱わない。
+
 まず **CCVS85 の必須モジュール (§5.2) が要求する COBOL-85 の範囲** を実装し、その後、
 3 アプリの **COBOL 構文使用一覧表** (C4 で作成) に基づいて Enterprise COBOL 拡張を追加する。想定される主な範囲:
 
