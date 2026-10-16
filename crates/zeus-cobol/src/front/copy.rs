@@ -22,7 +22,7 @@ fn partial_word(tokens: &[Token]) -> Option<String> {
     match tokens {
         [
             Token {
-                tok: Tok::Word(w) | Tok::Num(w),
+                tok: Tok::Word(w) | Tok::Num(w) | Tok::Pic(w),
                 ..
             },
         ] if w.is_ascii() => Some(w.clone()),
@@ -34,6 +34,11 @@ fn partial_word(tokens: &[Token]) -> Option<String> {
                 tok: Tok::Word(w), ..
             },
         ] if w.is_ascii() => Some(format!("-{w}")),
+        [
+            Token {
+                tok: Tok::Minus, ..
+            },
+        ] => Some("-".into()),
         [] => Some(String::new()),
         _ => None,
     }
@@ -85,8 +90,18 @@ fn replace(text: Vec<Token>, pairs: &[Pair]) -> Result<Vec<Token>> {
                 } else {
                     format!("{rest}{by}")
                 };
-                let stream: Vec<_> = value.chars().map(|c| (c, text[i].pos)).collect();
-                out.extend(super::lexer::lex(&stream, false)?);
+                if value.is_empty() {
+                    // Deleting an entire text word must not leave an empty
+                    // PICTURE token that could masquerade as a zero-size field.
+                } else if matches!(text[i].tok, Tok::Pic(_)) {
+                    out.push(Token {
+                        tok: Tok::Pic(value),
+                        pos: text[i].pos,
+                    });
+                } else {
+                    let stream: Vec<_> = value.chars().map(|c| (c, text[i].pos)).collect();
+                    out.extend(super::lexer::lex(&stream, false)?);
+                }
                 i += 1;
                 matched = true;
                 break;
@@ -192,6 +207,12 @@ fn replacing_pairs(tokens: &[Token], i: &mut usize, end_period: bool) -> Result<
             _ => None,
         };
         let pos = tokens.get(*i).map(|t| t.pos).unwrap_or_default();
+        if edge.is_some() && !matches!(tokens.get(*i).map(|t| &t.tok), Some(Tok::Pseudo(_))) {
+            return Err(Diag::error(
+                pos,
+                "partial-word operand requires pseudo-text delimiters",
+            ));
+        }
         let from = operand(tokens, i, &["BY"])?;
         if from.is_empty() {
             return Err(Diag::error(pos, "empty replacement search operand"));
@@ -200,6 +221,12 @@ fn replacing_pairs(tokens: &[Token], i: &mut usize, end_period: bool) -> Result<
             Some(t) if t.is_word("BY") => *i += 1,
             Some(t) => return Err(Diag::error(t.pos, "BY expected in REPLACING")),
             None => return Err(Diag::error(tokens[*i - 1].pos, "BY expected")),
+        }
+        if edge.is_some() && !matches!(tokens.get(*i).map(|t| &t.tok), Some(Tok::Pseudo(_))) {
+            return Err(Diag::error(
+                pos,
+                "partial-word operand requires pseudo-text delimiters",
+            ));
         }
         let to = operand(tokens, i, &[])?;
         if edge.is_some() && (partial_word(&from).is_none() || partial_word(&to).is_none()) {
