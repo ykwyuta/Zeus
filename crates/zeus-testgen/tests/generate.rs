@@ -208,3 +208,50 @@ fn covers_an_indexed_file_program() {
     assert_eq!(o.status.code(), Some(1), "{text}");
     assert!(text.contains("file ACCT-FILE: records"), "{text}");
 }
+
+/// I/O statements made to fail (OPEN, READ: FILE STATUS 35 and 30) and a
+/// program called that is not there (a stub whose output argument is an
+/// input): every branch direction, the faults and the stub's output in
+/// the cases, replayed the same.
+#[test]
+fn covers_faults_and_stubs() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/programs/ENVPGM.cbl");
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("cases");
+    let o = Command::new(env!("CARGO_BIN_EXE_ztestgen"))
+        .arg("--out")
+        .arg(&out)
+        .arg(&src)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&o.stdout);
+    assert!(o.status.success(), "{text}");
+    assert!(
+        text.contains("C1: 8 of 8 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("stubs (programs called that are not there): CHKSUB"),
+        "{text}"
+    );
+    let cases: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap())
+        .collect();
+    let all = cases.concat();
+    assert!(all.contains("\"statement\": \"OPEN\""), "{all}");
+    assert!(all.contains("\"statement\": \"READ\""), "{all}");
+    assert!(all.contains("OPEN FAILED 35"), "{all}");
+    // the stub returns 'OK' and a score above 500
+    assert!(all.contains("\"hex\": \"D6D2"), "{all}");
+    assert!(all.contains("\"HIGH\""), "{all}");
+    let o = Command::new(env!("CARGO_BIN_EXE_ztest"))
+        .arg(&src)
+        .arg(&out)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&o.stdout);
+    assert!(o.status.success(), "{text}");
+}

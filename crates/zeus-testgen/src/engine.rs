@@ -5,7 +5,7 @@
 //! the lines it ACCEPTs.
 
 use std::cell::RefCell;
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
 use std::io::Write;
 use std::path::PathBuf;
 use std::rc::Rc;
@@ -36,7 +36,7 @@ pub struct Field {
 }
 
 /// The inputs of a run.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
 pub struct Inputs {
     /// The storage of each USING parameter (EBCDIC).
     pub params: Vec<Vec<u8>>,
@@ -44,7 +44,15 @@ pub struct Inputs {
     pub accept: Vec<String>,
     /// The records of each input file (`FileSpec::input`, in order).
     pub files: Vec<Vec<Vec<u8>>>,
+    /// I/O statements made to fail: (file, statement, occurrence).
+    pub faults: BTreeSet<(String, String, u32)>,
+    /// What the stubs of the programs not there set: (program, call,
+    /// argument) -> leading bytes.
+    pub stubs: BTreeMap<StubArg, Vec<u8>>,
 }
+
+/// An argument of a stubbed call: (program, call, argument).
+pub type StubArg = (String, u32, u32);
 
 /// What a run did.
 #[derive(Debug, Clone)]
@@ -60,6 +68,8 @@ pub struct RunOut {
     pub error: Option<String>,
     /// The records written to each output file: (file, records).
     pub files: Vec<(String, Vec<Vec<u8>>)>,
+    /// The programs called that ran as stubs.
+    pub stubbed: BTreeSet<String>,
 }
 
 /// A direction of a conditional jump.
@@ -220,14 +230,22 @@ impl FileSpec {
     }
 }
 
+/// The time of day of every run (2025-01-01 09:00:00 UTC): cases repeat
+/// whatever the program does with the date.
+pub const CLOCK: u64 = 1_735_722_000;
+
 /// Records an input file has at most.
 pub const MAX_RECORDS: usize = 99;
 
 /// The files of the module's programs (by DD name, once).
-pub fn file_specs(module: &Module, program: &str) -> Vec<FileSpec> {
+pub fn file_specs(module: &Module, search: &[PathBuf]) -> Vec<FileSpec> {
     let mut out: Vec<FileSpec> = Vec::new();
-    for p in &module.programs {
-        let main = p.name.eq_ignore_ascii_case(program);
+    let called = called_modules(module, search);
+    let programs = module
+        .programs
+        .iter()
+        .chain(called.iter().flat_map(|m| m.programs.iter()));
+    for p in programs {
         for (f, def) in p.files.iter().enumerate() {
             if out
                 .iter()
@@ -253,14 +271,11 @@ pub fn file_specs(module: &Module, program: &str) -> Vec<FileSpec> {
                     .any(|i| matches!(i, Instr::Open(x, o) if *x as usize == f && m.contains(o)))
             };
             let indexed = def.org == Org::Indexed;
-            let input = main
-                && ((def.org == Org::Sequential && !text && opens(&[OpenMode::Input]))
-                    || (indexed && opens(&[OpenMode::Input, OpenMode::InputOutput])));
-            let output = main
-                && (matches!(def.org, Org::Sequential | Org::LineSequential)
-                    && opens(&[OpenMode::Output, OpenMode::Extend])
-                    || indexed
-                        && opens(&[OpenMode::Output, OpenMode::InputOutput, OpenMode::Extend]));
+            let input = (def.org == Org::Sequential && !text && opens(&[OpenMode::Input]))
+                || (indexed && opens(&[OpenMode::Input, OpenMode::InputOutput]));
+            let output = (matches!(def.org, Org::Sequential | Org::LineSequential)
+                && opens(&[OpenMode::Output, OpenMode::Extend]))
+                || (indexed && opens(&[OpenMode::Output, OpenMode::InputOutput, OpenMode::Extend]));
             let mut fields = Vec::new();
             let mut keys = Vec::new();
             if indexed && let Some(rec) = p.descs.get(def.record as usize) {
@@ -300,6 +315,50 @@ pub fn file_specs(module: &Module, program: &str) -> Vec<FileSpec> {
                 fields,
                 keys,
             });
+        }
+    }
+    out
+}
+
+/// The modules (.zo in `search`) of the programs the module's programs
+/// call by name, and of those they call.
+pub fn called_modules(module: &Module, search: &[PathBuf]) -> Vec<Module> {
+    use zeus_cobol::zir::Src;
+    let mut out: Vec<Module> = Vec::new();
+    let mut seen: HashSet<String> = module.programs.iter().map(|p| p.name.clone()).collect();
+    let mut todo: Vec<String> = Vec::new();
+    let calls = |m: &Module, todo: &mut Vec<String>| {
+        for p in &m.programs {
+            for i in &p.code {
+                if let Instr::Call {
+                    program: Src::Alnum(b),
+                    ..
+                } = i
+                {
+                    todo.push(ebcdic::decode(b).trim().to_ascii_uppercase());
+                }
+            }
+        }
+    };
+    calls(module, &mut todo);
+    while let Some(name) = todo.pop() {
+        if !seen.insert(name.clone()) {
+            continue;
+        }
+        let found = search.iter().find_map(|d| {
+            [
+                format!("{name}.zo"),
+                format!("{}.zo", name.to_ascii_lowercase()),
+            ]
+            .iter()
+            .map(|f| d.join(f))
+            .find(|p| p.is_file())
+        });
+        if let Some(path) = found
+            && let Ok(m) = zeus_cobol::load_module(&path)
+        {
+            calls(&m, &mut todo);
+            out.push(m);
         }
     }
     out
@@ -357,8 +416,7 @@ pub fn default_inputs(fields: &[Field], lens: &[usize]) -> Inputs {
     }
     Inputs {
         params,
-        accept: Vec::new(),
-        files: Vec::new(),
+        ..Default::default()
     }
 }
 
@@ -392,9 +450,10 @@ pub fn run(
     opts: &Options,
     symbolic: bool,
 ) -> RunOut {
+    zeus_cobol::clock::fix(Some(Duration::from_secs(CLOCK)));
     let mut m = Machine::new(opts.search.clone());
     m.add_module(module.clone());
-    let specs = file_specs(module, program);
+    let specs = file_specs(module, &opts.search);
     let dir = scratch_dir();
     let mut k = 0;
     for f in &specs {
@@ -423,6 +482,8 @@ pub fn run(
     let out = Buf(Rc::new(RefCell::new(Vec::new())));
     m.set_stdout(Box::new(out.clone()));
     m.set_stdin(inputs.accept.clone());
+    m.set_io_faults(inputs.faults.clone());
+    m.set_call_stubs(inputs.stubs.clone());
     let addrs: Vec<usize> = inputs
         .params
         .iter()
@@ -505,6 +566,7 @@ pub fn run(
         .map(|(b, &a)| m.storage()[a..a + b.len()].to_vec())
         .collect();
     let rc = m.return_code();
+    let stubbed = m.stub_calls().into_iter().map(|c| c.0).collect();
     let st = m.take_symbolic().unwrap_or_default();
     drop(m);
     let files = specs
@@ -522,6 +584,7 @@ pub fn run(
         })
         .collect();
     let _ = std::fs::remove_dir_all(&dir);
+    zeus_cobol::clock::fix(None);
     let branches = st
         .path
         .iter()
@@ -540,6 +603,7 @@ pub fn run(
         return_code: rc,
         error,
         files,
+        stubbed,
     }
 }
 
@@ -587,6 +651,8 @@ pub struct Report {
     pub runs: usize,
     pub fields: Vec<Field>,
     pub files: Vec<FileSpec>,
+    /// The programs called that ran as stubs (in some run).
+    pub stubbed: BTreeSet<String>,
 }
 
 /// The conditional jumps of the module's programs.
@@ -747,8 +813,77 @@ fn apply(
             }
         }
     }
+    // I/O statements made to fail: F<file>.<KIND><n> is 1
+    // stubbed calls: C<program>.<n>.A<k>#<i> is byte i of argument k
+    let mut outs: BTreeMap<StubArg, Vec<(usize, u8, bool)>> = BTreeMap::new();
+    for (v, &x) in vars.iter().zip(values) {
+        if let Some(f) = fault_of(&v.name) {
+            if x == 1 {
+                new.faults.insert(f);
+            } else {
+                new.faults.remove(&f);
+            }
+        } else if let Some(rest) = v.name.strip_prefix('C')
+            && let Some((head, i)) = rest.rsplit_once('#')
+            && let Some((head, k)) = head.rsplit_once(".A")
+            && let Some((prog, n)) = head.rsplit_once('.')
+            && let (Ok(n), Ok(k), Ok(i)) = (n.parse(), k.parse(), i.parse::<usize>())
+        {
+            outs.entry((prog.to_string(), n, k))
+                .or_default()
+                .push((i, x as u8, x != v.value));
+        }
+    }
+    for (key, bytes) in outs {
+        // kept when the solution changes it, or it was set already
+        if !bytes.iter().any(|b| b.2) && !new.stubs.contains_key(&key) {
+            continue;
+        }
+        let mut out = vec![0x40u8; bytes.iter().map(|b| b.0).max().unwrap_or(0)];
+        for (i, x, _) in bytes {
+            out[i - 1] = x;
+        }
+        new.stubs.insert(key, out);
+    }
     normalize(&mut new, specs);
     new
+}
+
+/// Solves `cons`, first with no I/O statement made to fail that does not
+/// fail already (inputs as the program usually gets them), then with any.
+fn solve(solver: &mut Builtin, cons: &[Pred], vars: &[Var], start: &[i128]) -> Outcome {
+    use zeus_cobol::concolic::Term;
+    let pins: Vec<Pred> = vars
+        .iter()
+        .enumerate()
+        .filter(|(_, v)| v.value == 0 && fault_of(&v.name).is_some())
+        .map(|(i, _)| {
+            Pred::Cmp(
+                Term::Var(i as u32),
+                zeus_cobol::zir::Rel::Eq,
+                Term::Const(0),
+            )
+        })
+        .collect();
+    if !pins.is_empty() {
+        let mut first = cons.to_vec();
+        first.extend(pins);
+        if let r @ Outcome::Sat(_) = solver.solve(&first, vars, start) {
+            return r;
+        }
+    }
+    solver.solve(cons, vars, start)
+}
+
+/// The I/O statement of a variable `F<file>.<KIND><n>`.
+fn fault_of(name: &str) -> Option<(String, String, u32)> {
+    let (file, last) = name.strip_prefix('F')?.split_once('.')?;
+    let d = last.find(|c: char| c.is_ascii_digit())?;
+    let (kind, n) = last.split_at(d);
+    if !zeus_cobol::vm::testenv::FAULT_KINDS.contains(&kind) {
+        return None;
+    }
+    Some((file.to_string(), kind.to_string(), n.parse().ok()?))
 }
 
 fn next(s: &mut u64) -> u64 {
@@ -818,7 +953,7 @@ fn mutate(
     let mut new = base.clone();
     let inputs: Vec<&FileSpec> = specs.iter().filter(|f| f.input).collect();
     let k = next(rng) as usize % (fields.len() + new.accept.len() + inputs.len()).max(1);
-    if k >= fields.len() + new.accept.len() {
+    if k >= fields.len() + new.accept.len() && !inputs.is_empty() {
         // an input file: another number of records, or a field of a record
         let fk = k - fields.len() - new.accept.len();
         let spec = inputs[fk];
@@ -846,8 +981,7 @@ fn mutate(
                     for f in &key {
                         let one = Inputs {
                             params: vec![r.clone()],
-                            accept: Vec::new(),
-                            files: Vec::new(),
+                            ..Default::default()
                         };
                         *r = mutate(&one, std::slice::from_ref(f), &[], dict, rng)
                             .params
@@ -869,8 +1003,7 @@ fn mutate(
         };
         let mut one = Inputs {
             params: vec![recs[r].clone()],
-            accept: Vec::new(),
-            files: Vec::new(),
+            ..Default::default()
         };
         one = mutate(&one, &[field], &[], dict, rng);
         recs[r] = one.params.remove(0);
@@ -945,7 +1078,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         .find(|p| p.name.eq_ignore_ascii_case(program))
         .ok_or_else(|| format!("no program {program} in the module"))?;
     let (fields, lens) = fields(code);
-    let specs = file_specs(module, &code.name);
+    let specs = file_specs(module, &opts.search);
     let all = directions(module);
     let start = Instant::now();
     let mut solver = Builtin::default();
@@ -983,6 +1116,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     let dict = Dictionary::of(module);
     // mutated inputs tried in a row without new coverage
     let mut fruitless = 0;
+    let mut stubbed = BTreeSet::new();
     loop {
         if runs >= opts.max_runs || start.elapsed() > opts.time {
             break;
@@ -1010,6 +1144,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         }
         runs += 1;
         let out = run(module, program, &fields, &inp, opts, true);
+        stubbed.extend(out.stubbed.iter().cloned());
         if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
             eprintln!("run {runs}: {:?} {:?}", inp.accept, out.error);
             for s in &out.path {
@@ -1034,6 +1169,9 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         }
         // the other way of each branch, where not covered yet
         for i in 0..out.path.len() {
+            if start.elapsed() > opts.time {
+                break;
+            }
             let Step::Branch(b) = &out.path[i] else {
                 continue;
             };
@@ -1071,7 +1209,8 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 }
                 *n = depth;
                 if let Some(cons) = conditions(&out.path, i)
-                    && let Outcome::Sat(x) = solver.solve(
+                    && let Outcome::Sat(x) = solve(
+                        &mut solver,
                         &cons,
                         &out.vars,
                         &out.vars.iter().map(|v| v.value).collect::<Vec<_>>(),
@@ -1093,7 +1232,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 continue;
             };
             let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
-            let result = solver.solve(&cons, &out.vars, &startv);
+            let result = solve(&mut solver, &cons, &out.vars, &startv);
             if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
                 eprintln!("target {target:?}: {result:?}");
                 for c in &cons {
@@ -1187,6 +1326,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         runs,
         fields,
         files: specs,
+        stubbed,
     })
 }
 

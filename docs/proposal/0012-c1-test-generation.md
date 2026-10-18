@@ -216,8 +216,9 @@ ztest run [--coverage DIR] DIR
 
 ## 実装 (2026-10)
 
-段階 A と、段階 B のうち順次ファイル・索引ファイルの入力を `crates/zeus-testgen` (`ztestgen`、`ztest`) と
-zeus-cobol の記号の層 (`concolic.rs`、`vm/sym.rs`、ファイル入出力は `vm/sym_io.rs`) に実装した。ソルバは外部に依存しない自前のもの (下記) で、Z3 はまだ
+段階 A、段階 B のうち順次ファイル・索引ファイルの入力と入出力エラーの注入、段階 C のうち CALL のスタブと
+呼び出し先のファイルを `crates/zeus-testgen` (`ztestgen`、`ztest`) と zeus-cobol の記号の層 (`concolic.rs`、
+`vm/sym.rs`、ファイル入出力は `vm/sym_io.rs`、試験環境は `vm/testenv.rs`) に実装した。ソルバは外部に依存しない自前のもの (下記) で、Z3 はまだ
 組み込んでいない (`Solver` トレイトで差し替えられる形にしてある)。
 
 ```text
@@ -245,21 +246,35 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
   変数一つ (`P1.LK-AMOUNT`)、英数字はバイトごとの変数 (`P1.LK-USER#3`)。名前が重なる項目 (FILLER など) は
   位置を付ける (`FILLER@12`)。
 - ACCEPT: 実行した ACCEPT の n 番目の行のバイト (`ACCEPT1.4`)。
-- 順次ファイル: 主プログラムが OPEN INPUT する ORGANIZATION SEQUENTIAL のファイルのレコードとその件数。
+- 順次ファイル: プログラム (モジュールのもの、および `-L` の .zo から読み込める呼び出し先) が OPEN INPUT する ORGANIZATION SEQUENTIAL のファイルのレコードとその件数。
   READ で n 件目を読んだらレコード領域 (と INTO の先) の各項目が `F<ファイル>.R<n>.<項目>` に従い、件数
   `F<ファイル>.N` (0〜99) に対して AT END は `N <= n-1` の条件になる。FILE STATUS の 1 バイト目も件数の項
   (`'1'` か `'0'`) にするので、`IF WS-FS = '10'` の形の終了判定も解ける。
-- 索引ファイル: 主プログラムが OPEN INPUT または I-O する ORGANIZATION INDEXED のファイル。レコード n の項目は
+- 索引ファイル: 同じくプログラムが OPEN INPUT または I-O する ORGANIZATION INDEXED のファイル。レコード n の項目は
   読んだ順ではなく入力の n 件目の変数 (`F<ファイル>.R<n>.<項目>`)。条件は次のとおり。
   - キーによる READ (乱・動的アクセス): 「`N` 件のいずれかのキーが探索キーに等しい」が見つかる条件で、INVALID KEY
     はその否定。探索キー (レコード領域のキー) も入力に従う項になり得る。もう 1 件 (既定の内容の追加レコード) も
     候補に含めるので、ソルバは件数を増やしてキーを合わせれば「見つかる」向きを作れる。
   - START KEY >= / > / =: 同じ形で、キーの比較が関係に従う (探索キーがキーの先頭部分なら先頭部分で比べる)。
   - WRITE: 主キーが既存のどれかに等しいことが INVALID KEY (状態 22)。
-  - READ NEXT: OPEN からの n 回目で AT END は `N <= n`。読んだレコードは主キーで入力のどれかを特定して従わせる。
+  - READ NEXT: OPEN からの n 回目で AT END は `N <= n`。START の後は、残りの件数を「キーが関係を満たして存在する
+    レコード」の数の項 (`Σ If(n < N ∧ キー rel 探索キー, 1, 0)`) とし、その後の n 回目で AT END は `残り <= n`。
+    読んだレコードは主キーで入力のどれかを特定して従わせる。
+  - 追加の 1 件には「主キーが既存のどのレコードとも違う」条件を付ける (同じキーにすると入力から除かれるため)。
   - FILE STATUS の 2 バイトは条件による項 (`Term::If`) で、"00" と "23" / "10" / "22" を表す。
-  - WRITE・REWRITE・DELETE の後はデータセットが入力と違うので、それ以降のキーの条件は具体値、START の後の
-    READ NEXT の AT END も具体値。主キーや一意の副キーが重なるレコードは入力から除く (データセットに置けない)。
+  - WRITE・REWRITE・DELETE の後はデータセットが入力と違うので、それ以降のキーの条件と AT END は具体値。
+    主キーや一意の副キーが重なるレコードは入力から除く (データセットに置けない)。
+- 入出力エラー: FILE STATUS を持つファイルの OPEN・READ・WRITE・REWRITE・DELETE・START・CLOSE の、ファイルと
+  種類ごとの n 回目を失敗させられる (変数 `F<ファイル>.<文><n>`、1 で失敗)。失敗した文は何もせず、状態は
+  OPEN INPUT / I-O なら 35、それ以外は 30。FILE STATUS は `If(失敗, 状態, 本来の状態)` の項、入出力条件は
+  「失敗 または 本来の条件」。ソルバはまず失敗させない (失敗の変数を 0 に固定した) 解を探し、なければ失敗を
+  使う (通常の入力で通る経路は通常の入力で作る)。ケースの `faults` に記録し、`ztest` も同じ文を失敗させる。
+- CALL のスタブ: 呼び出した名前のプログラムがモジュールにも `-L` にもないとき、試験の実行ではエラーにせず
+  スタブにする。スタブは RETURN-CODE 0 で戻り、n 回目の呼び出しの BY REFERENCE の各引数 (先頭 256 バイト) は
+  変数 `C<プログラム>.<n>.A<k>#<i>` に従う。ソルバが選んだ出力は `stubs` に記録し、再実行ではスタブがその
+  バイトを引数に書く。`report.txt` と `expect.stubbed` にスタブにしたプログラムを示す。
+- 時刻: 生成と再実行の時刻は 2025-01-01 09:00:00 UTC に固定する (`zeus_cobol::clock`)。CURRENT-DATE、
+  ACCEPT FROM DATE/TIME、LE の日時、データセットの日付がこれを返すので、日時を書くプログラムでもケースが再現する。
 - すべてのファイルは実行ごとの一時ディレクトリーにデータセットを割り当てる。主プログラムが書いた順次ファイル、
   および OUTPUT・I-O・EXTEND で開いた索引ファイルの最終のレコードは期待値 (`expect.files`) に記録し、`ztest` で比べる。
 
@@ -269,7 +284,8 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 
 1. 一変数の線形な原子式から変数の区間を求める (空なら充足不能の証明)。
 2. 分岐距離を最小にする局所探索。候補は線形の根、二分、プログラムのリテラル、10 の冪、バイトや小さな範囲は全値。
-   予算は反復回数 (既定 400)。
+   一手の評価はその変数を含む条件だけを計算し直す (差分)。予算は反復回数 (既定 400) と 1 回あたり 300 ms。
+   `--time` は解く途中でも確かめる。
 
 ### 探索
 
@@ -287,9 +303,25 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 | `tests/programs/SAMPLE.cbl` | EVALUATE TRUE / 88、英数字・COMP-3 の比較、ACCEPT、PERFORM VARYING、ON SIZE ERROR | 17/18 (到達不能 1 を除いて 100%) |
 | `tests/programs/FILEPGM.cbl` | 順次ファイルを AT END と FILE STATUS で終わりまで読み、報告ファイルを書く | 16/16 (100%) |
 | `tests/programs/IDXPGM.cbl` | 索引ファイルのキーによる READ (INVALID KEY)、REWRITE、重複キーの WRITE、START と READ NEXT | 24/24 (100%) |
-| CardDemo `CBACT02C`・`CBACT03C`・`CBCUS01C` | KSDS を順に読んで表示 | 15/24 (63%)。残りは OPEN・CLOSE・READ の入出力エラーの経路 |
-| CardDemo `CBACT01C` | KSDS を読み、複数の出力ファイルへ書く | 19/46 (41%)。成功の経路でアセンブラーの COBDATFT を呼び、それがないと実行が止まる (`-L` で与えるか、段階 C のスタブ) |
-| CardDemo `CSUTLDTC` | LE の CEEDAYS の結果で分岐 | 7/18 (39%)。CEEDAYS の出力を追わないため (下記) |
+| `tests/programs/ENVPGM.cbl` | OPEN・READ の失敗 (FILE STATUS 35 / 30) と、ないサブプログラムの CALL (出力で分岐) | 8/8 (100%) |
+
+CardDemo のバッチ (`-I app/cpy`、CBSTM03A は呼び出し先 CBSTM03B を `zcobc compile` した .zo を `-L` で与えた)。
+どれも `ztest` で全ケースが再現する。所要時間はリリースビルドで 1 本あたり 0〜14 秒。
+
+| プログラム | 内容 | C1 |
+|---|---|---|
+| `CBACT01C` | KSDS を読み、複数の出力ファイルへ書く (COBDATFT はスタブ) | 44/46 (96%) |
+| `CBACT02C`・`CBACT03C`・`CBCUS01C` | KSDS を順に読んで表示 | 22/24 (92%) |
+| `CBACT04C` | 取引区分残高から利息を計算し、口座を更新、取引を書く | 84/94 (89%) |
+| `CBTRN01C` | 日次取引を検証 | 70/72 (97%) |
+| `CBTRN02C` | 日次取引を記帳 | 102/106 (96%) |
+| `CBTRN03C` | 取引報告書 | 90/92 (98%) |
+| `CBSTM03A` | 明細書 (ファイル入出力は CBSTM03B、TIOT の走査、ALTER) | 45/60 (75%) |
+| `CBEXPORT`・`CBIMPORT` | データの書出し・取込み | 42/42・40/40 (100%) |
+| `CSUTLDTC` | LE の CEEDAYS の結果で分岐 | 7/18 (39%)。CEEDAYS の出力を追わないため (下記) |
+
+残る方向の多くは、ループの先頭の `IF END-OF-FILE = 'N'` の偽 (ループの条件から起こり得ない) と、状態が 00・10
+以外の分岐での `IO-STATUS NOT NUMERIC` (注入する状態が数字なので通らない) の類。
 
 到達不能と報告した SAMPLE の 1 方向は、`LK-AMOUNT > 1000.50` を満たしたあとの `ON SIZE ERROR` の
 「起きない」向きで、区間の証明で示される。
@@ -299,10 +331,11 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 - 段階 B の残り: 相対ファイル、LINE SEQUENTIAL の入力、OCCURS の記号の添字 (添字は具体値のまま)、REDEFINES の
   バイト層での再解釈 (別の型で読むと具体化)。索引ファイルのキーのうち符号付き・パック 10 進の項目はバイトの
   定数として扱う (そのキーの条件はそのレコードの値を変えられない)。
-- 入出力エラーの注入: OPEN 失敗 (35 など)、READ・WRITE のハードウェアエラーなど、レコードの内容では起こせない
-  状態の経路は通せない (業務バッチではこの経路が多く残る)。
-- 段階 C〜E: サブプログラムへ入った後の追跡 (呼び出し先は具体実行)、CALL のスタブ、INSPECT/STRING/UNSTRING、
-  EXEC CICS/SQL/DLI のスタブ、段落の要約、C2・MC/DC、PL/I。
+- 入出力エラーは 35 と 30 だけ (VSAM の詳細状態、数字でない状態などは作らない)。FILE STATUS のないファイルは
+  失敗させない。
+- 呼び出し先: `-L` の .zo のプログラムも記号付きで実行するが、網羅を数える分岐は対象のモジュールのものだけ。
+  スタブの出力はバイト単位 (2 進・パック 10 進の数値として解くことはしない)、RETURN-CODE は 0 のまま。
+- 段階 C〜E の残り: INSPECT/STRING/UNSTRING、EXEC CICS/SQL/DLI のスタブ、段落の要約、C2・MC/DC、PL/I。
 - LE の呼び出し (CEEDAYS など) や組み込み関数の結果は具体値で、それに依存する分岐は「入力に依存しない」と報告される。
 - 非線形の算術 (変数どうしの除算、べき乗、浮動小数点) は具体化する。
 - Z3 などの外部ソルバは未接続。

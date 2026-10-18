@@ -370,14 +370,15 @@ pub struct FileInput {
     pub records: Vec<Vec<u8>>,
     /// Indexed files: the contents of a record added.
     pub blank: Vec<u8>,
-    /// READs since the file was opened.
+    /// READ NEXTs since the file was opened or positioned by START.
     pub reads: u64,
     /// Records were written, rewritten or deleted (the data set is no
     /// longer the inputs).
     pub modified: bool,
-    /// The file was positioned by START, or written since it was opened
-    /// (its records are no longer the inputs' in key order).
-    pub moved: bool,
+    /// Indexed files: the number of records READ NEXT gets from the
+    /// position (all from the open, those from the key after START; None:
+    /// not known, after a READ by key or a change).
+    pub left: Option<Term>,
 }
 
 /// The symbolic state of a run.

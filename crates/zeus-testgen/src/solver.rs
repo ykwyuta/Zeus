@@ -36,6 +36,8 @@ pub trait Solver {
 pub struct Builtin {
     /// Search steps per call (each tries the candidate moves).
     pub budget: usize,
+    /// Time per call.
+    pub time: std::time::Duration,
     seed: u64,
 }
 
@@ -43,6 +45,7 @@ impl Default for Builtin {
     fn default() -> Self {
         Builtin {
             budget: 400,
+            time: std::time::Duration::from_millis(300),
             seed: 0x9E37_79B9_7F4A_7C15,
         }
     }
@@ -419,15 +422,26 @@ impl Solver for Builtin {
             constants(c, &mut consts);
         }
         let consts: Vec<i128> = consts.into_iter().collect();
-        let score = |val: &[i128]| -> f64 {
+        // the conditions of each variable (a move is scored on those)
+        let mut occurs: HashMap<u32, Vec<usize>> = HashMap::new();
+        for (i, c) in flat.iter().enumerate() {
+            let mut vs = Vec::new();
+            c.vars(&mut vs);
+            for v in vs {
+                occurs.entry(v).or_default().push(i);
+            }
+        }
+        let each = |val: &[i128]| -> Vec<f64> {
             let f = |v: u32| val[v as usize];
-            flat.iter().map(|c| dist(c, false, &f)).sum()
+            flat.iter().map(|c| dist(c, false, &f)).collect()
         };
-        let mut cur = score(&val);
+        let mut dists = each(&val);
+        let mut cur: f64 = dists.iter().sum();
         let mut best = (cur, val.clone());
         let mut stall = 0;
         let mut moves = 0;
-        while moves < self.budget {
+        let started = std::time::Instant::now();
+        while moves < self.budget && started.elapsed() < self.time {
             if cur == 0.0 {
                 return Outcome::Sat(val);
             }
@@ -519,19 +533,30 @@ impl Solver for Builtin {
             // the best move
             let mut best_move: Option<(f64, u32, i128)> = None;
             moves += 1;
-            for &(v, x) in &cand {
+            for (n, &(v, x)) in cand.iter().enumerate() {
+                if n % 512 == 511 && started.elapsed() >= self.time {
+                    break;
+                }
                 let old = val[v as usize];
                 val[v as usize] = x;
-                let s = score(&val);
+                let f = |w: u32| val[w as usize];
+                let mut s = cur;
+                for &i in occurs.get(&v).map_or(&[][..], |o| &o[..]) {
+                    s += dist(&flat[i], false, &f) - dists[i];
+                }
                 val[v as usize] = old;
                 if best_move.is_none_or(|b| s < b.0) {
                     best_move = Some((s, v, x));
                 }
             }
             match best_move {
-                Some((s, v, x)) if s < cur => {
+                Some((s, v, x)) if s < cur - 1e-9 => {
                     val[v as usize] = x;
-                    cur = s;
+                    let f = |w: u32| val[w as usize];
+                    for &i in occurs.get(&v).map_or(&[][..], |o| &o[..]) {
+                        dists[i] = dist(&flat[i], false, &f);
+                    }
+                    cur = dists.iter().sum();
                     stall = 0;
                     if cur < best.0 {
                         best = (cur, val.clone());
@@ -549,7 +574,8 @@ impl Solver for Builtin {
                         let (v, x) = cand[(self.rand() % cand.len() as u64) as usize];
                         val[v as usize] = x;
                     }
-                    cur = score(&val);
+                    dists = each(&val);
+                    cur = dists.iter().sum();
                 }
             }
         }

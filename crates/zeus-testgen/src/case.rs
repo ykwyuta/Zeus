@@ -5,6 +5,8 @@
 //!   "params": [ { "hex": "C1C2...", "fields": { "NAME": "value", ... } } ],
 //!   "accept": [ "line", ... ],
 //!   "files": [ { "name": "IN-FILE", "records": [ { "hex": "...", "fields": { ... } } ] } ],
+//!   "faults": [ { "file": "IN-FILE", "statement": "OPEN", "occurrence": 1 } ],
+//!   "stubs": [ { "program": "SUBPGM", "call": 1, "argument": 1, "hex": "..." } ],
 //!   "expect": { "return_code": 0, "display": [ "..." ], "params": [ "C1C2..." ],
 //!               "error": null, "files": [ { "name": "OUT-FILE", "records": [ "..." ] } ] },
 //!   "covers": [ { "program": "PGM", "line": 42, "pc": 17, "jumped": true } ] }
@@ -12,8 +14,11 @@
 //!
 //! The parameters are their storage in hexadecimal (EBCDIC); `fields`
 //! shows the input items' values for reading. `files` are the records of
-//! the sequential files the program reads; `expect.files` those of the
-//! files it writes. The expected values are
+//! the files the program reads; `expect.files` those of the files it
+//! writes. `faults` are I/O statements made to fail (the n-th OPEN, READ,
+//! ... of a file: status 35 or 30); `stubs` what the stubs of the
+//! programs called that are not there set in their arguments (leading
+//! bytes); `expect.stubbed` names those programs. The expected values are
 //! what the program did when the case was made (a regression test).
 
 use std::path::Path;
@@ -39,6 +44,23 @@ pub struct Expect {
     pub error: Option<String>,
     #[serde(default)]
     pub files: Vec<OutFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stubbed: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Fault {
+    pub file: String,
+    pub statement: String,
+    pub occurrence: u32,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct Stub {
+    pub program: String,
+    pub call: u32,
+    pub argument: u32,
+    pub hex: String,
 }
 
 /// The records of an input file.
@@ -71,6 +93,10 @@ pub struct CaseFile {
     pub accept: Vec<String>,
     #[serde(default)]
     pub files: Vec<InFile>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub faults: Vec<Fault>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub stubs: Vec<Stub>,
     pub expect: Expect,
     #[serde(default)]
     pub covers: Vec<Cover>,
@@ -172,12 +198,34 @@ pub fn case_file(
         params,
         accept: c.inputs.accept.clone(),
         files,
+        faults: c
+            .inputs
+            .faults
+            .iter()
+            .map(|(f, k, n)| Fault {
+                file: f.clone(),
+                statement: k.clone(),
+                occurrence: *n,
+            })
+            .collect(),
+        stubs: c
+            .inputs
+            .stubs
+            .iter()
+            .map(|((p, n, k), b)| Stub {
+                program: p.clone(),
+                call: *n,
+                argument: *k,
+                hex: hex(b),
+            })
+            .collect(),
         expect: Expect {
             return_code: c.out.return_code,
             display: lines(&c.out.display),
             params: c.out.params.iter().map(|b| hex(b)).collect(),
             error: c.out.error.clone(),
             files: out_files(&c.out.files),
+            stubbed: c.out.stubbed.iter().cloned().collect(),
         },
         covers: c
             .covers
@@ -202,7 +250,7 @@ pub fn replay(module: &Rc<Module>, case: &CaseFile, opts: &Options) -> Result<Ve
             .map(|p| unhex(&p.hex))
             .collect::<Result<_, _>>()?,
         accept: case.accept.clone(),
-        files: file_specs(module, &case.program)
+        files: file_specs(module, &opts.search)
             .iter()
             .filter(|f| f.input)
             .map(|f| {
@@ -214,6 +262,16 @@ pub fn replay(module: &Rc<Module>, case: &CaseFile, opts: &Options) -> Result<Ve
                     })
             })
             .collect::<Result<_, _>>()?,
+        faults: case
+            .faults
+            .iter()
+            .map(|f| (f.file.clone(), f.statement.clone(), f.occurrence))
+            .collect(),
+        stubs: case
+            .stubs
+            .iter()
+            .map(|s| Ok(((s.program.clone(), s.call, s.argument), unhex(&s.hex)?)))
+            .collect::<Result<_, String>>()?,
     };
     let out = run(module, &case.program, &[], &inputs, opts, false);
     let mut diffs = Vec::new();

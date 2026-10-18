@@ -15,6 +15,7 @@ mod report;
 mod sort;
 mod sym;
 mod sym_io;
+pub mod testenv;
 mod text;
 pub mod threaded;
 mod unicode_case;
@@ -453,6 +454,8 @@ pub struct Machine {
     ticks: u32,
     /// Concolic execution (test generation).
     sym: Option<Box<crate::concolic::SymState>>,
+    faults: Option<Box<testenv::IoFaults>>,
+    stubs: Option<Box<testenv::CallStubs>>,
 }
 
 impl crate::hlasm::Host for Machine {
@@ -652,6 +655,8 @@ impl Machine {
             cov: crate::coverage::enabled().then(HashMap::new),
             ticks: 0,
             sym: None,
+            faults: None,
+            stubs: None,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -1578,6 +1583,11 @@ impl Machine {
                 }
             }
             if !handled {
+                if self.stubs.is_some() {
+                    let sized = self.call_args_sized(cur, args)?;
+                    self.call_stub(cur, &name, &sized)?;
+                    return Ok(None);
+                }
                 return err(format!("program {name} not found"));
             }
             self.call_exception = true;

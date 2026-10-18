@@ -43,11 +43,7 @@ pub struct TapeAccessRequest {
 }
 
 fn tape_today() -> (i64, u16, u16) {
-    let days = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default()
-        .as_secs() as i64
-        / 86400;
+    let days = crate::clock::now().as_secs() as i64 / 86400;
     let (year, _, _) = super::civil_from_days(days);
     (
         days,
@@ -1044,11 +1040,7 @@ impl Machine {
                 label[31..35].copy_from_slice(format!("{sequence:04}").as_bytes());
             }
             // Current creation date in the IBM century/year/day form.
-            let days = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .unwrap_or_default()
-                .as_secs() as i64
-                / 86400;
+            let days = crate::clock::now().as_secs() as i64 / 86400;
             let (year, _, _) = super::civil_from_days(days);
             let day = days - super::days_from_civil(year, 1, 1) + 1;
             let date = format!(
@@ -1536,6 +1528,11 @@ impl Machine {
     }
 
     /// Sets the FILE STATUS item and the I/O condition.
+    /// The status of an I/O statement made to fail (test environment).
+    pub(super) fn fault_status(&mut self, cur: usize, def: &FileDef, code: &str) -> RResult<()> {
+        self.set_status(cur, def, code)
+    }
+
     fn set_status(&mut self, cur: usize, def: &FileDef, code: &str) -> RResult<()> {
         self.io_cond = !code.starts_with('0');
         let b = code.as_bytes();
@@ -1592,6 +1589,9 @@ impl Machine {
     }
 
     pub(super) fn open_file(&mut self, cur: usize, f: u32, mode: OpenMode) -> RResult<()> {
+        if self.io_fault(cur, f, "OPEN", Some(mode))? {
+            return Ok(());
+        }
         self.open_file_options(cur, f, mode, false)
     }
 
@@ -2200,6 +2200,9 @@ impl Machine {
     }
 
     pub(super) fn close_file(&mut self, cur: usize, f: u32, lock: bool) -> RResult<()> {
+        if self.io_fault(cur, f, "CLOSE", None)? {
+            return Ok(());
+        }
         self.close_file_options(cur, f, lock, true)
     }
 
@@ -2412,6 +2415,9 @@ impl Machine {
         from: Option<&Src>,
         advance: Option<&(bool, Advance)>,
     ) -> RResult<()> {
+        if self.io_fault(cur, f, "WRITE", None)? {
+            return Ok(());
+        }
         let def = self.file_def(cur, f);
         if let Some(src) = from {
             let v = self.eval_src(cur, src)?;
@@ -2538,6 +2544,9 @@ impl Machine {
         record_desc: u32,
         from: Option<&Src>,
     ) -> RResult<()> {
+        if self.io_fault(cur, f, "REWRITE", None)? {
+            return Ok(());
+        }
         let def = self.file_def(cur, f);
         if let Some(src) = from {
             let v = self.eval_src(cur, src)?;
@@ -2580,6 +2589,9 @@ impl Machine {
         into: Option<&Loc>,
         key: Option<u32>,
     ) -> RResult<()> {
+        if self.io_fault(cur, f, "READ", None)? {
+            return Ok(());
+        }
         let def = self.file_def(cur, f);
         let mode = self.state(cur, f).open;
         if !matches!(mode, Some(OpenMode::Input | OpenMode::InputOutput)) {
@@ -2637,6 +2649,9 @@ impl Machine {
     }
 
     pub(super) fn delete_record(&mut self, cur: usize, f: u32) -> RResult<()> {
+        if self.io_fault(cur, f, "DELETE", None)? {
+            return Ok(());
+        }
         let def = self.file_def(cur, f);
         if self.state(cur, f).open != Some(OpenMode::InputOutput) {
             return self.io_error(cur, &def, "49", "DELETE");
@@ -2655,6 +2670,9 @@ impl Machine {
         rel: Rel,
         key: Option<&Loc>,
     ) -> RResult<()> {
+        if self.io_fault(cur, f, "START", None)? {
+            return Ok(());
+        }
         let def = self.file_def(cur, f);
         if !matches!(
             self.state(cur, f).open,

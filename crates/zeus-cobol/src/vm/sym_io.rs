@@ -162,26 +162,122 @@ impl Machine {
     }
 
     pub(super) fn sym_io_post(&mut self, cur: usize, pre: FilePre) {
+        self.sym_io_cond(cur, pre);
+        self.sym_fault(cur);
+    }
+
+    /// After an I/O statement that could be made to fail (see
+    /// `testenv`): the variable `F<file>.<KIND><n>` (1: it fails) decides
+    /// the I/O condition and FILE STATUS.
+    fn sym_fault(&mut self, cur: usize) {
+        let Some((file, kind, n, failed)) = self.take_fault_point() else {
+            return;
+        };
+        let Some(f) = self.instances[cur]
+            .code
+            .files
+            .iter()
+            .position(|d| d.name == file)
+        else {
+            return;
+        };
+        let def = self.instances[cur].code.files[f].clone();
+        let st = self.sym.as_mut().unwrap();
+        let v = st.var_named(
+            format!("F{file}.{kind}{n}"),
+            VarKind::Num {
+                digits: 1,
+                signed: false,
+            },
+            i128::from(failed),
+        );
+        let fault = Pred::Cmp(Term::Var(v), Rel::Eq, Term::Const(1));
+        let prev = st.io_cond.take();
+        st.io_cond = match (failed, prev) {
+            (true, _) => Some(fault.clone()),
+            (false, Some(p)) => Some(Pred::Or(vec![fault.clone(), p])),
+            (false, None) if !self.io_cond => Some(fault.clone()),
+            (false, None) => None,
+        };
+        let Some(loc) = &def.status else { return };
+        let Ok((a, l)) = self.addr(cur, loc) else {
+            return;
+        };
+        if l < 2 {
+            return;
+        }
+        let (open, _, _) = self.read_position(cur, f as u32);
+        let code: [u8; 2] = if failed {
+            [self.mem[a], self.mem[a + 1]]
+        } else if kind == "OPEN" && matches!(open, Some(OpenMode::Input | OpenMode::InputOutput)) {
+            [0xF3, 0xF5]
+        } else {
+            [0xF3, 0xF0]
+        };
+        let now = self.sym_terms(a, 2);
+        self.sym_forget(a, 2);
+        for i in 0..2 {
+            let other = if failed {
+                Term::Const(0xF0)
+            } else {
+                now[i].clone()
+            };
+            let t = Term::ite(fault.clone(), Term::Const(i128::from(code[i])), other);
+            self.sym_bind_byte_term(a + i, t);
+        }
+    }
+
+    /// The output arguments of a stubbed call follow the variables
+    /// `C<program>.<n>.A<k>#<i>`.
+    pub(super) fn sym_stub(&mut self, name: &str, n: u32, args: &[Option<(usize, usize)>]) {
+        for (k, a) in args.iter().enumerate() {
+            let Some((addr, len)) = *a else { continue };
+            let l = len.min(super::testenv::STUB_BYTES);
+            self.sym_forget(addr, l);
+            for i in 0..l {
+                let b = self.mem[addr + i];
+                let st = self.sym.as_mut().unwrap();
+                let v = st.var_named(
+                    format!("C{name}.{n}.A{}#{}", k + 1, i + 1),
+                    VarKind::Byte,
+                    i128::from(b),
+                );
+                self.sym_bind_byte(addr + i, v);
+            }
+        }
+    }
+
+    fn sym_io_cond(&mut self, cur: usize, pre: FilePre) {
         match pre {
             FilePre::Other => self.sym.as_mut().unwrap().io_cond = None,
             FilePre::Open(k) => {
                 let fi = self.sym_file_mut(k);
                 fi.reads = 0;
-                fi.moved = fi.modified;
+                fi.left = (!fi.modified).then_some(Term::Var(fi.count));
                 self.sym.as_mut().unwrap().io_cond = None;
             }
             FilePre::Change(k) => {
                 let fi = self.sym_file_mut(k);
                 fi.modified = true;
-                fi.moved = true;
+                fi.left = None;
                 self.sym.as_mut().unwrap().io_cond = None;
             }
             FilePre::SeqRead(f, k, pos, into) => self.sym_seq_read(cur, f, k, pos, into),
             FilePre::KeyRead(f, k, search, into) => self.sym_key_read(cur, f, k, search, into),
             FilePre::Start(f, k, which, search, rel) => {
                 let fi = self.sym_file(k);
-                let p = (!fi.modified).then(|| Pred::not(self.sym_found(&fi, which, &search, rel)));
-                self.sym_file_mut(k).moved = true;
+                let (p, left) = if fi.modified {
+                    (None, None)
+                } else {
+                    let each = self.sym_matches(&fi, which, &search, rel);
+                    let left = each.iter().fold(Term::Const(0), |a, m| {
+                        Term::add(a, Term::ite(m.clone(), Term::Const(1), Term::Const(0)))
+                    });
+                    (Some(Pred::not(Pred::Or(each))), Some(left))
+                };
+                let fi = self.sym_file_mut(k);
+                fi.reads = 0;
+                fi.left = left;
                 self.sym_set_io(p);
                 self.sym_status(cur, f, (0xF2, 0xF3));
             }
@@ -198,7 +294,7 @@ impl Machine {
                 }
                 let fi = self.sym_file_mut(k);
                 fi.modified = true;
-                fi.moved = true;
+                fi.left = None;
                 self.sym_set_io(p);
                 self.sym_status(cur, f, (0xF2, 0xF2));
             }
@@ -250,17 +346,15 @@ impl Machine {
                 (0xF2, 0xF3),
             ),
             None => (
-                (!fi.moved).then_some(Pred::Cmp(
-                    Term::Var(fi.count),
-                    Rel::Le,
-                    Term::Const(fi.reads as i128),
-                )),
+                fi.left
+                    .clone()
+                    .map(|t| Pred::Cmp(t, Rel::Le, Term::Const(fi.reads as i128))),
                 (0xF1, 0xF0),
             ),
         };
         let st = self.sym_file_mut(k);
         if search.is_some() {
-            st.moved = true;
+            st.left = None;
         } else {
             st.reads += 1;
         }
@@ -288,20 +382,43 @@ impl Machine {
     /// relation `rel` with `search` (a leading part of the key): one of
     /// the records there are, or the one more.
     fn sym_found(&mut self, fi: &FileInput, which: usize, search: &[Term], rel: Rel) -> Pred {
+        Pred::Or(self.sym_matches(fi, which, search, rel))
+    }
+
+    /// For each record (and the one more), the condition that it is there
+    /// and its key `which` is in the relation `rel` with `search`.
+    fn sym_matches(
+        &mut self,
+        fi: &FileInput,
+        which: usize,
+        search: &[Term],
+        rel: Rel,
+    ) -> Vec<Pred> {
         let Some(&(off, len)) = fi.keys.get(which) else {
-            return Pred::Bool(self.io_cond);
+            return vec![Pred::Bool(self.io_cond)];
         };
         let l = search.len().min(len);
         let mut any = Vec::new();
         let n = fi.records.len() + usize::from(!fi.blank.is_empty());
         for i in 0..n {
             let key = self.sym_record_terms(fi, i, off, l);
-            any.push(Pred::And(vec![
+            let mut all = vec![
                 Pred::Cmp(Term::Var(fi.count), Rel::Gt, Term::Const(i as i128)),
                 Pred::Bytes(key, rel, search[..l].to_vec()),
-            ]));
+            ];
+            // the one more has a primary key of its own
+            if i == fi.records.len()
+                && let Some(&(po, pl)) = fi.keys.first()
+            {
+                let mine = self.sym_record_terms(fi, i, po, pl);
+                for j in 0..i {
+                    let other = self.sym_record_terms(fi, j, po, pl);
+                    all.push(Pred::Bytes(mine.clone(), Rel::Ne, other));
+                }
+            }
+            any.push(Pred::And(all));
         }
-        Pred::Or(any)
+        any
     }
 
     /// The terms of bytes `[off, off+len)` of record `n` of an input

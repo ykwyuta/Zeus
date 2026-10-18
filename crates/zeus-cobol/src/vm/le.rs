@@ -59,10 +59,7 @@ fn days_in_month(y: i64, m: i64) -> i64 {
 
 /// The current time: Lilian day and seconds into the day (UTC).
 fn now_lilian() -> (i64, f64) {
-    let unix = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
+    let unix = crate::clock::now().as_secs_f64();
     let days = (unix / 86400.0).floor();
     (lilian(1970, 1, 1) + days as i64, unix - days * 86400.0)
 }

@@ -120,6 +120,13 @@ fn main() -> ExitCode {
         pct(covered, total),
         pct(covered, total - infeasible),
     );
+    if !report.stubbed.is_empty() {
+        let names: Vec<&str> = report.stubbed.iter().map(|s| s.as_str()).collect();
+        text.push_str(&format!(
+            "stubs (programs called that are not there): {}\n",
+            names.join(", ")
+        ));
+    }
     if !report.gaps.is_empty() {
         text.push_str("\nnot covered:\n");
         for ((p, pc, j), g) in &report.gaps {

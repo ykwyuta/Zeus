@@ -8,9 +8,7 @@ use crate::ebcdic;
 use crate::zir::{Arg, DataType, Ex, Func};
 
 pub(crate) fn timestamp() -> String {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .unwrap_or_default();
+    let now = crate::clock::now();
     let seconds = now.as_secs() as i64;
     let (y, m, d) = civil_from_days(seconds / 86400);
     format!(
@@ -540,10 +538,7 @@ impl Machine {
                 ))
             }
             Func::CurrentDate => {
-                let now = std::time::SystemTime::now()
-                    .duration_since(std::time::UNIX_EPOCH)
-                    .map(|d| d.as_secs_f64())
-                    .unwrap_or(0.0);
+                let now = crate::clock::now().as_secs_f64();
                 let days = (now / 86400.0).floor() as i64;
                 let secs = now - days as f64 * 86400.0;
                 let (y, m, d) = civil_from_days(days);
@@ -860,9 +855,7 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
         Func::DateToYyyymmdd | Func::DayToYyyyddd | Func::YearToYyyy => {
             let x = int(a(0)?);
             let window = v.get(1).map(|w| int(*w)).unwrap_or(50);
-            let now = std::time::SystemTime::now()
-                .duration_since(std::time::UNIX_EPOCH)
-                .map_err(|e| super::RunError(e.to_string()))?;
+            let now = crate::clock::now();
             let cur_year = civil_from_days((now.as_secs() / 86400) as i64).0;
             let (yy, rest, mult) = match func {
                 Func::DateToYyyymmdd => (x / 10000, x % 10000, 10000),
