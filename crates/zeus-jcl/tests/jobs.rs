@@ -226,9 +226,9 @@ fn compile_bind_and_conditions() {
 fn cobol_parm_options_and_source_overrides_produce_a_real_listing() {
     let dir = tempfile::tempdir().unwrap();
     let mut env = env(dir.path());
-    let job = JOB.replace("//COMP     EXEC PGM=IGYCRCTL", "//COMP     EXEC PGM=IGYCRCTL,\n// PARM='DYNAM,OPT(FULL),NOSOURCE,MAP,XREF(SHORT)'")
+    let job = JOB.replace("//COMP     EXEC PGM=IGYCRCTL", "//COMP     EXEC PGM=IGYCRCTL,\n// PARM='DYNAM,OPT(FULL),ARCH(12),NOSOURCE,MAP,XREF(SHORT)'")
         .replace("       IDENTIFICATION DIVISION.", "       CBL NODYNAM OPT(STD) SOURCE(HEX)\n       IDENTIFICATION DIVISION.")
-        .replace("           DISPLAY 'HELLO FROM A COMPILED STEP'", "       >>IF NOT IGY-DYNAM AND IGY-OPTIMIZE = 1\n           DISPLAY 'EFFECTIVE SETTINGS'\n       >>END-IF");
+        .replace("           DISPLAY 'HELLO FROM A COMPILED STEP'", "       >>IF NOT IGY-DYNAM AND IGY-OPTIMIZE = 1\n       >>IF IGY-ARCH = 12\n           DISPLAY 'EFFECTIVE SETTINGS'\n       >>END-IF\n       >>END-IF");
     let mut log = Vec::new();
     let results = run_job(&mut env, &job, &mut log).unwrap();
     assert_eq!(

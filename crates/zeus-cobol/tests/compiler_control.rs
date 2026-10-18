@@ -275,6 +275,91 @@ fn predefined_variables_follow_effective_options_and_copy_expansion() {
 }
 
 #[test]
+fn arch_is_migration_metadata_with_explicit_precedence_and_zero_default() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("arch.cbl");
+    source(
+        &dir.path().join("ARCHFLAG.cpy"),
+        ">>IF ARCH = IGY-ARCH AND IGY-ARCH >= 11\nDISPLAY 'HIGH'\n>>ELSE\nDISPLAY 'LOW'\n>>END-IF",
+    );
+    let body = "ID DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nCOPY ARCHFLAG.\n>>IF IGY-ARCH = 0\nDISPLAY 'UNSPECIFIED'\n>>END-IF\nSTOP RUN.";
+    source(&path, body);
+    assert_eq!(
+        run(zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap()),
+        b"LOW\nUNSPECIFIED\n"
+    );
+    for level in 6..=15 {
+        let options = FrontOptions {
+            compiler_options: format!("ARCH({level})"),
+            ..Default::default()
+        };
+        assert_eq!(
+            run(zeus_cobol::compile_file(&path, &options).unwrap()),
+            if level >= 11 {
+                b"HIGH\n".as_slice()
+            } else {
+                b"LOW\n".as_slice()
+            }
+        );
+    }
+    let options = FrontOptions {
+        arch: Some(6),
+        compiler_options: "ARCH(8)".into(),
+        ..Default::default()
+    };
+    source(&path, &format!("CBL ARCH(10) ARCH(15)\n{body}"));
+    assert_eq!(
+        run(zeus_cobol::compile_file(&path, &options).unwrap()),
+        b"HIGH\n"
+    );
+    source(&path, body);
+    assert_eq!(
+        run(zeus_cobol::compile_file(
+            &path,
+            &FrontOptions {
+                arch: Some(15),
+                ..Default::default()
+            }
+        )
+        .unwrap()),
+        b"HIGH\n"
+    );
+    for option in [
+        "ARCH",
+        "ARCH()",
+        "ARCH(0)",
+        "ARCH(5)",
+        "ARCH(16)",
+        "ARCH(-1)",
+        "ARCH(1.5)",
+        "ARCH(TEXT)",
+        "ARCH(999)",
+    ] {
+        assert!(
+            zeus_cobol::compile_file(
+                &path,
+                &FrontOptions {
+                    compiler_options: option.into(),
+                    ..Default::default()
+                }
+            )
+            .is_err(),
+            "{option}"
+        );
+    }
+    assert!(
+        zeus_cobol::compile_file(
+            &path,
+            &FrontOptions {
+                arch: Some(0),
+                ..Default::default()
+            }
+        )
+        .is_err()
+    );
+}
+
+#[test]
 fn predefined_names_cannot_be_changed_or_removed() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("main.cbl");
@@ -282,6 +367,8 @@ fn predefined_names_cannot_be_changed_or_removed() {
         ">>DEFINE IGY-DYNAM AS B'1' OVERRIDE",
         ">>DEFINE DYNAM OFF",
         ">>DEFINE IGY-PRIVATE 1",
+        ">>DEFINE IGY-ARCH AS 11 OVERRIDE",
+        ">>DEFINE ARCH OFF",
         ">>DEFINE COMPILER-VRM AS PARAMETER",
     ] {
         source(

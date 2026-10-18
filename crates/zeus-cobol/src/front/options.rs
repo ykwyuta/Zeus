@@ -4,6 +4,7 @@ use crate::diag::{Diag, Result};
 
 pub(super) struct Effective {
     pub optimize: u8,
+    pub arch: Option<u8>,
     pub sql: Option<bool>,
     pub sqlims: bool,
     pub listing: crate::listing::ListingOptions,
@@ -28,6 +29,7 @@ impl Effective {
         FrontOptions {
             compiler_options: String::new(),
             optimize: self.optimize,
+            arch: self.arch,
             sql: self.sql,
             sqlims: self.sqlims,
             listing: self.listing.clone(),
@@ -53,6 +55,7 @@ impl Effective {
 
 pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
     let mut optimize = defaults.optimize;
+    let mut arch = defaults.arch;
     let mut sql = defaults.sql;
     let mut sqlims = defaults.sqlims;
     let mut listing = defaults.listing.clone();
@@ -101,6 +104,22 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         let upper_name = name.to_ascii_uppercase();
         let upper_arg = arg.map(str::to_ascii_uppercase);
         match (upper_name.as_str(), upper_arg.as_deref()) {
+            ("ARCH", Some(value))
+                if !value.is_empty() && value.bytes().all(|b| b.is_ascii_digit()) =>
+            {
+                arch = Some(
+                    value
+                        .parse::<u8>()
+                        .ok()
+                        .filter(|n| (6..=15).contains(n))
+                        .ok_or_else(|| {
+                            Diag::error(
+                                Default::default(),
+                                "ARCH must be an integer from 6 to 15 (migration setting only)",
+                            )
+                        })?,
+                );
+            }
             ("OPTIMIZE" | "OPT", Some("0")) | ("NOOPTIMIZE" | "NOOPT", None) => optimize = 0,
             ("OPTIMIZE" | "OPT", Some("1" | "STD")) | ("OPTIMIZE" | "OPT", None) => optimize = 1,
             ("OPTIMIZE" | "OPT", Some("2" | "FULL")) => optimize = 2,
@@ -272,6 +291,12 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
             "OPTIMIZE must be 0, 1 or 2",
         ));
     }
+    if arch.is_some_and(|n| !(6..=15).contains(&n)) {
+        return Err(Diag::error(
+            Default::default(),
+            "ARCH must be an integer from 6 to 15 (migration setting only)",
+        ));
+    }
     if listing.explicit_embedded_flag && !listing.source {
         return Err(Diag::error(
             Default::default(),
@@ -279,6 +304,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         ));
     }
     Ok(Effective {
+        arch,
         lp64,
         thread,
         dll,

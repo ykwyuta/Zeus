@@ -23,6 +23,7 @@ pub struct Gen<'a> {
     /// SQL cursor declarations (DECLARE c CURSOR FOR ...) by cursor name.
     sql_cursors: HashMap<String, SqlText>,
     sqlims_cursors: HashMap<String, SqlText>,
+    sql_whenever: HashMap<String, ProcName>,
     sqlims_whenever: HashMap<String, ProcName>,
     pub prog: &'a ast::Program,
     pub dm: DataModel,
@@ -226,6 +227,7 @@ impl<'a> Gen<'a> {
             execs: Vec::new(),
             sql_cursors: sql_cursors(prog),
             sqlims_cursors: HashMap::new(),
+            sql_whenever: HashMap::new(),
             sqlims_whenever: HashMap::new(),
             pos: prog.pos,
         };
@@ -835,7 +837,7 @@ impl<'a> Gen<'a> {
 
     /// ZIR form of an EXEC block: option arguments resolved to data
     /// areas, values, procedure labels or names.
-    fn sqlims_whenever(&mut self, e: &ExecBlock) -> Result<()> {
+    fn sql_whenever(&mut self, e: &ExecBlock) -> Result<()> {
         let words: Vec<_> = e
             .sql
             .as_ref()
@@ -870,7 +872,11 @@ impl<'a> Gen<'a> {
             .is_some_and(|w| w.eq_ignore_ascii_case("CONTINUE"))
             && words.len() == i + 1
         {
-            self.sqlims_whenever.remove(condition);
+            if e.kind == ExecKind::SqlIms {
+                self.sqlims_whenever.remove(condition);
+            } else {
+                self.sql_whenever.remove(condition);
+            }
             return Ok(());
         }
         if words.get(i).is_some_and(|w| w.eq_ignore_ascii_case("GO")) {
@@ -888,13 +894,32 @@ impl<'a> Gen<'a> {
                 "WHENEVER requires an unqualified procedure name",
             ));
         }
+        // sql_text normally extracts colon-prefixed names as host data.
+        // WHENEVER's optional colon denotes a procedure instead.
+        let name = if words[i] == "?" {
+            let host = &e.sql.as_ref().unwrap().host;
+            if host.len() != 1 || host[0].indicator.is_some() || !host[0].var.qualifiers.is_empty()
+            {
+                return Err(Diag::error(
+                    e.pos,
+                    "WHENEVER requires an unqualified procedure name",
+                ));
+            }
+            host[0].var.name.clone()
+        } else {
+            words[i].to_ascii_uppercase()
+        };
         let target = ProcName {
-            name: words[i].to_ascii_uppercase(),
+            name,
             section: None,
             pos: e.pos,
         };
         self.proc_start(&target)?;
-        self.sqlims_whenever.insert(condition.into(), target);
+        if e.kind == ExecKind::SqlIms {
+            self.sqlims_whenever.insert(condition.into(), target);
+        } else {
+            self.sql_whenever.insert(condition.into(), target);
+        }
         Ok(())
     }
 
@@ -1171,8 +1196,13 @@ impl<'a> Gen<'a> {
                 }
             }
         }
-        if e.kind == ExecKind::SqlIms {
-            for (condition, target) in &self.sqlims_whenever {
+        if matches!(e.kind, ExecKind::Sql | ExecKind::SqlIms) {
+            let whenever = if e.kind == ExecKind::SqlIms {
+                &self.sqlims_whenever
+            } else {
+                &self.sql_whenever
+            };
+            for (condition, target) in whenever {
                 options.push(zir::ExecOpt {
                     name: condition.clone(),
                     arg: Some(zir::ExecVal::Label(self.proc_start(target)?)),
@@ -1355,11 +1385,14 @@ impl<'a> Gen<'a> {
 
         let mut sqlims_section = false;
         for e in &self.prog.data.execs {
+            if e.kind == ExecKind::Sql && e.command == "WHENEVER" {
+                self.sql_whenever(e)?;
+            }
             if e.kind == ExecKind::SqlIms {
                 match e.command.as_str() {
                     "BEGIN" if !sqlims_section => sqlims_section = true,
                     "END" if sqlims_section => sqlims_section = false,
-                    "WHENEVER" => self.sqlims_whenever(e)?,
+                    "WHENEVER" => self.sql_whenever(e)?,
                     "DECLARE" => self.sqlims_cursor(e)?,
                     _ => {
                         return Err(Diag::error(
@@ -1377,12 +1410,28 @@ impl<'a> Gen<'a> {
             ));
         }
 
+        // Declaratives precede the main body in source, but are emitted
+        // after it. Apply their SQL directives before emitting the main
+        // body, then replay them from the data-division state below.
+        let data_whenever = self.sql_whenever.clone();
+        for sec in &proc.declaratives {
+            for paragraph in &sec.paragraphs {
+                for sentence in &paragraph.sentences {
+                    let mut directives = Vec::new();
+                    sql_whenever_directives(sentence, &mut directives);
+                    for e in directives {
+                        self.sql_whenever(e)?;
+                    }
+                }
+            }
+        }
         let mut para_idx = 0u32;
         for sec in &proc.sections {
             para_idx = self.gen_section(sec, para_idx)?;
         }
         // Falling off the end of the procedure division.
         self.emit(Instr::GoBack);
+        self.sql_whenever = data_whenever;
         self.in_decl = true;
         let mut para_idx = decl_start as u32;
         let mut uses = Vec::new();
@@ -3482,6 +3531,10 @@ impl<'a> Gen<'a> {
             }
             Stmt::Exec(e) => {
                 self.pos = e.pos;
+                if e.kind == ExecKind::Sql && e.command == "WHENEVER" {
+                    self.sql_whenever(e)?;
+                    return Ok(());
+                }
                 if e.kind == ExecKind::SqlIms {
                     if self.in_decl {
                         return Err(Diag::error(
@@ -3490,7 +3543,7 @@ impl<'a> Gen<'a> {
                         ));
                     }
                     if e.command == "WHENEVER" {
-                        self.sqlims_whenever(e)?;
+                        self.sql_whenever(e)?;
                         return Ok(());
                     }
                     if matches!(e.command.as_str(), "BEGIN" | "END") {
@@ -4618,8 +4671,21 @@ fn handlers_of(s: &Stmt) -> Vec<&Vec<Stmt>> {
         | Stmt::Multiply { size_error, .. }
         | Stmt::Divide { size_error, .. }
         | Stmt::Compute { size_error, .. } => vec![size_error],
-        Stmt::Read { at_end, .. } => vec![at_end],
-        Stmt::Write { end_of_page, .. } => vec![end_of_page],
+        Stmt::Read {
+            at_end,
+            invalid_key,
+            ..
+        } => vec![at_end, invalid_key],
+        Stmt::Return { at_end, .. } => vec![at_end],
+        Stmt::Write {
+            end_of_page,
+            invalid_key,
+            ..
+        } => vec![end_of_page, invalid_key],
+        Stmt::Delete { invalid_key, .. }
+        | Stmt::Rewrite { invalid_key, .. }
+        | Stmt::Start { invalid_key, .. } => vec![invalid_key],
+        Stmt::String { overflow, .. } | Stmt::Unstring { overflow, .. } => vec![overflow],
         Stmt::Call { exception, .. } => vec![exception],
         _ => vec![],
     };
@@ -4851,6 +4917,44 @@ fn line_pos(l: LineClause) -> zir::LinePos {
 
 /// The SQL cursor declarations of a program: in the data division and in
 /// the sentences of the procedure division.
+fn sql_whenever_directives<'a>(stmts: &'a [Stmt], out: &mut Vec<&'a ExecBlock>) {
+    for stmt in stmts {
+        match stmt {
+            Stmt::Exec(e) if e.kind == ExecKind::Sql && e.command == "WHENEVER" => out.push(e),
+            Stmt::If { then, els, .. } => {
+                sql_whenever_directives(then, out);
+                if let Some(els) = els {
+                    sql_whenever_directives(els, out);
+                }
+            }
+            Stmt::Evaluate { whens, other, .. } => {
+                for (_, body) in whens {
+                    sql_whenever_directives(body, out);
+                }
+                if let Some(other) = other {
+                    sql_whenever_directives(other, out);
+                }
+            }
+            Stmt::Search { at_end, whens, .. } => {
+                if let Some(body) = at_end {
+                    sql_whenever_directives(body, out);
+                }
+                for (_, body) in whens {
+                    sql_whenever_directives(body, out);
+                }
+            }
+            Stmt::Perform {
+                body: PerformBody::Inline(body),
+                ..
+            } => sql_whenever_directives(body, out),
+            _ => {}
+        }
+        for handler in handlers_of(stmt) {
+            sql_whenever_directives(handler, out);
+        }
+    }
+}
+
 fn sql_cursors(prog: &ast::Program) -> HashMap<String, SqlText> {
     let mut out = HashMap::new();
     let mut add = |e: &ExecBlock| {

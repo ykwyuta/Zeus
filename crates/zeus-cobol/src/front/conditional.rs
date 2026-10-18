@@ -65,6 +65,10 @@ impl Variables {
             version * 100 + part.parse::<u32>().expect("numeric package version")
         });
         for (name, value) in [
+            (
+                "ARCH",
+                Value::Number(Number::parse(&options.arch.unwrap_or(0).to_string()).unwrap()),
+            ),
             ("CICS", Value::Boolean(options.cics)),
             ("DLL", Value::Boolean(options.dll)),
             ("DYNAM", Value::Boolean(options.dynam)),
