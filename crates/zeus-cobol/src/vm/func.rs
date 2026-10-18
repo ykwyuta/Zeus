@@ -88,7 +88,9 @@ impl Machine {
             Ok(match value {
                 Val::Item(ty, bytes) if ty.is_national() => {
                     let units = bytes
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|c| u16::from_be_bytes([c[0], c[1]]))
                         .collect::<Vec<_>>();
                     (
@@ -447,7 +449,9 @@ impl Machine {
                 if national && func != Func::Reverse {
                     let bytes = self.national_bytes(cur, &vals[0])?;
                     let units = bytes
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|b| u16::from_be_bytes([b[0], b[1]]));
                     let mut output = Vec::with_capacity(bytes.len());
                     for character in char::decode_utf16(units) {
@@ -465,7 +469,9 @@ impl Machine {
                 if national && func == Func::Reverse {
                     let bytes = self.national_bytes(cur, &vals[0])?;
                     let units = bytes
-                        .chunks_exact(2)
+                        .as_chunks::<2>()
+                        .0
+                        .iter()
                         .map(|b| u16::from_be_bytes([b[0], b[1]]))
                         .collect::<Vec<_>>();
                     let mut characters = Vec::new();
@@ -603,7 +609,9 @@ fn cmp_padded(a: &[u8], b: &[u8], coll: Option<&[u16]>) -> std::cmp::Ordering {
 fn cmp_national(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
     let units = |bytes: &[u8]| {
         bytes
-            .chunks_exact(2)
+            .as_chunks::<2>()
+            .0
+            .iter()
             .map(|b| u16::from_be_bytes([b[0], b[1]]))
             .collect::<Vec<_>>()
     };

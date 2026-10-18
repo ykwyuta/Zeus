@@ -241,19 +241,21 @@ impl Machine {
                 .append(true)
                 .open(a.path)
                 .map_err(|e| RunError(e.to_string()))?;
-            let bytes =
-                if a.format == Some(zeus_ds::format::RecordFormat::Text) || a.format.is_none() {
+            let bytes = match a.format {
+                Some(zeus_ds::format::RecordFormat::Text) | None => {
                     format!("{message}\n").into_bytes()
-                } else {
+                }
+                Some(format) => {
                     let mut bytes = vec![];
                     zeus_ds::format::encode_into(
-                        a.format.unwrap(),
+                        format,
                         &crate::ebcdic::encode(message),
                         crate::ebcdic::SPACE,
                         &mut bytes,
                     );
                     bytes
-                };
+                }
+            };
             f.write_all(&bytes).map_err(|e| RunError(e.to_string()))?;
         } else if dd == "SYSOUT" {
             writeln!(self.stdout, "{message}").map_err(|e| RunError(e.to_string()))?;

@@ -76,7 +76,12 @@ fn national_keys_use_national_order_with_an_alphanumeric_collation() {
     assert_eq!(m.run_main(compile(&src)).unwrap(), 0);
     let records = std::fs::read(path).unwrap();
     assert_eq!(
-        records.chunks_exact(3).map(|r| r[2]).collect::<Vec<_>>(),
+        records
+            .as_chunks::<3>()
+            .0
+            .iter()
+            .map(|r| r[2])
+            .collect::<Vec<_>>(),
         zeus_cobol::ebcdic::encode("AMZ")
     );
 }
@@ -98,7 +103,12 @@ fn floating_keys_keep_the_full_hfp_range_during_spill_and_merge() {
     assert_eq!(m.run_main(compile(&src)).unwrap(), 0);
     let records = std::fs::read(path).unwrap();
     assert_eq!(
-        records.chunks_exact(9).map(|r| r[8]).collect::<Vec<_>>(),
+        records
+            .as_chunks::<9>()
+            .0
+            .iter()
+            .map(|r| r[8])
+            .collect::<Vec<_>>(),
         zeus_cobol::ebcdic::encode("ABC")
     );
 }
