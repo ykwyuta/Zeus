@@ -60,6 +60,30 @@ pub fn num_value(t: &NumType, bytes: &[u8]) -> Dec {
     scaled(raw_value(t, bytes), t.scale)
 }
 
+/// Decimal interchange value of an IBM HFP host item, without an IEEE f64
+/// intermediate. Used by subsystem bindings, which accept at most 38 digits.
+pub fn decimal_from_float(bytes: &[u8]) -> Option<Dec> {
+    if !matches!(bytes.len(), 4 | 8) {
+        return None;
+    }
+    crate::numeric::number::Number::from_hfp(bytes).to_dec()
+}
+
+/// Store a subsystem decimal result in an IBM HFP host item, rounding once.
+pub fn store_float_exact(bytes: &mut [u8], value: Dec) -> Result<(), String> {
+    if !matches!(bytes.len(), 4 | 8) {
+        return Err("HFP host item must contain four or eight bytes".into());
+    }
+    let value = crate::numeric::number::Number::decimal(
+        value,
+        value.integer_digits() as i32,
+        value.scale as i32,
+    )
+    .hfp(bytes.len(), true)?;
+    bytes.copy_from_slice(&value);
+    Ok(())
+}
+
 /// Numeric value of an item of any numeric-like type.
 pub fn value_of(ty: &DataType, bytes: &[u8]) -> Dec {
     match ty {
@@ -532,6 +556,18 @@ pub fn move_national(src: &[u8], out: &mut [u8]) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn subsystem_hfp_conversion_keeps_low_bits_beyond_ieee_double() {
+        let original = [0x41, 0xf0, 0, 0, 0, 0, 0, 1];
+        let value = decimal_from_float(&original).unwrap();
+        assert!(value > Dec::from_i64(15));
+        assert!(value < Dec::parse("15.000000000000001").unwrap());
+        let mut encoded = [0; 8];
+        store_float_exact(&mut encoded, value).unwrap();
+        assert_eq!(encoded, original);
+        assert!(decimal_from_float(&[0; 3]).is_none());
+    }
     use crate::sema::picture::analyze;
 
     fn edited(pic: &str, v: &str) -> String {

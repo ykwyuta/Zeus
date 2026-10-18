@@ -162,7 +162,7 @@ fn failed_statement_preserves_prior_unit_of_work() {
         s.execute_sql("INSERT INTO ROOT (ID) VALUES (1)", &[])
             .unwrap_err()
             .state,
-        "23505"
+        "58030"
     );
     assert_eq!(
         s.execute_sql("SELECT COUNT(*) FROM ROOT", &[])
@@ -194,7 +194,7 @@ fn validates_metadata_for_empty_results_and_parameter_counts() {
         s.execute_sql("SELECT * FROM SQLTEST.ROOT", &[])
             .unwrap_err()
             .state,
-        "3F000"
+        "42704"
     );
 }
 
@@ -239,7 +239,7 @@ fn checks_pcb_procopt_and_sensitivity() {
         s.execute_sql("INSERT INTO ROOT (ID) VALUES (1)", &[])
             .unwrap_err()
             .state,
-        "42501"
+        "58030"
     );
     s.execute_sql("SELECT * FROM ROOT", &[]).unwrap();
 }
@@ -303,6 +303,44 @@ fn sql_external_names_and_zoned_decimal_marshaling() {
 }
 
 #[test]
+fn sql_datetime_long_and_character_pattern_marshaling() {
+    let dir = tempfile::tempdir().unwrap();
+    let dbd = parse_dbd(" DBD NAME=TIMEDB,ENCODING=CP037,ACCESS=(HDAM,OSAM)\n SEGM NAME=ROOT,PARENT=0,BYTES=44\n FIELD NAME=(ID,SEQ,U),START=1,BYTES=4,TYPE=F,DATATYPE=INT\n FIELD NAME=DAY,START=5,BYTES=8,DATATYPE=DATE\n FIELD NAME=STAMP,START=13,BYTES=26,DATATYPE=TIMESTAMP\n DFSMARSH INTERNALTYPECONVERTER=CHAR,\n               PATTERN='yyyy-MM-dd HH:mm:ss.SSSSSS'\n FIELD NAME=CLOCK,START=39,BYTES=6,DATATYPE=TIME\n DFSMARSH INTERNALTYPECONVERTER=CHAR,PATTERN='HHmmss'\n DBDGEN\n END\n").unwrap();
+    let psb = parse_psb(" PCB TYPE=DB,DBDNAME=TIMEDB,PROCOPT=A,PCBNAME=APP\n SENSEG NAME=ROOT,PARENT=0\n PSBGEN PSBNAME=TIMEPSB,LANG=COBOL\n END\n").unwrap();
+    let db = Database::open(dir.path().join("data.wal"), vec![dbd]).unwrap();
+    let mut s = Session::new(db, psb).unwrap();
+    s.execute_sql("INSERT INTO ROOT (ID,DAY,STAMP,CLOCK) VALUES (1,'1969-12-31','2024-02-29 12:34:56.123456','23:59:58')",&[]).unwrap();
+    let raw = s.read(0, ReadOp::Gu, &[]).unwrap().record.unwrap();
+    assert_eq!(&raw.data[4..12], &(-86_400_000i64).to_be_bytes());
+    assert_eq!(codepage::get(37).unwrap().decode(&raw.data[38..]), "235958");
+    let result = s
+        .execute_sql("SELECT DAY,STAMP,CLOCK FROM ROOT", &[])
+        .unwrap();
+    assert_eq!(
+        result
+            .columns
+            .iter()
+            .map(|c| (c.sql_type, c.length))
+            .collect::<Vec<_>>(),
+        vec![(384, 10), (392, 26), (388, 8)]
+    );
+    assert_eq!(
+        result.rows,
+        vec![vec![
+            SqlValue::Text("1969-12-31".into()),
+            SqlValue::Text("2024-02-29 12:34:56.123456".into()),
+            SqlValue::Text("23:59:58".into())
+        ]]
+    );
+    assert_eq!(
+        s.execute_sql("UPDATE ROOT SET DAY='1900-02-29'", &[])
+            .unwrap_err()
+            .state,
+        "22007"
+    );
+}
+
+#[test]
 fn sql_statement_rollback_undoes_earlier_rows_without_losing_prior_calls() {
     let (_dir, _db, mut s) = setup();
     insert(&mut s, 1, "one", "1");
@@ -315,7 +353,7 @@ fn sql_statement_rollback_undoes_earlier_rows_without_losing_prior_calls() {
         s.execute_sql("UPDATE ROOT SET NAME='changed' WHERE AMOUNT>=0", &[])
             .unwrap_err()
             .state,
-        "22018"
+        "23611"
     );
     assert_eq!(
         s.execute_sql("SELECT NAME FROM ROOT ORDER BY ID", &[])
@@ -366,10 +404,14 @@ fn run_cobol(body: &str, enabled: bool) -> i32 {
 }
 
 fn run_cobol_with_data(body: &str, enabled: bool, declarations: &str) -> i32 {
+    run_cobol_with_catalog(body, enabled, declarations, DBD)
+}
+
+fn run_cobol_with_catalog(body: &str, enabled: bool, declarations: &str, dbd: &str) -> i32 {
     use zeus_ims::runtime::{self, BatchHost, Ims, Library, Schedule};
     let dir = tempfile::tempdir().unwrap();
     let library = Library::from_sources([
-        ("SQLTEST".into(), DBD.into()),
+        ("SQLTEST".into(), dbd.into()),
         ("SQLPSB".into(), PSB.into()),
     ])
     .unwrap();
@@ -468,6 +510,308 @@ fn rejects_sqlims_in_dli_region_without_forwarding_to_db2() {
 }
 
 #[test]
+fn ims_published_diagnostic_codes_and_statement_terminator() {
+    assert_eq!(
+        run_cobol_with_data(
+            "
+EXEC SQLIMS DECLARE C CURSOR FOR S END-EXEC
+MOVE SPACES TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+IF SQLIMSCODE NOT = -198 OR SQLIMSSTATE NOT = '42617'
+ MOVE 1 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS OPEN C END-EXEC
+IF SQLIMSCODE NOT = -514 MOVE 2 TO RETURN-CODE GOBACK END-IF
+MOVE 0 TO SQLIMSN
+EXEC SQLIMS DESCRIBE S INTO :SQLIMSDA END-EXEC
+IF SQLIMSCODE NOT = -516 MOVE 3 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS EXECUTE S END-EXEC
+IF SQLIMSCODE NOT = -518 OR SQLIMSSTATE NOT = '07003'
+ MOVE 4 TO RETURN-CODE GOBACK END-IF
+MOVE 'SELECT MISSING FROM ROOT' TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+IF SQLIMSCODE NOT = -8024 MOVE 5 TO RETURN-CODE GOBACK END-IF
+MOVE 'SELECT COUNT(*) FROM ROOT; ignored text' TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+IF SQLIMSCODE NOT = 98 OR SQLIMSSTATE NOT = '01568'
+ MOVE 6 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS OPEN C END-EXEC
+EXEC SQLIMS FETCH C INTO :ID-VALUE END-EXEC
+IF SQLIMSCODE NOT = 0 OR ID-VALUE NOT = 0
+ MOVE 7 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS CLOSE C END-EXEC
+MOVE 'UPDATE ROOT SET NAME=''none'' WHERE ID=99' TO STMT
+EXEC SQLIMS EXECUTE IMMEDIATE :STMT END-EXEC
+IF SQLIMSCODE NOT = 100 OR SQLIMSSTATE NOT = '02000'
+ MOVE 8 TO RETURN-CODE GOBACK END-IF
+MOVE 'INSERT INTO ROOT (NAME) VALUES (''no key'')' TO STMT
+EXEC SQLIMS EXECUTE IMMEDIATE :STMT END-EXEC
+IF SQLIMSCODE NOT = -407 MOVE 9 TO RETURN-CODE GOBACK END-IF
+MOVE 0 TO RETURN-CODE GOBACK.",
+            true,
+            "EXEC SQLIMS INCLUDE SQLIMSDA END-EXEC."
+        ),
+        0
+    );
+}
+
+#[test]
+fn binary_columns_use_raw_bytes_for_using_and_fetch() {
+    let dbd = DBD.replace(
+        "NAME=NAME,START=5,BYTES=8,TYPE=C,DATATYPE=CHAR",
+        "NAME=NAME,START=5,BYTES=8,TYPE=C,DATATYPE=BINARY",
+    );
+    assert_eq!(
+        run_cobol_with_catalog(
+            "
+EXEC SQLIMS DECLARE C CURSOR FOR S END-EXEC
+MOVE X'00FF40017F0080AA' TO NAME-VALUE
+MOVE 'INSERT INTO ROOT (ID,NAME) VALUES (?,?)' TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+EXEC SQLIMS EXECUTE S USING :ID-VALUE,:NAME-VALUE END-EXEC
+IF SQLIMSCODE NOT = 0 MOVE 1 TO RETURN-CODE GOBACK END-IF
+MOVE 'SELECT NAME FROM ROOT WHERE NAME=?' TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+EXEC SQLIMS OPEN C USING :NAME-VALUE END-EXEC
+MOVE SPACES TO NAME-VALUE
+EXEC SQLIMS FETCH C INTO :NAME-VALUE END-EXEC
+IF SQLIMSCODE NOT = 0
+ OR NAME-VALUE NOT = X'00FF40017F0080AA'
+ MOVE 2 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS CLOSE C END-EXEC
+MOVE 0 TO RETURN-CODE GOBACK.",
+            true,
+            "",
+            &dbd
+        ),
+        0
+    );
+}
+
+#[test]
+fn enforces_ims_predicate_constraints_by_catalog_type() {
+    let (_dir, _db, mut s) = setup();
+    let integer = ["ID=1"; 12].join(" AND ");
+    let error = s
+        .execute_sql(&format!("SELECT * FROM ROOT WHERE {integer}"), &[])
+        .unwrap_err();
+    assert_eq!((error.code, error.state), (-8025, "23615"));
+    let text = ["NAME='a'"; 12].join(" AND ");
+    s.execute_sql(&format!("SELECT * FROM ROOT WHERE {text}"), &[])
+        .unwrap();
+    assert!(
+        s.execute_sql("SELECT * FROM ROOT WHERE AMOUNT=1 AND ID=1", &[])
+            .is_err()
+    );
+    let error = s
+        .execute_sql(
+            "SELECT ROOT.ID FROM ROOT,CHILD WHERE ROOT.ID=1 OR CHILD.ID=1",
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!((error.code, error.state), (-8002, "42201"));
+    let error = s
+        .execute_sql(
+            "SELECT ROOT.ID FROM ROOT,CHILD WHERE ROOT.ID=1 AND CHILD.ID=2 AND ROOT.NAME='a'",
+            &[],
+        )
+        .unwrap_err();
+    assert_eq!((error.code, error.state), (-8001, "42201"));
+    let error = s
+        .execute_sql("SELECT ID FROM ROOT ORDER BY SUM(ID)", &[])
+        .unwrap_err();
+    assert_eq!(error.code, -8022);
+}
+
+#[test]
+fn rejects_updates_of_overlapping_different_types_before_any_write() {
+    let dir = tempfile::tempdir().unwrap();
+    let dbd = parse_dbd(&DBD.replace(
+        " DBDGEN",
+        " FIELD NAME=OVERLAY,START=5,BYTES=4,TYPE=F,DATATYPE=INT\n DBDGEN",
+    ))
+    .unwrap();
+    // OVERLAY belongs to CHILD in this definition, overlapping VALUE.
+    // Give it an explicitly different external type in those same bytes.
+    let mut dbd = dbd;
+    let overlay = dbd.segments.last_mut().unwrap().fields.last_mut().unwrap();
+    overlay.datatype = Some("CHAR".into());
+    overlay.field_type = "C".into();
+    let db = Database::open(dir.path().join("data.wal"), vec![dbd]).unwrap();
+    let mut s = Session::new(db, parse_psb(PSB).unwrap()).unwrap();
+    let error = s.execute_sql("UPDATE CHILD SET VALUE=1", &[]).unwrap_err();
+    assert_eq!((error.code, error.state), (-8023, "23613"));
+}
+
+#[test]
+fn sql_and_dli_enforce_same_sensitive_fields_and_replacement_rules() {
+    use zeus_ims::call_adapter::{CallAdapter, DliFunction, PcbEncoding};
+    let (_dir, db, mut seed) = setup();
+    insert(&mut seed, 1, "original", "12.34");
+    seed.commit().unwrap();
+    let view = " PCB TYPE=DB,DBDNAME=SQLTEST,PROCOPT=A,PCBNAME=APP,KEYLEN=8\n SENSEG NAME=ROOT,PARENT=0,PROCOPT=GR\n SENFLD NAME=NAME,START=1\n SENFLD NAME=ID,START=9,REPLACE=NO\n SENSEG NAME=CHILD,PARENT=ROOT\n PSBGEN PSBNAME=VIEWPSB,LANG=COBOL\n END\n";
+    let psb = parse_psb(view).unwrap();
+    let mut sql = Session::new(db.clone(), psb.clone()).unwrap();
+    let error = sql.execute_sql("SELECT AMOUNT FROM ROOT", &[]).unwrap_err();
+    assert_eq!((error.code, error.state), (-350, "42000"));
+    assert!(
+        sql.execute_sql("INSERT INTO ROOT (ID,NAME) VALUES (2,'new')", &[])
+            .is_err()
+    );
+    sql.execute_sql("UPDATE ROOT SET NAME='sql' WHERE ID=1", &[])
+        .unwrap();
+    sql.commit().unwrap();
+    let mut adapter = CallAdapter::new(db.clone(), psb, PcbEncoding::Ascii).unwrap();
+    let mut mask = vec![0; 128];
+    let mut io = vec![0xee; 12];
+    assert_eq!(
+        adapter
+            .call(0, DliFunction::Ghu, &mut mask, &mut io, &[b"ROOT    "])
+            .unwrap(),
+        Status::Ok
+    );
+    assert_eq!(codepage::get(37).unwrap().decode(&io[..8]), "sql     ");
+    assert_eq!(&io[8..], &1i32.to_be_bytes());
+    io[..8].copy_from_slice(&codepage::get(37).unwrap().encode("dli     "));
+    io[8..].copy_from_slice(&99i32.to_be_bytes());
+    assert_eq!(
+        adapter
+            .call(0, DliFunction::Repl, &mut mask, &mut io, &[b"ROOT    "])
+            .unwrap(),
+        Status::Ok
+    );
+    adapter.commit().unwrap();
+    assert_eq!(
+        seed.execute_sql("SELECT ID,NAME,AMOUNT FROM ROOT", &[])
+            .unwrap()
+            .rows,
+        vec![vec![
+            number(1),
+            SqlValue::Text("dli".into()),
+            SqlValue::Number(Dec::parse("12.34").unwrap())
+        ]]
+    );
+}
+
+#[test]
+fn validates_sensitive_field_layout_and_segment_procopt_permissions() {
+    let (_dir, db, _seed) = setup();
+    for declarations in [
+        " SENFLD NAME=MISSING,START=1\n",
+        " SENFLD NAME=ID,START=1\n SENFLD NAME=NAME,START=2\n",
+        " SENFLD NAME=ID,START=32767\n",
+    ] {
+        let psb = parse_psb(&PSB.replace(
+            " SENSEG NAME=CHILD",
+            &format!("{declarations} SENSEG NAME=CHILD"),
+        ))
+        .unwrap();
+        assert!(Session::new(db.clone(), psb).is_err());
+    }
+    let psb = parse_psb(&PSB.replace("PROCOPT=A", "PROCOPT=G").replace(
+        "SENSEG NAME=ROOT,PARENT=0",
+        "SENSEG NAME=ROOT,PARENT=0,PROCOPT=A",
+    ))
+    .unwrap();
+    assert!(Session::new(db.clone(), psb).is_err());
+    let psb = parse_psb(&PSB.replace(
+        "SENSEG NAME=ROOT,PARENT=0",
+        "SENSEG NAME=ROOT,PARENT=0,PROCOPT=I\n SENFLD NAME=NAME,START=1",
+    ))
+    .unwrap();
+    assert!(Session::new(db, psb).is_err());
+}
+
+#[test]
+fn sql_comments_fetch_without_target_and_binary_truncation_rules() {
+    assert_eq!(
+        run_cobol_with_data(
+            "
+EXEC SQLIMS DECLARE C -- END-EXEC :NOT-A-HOST
+ CURSOR FOR S END-EXEC
+MOVE 'INSERT INTO ROOT (ID) VALUES (1234)' TO STMT
+EXEC SQLIMS EXECUTE IMMEDIATE :STMT END-EXEC
+MOVE 'SELECT ID FROM ROOT' TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+EXEC SQLIMS OPEN C END-EXEC
+EXEC SQLIMS FETCH C INTO :SMALL-NUM END-EXEC
+IF SQLIMSCODE NOT = 0 OR SMALL-NUM NOT = 1234
+ MOVE 1 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS CLOSE C END-EXEC
+EXEC SQLIMS OPEN C END-EXEC
+EXEC SQLIMS FETCH C END-EXEC
+IF SQLIMSCODE NOT = 0 MOVE 2 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS FETCH C INTO :SMALL-NUM END-EXEC
+IF SQLIMSCODE NOT = 100 MOVE 3 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS CLOSE C END-EXEC
+MOVE 0 TO RETURN-CODE GOBACK.",
+            true,
+            "01 SMALL-NUM PIC S9 COMP."
+        ),
+        0
+    );
+}
+
+#[test]
+fn hfp_host_variables_are_accepted_in_using_and_fetch() {
+    assert_eq!(
+        run_cobol_with_data(
+            "
+EXEC SQLIMS DECLARE C CURSOR FOR S END-EXEC
+MOVE 15.25 TO FP-VALUE
+MOVE 'INSERT INTO ROOT (ID,AMOUNT) VALUES (1,?)' TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+EXEC SQLIMS EXECUTE S USING :FP-VALUE END-EXEC
+IF SQLIMSCODE NOT = 0 MOVE 1 TO RETURN-CODE GOBACK END-IF
+MOVE 'SELECT AMOUNT FROM ROOT' TO STMT
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
+EXEC SQLIMS OPEN C END-EXEC
+MOVE 0 TO FP-VALUE
+EXEC SQLIMS FETCH C INTO :FP-VALUE END-EXEC
+IF SQLIMSCODE NOT = 0 OR FP-BYTES NOT = X'41F4000000000000'
+ MOVE 2 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS CLOSE C END-EXEC
+MOVE 0 TO RETURN-CODE GOBACK.",
+            true,
+            "01 FP-VALUE COMP-2.\n01 FP-BYTES REDEFINES FP-VALUE PIC X(8)."
+        ),
+        0
+    );
+}
+
+#[test]
+fn dli_key_only_segment_keeps_io_and_unqualified_gn_skips_it() {
+    use zeus_ims::call_adapter::{CallAdapter, DliFunction, PcbEncoding};
+    let (_dir, db, mut seed) = setup();
+    insert(&mut seed, 1, "parent", "0");
+    seed.execute_sql("INSERT INTO CHILD (ID,VALUE,ROOT_ID) VALUES (7,23,1)", &[])
+        .unwrap();
+    seed.commit().unwrap();
+    let psb = parse_psb(&PSB.replace("PCBNAME=APP", "PCBNAME=APP,KEYLEN=8").replace(
+        "SENSEG NAME=ROOT,PARENT=0",
+        "SENSEG NAME=ROOT,PARENT=0,PROCOPT=K",
+    ))
+    .unwrap();
+    let mut adapter = CallAdapter::new(db, psb, PcbEncoding::Ascii).unwrap();
+    let mut mask = vec![0; 128];
+    let mut empty = Vec::new();
+    assert_eq!(
+        adapter
+            .call(0, DliFunction::Gu, &mut mask, &mut empty, &[b"ROOT    "])
+            .unwrap(),
+        Status::Ok
+    );
+    let mut io = vec![0; 8];
+    assert_eq!(
+        adapter
+            .call(0, DliFunction::Gn, &mut mask, &mut io, &[])
+            .unwrap(),
+        Status::Ok
+    );
+    assert_eq!(&io[..4], &7i32.to_be_bytes());
+    assert_eq!(&io[4..], &23i32.to_be_bytes());
+}
+
+#[test]
 fn enforces_single_open_cursor_and_syncpoint_closes_it() {
     assert_eq!(
         run_cobol(
@@ -483,6 +827,9 @@ IF SQLIMSSTATE NOT = '24506' MOVE 2 TO RETURN-CODE GOBACK END-IF
 EXEC DLI SYNC END-EXEC
 EXEC SQLIMS FETCH C INTO :ID-VALUE END-EXEC
 IF SQLIMSSTATE NOT = '24501' MOVE 3 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS OPEN C END-EXEC
+IF SQLIMSSTATE NOT = '26501' MOVE 5 TO RETURN-CODE GOBACK END-IF
+EXEC SQLIMS PREPARE S FROM :STMT END-EXEC
 EXEC SQLIMS OPEN C END-EXEC
 EXEC SQLIMS FETCH C INTO :ID-VALUE END-EXEC
 IF SQLIMSCODE NOT = 0 OR ID-VALUE NOT = 0 MOVE 4 TO RETURN-CODE GOBACK END-IF

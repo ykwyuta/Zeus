@@ -38,15 +38,16 @@ struct Table {
     segment: Segment,
     virtual_keys: Vec<(String, String, Field)>,
     schema: String,
+    hidden: Vec<String>,
+    readonly: Vec<String>,
 }
 
 fn store(error: StoreError) -> SqlError {
-    let state = match &error {
-        StoreError::Duplicate(_) => "23505",
-        StoreError::Timeout => "40001",
-        _ => "58000",
+    let message = match &error {
+        StoreError::Duplicate(_) => format!("IMS PCB status II: {error}"),
+        _ => error.to_string(),
     };
-    SqlError::new(state, error.to_string())
+    SqlError::new("58030", message)
 }
 
 fn invalid(message: impl Into<String>) -> SqlError {
@@ -79,7 +80,9 @@ fn converter(field: &Field) -> Result<&str> {
         .and_then(|m| m.converter.as_deref())
         .unwrap_or_else(|| {
             let datatype = field.datatype.as_deref().unwrap_or(&field.field_type);
-            if datatype.starts_with("DECIMAL(") {
+            if matches!(datatype, "DATE" | "TIME" | "TIMESTAMP") {
+                "LONG"
+            } else if datatype.starts_with("DECIMAL(") {
                 "PACKEDDECIMAL"
             } else {
                 datatype
@@ -139,6 +142,23 @@ fn metadata(field: &Field) -> Result<Column> {
         (484, ((p << 8) | s) as i16)
     } else {
         match field.datatype.as_deref().unwrap_or(&field.field_type) {
+            kind @ ("DATE" | "TIME" | "TIMESTAMP") => {
+                if (physical == "LONG" && field.bytes == 8)
+                    || (physical == "CHAR"
+                        && field.marshal.as_ref().is_some_and(|m| m.pattern.is_some()))
+                {
+                    match kind {
+                        "DATE" => (384, 10),
+                        "TIME" => (388, 8),
+                        _ => (392, 26),
+                    }
+                } else {
+                    return Err(SqlError::new(
+                        "23611",
+                        "datetime requires LONG(8) or CHAR with a PATTERN",
+                    ));
+                }
+            }
             "BYTE" if field.bytes == 1 && physical == "BYTE" => (500, 2),
             "INT" | "SHORT" | "LONG" | "F" | "H" => match field.bytes {
                 2 if matches!(physical, "SHORT" | "H") => (500, 2),
@@ -230,17 +250,39 @@ fn read_physical_value(table: &Table, field: &Field, record: &Record) -> Result<
         .ok_or_else(|| invalid("field exceeds segment"))?;
     let ty = metadata(field)?;
     Ok(match ty.sql_type {
+        384 | 388 | 392 => {
+            let date = if converter(field)? == "LONG" {
+                super::datetime::DateTime::from_millis(i64::from_be_bytes(
+                    bytes
+                        .try_into()
+                        .map_err(|_| invalid("datetime LONG width must be eight"))?,
+                ))?
+            } else {
+                let pattern = field
+                    .marshal
+                    .as_ref()
+                    .and_then(|m| m.pattern.as_deref())
+                    .ok_or_else(|| invalid("missing datetime PATTERN"))?;
+                super::datetime::DateTime::parse(
+                    field_codepage(table, field)?
+                        .decode(bytes)
+                        .trim_end_matches(' '),
+                    pattern,
+                )?
+            };
+            SqlValue::Text(date.canonical(field.datatype.as_deref().unwrap())?)
+        }
         484 => {
             let (_, scale) = decimal_shape(field)?.unwrap();
             if converter(field)? == "ZONEDDECIMAL" {
                 let sign = zoned_sign(field);
                 if !zoned::is_valid(bytes, sign) {
-                    return Err(SqlError::new("22018", "invalid zoned decimal"));
+                    return Err(SqlError::new("23611", "invalid zoned decimal"));
                 }
                 return Ok(SqlValue::Number(zoned::to_dec(bytes, sign, scale)));
             }
             if bytes.len() > 16 || !packed::is_valid(bytes) {
-                return Err(SqlError::new("22018", "invalid packed decimal"));
+                return Err(SqlError::new("23611", "invalid packed decimal"));
             }
             SqlValue::Number(
                 packed::to_dec(bytes, scale).ok_or_else(|| numeric("packed decimal overflow"))?,
@@ -278,8 +320,41 @@ fn as_number(value: &SqlValue) -> Result<Dec> {
 }
 
 fn write_value(table: &Table, field: &Field, value: &SqlValue, data: &mut [u8]) -> Result<()> {
+    if *value == SqlValue::Null {
+        return Err(SqlError::new("23502", "IMS field cannot be assigned NULL"));
+    }
     let ty = metadata(field)?;
     let bytes = match ty.sql_type {
+        384 | 388 | 392 => {
+            let SqlValue::Text(text) = value else {
+                return Err(SqlError::new(
+                    "22007",
+                    "datetime value must be character data",
+                ));
+            };
+            let date = super::datetime::DateTime::parse_canonical(
+                text,
+                field.datatype.as_deref().unwrap(),
+            )?;
+            if converter(field)? == "LONG" {
+                date.millis()?.to_be_bytes().to_vec()
+            } else {
+                let pattern = field
+                    .marshal
+                    .as_ref()
+                    .and_then(|m| m.pattern.as_deref())
+                    .ok_or_else(|| invalid("missing datetime PATTERN"))?;
+                let mut value = field_codepage(table, field)?.encode(&date.format(pattern)?);
+                if value.len() > field.bytes {
+                    return Err(SqlError::new(
+                        "22001",
+                        "datetime PATTERN exceeds column storage",
+                    ));
+                }
+                value.resize(field.bytes, 0x40);
+                value
+            }
+        }
         484 => {
             let (precision, scale) = decimal_shape(field)?.unwrap();
             let d = as_number(value)?
@@ -381,6 +456,7 @@ fn literal(value: &Value, parameters: &[SqlValue]) -> Result<SqlValue> {
 
 fn column(tables: &[Table], name: &Name) -> Result<(usize, usize)> {
     let mut found = None;
+    let mut hidden = false;
     for (t, table) in tables.iter().enumerate() {
         if name
             .qualifier
@@ -389,17 +465,30 @@ fn column(tables: &[Table], name: &Name) -> Result<(usize, usize)> {
         {
             continue;
         }
+        hidden |= table.hidden.contains(&name.name);
         for (f, field) in table.segment.fields.iter().enumerate() {
             if sql_field_name(field) == name.name {
                 if found.is_some() {
-                    return Err(invalid(format!("ambiguous column {}", name.name)));
+                    return Err(SqlError::new(
+                        "42702",
+                        format!("ambiguous column {}", name.name),
+                    ));
                 }
                 metadata(field)?;
                 found = Some((t, f));
             }
         }
     }
-    found.ok_or_else(|| invalid(format!("unknown column {}", name.name)))
+    found.ok_or_else(|| {
+        if hidden {
+            SqlError::new(
+                "42000",
+                format!("PCB is not sensitive to field {}", name.name),
+            )
+        } else {
+            invalid(format!("unknown column {}", name.name))
+        }
+    })
 }
 
 fn compare(
@@ -496,7 +585,130 @@ fn validate_tables(tables: &[Table]) -> Result<()> {
     Ok(())
 }
 
+fn validate_condition(tables: &[Table], condition: &Condition) -> Result<()> {
+    let mut sequence = Vec::new();
+    let mut previous = None;
+    for group in condition {
+        let mut has_integer = false;
+        let mut has_decimal = false;
+        for predicate in group {
+            let (t, f) = column(tables, &predicate.column)?;
+            let field = &tables[t].segment.fields[f];
+            let ty = metadata(field)?.sql_type;
+            has_integer |= matches!(ty, 492 | 496 | 500);
+            has_decimal |= ty == 484;
+            if previous != Some(t) {
+                if sequence.contains(&t) {
+                    return Err(SqlError::new(
+                        "42201",
+                        "segment qualifications must be consecutive",
+                    ));
+                }
+                sequence.push(t);
+                previous = Some(t);
+            }
+        }
+        if has_integer && group.len() > 11 {
+            return Err(SqlError::new(
+                "23615",
+                "more than ten consecutive AND operators with an integer predicate",
+            ));
+        }
+        if has_decimal && group.len() > 1 {
+            return Err(SqlError::new(
+                "42601",
+                "IMS COBOL decimal predicates can only be combined using OR",
+            ));
+        }
+    }
+    if condition.len() > 1 && sequence.len() > 1 {
+        return Err(SqlError::new("42201", "OR cannot span segment boundaries").with_code(-8002));
+    }
+    Ok(())
+}
+
+fn writable(table: &Table, field: &Field) -> Result<()> {
+    let own = metadata(field)?;
+    for other in &table.segment.fields {
+        if other.name == field.name
+            || table
+                .virtual_keys
+                .iter()
+                .any(|(name, _, _)| *name == other.name)
+        {
+            continue;
+        }
+        if field.start < other.start + other.bytes && other.start < field.start + field.bytes {
+            let other_type = metadata(other)?;
+            if (own.sql_type, own.length, converter(field)?)
+                != (other_type.sql_type, other_type.length, converter(other)?)
+            {
+                return Err(SqlError::new(
+                    "23613",
+                    "field overlaps another field of a different type",
+                ));
+            }
+        }
+    }
+    Ok(())
+}
+
 impl Session {
+    pub(crate) fn parameter_columns(&self, prepared: &Prepared) -> Result<Vec<Option<Column>>> {
+        let mut output = vec![None; prepared.parameters];
+        let (tables, condition) = match &prepared.statement {
+            Statement::Select {
+                tables, condition, ..
+            } => (
+                tables
+                    .iter()
+                    .map(|t| self.sql_table(t, &['G', 'R', 'D', 'A']))
+                    .collect::<Result<Vec<_>>>()?,
+                Some(condition),
+            ),
+            Statement::Insert {
+                table,
+                columns,
+                values,
+            } => {
+                let table = self.sql_table(table, &['I', 'A', 'L'])?;
+                for (name, value) in columns.iter().zip(values) {
+                    if let Value::Parameter(index) = value {
+                        let (_, f) = column(std::slice::from_ref(&table), name)?;
+                        output[*index] = Some(metadata(&table.segment.fields[f])?);
+                    }
+                }
+                (vec![table], None)
+            }
+            Statement::Update {
+                table,
+                assignments,
+                condition,
+            } => {
+                let table = self.sql_table(table, &['R', 'A'])?;
+                for (name, value) in assignments {
+                    if let Value::Parameter(index) = value {
+                        let (_, f) = column(std::slice::from_ref(&table), name)?;
+                        output[*index] = Some(metadata(&table.segment.fields[f])?);
+                    }
+                }
+                (vec![table], Some(condition))
+            }
+            Statement::Delete { table, condition } => {
+                (vec![self.sql_table(table, &['D', 'A'])?], Some(condition))
+            }
+        };
+        if let Some(condition) = condition {
+            for predicate in condition.iter().flatten() {
+                if let Value::Parameter(index) = predicate.value {
+                    let (t, f) = column(&tables, &predicate.column)?;
+                    output[index] = Some(metadata(&tables[t].segment.fields[f])?);
+                }
+            }
+        }
+        Ok(output)
+    }
+
     /// Describe without reading data or performing writes. In particular,
     /// malformed stored decimal bytes must not make DESCRIBE fail.
     pub(crate) fn describe_sql(&self, prepared: &Prepared) -> Result<Vec<Column>> {
@@ -508,6 +720,32 @@ impl Session {
             order,
         } = &prepared.statement
         else {
+            match &prepared.statement {
+                Statement::Insert { table, columns, .. } => {
+                    let table = self.sql_table(table, &['I', 'A', 'L'])?;
+                    for n in columns {
+                        let (_, f) = column(std::slice::from_ref(&table), n)?;
+                        writable(&table, &table.segment.fields[f])?;
+                    }
+                }
+                Statement::Update {
+                    table,
+                    assignments,
+                    condition,
+                } => {
+                    let table = self.sql_table(table, &['R', 'A'])?;
+                    for (n, _) in assignments {
+                        let (_, f) = column(std::slice::from_ref(&table), n)?;
+                        writable(&table, &table.segment.fields[f])?;
+                    }
+                    validate_condition(std::slice::from_ref(&table), condition)?;
+                }
+                Statement::Delete { table, condition } => {
+                    let table = self.sql_table(table, &['D', 'A'])?;
+                    validate_condition(std::slice::from_ref(&table), condition)?;
+                }
+                _ => {}
+            }
             return Ok(Vec::new());
         };
         let tables = tables
@@ -515,6 +753,7 @@ impl Session {
             .map(|t| self.sql_table(t, &['G', 'R', 'D', 'A']))
             .collect::<Result<Vec<_>>>()?;
         validate_tables(&tables)?;
+        validate_condition(&tables, condition)?;
         let groups = group
             .iter()
             .map(|n| column(&tables, n))
@@ -533,17 +772,21 @@ impl Session {
             }
         }
         if columns.is_empty() {
-            if aggregate {
-                return Err(SqlError::new(
-                    "42803",
-                    "SELECT * cannot be grouped without grouping all columns",
-                ));
-            }
             let mut output = Vec::new();
-            for t in &tables {
+            for (table_index, t) in tables.iter().enumerate() {
                 let mut fields: Vec<_> = t.segment.fields.iter().collect();
                 fields.sort_by_key(|f| (f.start, f.bytes));
                 for f in fields {
+                    if aggregate
+                        && !groups.iter().any(|&(t, i)| {
+                            t == table_index && tables[t].segment.fields[i].name == f.name
+                        })
+                    {
+                        return Err(SqlError::new(
+                            "42803",
+                            "SELECT * requires every column in GROUP BY",
+                        ));
+                    }
                     output.push(metadata(f)?);
                 }
             }
@@ -617,22 +860,15 @@ impl Session {
             pcbs.iter()
                 .copied()
                 .find(|p| p.external_name.as_ref().or(p.name.as_ref()) == Some(schema))
-                .ok_or_else(|| SqlError::new("3F000", format!("PCB schema {schema} not found")))?
+                .ok_or_else(|| SqlError::new("42704", format!("PCB schema {schema} not found")))?
         } else if pcbs.len() == 1 {
             pcbs[0]
         } else {
             return Err(SqlError::new(
-                "3F000",
+                "42702",
                 "qualify table with a PCB schema when multiple database PCBs are scheduled",
             ));
         };
-        let procopt = pcb.procopt.clone().unwrap_or_default();
-        if !procopt.contains(permissions) {
-            return Err(SqlError::new(
-                "42501",
-                "PCB PROCOPT does not permit this operation",
-            ));
-        }
         let dbd = pcb
             .dbd_name
             .as_deref()
@@ -651,6 +887,33 @@ impl Session {
             .cloned()
             .ok_or_else(|| invalid(format!("table {} not found", name.name)))?;
         let mut virtual_keys = Vec::new();
+        let procopt = pcb.segment_procopt(&segment.name);
+        if !procopt.contains(permissions) {
+            return Err(SqlError::new(
+                "58030",
+                "SENSEG/PCB PROCOPT does not permit this operation",
+            ));
+        }
+        let mut hidden = Vec::new();
+        let mut readonly = Vec::new();
+        if let Some(view) = pcb.view(&segment.name).filter(|v| !v.fields.is_empty()) {
+            segment.fields.retain(|f| {
+                if view.fields.iter().any(|v| v.name == f.name) {
+                    if view
+                        .fields
+                        .iter()
+                        .filter(|v| v.name == f.name)
+                        .all(|v| !v.replace)
+                    {
+                        readonly.push(f.name.clone());
+                    }
+                    true
+                } else {
+                    hidden.push(sql_field_name(f).to_string());
+                    false
+                }
+            });
+        }
         if !pcb.sensitive_segments.is_empty() && !pcb.sensitive_segments.contains(&segment.name) {
             return Err(SqlError::new(
                 "42000",
@@ -703,6 +966,8 @@ impl Session {
             segment,
             virtual_keys,
             schema,
+            hidden,
+            readonly,
         })
     }
 
@@ -763,6 +1028,7 @@ impl Session {
                     .map(|t| self.sql_table(t, &['G', 'R', 'D', 'A']))
                     .collect::<Result<_>>()?;
                 validate_tables(&tables)?;
+                validate_condition(&tables, condition)?;
                 for (i, t) in tables.iter().enumerate() {
                     if tables[..i].iter().any(|p| p.segment.name == t.segment.name) {
                         return Err(invalid("duplicate table"));
@@ -838,6 +1104,7 @@ impl Session {
                     columns: self.describe_sql(&Prepared {
                         statement: statement.clone(),
                         parameters: 0,
+                        semicolon: false,
                     })?,
                     ..SqlResult::default()
                 };
@@ -913,6 +1180,9 @@ impl Session {
                                     .filter(|v| *v != SqlValue::Null)
                                     .collect();
                                 if function == "COUNT" {
+                                    if values.len() > i32::MAX as usize {
+                                        return Err(numeric("COUNT exceeds the SQL integer range"));
+                                    }
                                     SqlValue::Number(Dec::new(values.len() as i128, 0))
                                 } else if values.is_empty() {
                                     SqlValue::Null
@@ -935,11 +1205,23 @@ impl Session {
                                     }
                                     best
                                 } else {
+                                    let field =
+                                        &tables[col.unwrap().0].segment.fields[col.unwrap().1];
+                                    let shape = decimal_shape(field)?;
                                     let mut sum = Dec::ZERO;
                                     for v in &values {
                                         sum = sum
                                             .checked_add(as_number(v)?)
                                             .ok_or_else(|| numeric("SUM overflow"))?;
+                                        if function == "SUM"
+                                            && ((shape.is_some() && sum.digits() > 31)
+                                                || (shape.is_none()
+                                                    && i64::try_from(sum.coef).is_err()))
+                                        {
+                                            return Err(numeric(
+                                                "SUM intermediate result exceeds result type",
+                                            ));
+                                        }
                                     }
                                     let field =
                                         &tables[col.unwrap().0].segment.fields[col.unwrap().1];
@@ -1018,6 +1300,11 @@ impl Session {
             } => {
                 let table = self.sql_table(table, &['I', 'A', 'L'])?;
                 let mut data = vec![0; table.segment.max_bytes];
+                for field in &table.dbd.segment(&table.segment.name).unwrap().fields {
+                    if field.field_type == "C" {
+                        data[field.start - 1..field.start - 1 + field.bytes].fill(0x40);
+                    }
+                }
                 for field in &table.segment.fields {
                     if table
                         .virtual_keys
@@ -1027,6 +1314,9 @@ impl Session {
                         continue;
                     }
                     let initial = match metadata(field)?.sql_type {
+                        384 => SqlValue::Text("1970-01-01".into()),
+                        388 => SqlValue::Text("00:00:00".into()),
+                        392 => SqlValue::Text("1970-01-01 00:00:00.000000".into()),
                         484 | 492 | 496 | 500 => SqlValue::Number(Dec::ZERO),
                         912 => SqlValue::Binary(vec![0; field.bytes]),
                         _ => SqlValue::Text(String::new()),
@@ -1050,12 +1340,29 @@ impl Session {
                             .push((table.segment.fields[f].clone(), literal(value, parameters)?));
                         continue;
                     }
+                    writable(&table, &table.segment.fields[f])?;
                     write_value(
                         &table,
                         &table.segment.fields[f],
                         &literal(value, parameters)?,
                         &mut data,
                     )?;
+                }
+                if table
+                    .dbd
+                    .segment(&table.segment.name)
+                    .unwrap()
+                    .key()
+                    .is_some_and(|key| {
+                        !assigned
+                            .iter()
+                            .any(|&f| table.segment.fields[f].name == key.name)
+                    })
+                {
+                    return Err(SqlError::new(
+                        "23502",
+                        "INSERT must set the IMS sequence key",
+                    ));
                 }
                 let parent = if let Some(parent) = &table.segment.parent {
                     if foreign_values.len() != table.virtual_keys.len() {
@@ -1069,6 +1376,8 @@ impl Session {
                         segment: table.dbd.segment(parent).unwrap().clone(),
                         virtual_keys: Vec::new(),
                         schema: table.schema.clone(),
+                        hidden: Vec::new(),
+                        readonly: Vec::new(),
                     };
                     let mut found = None;
                     for record in self.sql_records(&parent_table) {
@@ -1125,6 +1434,13 @@ impl Session {
                         return Err(invalid("duplicate UPDATE column"));
                     }
                     let field = &table.segment.fields[f];
+                    if table.readonly.contains(&field.name) {
+                        return Err(SqlError::new(
+                            "58030",
+                            "SENFLD REPLACE=NO prohibits field replacement",
+                        ));
+                    }
+                    writable(&table, field)?;
                     if table
                         .virtual_keys
                         .iter()
@@ -1137,15 +1453,17 @@ impl Session {
                     }
                     if field.sequence {
                         return Err(SqlError::new(
-                            "0A000",
-                            "IMS sequence and virtual foreign key fields cannot be updated",
-                        ));
+                            "58030",
+                            "IMS PCB status DA: sequence key cannot be updated",
+                        )
+                        .with_code(-8009));
                     }
                     assigned.push((f, literal(value, parameters)?));
                 }
                 for p in condition.iter().flatten() {
                     column(tables, &p.column)?;
                 }
+                validate_condition(tables, condition)?;
                 let mut affected = 0;
                 for record in self.sql_records(&table) {
                     if matches(
@@ -1174,6 +1492,7 @@ impl Session {
             Statement::Delete { table, condition } => {
                 let table = self.sql_table(table, &['D', 'A'])?;
                 let tables = std::slice::from_ref(&table);
+                validate_condition(tables, condition)?;
                 for p in condition.iter().flatten() {
                     column(tables, &p.column)?;
                 }

@@ -80,7 +80,47 @@ fn read_host(m: &Machine, call: &ExecCall, index: usize) -> Result<SqlValue> {
         return Ok(SqlValue::Text(ebcdic::decode(&value[2..2 + len as usize])));
     }
     Ok(match &area.ty {
-        DataType::Numeric(t) => SqlValue::Number(data::num_value(t, value)),
+        DataType::Numeric(t) => {
+            if t.digits > 31 || !(0..=31).contains(&t.scale) {
+                return Err(error("42895", "SQLIMS numeric host shape is unsupported"));
+            }
+            let display = if t.usage == NumUsage::National {
+                Some(data::display_of(value))
+            } else {
+                None
+            };
+            let numeric_bytes = display.as_deref().unwrap_or(value);
+            let valid = match t.usage {
+                NumUsage::Packed => zeus_decimal::packed::is_valid(value),
+                NumUsage::Display | NumUsage::National => {
+                    use zeus_decimal::zoned::{self, SignPosition};
+                    let sign = if !t.signed {
+                        SignPosition::Unsigned
+                    } else {
+                        match t.sign {
+                            SignPos::Leading => SignPosition::LeadingOverpunch,
+                            SignPos::LeadingSeparate => SignPosition::LeadingSeparate,
+                            SignPos::TrailingSeparate => SignPosition::TrailingSeparate,
+                            _ => SignPosition::TrailingOverpunch,
+                        }
+                    };
+                    zoned::is_valid(numeric_bytes, sign)
+                }
+                NumUsage::Binary | NumUsage::Native => matches!(value.len(), 2 | 4 | 8),
+            };
+            if !valid {
+                return Err(error("23611", "invalid numeric host representation"));
+            }
+            SqlValue::Number(data::num_value(t, value))
+        }
+        DataType::Float { .. } => {
+            SqlValue::Number(data::decimal_from_float(value).ok_or_else(|| {
+                error(
+                    "22003",
+                    "floating host value exceeds decimal interchange range",
+                )
+            })?)
+        }
         DataType::Alphanumeric { .. } | DataType::Alphabetic { .. } => {
             SqlValue::Text(ebcdic::decode(value).trim_end_matches(' ').into())
         }
@@ -98,7 +138,12 @@ fn host_text(m: &Machine, call: &ExecCall, index: usize) -> Result<String> {
     }
 }
 
-fn parameters(m: &Machine, call: &ExecCall, prepared: &Prepared) -> Result<Vec<SqlValue>> {
+fn parameters(
+    m: &Machine,
+    call: &ExecCall,
+    prepared: &Prepared,
+    session: &Session,
+) -> Result<Vec<SqlValue>> {
     // IMS ignores USING when the prepared statement has no parameter markers.
     if prepared.parameters == 0 {
         return Ok(Vec::new());
@@ -106,8 +151,21 @@ fn parameters(m: &Machine, call: &ExecCall, prepared: &Prepared) -> Result<Vec<S
     if call.host.len() != prepared.parameters {
         return Err(error("07001", "USING parameter count mismatch"));
     }
+    let columns = session.parameter_columns(prepared)?;
     (0..call.host.len())
-        .map(|i| read_host(m, call, i))
+        .map(|i| {
+            let value = read_host(m, call, i)?;
+            if value != SqlValue::Null && columns[i].as_ref().is_some_and(|c| c.sql_type == 912) {
+                if !matches!(call.host[i].0.ty, DataType::Alphanumeric { .. }) {
+                    return Err(error(
+                        "42895",
+                        "binary parameter requires an alphanumeric byte area",
+                    ));
+                }
+                return Ok(SqlValue::Binary(bytes(m, &call.host[i].0)?.to_vec()));
+            }
+            Ok(value)
+        })
         .collect()
 }
 
@@ -123,7 +181,7 @@ fn fetch_row(
         return Err(error("07001", "FETCH requires output host variables"));
     }
     if call.host.len() > row.len() {
-        return Err(error("07001", "more host variables than result columns"));
+        return Err(error("42811", "more host variables than result columns"));
     }
     let mut updates = Vec::new();
     let mut status = Status {
@@ -139,7 +197,10 @@ fn fetch_row(
                 return Err(error("22002", "NULL requires an indicator variable"));
             }
             ind = -1;
-        } else if call.has(&format!("BINARY-{i}")) {
+        } else if call.has(&format!("BINARY-{i}"))
+            || (matches!(value, SqlValue::Binary(_))
+                && matches!(area.ty, DataType::Alphanumeric { .. }))
+        {
             let SqlValue::Binary(value) = value else {
                 return Err(error("07006", "binary output requires a binary column"));
             };
@@ -197,6 +258,10 @@ fn fetch_row(
                 }
                 _ => return Err(error("07006", "numeric output required")),
             };
+            let mut t = t;
+            if t.usage == NumUsage::Binary {
+                t.usage = NumUsage::Native;
+            }
             if data::store_num(&t, &mut buffer, d, false) {
                 return Err(error("22003", "numeric host variable overflow"));
             }
@@ -204,7 +269,7 @@ fn fetch_row(
             let SqlValue::Number(value) = value else {
                 return Err(error("07006", "floating output requires a numeric column"));
             };
-            zeus_decimal::hfp::encode(value.to_f64(), &mut buffer);
+            data::store_float_exact(&mut buffer, *value).map_err(|e| error("22003", e))?;
         } else {
             return Err(error("07006", "unsupported output host category"));
         }
@@ -381,6 +446,7 @@ fn descriptor_fetch_call(m: &Machine, call: &ExecCall) -> Result<ExecCall> {
 impl State {
     pub fn syncpoint(&mut self) {
         self.cursor = None;
+        self.statement = None;
     }
 
     fn prepared(&self, program: &str, name: &str) -> Result<&Prepared> {
@@ -443,13 +509,22 @@ impl State {
                 self.statement = None;
                 let source = host_text(m, call, usize::from(into))?;
                 let prepared = parser::prepare(&source)?;
+                let semicolon = prepared.semicolon;
                 let columns = session.describe_sql(&prepared)?;
                 let unqualified = matches!(&prepared.statement,Statement::Update {condition,..} | Statement::Delete {condition,..} if condition.is_empty());
                 self.statement = Some((call.program.clone(), name, prepared));
                 if into {
-                    return describe(m, &call.host[0].0, &columns);
+                    let mut status = describe(m, &call.host[0].0, &columns)?;
+                    if status.code == 0 && semicolon {
+                        status.code = 98;
+                        status.state = Some("01568");
+                    }
+                    status.unqualified = unqualified;
+                    return Ok(status);
                 }
                 Ok(Status {
+                    code: if semicolon { 98 } else { 0 },
+                    state: if semicolon { Some("01568") } else { None },
                     unqualified,
                     ..Status::default()
                 })
@@ -467,7 +542,10 @@ impl State {
                         "DESCRIBE [OUTPUT] requires statement name and INTO descriptor",
                     ));
                 }
-                let columns = session.describe_sql(self.prepared(&call.program, &word(s)?)?)?;
+                let columns = session.describe_sql(
+                    self.prepared(&call.program, &word(s)?)
+                        .map_err(|e| e.with_code(-516))?,
+                )?;
                 describe(m, &call.host[0].0, &columns)
             }
             "OPEN" => {
@@ -481,7 +559,7 @@ impl State {
                 if !matches!(prepared.statement, Statement::Select { .. }) {
                     return Err(error("07005", "cursor requires a prepared SELECT"));
                 }
-                let params = parameters(m, call, prepared)?;
+                let params = parameters(m, call, prepared, session)?;
                 let result = session.execute_prepared(prepared, &params)?;
                 self.cursor = Some(Cursor {
                     program: call.program.clone(),
@@ -498,7 +576,18 @@ impl State {
                     .as_mut()
                     .filter(|c| c.program == call.program && c.name == name)
                     .ok_or_else(|| error("24501", "cursor is not open in this program"))?;
-                if word(2)? != "INTO" {
+                if words.len() == 2 && call.host.is_empty() {
+                    if cursor.next >= cursor.result.rows.len() {
+                        return Ok(Status {
+                            code: 100,
+                            state: Some("02000"),
+                            ..Status::default()
+                        });
+                    }
+                    cursor.next += 1;
+                    return Ok(Status::default());
+                }
+                if word(2)? != "INTO" && word(2)? != "USING" {
                     return Err(error(
                         "42601",
                         "FETCH requires INTO host variables or DESCRIPTOR",
@@ -507,6 +596,9 @@ impl State {
                 let descriptor = words
                     .get(3)
                     .is_some_and(|w| w.eq_ignore_ascii_case("DESCRIPTOR"));
+                if word(2)? == "USING" && !descriptor {
+                    return Err(error("42601", "FETCH USING requires DESCRIPTOR"));
+                }
                 let bound = if descriptor {
                     if words.len() != 5 || words[4] != "?" {
                         return Err(error(
@@ -556,7 +648,7 @@ impl State {
                         "close the active cursor before executing another statement",
                     ));
                 }
-                let result = if word(1)? == "IMMEDIATE" {
+                let (result, no_rows, semicolon) = if word(1)? == "IMMEDIATE" {
                     if words.len() != 3 || words[2] != "?" || call.host.len() != 1 {
                         return Err(error(
                             "42601",
@@ -567,15 +659,46 @@ impl State {
                     if matches!(prepared.statement, Statement::Select { .. }) {
                         return Err(error("07003", "EXECUTE IMMEDIATE cannot execute SELECT"));
                     }
-                    session.execute_prepared(&prepared, &[])?
+                    (
+                        session.execute_prepared(&prepared, &[])?,
+                        matches!(
+                            prepared.statement,
+                            Statement::Update { .. } | Statement::Delete { .. }
+                        ),
+                        prepared.semicolon,
+                    )
                 } else {
-                    let prepared = self.prepared(&call.program, &word(1)?)?;
+                    let prepared = self
+                        .prepared(&call.program, &word(1)?)
+                        .map_err(|_| error("07003", "EXECUTE statement is not prepared"))?;
                     if matches!(prepared.statement, Statement::Select { .. }) {
                         return Err(error("07003", "use OPEN and FETCH for SELECT"));
                     }
-                    session.execute_prepared(prepared, &parameters(m, call, prepared)?)?
+                    (
+                        session
+                            .execute_prepared(prepared, &parameters(m, call, prepared, session)?)?,
+                        matches!(
+                            prepared.statement,
+                            Statement::Update { .. } | Statement::Delete { .. }
+                        ),
+                        false,
+                    )
                 };
                 Ok(Status {
+                    code: if no_rows && result.affected == 0 {
+                        100
+                    } else if semicolon {
+                        98
+                    } else {
+                        0
+                    },
+                    state: if no_rows && result.affected == 0 {
+                        Some("02000")
+                    } else if semicolon {
+                        Some("01568")
+                    } else {
+                        None
+                    },
                     rows: result.affected,
                     unqualified: result.unqualified_write,
                     ..Status::default()

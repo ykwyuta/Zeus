@@ -23,6 +23,115 @@ fn sqlims_requires_its_explicit_compiler_option() {
 }
 
 #[test]
+fn sqlims_validates_declarations_and_effective_lp_option() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sqlims-options.cbl");
+    let frame = |data: &str, body: &str| {
+        format!(
+            "ID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n{data}\nPROCEDURE DIVISION.\n{body}\nGOBACK."
+        )
+    };
+    for (data, body, expected) in [
+        (
+            "EXEC SQLIMS BEGIN DECLARE SECTION END-EXEC",
+            "CONTINUE",
+            "END DECLARE SECTION",
+        ),
+        (
+            "EXEC SQLIMS PREPARE S FROM :V END-EXEC",
+            "CONTINUE",
+            "DATA DIVISION",
+        ),
+        (
+            "01 V PIC X(80).",
+            "EXEC SQLIMS PREPARE S FROM :V END-EXEC",
+            "SQLIMSCA",
+        ),
+        (
+            "01 SQLIMSCA PIC X(136).\n01 V PIC X(80).",
+            "EXEC SQLIMS PREPARE S FROM :V END-EXEC",
+            "224 bytes",
+        ),
+        (
+            "",
+            "EXEC SQLIMS BEGIN DECLARE SECTION END-EXEC",
+            "DATA DIVISION",
+        ),
+        (
+            "",
+            "EXEC SQLIMS DECLARE C CURSOR FOR SELECT * FROM T END-EXEC",
+            "statement-name",
+        ),
+    ] {
+        source(&path, &frame(data, body));
+        let error = zeus_cobol::compile_file(
+            &path,
+            &FrontOptions {
+                compiler_options: "SQLIMS".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(error.message.contains(expected), "{error}");
+    }
+    source(&path, &frame("", "EXEC SQLIMS CLOSE C END-EXEC"));
+    let error = zeus_cobol::compile_file(
+        &path,
+        &FrontOptions {
+            compiler_options: "SQLIMS LP(64)".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap_err();
+    assert!(error.message.contains("LP(32)"), "{error}");
+    source(
+        &path,
+        "ID DIVISION.\nPROGRAM-ID. MAIN.\nPROCEDURE DIVISION.\n>>IF NOT IGY-SQLIMS\nTHIS MUST NOT BE COMPILED\n>>END-IF\nGOBACK.",
+    );
+    zeus_cobol::compile_file(
+        &path,
+        &FrontOptions {
+            compiler_options: "SQLIMS".into(),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+}
+
+#[test]
+fn sqlims_cursor_declarations_have_lexical_scope_and_unique_statements() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("sqlims-scope.cbl");
+    for (body, expected) in [
+        (
+            "EXEC SQLIMS OPEN C END-EXEC\nEXEC SQLIMS DECLARE C CURSOR FOR S END-EXEC",
+            "declared before use",
+        ),
+        (
+            "EXEC SQLIMS DECLARE C CURSOR FOR S END-EXEC\nEXEC SQLIMS DECLARE D CURSOR FOR S END-EXEC",
+            "already declared",
+        ),
+        ("EXEC SQLIMS PREPARE S FROM :SQL-TEXT END-EXEC", "reserved"),
+    ] {
+        source(
+            &path,
+            &format!(
+                "ID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\nEXEC SQLIMS INCLUDE SQLIMSCA END-EXEC.\n01 SQL-TEXT PIC X(80).\nPROCEDURE DIVISION.\n{body}\nGOBACK."
+            ),
+        );
+        let error = zeus_cobol::compile_file(
+            &path,
+            &FrontOptions {
+                compiler_options: "SQLIMS".into(),
+                ..Default::default()
+            },
+        )
+        .unwrap_err();
+        assert!(error.message.contains(expected), "{error}");
+    }
+}
+
+#[test]
 fn flag_levels_filter_warning_summaries_and_source_embedding_without_changing_rc() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("flag.cbl");

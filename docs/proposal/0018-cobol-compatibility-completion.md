@@ -512,3 +512,31 @@ K02はまだ完了扱いにしない。日時型とDFSMARSHのPATTERN、フィ�
 構文解析5件とSQLIMS統合16件を確認した。統合試験にはCOBOLソースからの実行、DL/Iとの未確定データ共有、子INSERT、文の途中での失敗、記述子、WHENEVER、同期点、警告・NULLを含む。途中時点の関連3パッケージ回帰（COBOL／IMS／JCL）は980件成功。その後のメタデータ拡張については追加の関連回帰を実施する。ユーザー指定の順序に従い、SQLIMS対応後に全体CIのエラーを解消する。
 
 根拠: [IMS Application Programming APIs 第8章](https://public.dhe.ibm.com/software/IMS/documentation/ims15pdfs/IMS_15_Application_Programming_APIs.pdf)、[COBOL SQLの制約](https://www.ibm.com/docs/en/ims/15.5.0?topic=sql-considerations-restrictions-cobol)、[COBOLの集計関数](https://www.ibm.com/docs/en/ims/15.4.0?topic=programs-sql-aggregate-functions-supported-cobol)、[SQLIMSSTATE](https://www.ibm.com/docs/en/ims/15.4.0?topic=codes-sqlimsstate-values-common-error)、[型指定とDFSMARSH](https://www.ibm.com/docs/en/ims/15.4.0?topic=utilities-specifying-data-types-application-programs)。
+
+### SQLIMSの日時・バイナリー・公式診断の追加（2026-10-18）
+
+DATE／TIME／TIMESTAMPをSQLの文字表現と物理フィールドへ変換する。DFSMARSHのLONGでは1970-01-01からのミリ秒、CHARではPATTERNを用いる。西暦1～9999年、負のエポック、世紀のうるう年規則を検査する。CHARのパターンはyyyy、MM、dd、HH、mm、ss、1～9桁のSと引用リテラルに対応し、未知の指定は診断する。LONGではミリ秒未満を切り捨て、CHARではマイクロ秒まで保持する。固定バイナリー列はUSING、比較、FETCHで生バイトのまま転送する。
+
+IMSのMessages and Codes Volume 4で確認できた数値コードを追加した。例として未準備のOPEN／DESCRIBE／EXECUTEはそれぞれ-514／-516／-518、未知のPCBは-204、パラメーター数不一致は-313、感応性は-350、外部キーは-530／-531、階層・フィールド・述語制約は-8010～-8025を用いる。重複キーや不許可操作はPCB状態のSQLエラー-8004／58030とし、Db2のコードを代用しない。公開一覧で数値を確認できなかった条件は引き続きZeusの-1であり、診断全体の一致は未保証。
+
+末尾のセミコロン以降は実行せず、PREPAREの+98／01568を返す。UPDATE／DELETEで該当行がなければ+100／02000、INSERTでシーケンスキーが指定されなければ-407／23502を返す。WHEREの整数に対する連続AND上限、DECIMALのOR制約、セグメントをまたぐOR、同じセグメントの述語が連続しない指定を検査する。型の異なるフィールドが重なる位置への書き込みは-8023／23613で拒否する。PREPAREのメタデータ検査はデータを更新しない。
+
+DATA DIVISIONの実行SQL、対応しないカーソル宣言、DECLARE SECTIONの位置・対応、SQLIMSCAの長さをコンパイル時に検査する。K02の残件は、SENFLD・SENSEGの詳細設定を含むフィールド単位の感応性、宣言・名前・メタデータ制約の残りの監査、未確認の数値診断等。K02と全体CIをこの追加だけで完了とはしない。
+
+重点試験はSQLIMS統合21件、コンパイラー制御11件、日時変換2件・SQL解析5件が成功した。
+
+根拠: [IMS Messages and Codes Volume 4 第17章](https://public.dhe.ibm.com/software/IMS/documentation/ims15pdfs/IMS_15_Messages_and_Codes_Volume_4_IMS_Component_Codes.pdf)、[DFSMARSHの日時・数値変換](https://www.ibm.com/docs/en/ims/15.4.0?topic=utilities-specifying-data-types-application-programs)。
+
+### SQLIMSの感応性・宣言順序・数値受け渡しとCIへの移行（2026-10-18）
+
+SENFLDのフィールド選択、STARTによるDL/I入出力の並べ替え、REPLACE=NOを実装した。REPLは保持中レコードを基に感応フィールドだけを戻し、非感応フィールドと変更不可フィールドを保持する。SQLも同じPSBのフィールド選択・置換制約を適用する。SENSEGのPROCOPTでPCBの処理権限を制限でき、Kは入出力領域へデータを移さず、SSAのないGNで読み飛ばす。SENFLDの範囲・重なり、挿入時に必要なキー、255フィールド／SENSEG・10000フィールド／PSBを検査する。MSDB／DEDB、GSAM、キーのみのSENSEGにSENFLDを指定する等、対象外の組み合わせは拒否する。
+
+カーソルは同じプログラム内で使用前に宣言し、同じstatement-nameを別カーソルへ重複指定できない。ホスト変数の予約接頭辞、SQLIMSCAの配置・長さ、DECLARATIVESでの使用を検査する。SQLコメント内のEND-EXECやホスト名を解釈せず、文字リテラル内の空白を保持する。同期点ではカーソルと準備状態を破棄する。出力先なしのFETCHと、文書に記載されたINTO DESCRIPTOR／USING DESCRIPTORを扱う。
+
+二進整数へのFETCHは、IBMのSQLIMS仕様どおりTRUNC(BIN)相当で記憶域の全幅を使う。COMP-1／COMP-2のホスト変数は、IEEE doubleを経由せずにHFPと10進数を変換する。型に合わない数値表現を診断し、SUMの中間オーバーフローを検出する。ここまでの重点試験はSQLIMS統合26件、コンパイラー制御12件、HFPの下位ビット検査1件が成功した。
+
+先行段階の「SENFLD・宣言の残件」はこの追加で対応した。公開コード一覧で数値を確認できない条件、対応PATTERN以外の書式、IFP専用スケジューラー等、Zeusの既存IMS環境との境界は残る。z/OS上の全IMS機能との同一性やK01～K06全体の完了は主張しない。ユーザーの最新指定に従い、このSQLIMS追加実装を区切りとして全体CIのエラー解消へ進んだ。
+
+CIの静的検査で、動的割当の初期化、物理ブロックの戻り値型、条件式、POINTER-32のレイアウト表示の漏れを修正した。ネイティブ生成試験は整数の精度設定を算術フォールバックと誤認していたため、decimals=0かつfloating=falseの設定命令のみを記録処理として認めた。算術・MOVEや他の精度設定のフォールバックを拒否する検査と、生成後の全データ値の検査は維持する。通常の `cargo clippy --all-targets -- -D warnings` が成功し、全テストとGitHub Actionsの確認を進めている。
+
+根拠: [SENSEGの処理オプション](https://www.ibm.com/docs/en/ims/15.4.0?topic=statements-senseg-statement)、[SENFLDのレイアウト・置換指定](https://www.ibm.com/docs/sr/SS9NWR_3.3.0/com.ibm.ims.explorer33.doc/wb_senfld.htm)、[COBOL SQLの宣言・名前・二進整数への代入規則](https://www.ibm.com/docs/en/ims/15.5.0?topic=programs-sql-statements-in-cobol)。

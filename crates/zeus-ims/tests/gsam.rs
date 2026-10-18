@@ -16,6 +16,7 @@ fn fixed_gsam_gn_gu_rsa_insert_commit_and_rollback() {
     let output = dir.join("output.fb");
     fs::write(&input, b"ABCDWXYZ").unwrap();
     let pcb_def = Pcb {
+        views: Vec::new(),
         external_name: None,
         procseq: None,
         indices: Vec::new(),

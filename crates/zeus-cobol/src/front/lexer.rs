@@ -410,6 +410,15 @@ impl Lexer<'_> {
                 Some(q) if *c == q => quote = None,
                 Some(_) => {}
                 None if *c == '\'' || *c == '"' => quote = Some(*c),
+                None if matches!(kind.as_str(), "SQL" | "SQLIMS")
+                    && *c == '-'
+                    && self.s.get(i + 1).is_some_and(|(c, _)| *c == '-') =>
+                {
+                    while self.s.get(i).is_some_and(|(c, _)| *c != '\n') {
+                        i += 1;
+                    }
+                    continue;
+                }
                 None if c.is_ascii_alphabetic() && (i == 0 || !is_word_char(self.s[i - 1].0)) => {
                     let (w, e) = self.word_at(i);
                     if w == "END-EXEC" {

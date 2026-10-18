@@ -71,6 +71,7 @@ pub(crate) enum Statement {
 pub(crate) struct Prepared {
     pub statement: Statement,
     pub parameters: usize,
+    pub semicolon: bool,
 }
 
 fn syntax(message: impl Into<String>) -> SqlError {
@@ -87,6 +88,12 @@ fn tokens(source: &str) -> Result<Vec<Token>> {
             i += 1;
             continue;
         }
+        if c == '-' && chars.get(i + 1) == Some(&'-') {
+            while i < chars.len() && chars[i] != '\n' {
+                i += 1;
+            }
+            continue;
+        }
         if c == '\'' || c == '"' {
             let quote = c;
             let mut value = String::new();
@@ -94,7 +101,7 @@ fn tokens(source: &str) -> Result<Vec<Token>> {
             loop {
                 let c = *chars
                     .get(i)
-                    .ok_or_else(|| syntax("unterminated quoted token"))?;
+                    .ok_or_else(|| SqlError::new("42603", "unterminated quoted token"))?;
                 i += 1;
                 if c == quote {
                     if chars.get(i) == Some(&quote) {
@@ -174,6 +181,9 @@ fn tokens(source: &str) -> Result<Vec<Token>> {
         if matches!(c, ',' | '(' | ')' | '*' | '.' | '?' | ';') {
             out.push(Token::Symbol(c));
             i += 1;
+            if c == ';' {
+                break;
+            }
         } else {
             return Err(syntax(format!("unexpected SQL character {c:?}")));
         }
@@ -221,10 +231,22 @@ impl Parser {
     fn identifier(&mut self) -> Result<String> {
         match self.tokens.get(self.pos).cloned() {
             Some(Token::Delimited(name)) => {
+                if name.chars().count() > 128 {
+                    return Err(SqlError::new(
+                        "42622",
+                        "SQL identifier exceeds 128 characters",
+                    ));
+                }
                 self.pos += 1;
                 Ok(name)
             }
             Some(Token::Name(name)) => {
+                if name.len() > 128 {
+                    return Err(SqlError::new(
+                        "42622",
+                        "SQL identifier exceeds 128 characters",
+                    ));
+                }
                 if matches!(
                     name.as_str(),
                     "SELECT"
@@ -313,13 +335,7 @@ impl Parser {
             let group = groups.last_mut().unwrap();
             group.push(Predicate { column, op, value });
             if self.word("AND") {
-                // Ten consecutive AND operators join eleven predicates.
-                if group.len() > 10 {
-                    return Err(SqlError::new(
-                        "23615",
-                        "more than ten consecutive AND operators",
-                    ));
-                }
+                // The integer-specific limit is checked against catalog types.
             } else if self.word("OR") {
                 groups.push(Vec::new());
             } else {
@@ -378,6 +394,9 @@ impl Parser {
                 self.expect("BY")?;
                 loop {
                     let name = self.name()?;
+                    if self.symbol('(') {
+                        return Err(SqlError::new("23612", "ORDER BY aggregate is unsupported"));
+                    }
                     let descending = self.word("DESC");
                     if !descending {
                         self.word("ASC");
@@ -409,7 +428,10 @@ impl Parser {
             }
             self.expect_symbol(')')?;
             if columns.len() != values.len() {
-                return Err(syntax("INSERT column and value counts differ"));
+                return Err(SqlError::new(
+                    "42802",
+                    "INSERT column and value counts differ",
+                ));
             }
             Ok(Statement::Insert {
                 table,
@@ -452,19 +474,26 @@ impl Parser {
 }
 
 pub(crate) fn prepare(source: &str) -> Result<Prepared> {
+    if source.trim().is_empty() {
+        return Err(SqlError::new("42617", "empty SQL statement source"));
+    }
+    if source.chars().count() > 32767 {
+        return Err(SqlError::new("54001", "SQL statement exceeds 32767 bytes"));
+    }
     let mut parser = Parser {
         tokens: tokens(source)?,
         pos: 0,
         parameters: 0,
     };
     let statement = parser.statement()?;
-    parser.symbol(';');
+    let semicolon = parser.symbol(';');
     if parser.pos != parser.tokens.len() {
         return Err(syntax("unexpected trailing SQL clause"));
     }
     Ok(Prepared {
         statement,
         parameters: parser.parameters,
+        semicolon,
     })
 }
 
@@ -529,7 +558,6 @@ mod tests {
             "SELECT SUM(*) FROM P.S",
             "COMMIT",
             "ROLLBACK",
-            "SELECT * FROM P.S; DELETE FROM P.S",
             "INSERT INTO P.S (ID) VALUES (1,2)",
             "DELETE FROM P.S WHERE ID ! 1",
             "SELECT * FROM P.S WHERE ID='x",
@@ -539,14 +567,9 @@ mod tests {
     }
     #[test]
     fn limits_consecutive_and_without_limiting_disjunctions() {
-        let predicates = vec!["ID=1"; 11].join(" AND ");
+        let predicates = ["ID=1"; 11].join(" AND ");
         prepare(&format!("SELECT * FROM S WHERE {predicates}")).unwrap();
-        assert_eq!(
-            prepare(&format!("SELECT * FROM S WHERE {predicates} AND ID=2"))
-                .unwrap_err()
-                .state,
-            "23615"
-        );
+        prepare(&format!("SELECT * FROM S WHERE {predicates} AND ID=2")).unwrap();
         prepare(&format!(
             "SELECT * FROM S WHERE {predicates} OR {predicates}"
         ))

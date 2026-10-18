@@ -22,6 +22,7 @@ pub struct Gen<'a> {
     execs: Vec<zir::ExecDef>,
     /// SQL cursor declarations (DECLARE c CURSOR FOR ...) by cursor name.
     sql_cursors: HashMap<String, SqlText>,
+    sqlims_cursors: HashMap<String, SqlText>,
     sqlims_whenever: HashMap<String, ProcName>,
     pub prog: &'a ast::Program,
     pub dm: DataModel,
@@ -224,6 +225,7 @@ impl<'a> Gen<'a> {
             reports: Vec::new(),
             execs: Vec::new(),
             sql_cursors: sql_cursors(prog),
+            sqlims_cursors: HashMap::new(),
             sqlims_whenever: HashMap::new(),
             pos: prog.pos,
         };
@@ -896,6 +898,34 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
+    fn sqlims_cursor(&mut self, e: &ExecBlock) -> Result<()> {
+        let Some(sql) = &e.sql else {
+            return Ok(());
+        };
+        let words: Vec<_> = sql.text.split_whitespace().collect();
+        if words
+            .get(2)
+            .is_none_or(|w| !w.eq_ignore_ascii_case("CURSOR"))
+        {
+            return Ok(());
+        }
+        let name = words[1].to_ascii_uppercase();
+        let statement = words[4].to_ascii_uppercase();
+        if self.sqlims_cursors.contains_key(&name)
+            || self
+                .sqlims_cursors
+                .values()
+                .any(|s| cursor_query(&s.text).is_some_and(|q| q.eq_ignore_ascii_case(&statement)))
+        {
+            return Err(Diag::error(
+                e.pos,
+                "SQLIMS cursor or its statement name is already declared for a cursor",
+            ));
+        }
+        self.sqlims_cursors.insert(name, sql.clone());
+        Ok(())
+    }
+
     fn exec_def(&mut self, e: &ExecBlock) -> Result<zir::ExecDef> {
         let kind = match e.kind {
             ExecKind::Cics => zir::ExecKind::Cics,
@@ -977,6 +1007,21 @@ impl<'a> Gen<'a> {
         let mut host_varchar = Vec::new();
         let mut sql = e.sql.clone();
         if matches!(e.kind, ExecKind::Sql | ExecKind::SqlIms) {
+            if e.kind == ExecKind::SqlIms
+                && matches!(e.command.as_str(), "OPEN" | "FETCH" | "CLOSE")
+            {
+                let name = sql
+                    .as_ref()
+                    .and_then(|s| s.text.split_whitespace().nth(1))
+                    .unwrap_or("")
+                    .to_ascii_uppercase();
+                if !self.sqlims_cursors.contains_key(&name) {
+                    return Err(Diag::error(
+                        e.pos,
+                        format!("SQLIMS cursor {name} must be declared before use"),
+                    ));
+                }
+            }
             // OPEN: the query and host variables of the cursor declaration
             // (the declaration itself is not executable)
             if e.command == "OPEN"
@@ -984,7 +1029,19 @@ impl<'a> Gen<'a> {
                 && let Some(name) = text.text.split_whitespace().nth(1)
             {
                 let name = format!("{:?}:{}", e.kind, name.to_ascii_uppercase());
-                let Some(decl) = self.sql_cursors.get(&name).cloned() else {
+                let decl = if e.kind == ExecKind::SqlIms {
+                    self.sqlims_cursors.get(
+                        text.text
+                            .split_whitespace()
+                            .nth(1)
+                            .unwrap()
+                            .to_ascii_uppercase()
+                            .as_str(),
+                    )
+                } else {
+                    self.sql_cursors.get(&name)
+                };
+                let Some(decl) = decl.cloned() else {
                     return Err(Diag::error(e.pos, format!("cursor {name} is not declared")));
                 };
                 let query = cursor_query(&decl.text).unwrap_or_default();
@@ -1016,6 +1073,12 @@ impl<'a> Gen<'a> {
             if self.dm.resolve(&ca).is_ok() {
                 if e.kind == ExecKind::SqlIms {
                     let id = self.dm.resolve(&ca)?;
+                    if matches!(self.dm.items[id].area, Area::File(_)) {
+                        return Err(Diag::error(
+                            e.pos,
+                            "SQLIMSCA belongs in WORKING-STORAGE, LOCAL-STORAGE or LINKAGE",
+                        ));
+                    }
                     if self.dm.items[id].len != 224 {
                         return Err(Diag::error(
                             e.pos,
@@ -1192,6 +1255,12 @@ impl<'a> Gen<'a> {
     /// A VARCHAR host variable: a group of a halfword length and the
     /// text, both level 49 (as DCLGEN writes them).
     fn sqlims_host_fields(&self, r: &DataRef) -> Result<Vec<DataRef>> {
+        if r.name.starts_with("SQL") {
+            return Err(Diag::error(
+                r.pos,
+                "SQLIMS host variable names beginning with SQL are reserved",
+            ));
+        }
         let id = self.dm.resolve(r)?;
         let item = &self.dm.items[id];
         if item.children.is_empty() || self.is_varchar(r) {
@@ -1284,10 +1353,28 @@ impl<'a> Gen<'a> {
         self.setup_debugging()?;
         self.build_reports()?;
 
+        let mut sqlims_section = false;
         for e in &self.prog.data.execs {
-            if e.kind == ExecKind::SqlIms && e.command == "WHENEVER" {
-                self.sqlims_whenever(e)?;
+            if e.kind == ExecKind::SqlIms {
+                match e.command.as_str() {
+                    "BEGIN" if !sqlims_section => sqlims_section = true,
+                    "END" if sqlims_section => sqlims_section = false,
+                    "WHENEVER" => self.sqlims_whenever(e)?,
+                    "DECLARE" => self.sqlims_cursor(e)?,
+                    _ => {
+                        return Err(Diag::error(
+                            e.pos,
+                            "SQLIMS DATA DIVISION permits only declarations and balanced DECLARE SECTION markers",
+                        ));
+                    }
+                }
             }
+        }
+        if sqlims_section {
+            return Err(Diag::error(
+                self.prog.pos,
+                "SQLIMS END DECLARE SECTION is missing",
+            ));
         }
 
         let mut para_idx = 0u32;
@@ -3406,7 +3493,16 @@ impl<'a> Gen<'a> {
                         self.sqlims_whenever(e)?;
                         return Ok(());
                     }
+                    if matches!(e.command.as_str(), "BEGIN" | "END") {
+                        return Err(Diag::error(
+                            e.pos,
+                            "SQLIMS DECLARE SECTION belongs in DATA DIVISION",
+                        ));
+                    }
                     if matches!(e.command.as_str(), "DECLARE" | "BEGIN" | "END") {
+                        if e.command == "DECLARE" {
+                            self.sqlims_cursor(e)?;
+                        }
                         return Ok(());
                     }
                 }

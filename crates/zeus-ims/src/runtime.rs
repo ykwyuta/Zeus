@@ -285,22 +285,21 @@ impl Schedule {
                     .as_deref()
                     .and_then(|d| self.dbds.get(d));
                 let Some(dbd) = dbd else { return 0 };
+                let view_len =
+                    |segment: &crate::catalog::Segment| self.psb.pcbs[i].view_len(segment);
                 let named = ssas
                     .last()
                     .filter(|_| matches!(function, "ISRT" | "REPL" | "DLET"))
                     .map(|s| text_of(&s[..s.len().min(8)]))
-                    .and_then(|n| dbd.segment(&n).map(|s| s.max_bytes));
-                let one = named
-                    .unwrap_or_else(|| dbd.segments.iter().map(|s| s.max_bytes).max().unwrap_or(0));
+                    .and_then(|n| dbd.segment(&n).map(view_len));
+                let one =
+                    named.unwrap_or_else(|| dbd.segments.iter().map(view_len).max().unwrap_or(0));
                 // a path call (command code D) gets the parents' segments too
                 let path: usize = ssas
                     .iter()
                     .take(ssas.len().saturating_sub(1))
                     .filter(|s| path_call(s))
-                    .filter_map(|s| {
-                        dbd.segment(&text_of(&s[..s.len().min(8)]))
-                            .map(|d| d.max_bytes)
-                    })
+                    .filter_map(|s| dbd.segment(&text_of(&s[..s.len().min(8)])).map(view_len))
                     .sum();
                 one + path
             }

@@ -54,6 +54,43 @@ impl Parser {
                     "SQLIMS supports dynamic SQL; use PREPARE/EXECUTE or OPEN/FETCH, and DL/I system services for commit/rollback",
                 ));
             }
+            if kind == ExecKind::SqlIms {
+                let words: Vec<_> = sql
+                    .text
+                    .split_whitespace()
+                    .map(str::to_ascii_uppercase)
+                    .collect();
+                if matches!(command.as_str(), "BEGIN" | "END")
+                    && words != [command.clone(), "DECLARE".into(), "SECTION".into()]
+                {
+                    return Err(Diag::error(
+                        pos,
+                        "SQLIMS BEGIN/END requires DECLARE SECTION",
+                    ));
+                }
+                if command == "DECLARE" {
+                    if words.iter().any(|w| w == "CURSOR") {
+                        if words.len() != 5
+                            || words[2] != "CURSOR"
+                            || words[3] != "FOR"
+                            || !sql.host.is_empty()
+                        {
+                            return Err(Diag::error(
+                                pos,
+                                "SQLIMS cursor declaration requires DECLARE cursor CURSOR FOR statement-name",
+                            ));
+                        }
+                    } else if words.len() < 3
+                        || (words.last().map(String::as_str) != Some("STATEMENT")
+                            && words.get(2).map(String::as_str) != Some("TABLE"))
+                    {
+                        return Err(Diag::error(
+                            pos,
+                            "SQLIMS DECLARE requires CURSOR, STATEMENT or TABLE",
+                        ));
+                    }
+                }
+            }
             return Ok(ExecBlock {
                 kind,
                 pos,
@@ -194,7 +231,13 @@ fn sql_text(text: &[(char, Pos)], pos: Pos) -> Result<SqlText> {
                 out.push(c);
                 i += 1;
             }
-            None if c == ':' && chars.get(i + 1).is_some_and(|c| c.is_ascii_alphabetic()) => {
+            None if c == '-' && chars.get(i + 1) == Some(&'-') => {
+                while i < chars.len() && chars[i] != '\n' {
+                    i += 1;
+                }
+                out.push(' ');
+            }
+            None if c == ':' && chars.get(i + 1).is_some_and(|c| c.is_ascii_alphanumeric()) => {
                 i += 1;
                 let var =
                     name_at(&mut i).ok_or_else(|| Diag::error(pos, "host variable expected"))?;
@@ -233,7 +276,28 @@ fn sql_text(text: &[(char, Pos)], pos: Pos) -> Result<SqlText> {
             }
         }
     }
-    let text = out.split_whitespace().collect::<Vec<_>>().join(" ");
+    let mut text = String::new();
+    let mut quote = None;
+    let mut space = false;
+    for c in out.chars() {
+        if let Some(q) = quote {
+            text.push(c);
+            if c == q {
+                quote = None;
+            }
+        } else if c.is_whitespace() {
+            space = true;
+        } else {
+            if space && !text.is_empty() {
+                text.push(' ');
+            }
+            space = false;
+            text.push(c);
+            if matches!(c, '\'' | '"') {
+                quote = Some(c);
+            }
+        }
+    }
     Ok(SqlText { text, host })
 }
 
@@ -260,5 +324,16 @@ mod tests {
         assert_eq!(s.host[1].var.name, "B");
         assert_eq!(s.host[1].var.qualifiers, vec!["GRP".to_string()]);
         assert_eq!(s.host[1].indicator.as_ref().unwrap().name, "IND-B");
+    }
+
+    #[test]
+    fn sql_comments_do_not_bind_hosts_or_collapse_literal_spaces() {
+        let sql = sql_text(
+            &chars("SELECT 'a  b''c' FROM T -- :NOT-A-HOST END-EXEC\nWHERE ID=:ID"),
+            Pos::default(),
+        )
+        .unwrap();
+        assert_eq!(sql.text, "SELECT 'a  b''c' FROM T WHERE ID=?");
+        assert_eq!(sql.host.len(), 1);
     }
 }
