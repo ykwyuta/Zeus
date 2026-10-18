@@ -2,20 +2,31 @@
 //! or database but takes what the statements give the program as
 //! inputs. The `n`-th execution of the statement at line `l` of program
 //! `P` sets its output options from `outputs["P.l.n.OPTION"]` (RESP,
-//! INTO, SQLCODE, host variables, ...; unset: RESP and SQLCODE 0, the
-//! areas as they are); in concolic runs they follow the variables
-//! `X<P>.<l>.<n>.<OPTION>` (numeric) or `...#<i>` (bytes). What the
-//! statements send out is logged (the expected results).
+//! INTO, SQLCODE, host variables `H<k>`, ...); a group area has a key per
+//! elementary item (`P.l.n.INTO.ITEM`). Unset: RESP and SQLCODE are 0
+//! (100 and ENDFILE from the second execution of a FETCH or READNEXT on,
+//! so that loops end), the areas stay as they are. In concolic runs the
+//! outputs follow the variables `X<key>` (numeric) or `X<key>#<i>`
+//! (bytes). What the statements send out is logged (the expected
+//! results).
+//!
+//! Conditions of CICS commands without RESP go to the HANDLE CONDITION
+//! label (or are ignored with IGNORE CONDITION or NOHANDLE); otherwise the
+//! run ends with the condition. EIBRESP is set when the program has an
+//! EIB. SQL statements go to their WHENEVER labels.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
+use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
 use zeus_cobol::concolic::VarKind;
 use zeus_cobol::vm::exec::{Area, ExecArg, ExecCall, ExecHost, ExecOutcome};
 use zeus_cobol::vm::{Machine, RResult, RunError, data as vdata};
-use zeus_cobol::zir::{DataType, ExecKind, NumType, NumUsage, SignPos};
+use zeus_cobol::zir::{DataType, ExecKind, ExecVal, Loc, Module, NumType, NumUsage, Rel, SignPos};
 use zeus_decimal::Rounding;
+
+use crate::engine::items;
 
 /// What an output option is set to.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -50,12 +61,70 @@ fn sends(command: &str, option: &str) -> bool {
     }
 }
 
+/// CICS conditions (by EIBRESP) for HANDLE CONDITION.
+const CONDITIONS: &[&str] = &[
+    "ERROR",
+    "EOF",
+    "ENDINPT",
+    "NOTFND",
+    "DUPREC",
+    "DUPKEY",
+    "INVREQ",
+    "IOERR",
+    "NOSPACE",
+    "NOTOPEN",
+    "ENDFILE",
+    "ILLOGIC",
+    "LENGERR",
+    "QZERO",
+    "SIGNAL",
+    "QBUSY",
+    "ITEMERR",
+    "PGMIDERR",
+    "TRANSIDERR",
+    "ENDDATA",
+    "EXPIRED",
+    "MAPFAIL",
+    "QIDERR",
+    "ENQBUSY",
+    "DISABLED",
+    "NOTAUTH",
+    "USERIDERR",
+    "FILENOTFOUND",
+    "SYSIDERR",
+    "TERMIDERR",
+    "TSIOERR",
+    "CHANNELERR",
+    "CONTAINERERR",
+];
+
+fn condition(resp: i128) -> String {
+    CONDITIONS
+        .iter()
+        .find(|c| zeus_cobol::front::cics::resp_value(c).map(i128::from) == Some(resp))
+        .map_or_else(|| format!("RESP {resp}"), |c| c.to_string())
+}
+
+/// EIBRESP in DFHEIBLK.
+const EIBRESP: usize = 76;
+
+/// An elementary item of an output area: name (empty for the area
+/// itself), offset in the area, length and numeric type.
+type Item = (String, usize, usize, Option<NumType>);
+
 #[derive(Default)]
 pub struct StubHost {
     pub outputs: BTreeMap<String, Out>,
     /// The statements executed with what they sent out.
     pub log: RefCell<Vec<String>>,
+    /// The module of the program run (for the items of group areas).
+    pub module: Option<Rc<Module>>,
+    /// The address of the EIB of the program run.
+    pub eib: Option<usize>,
     counts: RefCell<HashMap<(String, u32), u32>>,
+    /// HANDLE CONDITION: (program instance, condition) -> label (None:
+    /// IGNORE CONDITION).
+    handlers: RefCell<HashMap<(usize, String), Option<u32>>>,
 }
 
 fn hex(b: &[u8]) -> String {
@@ -74,13 +143,103 @@ fn raw(t: &NumType, bytes: &[u8]) -> i128 {
         .map_or(0, |d| d.coef)
 }
 
-const FULLWORD: NumType = NumType {
+/// EIBRESP: PIC S9(8) COMP.
+const EIBRESP_TYPE: NumType = NumType {
     usage: NumUsage::Binary,
+    digits: 8,
+    scale: 0,
+    signed: true,
+    sign: SignPos::None,
+};
+
+/// SQLCODE of the SQLCA Zeus includes: PIC S9(9) COMP-5 at offset 12.
+const SQLCODE_TYPE: NumType = NumType {
+    usage: NumUsage::Native,
     digits: 9,
     scale: 0,
     signed: true,
     sign: SignPos::None,
 };
+
+/// A numeric type a variable can follow.
+fn followed(t: Option<NumType>) -> Option<NumType> {
+    t.filter(|t| t.digits <= 18 && t.scale >= 0 && t.usage != NumUsage::National)
+}
+
+/// Where an operand of an EXEC statement comes from in its definition.
+enum Operand {
+    Option(usize),
+    Host(usize),
+}
+
+/// The position of a SQL keyword outside quotes and parentheses.
+fn find_kw(sql: &str, kw: &str, from: usize) -> Option<usize> {
+    let up = sql.to_ascii_uppercase();
+    let b = up.as_bytes();
+    let (mut q, mut depth) = (false, 0i32);
+    for i in 0..b.len() {
+        match b[i] {
+            b'\'' => q = !q,
+            b'(' if !q => depth += 1,
+            b')' if !q => depth -= 1,
+            _ if !q && depth == 0 && i >= from && up[i..].starts_with(kw) => {
+                let before = i == 0 || !b[i - 1].is_ascii_alphanumeric();
+                let after = b
+                    .get(i + kw.len())
+                    .is_none_or(|c| !c.is_ascii_alphanumeric() && *c != b'_');
+                if before && after {
+                    return Some(i);
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The host variable markers (`?`) outside quotes.
+fn count_markers(s: &str) -> usize {
+    let mut q = false;
+    let mut n = 0;
+    for c in s.chars() {
+        match c {
+            '\'' => q = !q,
+            '?' if !q => n += 1,
+            _ => {}
+        }
+    }
+    n
+}
+
+/// Which host variables of a SQL statement it sets (as the Db2 host does).
+fn sql_outputs(sql: &str, n: usize) -> Vec<bool> {
+    let words: Vec<String> = sql
+        .split_whitespace()
+        .map(|w| w.to_ascii_uppercase())
+        .collect();
+    let w = |k: usize| words.get(k).map(String::as_str).unwrap_or("");
+    let mut out = vec![false; n];
+    match w(0) {
+        "FETCH" => out.fill(true),
+        "SET" if w(1) == "?" => {
+            if let Some(o) = out.first_mut() {
+                *o = true;
+            }
+        }
+        "SELECT" | "VALUES" | "WITH" => {
+            if let Some(at) = find_kw(sql, "INTO", 0) {
+                let end = find_kw(sql, "FROM", at).unwrap_or(sql.len());
+                let before = count_markers(&sql[..at]);
+                let outs = count_markers(&sql[at..end]);
+                for o in out.iter_mut().skip(before).take(outs) {
+                    *o = true;
+                }
+            }
+        }
+        _ => {}
+    }
+    out
+}
 
 impl StubHost {
     pub fn new(outputs: BTreeMap<String, Out>) -> Self {
@@ -90,88 +249,240 @@ impl StubHost {
         }
     }
 
-    /// Sets an output area (from `outputs`, else `default` for numbers)
-    /// and makes it follow its variables.
+    /// The elementary items of an operand's area: those of the group it
+    /// names, else the area itself.
+    fn layout(&self, call: &ExecCall, operand: Operand, area: &Area) -> Vec<Item> {
+        let whole = vec![(String::new(), 0, area.len, followed(num_of(area)))];
+        if !matches!(area.ty, DataType::Group) {
+            return whole;
+        }
+        let Some(code) = self
+            .module
+            .as_ref()
+            .and_then(|m| m.programs.iter().find(|p| p.name == call.program))
+        else {
+            return whole;
+        };
+        let Some(def) = code.execs.iter().find(|e| {
+            e.line == call.line
+                && e.command == call.command
+                && e.options.len() == call.options.len()
+                && e.host.len() == call.host.len()
+        }) else {
+            return whole;
+        };
+        let loc: Option<&Loc> = match operand {
+            Operand::Option(k) => match def.options.get(k).and_then(|o| o.arg.as_ref()) {
+                Some(ExecVal::Area(l)) => Some(l),
+                _ => None,
+            },
+            Operand::Host(k) => def.host.get(k).map(|h| &h.0),
+        };
+        let Some(d) = loc.and_then(|l| code.descs.get(l.desc as usize)) else {
+            return whole;
+        };
+        let descs: Vec<_> = code.descs.iter().filter(|x| x.base == d.base).collect();
+        // what a terminal sends is bytes, whatever the items' pictures
+        let raw_input = call.command == "RECEIVE";
+        let found: Vec<Item> = items(&descs, d.offset as usize, area.len)
+            .into_iter()
+            .filter(|i| i.1 + i.2 <= AREA_BYTES)
+            .map(|(n, o, l, t)| {
+                let t = followed(t).filter(|t| !(raw_input && t.usage == NumUsage::Display));
+                (n, o, l, t)
+            })
+            .collect();
+        if found.is_empty() { whole } else { found }
+    }
+
+    /// Sets an output area item by item (from `outputs`, else `default`
+    /// for a numeric area) and makes it follow its variables.
     fn output(
         &self,
         m: &mut Machine,
         key: &str,
-        addr: usize,
-        len: usize,
-        num: Option<NumType>,
+        area: &Area,
+        layout: &[Item],
         default: Option<i128>,
     ) {
-        let num = num.filter(|t| t.digits <= 18 && t.scale >= 0);
-        match (self.outputs.get(key), &num) {
-            (Some(Out::Num(x)), Some(t)) => {
-                vdata::store_raw(t, &mut m.storage_mut()[addr..addr + len], *x);
+        for (name, off, len, num) in layout {
+            let key = if name.is_empty() {
+                key.to_string()
+            } else {
+                format!("{key}.{name}")
+            };
+            let addr = area.addr + off;
+            match (self.outputs.get(&key), num) {
+                (Some(Out::Num(x)), Some(t)) => {
+                    vdata::store_raw(t, &mut m.storage_mut()[addr..addr + len], *x);
+                }
+                (Some(Out::Hex(h)), _) => {
+                    let b = unhex(h);
+                    let l = b.len().min(*len);
+                    m.storage_mut()[addr..addr + l].copy_from_slice(&b[..l]);
+                }
+                (None, Some(t)) if name.is_empty() => {
+                    if let Some(x) = default {
+                        vdata::store_raw(t, &mut m.storage_mut()[addr..addr + len], x);
+                    }
+                }
+                _ => {}
             }
-            (Some(Out::Hex(h)), _) => {
-                let b = unhex(h);
-                let l = b.len().min(len);
-                m.storage_mut()[addr..addr + l].copy_from_slice(&b[..l]);
+            if m.symbolic().is_none() || *off >= AREA_BYTES {
+                continue;
             }
-            (None, Some(t)) => {
-                if let Some(x) = default {
-                    vdata::store_raw(t, &mut m.storage_mut()[addr..addr + len], x);
+            let l = (*len).min(AREA_BYTES - off);
+            m.sym_forget_area(addr, l);
+            match num {
+                Some(t) => {
+                    let value = raw(t, &m.storage()[addr..addr + len]);
+                    let st = m.symbolic().unwrap();
+                    let v = st.var_named(
+                        format!("X{key}"),
+                        VarKind::Num {
+                            digits: t.digits,
+                            signed: t.signed,
+                        },
+                        value,
+                    );
+                    m.sym_bind_num(addr, *len, *t, v);
+                }
+                None => {
+                    for i in 0..l {
+                        let b = m.storage()[addr + i];
+                        let st = m.symbolic().unwrap();
+                        let v =
+                            st.var_named(format!("X{key}#{}", i + 1), VarKind::Byte, i128::from(b));
+                        m.sym_bind_byte(addr + i, v);
+                    }
                 }
             }
-            _ => {}
         }
-        if m.symbolic().is_none() {
+    }
+
+    /// Sets EIBRESP (following the variable of the response, if any).
+    fn set_eibresp(&self, m: &mut Machine, key: &str, resp: i128) {
+        let Some(e) = self.eib else { return };
+        if e + EIBRESP + 4 > m.storage().len() {
             return;
         }
-        let l = len.min(AREA_BYTES);
-        m.sym_forget_area(addr, l);
-        match num {
-            Some(t) => {
-                let value = raw(&t, &m.storage()[addr..addr + len]);
-                let st = m.symbolic().unwrap();
-                let v = st.var_named(
-                    format!("X{key}"),
-                    VarKind::Num {
-                        digits: t.digits,
-                        signed: t.signed,
-                    },
-                    value,
-                );
-                m.sym_bind_num(addr, len, t, v);
+        let area = Area {
+            addr: e + EIBRESP,
+            len: 4,
+            ty: DataType::Numeric(EIBRESP_TYPE),
+        };
+        vdata::store_raw(
+            &EIBRESP_TYPE,
+            &mut m.storage_mut()[area.addr..area.addr + 4],
+            resp,
+        );
+        if let Some(st) = m.symbolic()
+            && st.vars.iter().any(|v| v.name == format!("X{key}"))
+        {
+            self.output(
+                m,
+                key,
+                &area,
+                &[(String::new(), 0, 4, Some(EIBRESP_TYPE))],
+                None,
+            );
+        }
+    }
+
+    /// The response of a command without RESP in concolic runs: a
+    /// variable, and a decision for each condition with a HANDLE or
+    /// IGNORE CONDITION (in order, as an EVALUATE would): the solver can
+    /// make the command raise the condition the program handles. The
+    /// decisions are not the module's branches (program `P#EXEC`).
+    fn decide(&self, m: &mut Machine, call: &ExecCall, key: &str, resp: i128) {
+        use zeus_cobol::concolic::{Branch, Pred, Step, Term};
+        let mut values: Vec<i128> = self
+            .handlers
+            .borrow()
+            .keys()
+            .filter(|(i, c)| *i == call.instance && c != "ERROR")
+            .filter_map(|(_, c)| zeus_cobol::front::cics::resp_value(c).map(i128::from))
+            .collect();
+        if values.is_empty() {
+            return;
+        }
+        values.sort();
+        values.dedup();
+        values.insert(0, 0);
+        let Some(st) = m.symbolic() else { return };
+        let v = st.var_named(
+            format!("X{key}"),
+            VarKind::Num {
+                digits: 8,
+                signed: true,
+            },
+            resp,
+        );
+        for (i, c) in values.into_iter().enumerate() {
+            let hit = resp == c;
+            st.path.push(Step::Branch(Branch {
+                program: format!("{}#EXEC", call.program),
+                pc: call.line * 64 + i as u32,
+                jumped: hit,
+                pred: Some(Pred::Cmp(Term::Var(v), Rel::Eq, Term::Const(c))),
+            }));
+            if hit {
+                break;
             }
-            None => {
-                for i in 0..l {
-                    let b = m.storage()[addr + i];
-                    let st = m.symbolic().unwrap();
-                    let v = st.var_named(format!("X{key}#{}", i + 1), VarKind::Byte, i128::from(b));
-                    m.sym_bind_byte(addr + i, v);
+        }
+    }
+
+    fn cics(&self, m: &mut Machine, call: &ExecCall, key: &str, n: u32) -> RResult<ExecOutcome> {
+        let cmd = call.command.as_str();
+        if matches!(cmd, "HANDLE" | "IGNORE") && call.has("CONDITION") {
+            let mut h = self.handlers.borrow_mut();
+            for (name, arg) in &call.options {
+                if name == "CONDITION" {
+                    continue;
+                }
+                let k = (call.instance, name.clone());
+                match arg {
+                    Some(ExecArg::Label(l)) if cmd == "HANDLE" => {
+                        h.insert(k, Some(*l));
+                    }
+                    _ if cmd == "IGNORE" => {
+                        h.insert(k, None);
+                    }
+                    _ => {
+                        h.remove(&k);
+                    }
                 }
             }
+            self.log.borrow_mut().push(format!("CICS {cmd} CONDITION"));
+            return Ok(ExecOutcome::Continue);
         }
-    }
-
-    fn area_num(a: &Area) -> Option<NumType> {
-        match &a.ty {
-            DataType::Numeric(t) => Some(*t),
-            _ => None,
-        }
-    }
-
-    fn cics(&self, m: &mut Machine, call: &ExecCall, key: &str) -> RResult<ExecOutcome> {
-        let cmd = call.command.as_str();
+        // a browse or queue read ends from the second time on
+        let ends = matches!(cmd, "READNEXT" | "READPREV") && n > 1;
+        let default_resp = if ends {
+            i128::from(zeus_cobol::front::cics::resp_value("ENDFILE").unwrap_or(20))
+        } else {
+            0
+        };
         let mut sent = Vec::new();
-        for (name, arg) in &call.options {
+        let mut resp = None;
+        for (k, (name, arg)) in call.options.iter().enumerate() {
             match arg {
                 Some(ExecArg::Area(a))
                     if CICS_OUT.contains(&name.as_str()) && !sends(cmd, name) =>
                 {
-                    let default = matches!(name.as_str(), "RESP" | "RESP2").then_some(0);
-                    self.output(
-                        m,
-                        &format!("{key}.{name}"),
-                        a.addr,
-                        a.len,
-                        Self::area_num(a),
-                        default,
-                    );
+                    let default = match name.as_str() {
+                        "RESP" => Some(default_resp),
+                        "RESP2" => Some(0),
+                        _ => None,
+                    };
+                    let layout = self.layout(call, Operand::Option(k), a);
+                    self.output(m, &format!("{key}.{name}"), a, &layout, default);
+                    if name == "RESP" {
+                        resp = Some(match num_of(a) {
+                            Some(t) => raw(&t, &m.storage()[a.addr..a.addr + a.len]),
+                            None => default_resp,
+                        });
+                    }
                 }
                 Some(ExecArg::Area(a)) => sent.push(format!(
                     "{name}={}",
@@ -191,39 +502,64 @@ impl StubHost {
                 .trim_end()
                 .to_string(),
         );
+        let rkey = format!("{key}.RESP");
+        let handled = resp.is_some();
+        let resp = resp.unwrap_or_else(|| match self.outputs.get(&rkey) {
+            Some(Out::Num(x)) => *x,
+            _ => default_resp,
+        });
+        if !handled && !call.has("NOHANDLE") && !matches!(cmd, "RETURN" | "XCTL" | "ABEND") {
+            self.decide(m, call, &rkey, resp);
+        }
+        self.set_eibresp(m, &rkey, resp);
         match cmd {
-            "RETURN" | "XCTL" => Ok(ExecOutcome::Return),
+            "RETURN" | "XCTL" => return Ok(ExecOutcome::Return),
             "ABEND" => {
                 let code = match call.arg("ABCODE") {
                     Some(ExecArg::Alnum(b)) => zeus_cobol::ebcdic::decode(b),
                     _ => String::new(),
                 };
-                Err(RunError(format!("CICS abend {}", code.trim())))
+                return Err(RunError(format!("CICS abend {}", code.trim())));
             }
-            _ => Ok(ExecOutcome::Continue),
+            _ => {}
+        }
+        if resp == 0 || handled || call.has("NOHANDLE") {
+            return Ok(ExecOutcome::Continue);
+        }
+        let cond = condition(resp);
+        let h = self.handlers.borrow();
+        match h
+            .get(&(call.instance, cond.clone()))
+            .or_else(|| h.get(&(call.instance, "ERROR".to_string())))
+        {
+            Some(Some(l)) => Ok(ExecOutcome::Goto(*l)),
+            Some(None) => Ok(ExecOutcome::Continue),
+            None => Err(RunError(format!(
+                "CICS condition {cond} (line {})",
+                call.line
+            ))),
         }
     }
 
-    fn sql(&self, m: &mut Machine, call: &ExecCall, key: &str) -> RResult<ExecOutcome> {
+    fn sql(&self, m: &mut Machine, call: &ExecCall, key: &str, n: u32) -> RResult<ExecOutcome> {
         let text = call.sql.clone().unwrap_or_default();
-        // the host variables after INTO (up to FROM) are set; the others sent
-        let up = text.to_ascii_uppercase();
-        let marks: Vec<usize> = up.match_indices('?').map(|(i, _)| i).collect();
-        let into = up.find(" INTO ");
-        let from = into.and_then(|i| up[i..].find(" FROM ").map(|f| f + i));
+        let first = text
+            .split_whitespace()
+            .next()
+            .unwrap_or("")
+            .to_ascii_uppercase();
+        if matches!(
+            first.as_str(),
+            "DECLARE" | "INCLUDE" | "WHENEVER" | "BEGIN" | "END"
+        ) {
+            return Ok(ExecOutcome::Continue);
+        }
+        let outs = sql_outputs(&text, call.host.len());
         let mut sent = Vec::new();
         for (k, (v, ind)) in call.host.iter().enumerate() {
-            let at = marks.get(k).copied().unwrap_or(0);
-            let out = into.is_some_and(|i| at > i && from.is_none_or(|f| at < f));
-            if out {
-                self.output(
-                    m,
-                    &format!("{key}.H{}", k + 1),
-                    v.addr,
-                    v.len,
-                    Self::area_num(v),
-                    None,
-                );
+            if outs[k] {
+                let layout = self.layout(call, Operand::Host(k), v);
+                self.output(m, &format!("{key}.H{}", k + 1), v, &layout, None);
                 if let Some(i) = ind {
                     let n = i.len.min(2);
                     m.storage_mut()[i.addr..i.addr + n].fill(0);
@@ -232,24 +568,74 @@ impl StubHost {
                 sent.push(hex(&m.storage()[v.addr..v.addr + v.len.min(AREA_BYTES)]));
             }
         }
-        if let Some(ExecArg::Area(a)) = call.arg("SQLCA")
-            && a.len >= 16
-        {
-            self.output(
-                m,
-                &format!("{key}.SQLCODE"),
-                a.addr + 12,
-                4,
-                Some(FULLWORD),
-                Some(0),
-            );
-        }
+        // a cursor's rows end from the second FETCH on
+        let default = if first == "FETCH" && n > 1 { 100 } else { 0 };
+        let ckey = format!("{key}.SQLCODE");
+        let ca = call
+            .options
+            .iter()
+            .position(|(n, _)| n == "SQLCA")
+            .and_then(|k| match &call.options[k].1 {
+                Some(ExecArg::Area(a)) if a.len >= 16 => Some((k, a)),
+                _ => None,
+            });
+        let sqlcode = match ca {
+            Some((k, a)) => {
+                // SQLCODE as the program's SQLCA describes it
+                let (off, len, t) = self
+                    .layout(call, Operand::Option(k), a)
+                    .into_iter()
+                    .find(|i| i.0 == "SQLCODE")
+                    .and_then(|i| Some((i.1, i.2, i.3?)))
+                    .unwrap_or((12, 4, SQLCODE_TYPE));
+                let code = Area {
+                    addr: a.addr + off,
+                    len,
+                    ty: DataType::Numeric(t),
+                };
+                self.output(
+                    m,
+                    &ckey,
+                    &code,
+                    &[(String::new(), 0, len, Some(t))],
+                    Some(default),
+                );
+                raw(&t, &m.storage()[code.addr..code.addr + len])
+            }
+            _ => match self.outputs.get(&ckey) {
+                Some(Out::Num(x)) => *x,
+                _ => default,
+            },
+        };
         self.log.borrow_mut().push(
-            format!("SQL {} {}", text.trim(), sent.join(" "))
-                .trim_end()
-                .to_string(),
+            format!(
+                "SQL {} {}",
+                text.split_whitespace().collect::<Vec<_>>().join(" "),
+                sent.join(" ")
+            )
+            .trim_end()
+            .to_string(),
         );
-        Ok(ExecOutcome::Continue)
+        let whenever = if sqlcode < 0 {
+            "SQLERROR"
+        } else if sqlcode == 100 {
+            "NOTFOUND"
+        } else if sqlcode > 0 {
+            "SQLWARNING"
+        } else {
+            return Ok(ExecOutcome::Continue);
+        };
+        match call.arg(whenever) {
+            Some(ExecArg::Label(l)) => Ok(ExecOutcome::Goto(*l)),
+            _ => Ok(ExecOutcome::Continue),
+        }
+    }
+}
+
+fn num_of(a: &Area) -> Option<NumType> {
+    match &a.ty {
+        DataType::Numeric(t) => Some(*t),
+        _ => None,
     }
 }
 
@@ -263,12 +649,40 @@ impl ExecHost for StubHost {
         };
         let key = format!("{}.{}.{n}", call.program, call.line);
         match call.kind {
-            ExecKind::Cics => self.cics(m, call, &key),
-            ExecKind::Sql | ExecKind::SqlIms => self.sql(m, call, &key),
+            ExecKind::Cics => self.cics(m, call, &key, n),
+            ExecKind::Sql | ExecKind::SqlIms => self.sql(m, call, &key, n),
             ExecKind::Dli => {
                 self.log.borrow_mut().push(format!("DLI {}", call.command));
                 Ok(ExecOutcome::Continue)
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sql_host_variables_set() {
+        assert_eq!(
+            sql_outputs(
+                "SELECT A, (SELECT X INTO Y FROM U) INTO ?, ? FROM T WHERE K = ?",
+                3
+            ),
+            [true, true, false]
+        );
+        assert_eq!(sql_outputs("FETCH C1 INTO ?, ?", 2), [true, true]);
+        assert_eq!(
+            sql_outputs("UPDATE T SET A = ? WHERE K = ?", 2),
+            [false, false]
+        );
+        assert_eq!(sql_outputs("SET ? = CURRENT DATE", 1), [true]);
+    }
+
+    #[test]
+    fn conditions_by_resp() {
+        assert_eq!(condition(13), "NOTFND");
+        assert_eq!(condition(20), "ENDFILE");
     }
 }

@@ -217,7 +217,8 @@ ztest run [--coverage DIR] DIR
 ## 実装 (2026-10)
 
 段階 A、段階 B のうち順次ファイル・索引ファイルの入力と入出力エラーの注入、段階 C のうち CALL のスタブと
-呼び出し先のファイルを `crates/zeus-testgen` (`ztestgen`、`ztest`) と zeus-cobol の記号の層 (`concolic.rs`、
+呼び出し先のファイル、段階 D の EXEC CICS・EXEC SQL のスタブを `crates/zeus-testgen` (`ztestgen`、`ztest`、
+EXEC 文は `stubhost.rs`) と zeus-cobol の記号の層 (`concolic.rs`、
 `vm/sym.rs`、ファイル入出力は `vm/sym_io.rs`、試験環境は `vm/testenv.rs`) に実装した。ソルバは外部に依存しない自前のもの (下記) で、Z3 はまだ
 組み込んでいない (`Solver` トレイトで差し替えられる形にしてある)。
 
@@ -273,6 +274,24 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
   スタブにする。スタブは RETURN-CODE 0 で戻り、n 回目の呼び出しの BY REFERENCE の各引数 (先頭 256 バイト) は
   変数 `C<プログラム>.<n>.A<k>#<i>` に従う。ソルバが選んだ出力は `stubs` に記録し、再実行ではスタブがその
   バイトを引数に書く。`report.txt` と `expect.stubbed` にスタブにしたプログラムを示す。
+- EXEC CICS・EXEC SQL: EXEC 文を含むプログラムは、トランザクションもデータベースも動かさないスタブ
+  (`StubHost`) で実行する。プログラム `P` の行 `l` の EXEC 文の n 回目の実行が受け取る値がキー `P.l.n.<オプション>`
+  の入力で、記号付きの実行では変数 `X<キー>` (数値) または `X<キー>#<i>` (バイト) に従う。ケースの `exec` に
+  記録し、送った内容 (FROM、COMMAREA、RIDFLD、SQL 文と入力のホスト変数など) の列を期待値 `expect.exec` にする。
+  - CICS: RESP・RESP2・INTO・LENGTH (READ・RECEIVE)・ASSIGN の各項目などが入力。INTO などがグループ項目なら
+    基本項目ごとのキー (`P.l.n.INTO.ACCT-ID`) にし、数値の項目は値の変数にする。ただし RECEIVE (端末からの入力) の
+    DISPLAY の数字項目はバイトの変数にする (`IF ACCTSIDI = '*'` のように英数字で調べるため)。RESP は EIBRESP にも
+    入れる。RESP のないコマンドの応答は HANDLE CONDITION の飛び先 (IGNORE CONDITION・NOHANDLE なら無視、どちらも
+    なければ実行の終わり) に従い、HANDLE された条件ごとに「応答 = その条件の値」の判定を記録する (プログラム
+    `P#EXEC` の判定で、網羅率には数えない)。RETURN・XCTL はプログラムの終わり、ABEND はエラー。
+  - SQL: SQLCODE (プログラムの SQLCA の項目の型で) と、INTO の後のホスト変数 (Db2 ホストと同じ規則: SELECT・VALUES・
+    WITH の最上位の INTO から FROM まで、FETCH は全部、`SET :hv =` は先頭) が入力。SQLCODE が負・100・正なら
+    WHENEVER SQLERROR・NOT FOUND・SQLWARNING の飛び先へ進む。
+  - 既定: RESP と SQLCODE は 0。ただし FETCH と READNEXT・READPREV は 2 回目の実行から 100 と ENDFILE を返す
+    (読み続けるループが終わる。ソルバは n 回目を 0 にして件数を増やせる)。
+  - EIB を持つプログラムは EIBCALEN を COMMAREA の長さ (最大 1024) で始める (`MOVE DFHCOMMAREA(1:EIBCALEN)` の
+    長さは記号として追わないため、短いと COMMAREA の内容が入力にならない)。要素が 1 バイトの OCCURS (COMMAREA の
+    `OCCURS 1 TO 32767 DEPENDING ON EIBCALEN` など) は 100 個ではなく 1024 バイトまで項目に展開する。
 - 時刻: 生成と再実行の時刻は 2025-01-01 09:00:00 UTC に固定する (`zeus_cobol::clock`)。CURRENT-DATE、
   ACCEPT FROM DATE/TIME、LE の日時、データセットの日付がこれを返すので、日時を書くプログラムでもケースが再現する。
 - すべてのファイルは実行ごとの一時ディレクトリーにデータセットを割り当てる。主プログラムが書いた順次ファイル、
@@ -291,6 +310,10 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 
 - 世代探索: 実行の経路の各分岐について、未網羅の向きなら、それまでの条件のうち同じ変数につながるものだけを残して
   (スライス) 逆向きを解き、解を次の入力にする。向きごとの試行は 4 回まで。全試行が充足不能なら「到達不能」と報告。
+- 文脈を変えた解き直し: 網羅済みの向きでも、到達したのに条件が一度も入力に従わなかった向きが残る間は、
+  その前に通った判定の組 (文脈) が新しければ逆向きを解く (向きごとに 4 文脈まで)。CICS のプログラムでは、
+  初回の経路 (画面の入力が定数) で網羅した判定を、RECEIVE した経路でも逆にしないと、その後の画面の項目による
+  判定が入力に従わない。
 - ループの深掘り: 条件が入力に陽に依存しない分岐 (ループで計算した値による判定など) が残るときは、最深の実行から
   ループの最後の判定を逆にして繰り返しを一回ずつ増やす (上限 20)。
 - 変異: ソルバが尽きたら、境界値とプログラムのリテラルの辞書で入力の一項目 (ファイルは件数かレコードの項目) を変える。
@@ -304,6 +327,8 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 | `tests/programs/FILEPGM.cbl` | 順次ファイルを AT END と FILE STATUS で終わりまで読み、報告ファイルを書く | 16/16 (100%) |
 | `tests/programs/IDXPGM.cbl` | 索引ファイルのキーによる READ (INVALID KEY)、REWRITE、重複キーの WRITE、START と READ NEXT | 24/24 (100%) |
 | `tests/programs/ENVPGM.cbl` | OPEN・READ の失敗 (FILE STATUS 35 / 30) と、ないサブプログラムの CALL (出力で分岐) | 8/8 (100%) |
+| `tests/programs/CICSPGM.cbl` | RECEIVE INTO、READ の RESP (NOTFND) と INTO の COMP-3 項目、HANDLE CONDITION ENDFILE で抜ける READNEXT のループ | 18/18 (100%) |
+| `tests/programs/SQLPGM.cbl` | SELECT INTO のホスト変数と SQLCODE、SQLCODE 100 まで FETCH するカーソル、WHENEVER SQLERROR | 12/12 (100%) |
 
 CardDemo のバッチ (`-I app/cpy`、CBSTM03A は呼び出し先 CBSTM03B を `zcobc compile` した .zo を `-L` で与えた)。
 どれも `ztest` で全ケースが再現する。所要時間はリリースビルドで 1 本あたり 0〜14 秒。
@@ -320,7 +345,25 @@ CardDemo のバッチ (`-I app/cpy`、CBSTM03A は呼び出し先 CBSTM03B を `
 | `CBEXPORT`・`CBIMPORT` | データの書出し・取込み | 42/42・40/40 (100%) |
 | `CSUTLDTC` | LE の CEEDAYS の結果で分岐 | 7/18 (39%)。CEEDAYS の出力を追わないため (下記) |
 
-残る方向の多くは、ループの先頭の `IF END-OF-FILE = 'N'` の偽 (ループの条件から起こり得ない) と、状態が 00・10
+CardDemo のオンライン (`-I app/cpy -I app/cpy-bms`、COBSWAIT を除く 17 本)。どれも `ztest` で全ケースが再現する。
+所要時間は 1 本あたり 0〜23 秒。
+
+| プログラム | C1 | プログラム | C1 |
+|---|---|---|---|
+| `COSGN00C` | 20/20 (100%) | `COTRN00C` | 135/142 (95%) |
+| `COBIL00C` | 57/58 (98%) | `COTRN01C` | 27/28 (96%) |
+| `COUSR03C` | 37/38 (97%) | `COTRN02C` | 92/96 (96%) |
+| `COUSR01C`・`COUSR02C` | 27/28・54/56 (96%) | `COUSR00C` | 136/142 (96%) |
+| `COACTVWC` | 116/132 (88%) | `COCRDLIC` | 194/228 (85%) |
+| `COCRDSLC` | 120/142 (85%) | `COCRDUPC` | 209/274 (76%) |
+| `COMEN01C` | 38/50 (76%) | `COADM01C` | 27/40 (68%) |
+| `COACTUPC` | 462/750 (62%) | `CORPT00C` | 43/70 (61%) |
+
+オンラインで残る向きは、メニューの選択番号を `PERFORM VARYING` と部分参照 (記号の添字) で切り出して INSPECT で
+直す処理 (COMEN01C・COADM01C)、固定した時刻による判定 (CORPT00C の月の繰上げ)、COACTUPC の入力検査の
+深い入れ子 (到達しない向き 200 余り) など。
+
+バッチで残る方向の多くは、ループの先頭の `IF END-OF-FILE = 'N'` の偽 (ループの条件から起こり得ない) と、状態が 00・10
 以外の分岐での `IO-STATUS NOT NUMERIC` (注入する状態が数字なので通らない) の類。
 
 到達不能と報告した SAMPLE の 1 方向は、`LK-AMOUNT > 1000.50` を満たしたあとの `ON SIZE ERROR` の
@@ -335,12 +378,13 @@ CardDemo のバッチ (`-I app/cpy`、CBSTM03A は呼び出し先 CBSTM03B を `
   失敗させない。
 - 呼び出し先: `-L` の .zo のプログラムも記号付きで実行するが、網羅を数える分岐は対象のモジュールのものだけ。
   スタブの出力はバイト単位 (2 進・パック 10 進の数値として解くことはしない)、RETURN-CODE は 0 のまま。
-- 段階 C〜E の残り: INSPECT/STRING/UNSTRING、EXEC CICS/SQL/DLI のスタブ、段落の要約、C2・MC/DC、PL/I。
+- 段階 C〜E の残り: INSPECT/STRING/UNSTRING、DL/I のスタブ、段落の要約、C2・MC/DC、PL/I。
+- EXEC CICS/SQL のスタブ: 下記「既知の課題」。
 - LE の呼び出し (CEEDAYS など) や組み込み関数の結果は具体値で、それに依存する分岐は「入力に依存しない」と報告される。
 - 非線形の算術 (変数どうしの除算、べき乗、浮動小数点) は具体化する。
 - Z3 などの外部ソルバは未接続。
 
-## 現状と課題 (2026-10-18)
+## 現状と課題 (2026-10-19)
 
 ### 段階ごとの状態
 
@@ -349,37 +393,20 @@ CardDemo のバッチ (`-I app/cpy`、CBSTM03A は呼び出し先 CBSTM03B を `
 | A (LINKAGE・ACCEPT、算術・条件・88 レベル) | 完了 |
 | B (ファイル) | 順次・索引ファイルの入力と入出力エラーの注入は完了。相対ファイル、LINE SEQUENTIAL の入力、記号の添字、REDEFINES のバイト層は未実装 |
 | C (サブプログラム) | ないプログラムの CALL のスタブと、`-L` の呼び出し先のファイルは完了。呼び出し先の分岐の網羅、INSPECT/STRING/UNSTRING は未実装 |
-| D (EXEC CICS/SQL/DLI のスタブ) | **作業途中**。下記 |
+| D (EXEC CICS/SQL/DLI のスタブ) | CICS・SQL は完了 (上記「入力」)。DL/I は記録するだけで応答を入力にしない |
 | E (要約、C2・MC/DC、PL/I) | 未着手 |
-
-### 段階 D の途中の状態
-
-`crates/zeus-testgen/src/stubhost.rs` に EXEC 文の試験用の実行環境 (`StubHost`、`ExecHost` の実装) を置いた。
-コンパイルは通るが、**まだどこからも使っておらず、試験もしていない**。
-
-- 設計: プログラム `P` の行 `l` の EXEC 文の n 回目の実行は、出力のオプションをキー `P.l.n.<オプション>` の値で
-  設定する (CICS: RESP・RESP2・INTO・ASSIGN の各項目など、SQL: INTO の後のホスト変数 `H<k>` と SQLCODE)。
-  値がなければ RESP と SQLCODE は 0、領域はそのまま。記号付きの実行では変数 `X<キー>` (数値) または
-  `X<キー>#<i>` (バイト) に従わせる。送る側のオプション (FROM、COMMAREA、WHERE のホスト変数など) は記録する。
-  RETURN・XCTL はプログラムの終わり、ABEND はエラー。
-- 残りの作業:
-  1. `engine::run` で EXEC 文を含むプログラムに `StubHost` を設定する (`Machine::set_exec_host`)。
-  2. `engine::apply` で `X...` の変数の解を `Inputs` に戻し、ケースの JSON (`exec` の欄) に読み書きする。
-  3. 送った内容の記録を期待値 (`expect.exec`) にし、`ztest` で比べる。
-  4. EIB (DFHEIBLK) と DFHCOMMAREA は USING の先頭 2 つの引数なので既に入力になるが、EIBCALEN と COMMAREA の
-     長さの整合、EIBAID の値 (DFHENTER など) の辞書を用意する。
-  5. 試験用のプログラム (RECEIVE MAP・READ の RESP・SQL の SQLCODE で分岐) と CardDemo のオンライン
-     (COSGN00C、COACTUPC など) で網羅を測り、文書を更新する。
 
 ### 既知の課題
 
-- **RECEIVE MAP と BMS**: INTO の領域をバイト単位の入力にするだけで、マップの項目 (長さ・属性・データ) の
-  区切りを知らない。項目単位にするには `zbms` の記号マップの配置を使う必要がある。
-- **SQL の判定**: INTO の位置を SQL 文の文字列から推定している (`?` の位置と INTO・FROM の位置)。FETCH、
-  SELECT ... INTO の副問合せ、CALL の OUT 引数などは正しく分けられない可能性がある。カーソルの FETCH の繰返しで
-  SQLCODE 100 にする件数の変数もまだない。
+- **RECEIVE MAP**: INTO の記号マップ (`mapI`) の基本項目ごとに入力にするが、項目の長さ (`...L`) とデータの整合
+  (入力した長さ・MDT) は取らない。HANDLE AID は扱わない (EIBAID は EIB の入力なので EVALUATE EIBAID は通る)。
+- **SQL の判定**: CALL の OUT 引数、SELECT INTO のない複数行の結果、SQLSTATE・SQLERRD は入力にしない。
+  FETCH の件数は実行ごとの SQLCODE の変数で表す (件数の変数ではない)。標識変数は常に 0 (NULL にしない)。
 - **CICS の出力の判定**: 出力のオプションを名前の一覧 (`CICS_OUT`) で決めているため、コマンドによっては
-  送る側の LENGTH・COMMAREA などを入力と誤る、またはその逆がある。
+  送る側の LENGTH・COMMAREA などを入力と誤る、またはその逆がある。RESP のないコマンドの応答は、HANDLE された
+  条件の値だけを解く (ERROR の飛び先、HANDLE ABEND は試さない)。
+- **HANDLE / WHENEVER の飛び先の網羅**: 飛越しは ZIR の分岐ではないので C1 に数えず、最小化で飛び先だけを通す
+  ケースが残らないことがある。
 - **CSUTLDTC など LE の呼び出し**: CEEDAYS などの結果は具体値のままで、それに依存する分岐 (CSUTLDTC は 7/18) は
   通らない。LE の呼び出しをスタブにする (出力を入力にする) ことが考えられる。
 - **網羅できない向きの扱い**: CardDemo のバッチで残る向きの多くはループの条件から起こり得ない判定や、

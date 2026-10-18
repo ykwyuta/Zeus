@@ -255,3 +255,82 @@ fn covers_faults_and_stubs() {
     let text = String::from_utf8_lossy(&o.stdout);
     assert!(o.status.success(), "{text}");
 }
+
+/// Runs `ztestgen` on a test program and replays its cases with `ztest`:
+/// the report and the case files.
+fn generate_and_replay(name: &str) -> (String, String) {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/programs/{name}.cbl"));
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("cases");
+    let o = Command::new(env!("CARGO_BIN_EXE_ztestgen"))
+        .arg("--out")
+        .arg(&out)
+        .arg(&src)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&o.stdout).into_owned();
+    assert!(
+        o.status.success(),
+        "{text}{}",
+        String::from_utf8_lossy(&o.stderr)
+    );
+    let cases: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap())
+        .collect();
+    let o = Command::new(env!("CARGO_BIN_EXE_ztest"))
+        .arg(&src)
+        .arg(&out)
+        .output()
+        .unwrap();
+    let replay = String::from_utf8_lossy(&o.stdout);
+    assert!(o.status.success(), "{replay}");
+    (text, cases.concat())
+}
+
+/// EXEC CICS: what RECEIVE and READ give the program (INTO items, RESP)
+/// and the conditions a HANDLE CONDITION catches (ENDFILE of READNEXT)
+/// are inputs; every branch direction, replayed the same.
+#[test]
+fn covers_cics_commands() {
+    let (text, all) = generate_and_replay("CICSPGM");
+    assert!(
+        text.contains("C1: 18 of 18 branch directions (100.0%)"),
+        "{text}"
+    );
+    // RECEIVE INTO: the command word, item by item
+    assert!(all.contains("\"CICSPGM.25.1.INTO.IN-CMD\""), "{all}");
+    // READ: NOTFND, and a balance above 1000 (COMP-3 item of INTO)
+    assert!(all.contains("\"num\": 13"), "{all}");
+    assert!(all.contains("\"CICSPGM.43.1.INTO.AC-BAL\""), "{all}");
+    assert!(all.contains("\"RICH"), "{all}");
+    // READNEXT without RESP: six records without ENDFILE
+    assert!(all.contains("\"CICSPGM.66.6.RESP\""), "{all}");
+    assert!(all.contains("\"LIST FULL\""), "{all}");
+    // what the program sends
+    assert!(
+        all.contains("CICS RETURN TRANSID('ACCT') COMMAREA="),
+        "{all}"
+    );
+}
+
+/// EXEC SQL: SELECT INTO host variables and SQLCODE, a cursor FETCHed
+/// until SQLCODE 100: every branch direction.
+#[test]
+fn covers_sql_statements() {
+    let (text, all) = generate_and_replay("SQLPGM");
+    assert!(
+        text.contains("C1: 12 of 12 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"SQLPGM.18.1.SQLCODE\""), "{all}");
+    assert!(all.contains("\"GOLD"), "{all}");
+    assert!(all.contains("\"NO CUSTOMER\""), "{all}");
+    assert!(all.contains("\"MANY 002\""), "{all}");
+    assert!(
+        all.contains("SQL SELECT NAME, CREDIT_LIMIT INTO ?, ? FROM CUST WHERE ID = ?"),
+        "{all}"
+    );
+}

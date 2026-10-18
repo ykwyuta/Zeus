@@ -7,8 +7,10 @@
 //!   "files": [ { "name": "IN-FILE", "records": [ { "hex": "...", "fields": { ... } } ] } ],
 //!   "faults": [ { "file": "IN-FILE", "statement": "OPEN", "occurrence": 1 } ],
 //!   "stubs": [ { "program": "SUBPGM", "call": 1, "argument": 1, "hex": "..." } ],
+//!   "exec": { "PGM.120.1.RESP": { "num": 13 }, "PGM.120.1.INTO.ACCT-ID": { "hex": "F0F1" } },
 //!   "expect": { "return_code": 0, "display": [ "..." ], "params": [ "C1C2..." ],
-//!               "error": null, "files": [ { "name": "OUT-FILE", "records": [ "..." ] } ] },
+//!               "error": null, "files": [ { "name": "OUT-FILE", "records": [ "..." ] } ],
+//!               "exec": [ "CICS READ FILE('ACCTDAT') RIDFLD=F0F1" ] },
 //!   "covers": [ { "program": "PGM", "line": 42, "pc": 17, "jumped": true } ] }
 //! ```
 //!
@@ -18,9 +20,14 @@
 //! writes. `faults` are I/O statements made to fail (the n-th OPEN, READ,
 //! ... of a file: status 35 or 30); `stubs` what the stubs of the
 //! programs called that are not there set in their arguments (leading
-//! bytes); `expect.stubbed` names those programs. The expected values are
+//! bytes); `expect.stubbed` names those programs. `exec` is what EXEC
+//! CICS / SQL statements give the program (the n-th execution of the
+//! statement at a line: RESP, INTO items, SQLCODE, host variables);
+//! `expect.exec` the statements executed with what they sent out. The
+//! expected values are
 //! what the program did when the case was made (a regression test).
 
+use std::collections::BTreeMap;
 use std::path::Path;
 use std::rc::Rc;
 
@@ -28,6 +35,7 @@ use serde::{Deserialize, Serialize};
 use zeus_cobol::zir::Module;
 
 use crate::engine::{Case, Field, FileSpec, Inputs, Options, field_text, file_specs, run};
+use crate::stubhost::Out;
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Param {
@@ -46,6 +54,8 @@ pub struct Expect {
     pub files: Vec<OutFile>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stubbed: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub exec: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -97,6 +107,8 @@ pub struct CaseFile {
     pub faults: Vec<Fault>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub stubs: Vec<Stub>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    pub exec: BTreeMap<String, Out>,
     pub expect: Expect,
     #[serde(default)]
     pub covers: Vec<Cover>,
@@ -219,6 +231,7 @@ pub fn case_file(
                 hex: hex(b),
             })
             .collect(),
+        exec: c.inputs.exec.clone(),
         expect: Expect {
             return_code: c.out.return_code,
             display: lines(&c.out.display),
@@ -226,6 +239,7 @@ pub fn case_file(
             error: c.out.error.clone(),
             files: out_files(&c.out.files),
             stubbed: c.out.stubbed.iter().cloned().collect(),
+            exec: c.out.exec.clone(),
         },
         covers: c
             .covers
@@ -272,6 +286,7 @@ pub fn replay(module: &Rc<Module>, case: &CaseFile, opts: &Options) -> Result<Ve
             .iter()
             .map(|s| Ok(((s.program.clone(), s.call, s.argument), unhex(&s.hex)?)))
             .collect::<Result<_, String>>()?,
+        exec: case.exec.clone(),
     };
     let out = run(module, &case.program, &[], &inputs, opts, false);
     let mut diffs = Vec::new();
@@ -293,6 +308,9 @@ pub fn replay(module: &Rc<Module>, case: &CaseFile, opts: &Options) -> Result<Ve
         if &got != want {
             diffs.push(format!("parameter {} {got} instead of {want}", k + 1));
         }
+    }
+    if out.exec != e.exec {
+        diffs.push(format!("EXEC {:?} instead of {:?}", out.exec, e.exec));
     }
     let got = out_files(&out.files);
     for w in &e.files {

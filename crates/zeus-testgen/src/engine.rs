@@ -1,8 +1,9 @@
 //! Test generation: runs a program on inputs with concolic execution,
 //! and for each branch that went one way only, asks the solver for
 //! inputs that keep the run's earlier decisions and take the other way
-//! (generational search). Inputs are the program's USING parameters and
-//! the lines it ACCEPTs.
+//! (generational search). Inputs are the program's USING parameters, the
+//! lines it ACCEPTs, the records of the files it reads, I/O faults, what
+//! stubbed calls return and what EXEC CICS / SQL statements give it.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet, VecDeque};
@@ -23,6 +24,7 @@ use zeus_ds::dd::Allocation;
 use zeus_ds::format::RecordFormat;
 
 use crate::solver::{Builtin, Outcome, Solver};
+use crate::stubhost::{AREA_BYTES, Out, StubHost};
 
 /// An elementary item of a parameter that is an input.
 #[derive(Debug, Clone)]
@@ -49,6 +51,8 @@ pub struct Inputs {
     /// What the stubs of the programs not there set: (program, call,
     /// argument) -> leading bytes.
     pub stubs: BTreeMap<StubArg, Vec<u8>>,
+    /// What EXEC statements give the program (`StubHost` keys).
+    pub exec: BTreeMap<String, Out>,
 }
 
 /// An argument of a stubbed call: (program, call, argument).
@@ -70,6 +74,8 @@ pub struct RunOut {
     pub files: Vec<(String, Vec<Vec<u8>>)>,
     /// The programs called that ran as stubs.
     pub stubbed: BTreeSet<String>,
+    /// The EXEC statements executed with what they sent out.
+    pub exec: Vec<String>,
 }
 
 /// A direction of a conditional jump.
@@ -112,8 +118,9 @@ impl Default for Options {
 
 /// The elementary items of `descs` in `[start, start+len)`, without
 /// overlaps (the first one wins): name, offset from `start`, length and
-/// numeric type. Tables give an item per occurrence (at most 100).
-fn items(
+/// numeric type. Tables give an item per occurrence (at most 100, or
+/// as many as fit in `AREA_BYTES`: byte tables such as a COMMAREA).
+pub(crate) fn items(
     descs: &[&Desc],
     start: usize,
     len: usize,
@@ -132,7 +139,8 @@ fn items(
         for dim in &d.dims {
             let mut next = Vec::new();
             for (s, off) in &occ {
-                for i in 0..dim.max.min(100) as usize {
+                let cap = 100.max(AREA_BYTES as u32 / dim.stride.max(1));
+                for i in 0..dim.max.min(cap) as usize {
                     let sep = if s.is_empty() { "" } else { "," };
                     next.push((format!("{s}{sep}{}", i + 1), off + i * dim.stride as usize));
                 }
@@ -493,6 +501,15 @@ pub fn run(
             a
         })
         .collect();
+    let host = uses_exec(module, &opts.search).then(|| {
+        let mut h = StubHost::new(inputs.exec.clone());
+        h.module = Some(module.clone());
+        h.eib = eib_param(module, program).and_then(|k| addrs.get(k).copied());
+        Rc::new(h)
+    });
+    if let Some(h) = &host {
+        m.set_exec_host(h.clone());
+    }
     if symbolic {
         m.set_symbolic(SymState::new(opts.limit));
         for f in fields {
@@ -569,6 +586,7 @@ pub fn run(
     let stubbed = m.stub_calls().into_iter().map(|c| c.0).collect();
     let st = m.take_symbolic().unwrap_or_default();
     drop(m);
+    let exec = host.map(|h| h.log.take()).unwrap_or_default();
     let files = specs
         .iter()
         .filter(|f| f.output)
@@ -604,7 +622,27 @@ pub fn run(
         error,
         files,
         stubbed,
+        exec,
     }
+}
+
+/// Whether the module's programs (or those they call) have EXEC
+/// statements.
+fn uses_exec(module: &Module, search: &[PathBuf]) -> bool {
+    module.programs.iter().any(|p| !p.execs.is_empty())
+        || called_modules(module, search)
+            .iter()
+            .any(|m| m.programs.iter().any(|p| !p.execs.is_empty()))
+}
+
+/// The USING parameter of a program that is its EIB (DFHEIBLK).
+fn eib_param(module: &Module, program: &str) -> Option<usize> {
+    let code = module.programs.iter().find(|p| p.name == program)?;
+    code.using.iter().position(|slot| {
+        code.descs
+            .iter()
+            .any(|d| d.base == Base::Linkage(*slot) && d.offset == 0 && d.name == "DFHEIBLK")
+    })
 }
 
 /// A new empty directory for the data sets of a run.
@@ -845,6 +883,38 @@ fn apply(
         }
         new.stubs.insert(key, out);
     }
+    // EXEC statements: X<key> (a number) or X<key>#<i> (byte i)
+    let mut areas: BTreeMap<String, Vec<(usize, u8, bool)>> = BTreeMap::new();
+    for (v, &x) in vars.iter().zip(values) {
+        let Some(rest) = v.name.strip_prefix('X') else {
+            continue;
+        };
+        match rest.rsplit_once('#') {
+            Some((key, i)) => {
+                if let Ok(i) = i.parse::<usize>() {
+                    areas
+                        .entry(key.to_string())
+                        .or_default()
+                        .push((i, x as u8, x != v.value));
+                }
+            }
+            None => {
+                if x != v.value || new.exec.contains_key(rest) {
+                    new.exec.insert(rest.to_string(), Out::Num(x));
+                }
+            }
+        }
+    }
+    for (key, bytes) in areas {
+        if !bytes.iter().any(|b| b.2) && !new.exec.contains_key(&key) {
+            continue;
+        }
+        let mut out = vec![0x40u8; bytes.iter().map(|b| b.0).max().unwrap_or(0)];
+        for (i, x, _) in bytes {
+            out[i - 1] = x;
+        }
+        new.exec.insert(key, Out::Hex(crate::case::hex(&out)));
+    }
     normalize(&mut new, specs);
     new
 }
@@ -1080,9 +1150,22 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     let (fields, lens) = fields(code);
     let specs = file_specs(module, &opts.search);
     let all = directions(module);
+    // decisions recorded outside the module's branches (EXEC responses)
+    // are solved for but not counted
+    let counted: HashSet<Dir> = all.iter().cloned().collect();
     let start = Instant::now();
     let mut solver = Builtin::default();
     let mut first = default_inputs(&fields, &lens);
+    // a CICS program starts with a COMMAREA (EIBCALEN its length, at most
+    // AREA_BYTES): the program reads what it moves from it
+    if let Some(k) = eib_param(module, &code.name)
+        && let Some(&calen) = lens.get(k + 1)
+        && let Some(f) = fields.iter().find(|f| f.param == k && f.name == "EIBCALEN")
+        && let Some(t) = &f.num
+    {
+        let n = calen.min(AREA_BYTES) as i128;
+        vdata::store_raw(t, &mut first.params[k][f.offset..f.offset + f.len], n);
+    }
     let accepts = module.programs.iter().any(|p| {
         p.code.iter().any(|i| {
             matches!(
@@ -1110,6 +1193,9 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     let mut symbolic: HashSet<(String, u32)> = HashSet::new();
     let mut attempts: HashMap<Dir, (u32, u32)> = HashMap::new(); // (tries, unsat)
     let mut deepened: HashMap<(String, u32), u32> = HashMap::new();
+    // covered directions solved for again in other contexts: target ->
+    // the contexts (directions taken before it) tried
+    let mut contexts: HashMap<Dir, HashSet<u64>> = HashMap::new();
     let mut cases: Vec<Case> = Vec::new();
     let mut runs = 0;
     let mut rng = 0x2545_F491_4F6C_DD1Du64;
@@ -1147,6 +1233,9 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         stubbed.extend(out.stubbed.iter().cloned());
         if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
             eprintln!("run {runs}: {:?} {:?}", inp.accept, out.error);
+            for v in out.vars.iter().filter(|v| v.name.starts_with('X')) {
+                eprintln!("  var {} = {}", v.name, v.value);
+            }
             for s in &out.path {
                 eprintln!("  {s:?}");
             }
@@ -1154,7 +1243,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         let new: Vec<Dir> = out
             .branches
             .iter()
-            .filter(|d| !covered.contains(*d))
+            .filter(|d| !covered.contains(*d) && counted.contains(*d))
             .cloned()
             .collect();
         let mut new_dedup = Vec::new();
@@ -1168,6 +1257,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             reached.insert((p.clone(), *pc));
         }
         // the other way of each branch, where not covered yet
+        let mut before: BTreeSet<Dir> = BTreeSet::new();
         for i in 0..out.path.len() {
             if start.elapsed() > opts.time {
                 break;
@@ -1175,6 +1265,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             let Step::Branch(b) = &out.path[i] else {
                 continue;
             };
+            let first = before.insert((b.program.clone(), b.pc, b.jumped));
             if b.pred.is_none() {
                 continue;
             }
@@ -1204,10 +1295,24 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                     .count() as u32;
                 // from the deepest run of the loop so far only
                 let n = deepened.entry((b.program.clone(), b.pc)).or_insert(0);
-                if !(last && looped && implicit && depth > *n && depth <= opts.loop_deepen) {
+                let deepen = last && looped && implicit && depth > *n && depth <= opts.loop_deepen;
+                // the other way after other decisions (a new context): the
+                // directions not followed may depend on the inputs there
+                // (input that a screen sends, where the first way came from
+                // a path with constants)
+                let context = !deepen && implicit && first && {
+                    use std::hash::{Hash, Hasher};
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    before.hash(&mut h);
+                    let tried = contexts.entry(target.clone()).or_default();
+                    tried.len() < opts.attempts as usize && tried.insert(h.finish())
+                };
+                if !deepen && !context {
                     continue;
                 }
-                *n = depth;
+                if deepen {
+                    *n = depth;
+                }
                 if let Some(cons) = conditions(&out.path, i)
                     && let Outcome::Sat(x) = solve(
                         &mut solver,
@@ -1266,7 +1371,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         }
     }
     // the fewest cases covering the same directions (greedy set cover)
-    let mut left: HashSet<Dir> = covered.clone();
+    let mut left: HashSet<Dir> = covered.intersection(&counted).cloned().collect();
     let mut kept: Vec<Case> = Vec::new();
     let mut pool: Vec<(Case, HashSet<Dir>)> = cases
         .into_iter()

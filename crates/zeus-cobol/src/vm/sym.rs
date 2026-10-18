@@ -210,6 +210,21 @@ impl Machine {
         }
     }
 
+    /// An operand of an alphanumeric comparison: an unsigned DISPLAY
+    /// integer item compares as its bytes (not read as a number, which
+    /// would assume its digits valid).
+    fn sym_alnum_src(&mut self, cur: usize, s: &Src) -> Option<SymVal> {
+        if let Src::Loc(loc) = s
+            && let DataType::Numeric(t) = self.loc_type(cur, loc)
+            && plain_display(&t)
+            && t.scale == 0
+        {
+            let (a, l) = self.addr(cur, loc).ok()?;
+            return self.sym_read_bytes(a, l).map(SymVal::Str);
+        }
+        self.sym_src(cur, s)
+    }
+
     fn sym_ex(&mut self, cur: usize, e: &Ex) -> Option<(Term, i32)> {
         match e {
             Ex::Load(loc) => {
@@ -331,8 +346,11 @@ impl Machine {
                 ))
             }
             Cx::Cmp(a, r, b, mode) => {
-                let sa = self.sym_src(cur, a);
-                let sb = self.sym_src(cur, b);
+                let (sa, sb) = if *mode == CmpMode::Alnum {
+                    (self.sym_alnum_src(cur, a), self.sym_alnum_src(cur, b))
+                } else {
+                    (self.sym_src(cur, a), self.sym_src(cur, b))
+                };
                 if sa.is_none() && sb.is_none() {
                     return None;
                 }
