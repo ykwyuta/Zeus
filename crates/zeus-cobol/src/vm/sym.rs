@@ -94,6 +94,11 @@ impl Machine {
         }
     }
 
+    /// Drops what follows inputs in `[a, a+l)` (storage set from outside).
+    pub fn sym_forget_area(&mut self, a: usize, l: usize) {
+        self.sym_forget(a, l);
+    }
+
     /// Drops what follows inputs in `[a, a+l)`.
     pub(super) fn sym_forget(&mut self, a: usize, l: usize) {
         let Some(st) = self.sym.as_mut() else { return };
