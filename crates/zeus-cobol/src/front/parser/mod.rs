@@ -75,6 +75,7 @@ pub struct Parser {
     pub(crate) tables: HashSet<String>,
     /// `tables` is known for the program being parsed.
     pub(crate) in_procedure: bool,
+    pub(crate) call_interface: Option<crate::zir::CallInterface>,
 }
 
 pub fn parse(toks: Vec<Token>) -> Result<Vec<Program>> {
@@ -85,9 +86,11 @@ pub fn parse(toks: Vec<Token>) -> Result<Vec<Program>> {
         mnemonics: HashSet::new(),
         tables: HashSet::new(),
         in_procedure: false,
+        call_interface: None,
     };
     let mut programs = Vec::new();
     while !p.eof() {
+        p.call_interface = None;
         programs.push(p.program()?);
     }
     if programs.is_empty() {
@@ -107,6 +110,7 @@ pub fn data_entries_from(text: &str) -> Result<Vec<DataEntry>> {
         mnemonics: HashSet::new(),
         tables: HashSet::new(),
         in_procedure: false,
+        call_interface: None,
     };
     p.data_entries()
 }
@@ -468,7 +472,13 @@ impl Parser {
                 Ok(CharSpec::Text(
                     match w.as_str() {
                         "SPACE" | "SPACES" => " ",
-                        "QUOTE" | "QUOTES" => "\"",
+                        "QUOTE" | "QUOTES" => {
+                            if crate::front::apost() {
+                                "'"
+                            } else {
+                                "\""
+                            }
+                        }
                         _ => "0",
                     }
                     .to_string(),
@@ -718,7 +728,11 @@ impl Parser {
                     fc.vsam_status = Some(self.data_ref()?);
                 }
             } else if self.accept("RESERVE") {
-                fc.reserve = Some(self.integer()?);
+                let buffers = self.integer()?;
+                if buffers > 255 {
+                    return self.err("RESERVE permits at most 255 areas");
+                }
+                fc.reserve = Some(buffers);
                 self.accept("AREA");
                 self.accept("AREAS");
             } else if self.accept("PADDING") {
@@ -783,7 +797,7 @@ impl Parser {
             if self.accept("SAME") {
                 let record = self.accept("RECORD");
                 let sort = self.accept("SORT") || self.accept("SORT-MERGE");
-                self.expect("AREA")?;
+                self.accept("AREA");
                 self.accept("FOR");
                 let mut files = Vec::new();
                 while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
@@ -791,28 +805,35 @@ impl Parser {
                 {
                     files.push(self.name()?);
                 }
-                if files.len() < 2 {
-                    return self.err("SAME AREA requires at least two file names");
+                if files.is_empty() {
+                    return self.err("SAME AREA requires a file name");
                 }
                 if record {
+                    if files.len() > 255 {
+                        return self.err("SAME RECORD AREA permits at most 255 files");
+                    }
                     env.same_record_area.push(files);
+                } else if sort {
+                    env.same_sort_area.push(files);
                 } else if !sort {
                     env.same_area.push(files);
                 }
             } else if self.accept("MULTIPLE") {
-                env.multiple_file_tape = true;
                 self.expect("FILE")?;
-                self.expect("TAPE")?;
+                self.accept("TAPE");
                 self.accept("CONTAINS");
-                while matches!(
-                    self.peek().map(|t| &t.tok),
-                    Some(Tok::Word(_)) | Some(Tok::Num(_))
-                ) && !self.is_any(&["SAME", "MULTIPLE", "RERUN", "APPLY"])
+                let start = env.multiple_file_tape.len();
+                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !self.is_any(&["SAME", "MULTIPLE", "RERUN", "APPLY"])
                 {
-                    self.name()?;
+                    let pos = self.pos();
+                    env.multiple_file_tape.push((self.name()?, pos));
                     if self.accept("POSITION") {
                         self.integer()?;
                     }
+                }
+                if env.multiple_file_tape.len() == start {
+                    return self.err("MULTIPLE FILE requires a file name");
                 }
             } else if self.accept("APPLY") {
                 self.expect("WRITE-ONLY")?;
@@ -827,7 +848,46 @@ impl Parser {
                     return self.err("APPLY WRITE-ONLY file expected");
                 }
             } else if self.is("RERUN") {
-                return self.err("RERUN checkpoint/restart is not implemented");
+                let pos = self.pos();
+                self.expect("RERUN")?;
+                self.accept("ON");
+                let checkpoint = self.name()?;
+                let every = self.accept("EVERY");
+                let (file, records) = if every
+                    || self.is("END")
+                    || matches!(self.peek().map(|t| &t.tok), Some(Tok::Num(_)))
+                {
+                    let records = if self.accept("END") {
+                        self.accept("OF");
+                        if !self.accept("REEL") {
+                            self.expect("UNIT")?;
+                        }
+                        None
+                    } else {
+                        let records = self.integer()?;
+                        if records == 0 {
+                            return self.err("RERUN record interval must be positive");
+                        }
+                        if records > 16_777_215 {
+                            return self.err("RERUN record interval exceeds 16777215");
+                        }
+                        self.expect("RECORDS")?;
+                        Some(records)
+                    };
+                    self.accept("OF");
+                    (Some(self.name()?), records)
+                } else {
+                    (None, None)
+                };
+                env.rerun.push(Rerun {
+                    checkpoint,
+                    file,
+                    records,
+                    pos,
+                });
+                if env.rerun.len() > 32767 {
+                    return self.err("at most 32767 RERUN clauses are allowed");
+                }
             } else {
                 return self.err("I-O-CONTROL clause expected");
             }
@@ -879,22 +939,36 @@ impl Parser {
             ..Procedure::default()
         };
         if self.accept("USING") {
+            let mut by_value = false;
             while !self.is_period() && !self.is_any(&["GIVING", "RETURNING"]) {
-                self.accept("BY");
-                self.accept("REFERENCE");
+                if self.accept("BY") {
+                    if self.accept("REFERENCE") {
+                        by_value = false;
+                    } else if self.accept("VALUE") {
+                        by_value = true;
+                    } else {
+                        return self.err("USING BY requires REFERENCE or VALUE");
+                    }
+                }
                 if self.eof() {
                     break;
                 }
                 proc.using.push(self.data_ref()?);
+                proc.using_by_value.push(by_value);
             }
         }
         if self.accept("GIVING") || self.accept("RETURNING") {
             proc.giving = Some(self.data_ref()?);
         }
         self.expect_period()?;
+        self.call_interfaces();
         if self.accept("DECLARATIVES") {
             self.expect_period()?;
-            while !(self.is("END") && self.is_at(1, "DECLARATIVES")) {
+            loop {
+                self.call_interfaces();
+                if self.is("END") && self.is_at(1, "DECLARATIVES") {
+                    break;
+                }
                 if self.eof() {
                     return self.err("END DECLARATIVES expected");
                 }
@@ -937,6 +1011,7 @@ impl Parser {
     }
 
     fn section(&mut self, declarative: bool) -> Result<Section> {
+        self.call_interfaces();
         let pos = self.pos();
         let mut sec = Section {
             pos,
@@ -949,6 +1024,7 @@ impl Parser {
                 sec.segment = Some(self.integer()?);
             }
             self.expect_period()?;
+            self.call_interfaces();
             if declarative || self.is("USE") {
                 sec.use_stmt = Some(self.use_statement()?);
             }
@@ -1029,7 +1105,22 @@ impl Parser {
             let global = self.accept("GLOBAL");
             self.accept("AFTER");
             self.accept("STANDARD");
-            if !(self.accept("EXCEPTION") || self.accept("ERROR")) {
+            let beginning = if self.accept("BEGINNING") {
+                Some(true)
+            } else if self.accept("ENDING") {
+                Some(false)
+            } else {
+                None
+            };
+            let reel = if self.accept("FILE") {
+                Some(false)
+            } else if self.accept("REEL") || self.accept("UNIT") {
+                Some(true)
+            } else {
+                None
+            };
+            let label = self.accept("LABEL");
+            if !label && !(self.accept("EXCEPTION") || self.accept("ERROR")) {
                 return self.err("EXCEPTION or ERROR expected");
             }
             self.accept("PROCEDURE");
@@ -1049,7 +1140,16 @@ impl Parser {
                 }
                 UseTarget::Files(files)
             };
-            UseStmt::Error(target, global)
+            if label {
+                UseStmt::Label {
+                    target,
+                    global,
+                    beginning,
+                    reel,
+                }
+            } else {
+                UseStmt::Error(target, global)
+            }
         };
         self.expect_period()?;
         Ok(stmt)
@@ -1057,7 +1157,18 @@ impl Parser {
 
     /// Statements up to and including a period.
     fn sentence(&mut self) -> Result<Vec<Stmt>> {
+        let start = self.i;
         let stmts = self.statements()?;
+        if stmts.is_empty()
+            && self.i > start
+            && (self.eof()
+                || self.at_program_end()
+                || (self.is("END") && self.is_at(1, "DECLARATIVES"))
+                || self.is_paragraph_header()
+                || self.is_section_header())
+        {
+            return Ok(stmts);
+        }
         if stmts.is_empty() && !self.is_period() {
             return self.err("statement expected");
         }

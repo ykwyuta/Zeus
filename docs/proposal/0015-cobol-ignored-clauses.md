@@ -32,7 +32,7 @@ RESERVE・物理ブロック・テープ・再帰 CALL の追加実装は
 | I06 | `RECORD DELIMITER`, `select` | 名前を捨て、存在だけ保存 | LR p.144。実行への効果なし。可変長レコード等の制約あり | 無処理を維持。装置種別・可変長条件の厳密な検査は残る |
 | I07 | `SAME AREA`, `front/parser/mod.rs::io_control` | RECORD 以外の指定とファイル名を破棄 | LR pp.154–155。QSAM は文書、VSAM は SAME RECORD AREA 相当。同時 OPEN に制約 | QSAM と VSAM を区別し、VSAM のレコード領域共有と同時 OPEN の実行エラーを追加。2 ファイル以上を検査 |
 | I08 | `SAME SORT/SORT-MERGE AREA`, `io_control` | ファイル名を破棄 | LR pp.156–157。実行への効果なし。ただし参照先等の制約あり | 基本構文と 2 ファイル以上を検査。参照先の種別、SORT 中の非 SORT ファイルの OPEN 禁止等は残る |
-| I09 | `MULTIPLE FILE TAPE`, `io_control` | ほぼ任意の語・数字を破棄 | LR p.156。実行への効果なし。DD LABEL が処理 | FILE/TAPE、ファイル名、POSITION 整数を構文解析。媒体・DD LABEL の実現はデータセット環境の課題 |
+| I09 | `MULTIPLE FILE TAPE`, `io_control` | ほぼ任意の語・数字を破棄 | LR pp.152,156。実行への効果なし。DD LABEL が処理 | FILE必須、TAPE/CONTAINS任意、ファイル名、POSITION整数を解析。同一プログラム内のQSAM FDか検査。物理配置は仮想媒体・DD LABELが制御 |
 | I10 | `RERUN`, `io_control` | 任意トークンとして消費 | LR pp.153–154。チェックポイントを取得 | **未実装を診断**。チェックポイント取得・再始動は提供しない |
 | I11 | `APPLY WRITE-ONLY`, `io_control` | 任意トークンとして消費 | LR p.157。QSAM 可変長ブロックのバッファー充填を変更 | V 形式のブロック充填に実装。次レコードの実長を基準に充填する。詳細は 0016 |
 | I12 | `RECORDING MODE`, `front/parser/data.rs::file_description` | モード名を捨て、長さだけから形式決定 | LR pp.190–191。QSAM の F/V/U/S。VSAM は無視 | F/V/S/U の物理ブロックを実装。S は SDW による分割・復元、U は AWS のブロック境界を使用。既存ホスト形式の扱いは 0016 |

@@ -18,7 +18,7 @@ OPTIONS
   -I DIR              Add a %INCLUDE search directory; repeat as needed.
   -o FILE             Output module or executable (compile).
   --margins FIRST,LAST Restrict source columns, e.g. --margins 2,72.
-  --ccsid N           EBCDIC code page: 37, 930, 939, 1390 or 1399.
+  --ccsid N           EBCDIC code page: 54 EBCDIC pages (codepages/README.md).
   -L DIR              Add a load library for external procedures; repeatable.
                       The module/source directory is also searched.
   --parm TEXT         Supply the main procedure's PARM.

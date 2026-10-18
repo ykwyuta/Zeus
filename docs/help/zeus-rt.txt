@@ -17,7 +17,7 @@ OPTIONS
   --dd NAME=PATH  Allocate a DD to a dataset file; repeatable.
   --parm TEXT     Supply the EXEC PARM. A positional TEXT also sets PARM;
                   quote spaces. The last supplied PARM value wins.
-  --ccsid N       Text code page: 37, 930, 939, 1390 or 1399.
+  --ccsid N       Text code page: 54 EBCDIC pages (codepages/README.md).
   --help, -h      Print this help without running the embedded program.
 
 INPUT, OUTPUT AND ENVIRONMENT

@@ -16,6 +16,8 @@ use crate::zir::{self, Cx, DataType, Ex, FileDef, Instr, Loc, Op, Src};
 type Label = u32;
 
 pub struct Gen<'a> {
+    entries: Vec<zir::EntryPoint>,
+    nested: bool,
     /// EXEC statements (labels unresolved until the end).
     execs: Vec<zir::ExecDef>,
     /// SQL cursor declarations (DECLARE c CURSOR FOR ...) by cursor name.
@@ -67,6 +69,7 @@ pub struct Gen<'a> {
     dbg: Debugging,
     /// Generating declaratives (no debugging triggers there).
     in_decl: bool,
+    in_label_decl: bool,
     /// Report Writer reports.
     reports: Vec<zir::ReportDef>,
     pub pos: Pos,
@@ -110,6 +113,33 @@ impl<'a> Gen<'a> {
         outer: Option<(u32, &DataModel)>,
         ancestors: &[(u32, &'a ast::Program)],
     ) -> Result<Gen<'a>> {
+        if prog.env.files.len() > 65535 {
+            return Err(Diag::error(
+                prog.pos,
+                "at most 65535 SELECT file names are allowed",
+            ));
+        }
+        if crate::front::lp64()
+            && prog
+                .procedure
+                .sections
+                .iter()
+                .flat_map(|s| &s.paragraphs)
+                .flat_map(|p| &p.sentences)
+                .flatten()
+                .any(|s| matches!(s,Stmt::GoTo {targets,..} if targets.is_empty()))
+        {
+            return Err(Diag::error(
+                prog.pos,
+                "LP(64) cannot use GO TO without a procedure name",
+            ));
+        }
+        if crate::front::thread() && !prog.recursive {
+            return Err(Diag::error(
+                prog.pos,
+                "THREAD requires PROGRAM-ID IS RECURSIVE",
+            ));
+        }
         if prog.recursive && (outer.is_some() || !prog.nested.is_empty() || prog.initial) {
             return Err(Diag::error(
                 prog.pos,
@@ -145,9 +175,19 @@ impl<'a> Gen<'a> {
         };
         let mut dm = super::data::build(prog, &settings)?;
         if let Some((idx, odm)) = outer {
+            for item in &odm.items {
+                if item.global
+                    && item.area == Area::Special
+                    && let Some(name) = &item.name
+                {
+                    dm.by_name.remove(name);
+                }
+            }
             dm.import_globals(odm, idx);
         }
         let mut g = Gen {
+            entries: Vec::new(),
+            nested: outer.is_some(),
             prog,
             dm,
             code: Vec::new(),
@@ -179,6 +219,7 @@ impl<'a> Gen<'a> {
             segmented: false,
             dbg: Debugging::default(),
             in_decl: false,
+            in_label_decl: false,
             reports: Vec::new(),
             execs: Vec::new(),
             sql_cursors: sql_cursors(prog),
@@ -243,10 +284,31 @@ impl<'a> Gen<'a> {
 
     fn environment(&mut self) -> Result<()> {
         let env = &self.prog.env;
+        if let Some(item) = self
+            .dm
+            .items
+            .iter()
+            .find(|item| matches!(item.name.as_deref(), Some("SHIFT-IN" | "SHIFT-OUT")))
+        {
+            return Err(Diag::error(
+                item.pos,
+                "SHIFT-IN and SHIFT-OUT are read-only special registers",
+            ));
+        }
         for (name, ords, _alpha) in &env.symbolic_chars {
+            if matches!(name.as_str(), "SHIFT-IN" | "SHIFT-OUT") {
+                return Err(Diag::error(
+                    self.prog.pos,
+                    "SHIFT-IN and SHIFT-OUT cannot be redefined",
+                ));
+            }
             self.symbolics
                 .insert(name.clone(), native_ordinal_byte(ords[0]));
         }
+        self.symbolics.extend([
+            ("SHIFT-IN".into(), crate::codepage::SI),
+            ("SHIFT-OUT".into(), crate::codepage::SO),
+        ]);
         for class in &env.classes {
             let mut set = Vec::new();
             for item in &class.items {
@@ -350,12 +412,6 @@ impl<'a> Gen<'a> {
                 "APPLY WRITE-ONLY requires QSAM sequential organization",
             ));
         }
-        if fc.organization == Organization::Sequential && !fd.sort && !fd.label_records.is_empty() {
-            return Err(Diag::error(
-                fd.pos,
-                "user LABEL RECORDS require unsupported tape label processing",
-            ));
-        }
         if let Some(padding) = &fc.padding
             && owner.is_none()
         {
@@ -457,12 +513,8 @@ impl<'a> Gen<'a> {
                     ));
                 }
             };
-            if ascii && !fd.sort && crate::codepage::active().ccsid != 37 {
-                return Err(Diag::error(
-                    fd.pos,
-                    "CODE-SET ASCII conversion currently requires internal CCSID 37",
-                ));
-            }
+            // ASCII file conversion has its own code set; IBM specifies
+            // that the CODEPAGE compilation option does not select it.
             if ascii && recording_mode == Some('S') {
                 return Err(Diag::error(
                     fd.pos,
@@ -570,6 +622,19 @@ impl<'a> Gen<'a> {
             _ => None,
         };
         let def = FileDef {
+            label_records: fd
+                .label_records
+                .iter()
+                .map(|name| {
+                    self.loc(&DataRef {
+                        name: name.clone(),
+                        qualifiers: vec![fc.name.clone()],
+                        subscripts: vec![],
+                        refmod: None,
+                        pos: fd.pos,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?,
             name: fc.name.clone(),
             assign: fc.assign.clone(),
             org: match fc.organization {
@@ -589,21 +654,32 @@ impl<'a> Gen<'a> {
             max_len,
             recording_mode,
             block_size: if qsam {
-                fd.block_contains.map(|(_, max, records)| {
-                    if records && max != 0 {
-                        max.saturating_mul(
-                            max_len + if recording_mode == Some('V') { 4 } else { 0 },
-                        )
-                        .saturating_add(if recording_mode == Some('V') { 4 } else { 0 })
-                    } else {
-                        max
-                    }
-                })
+                fd.block_contains
+                    .map(|(_, max, records)| {
+                        if records && max != 0 {
+                            max.saturating_mul(
+                                max_len + if recording_mode == Some('V') { 4 } else { 0 },
+                            )
+                            .saturating_add(if recording_mode == Some('V') { 4 } else { 0 })
+                        } else {
+                            max
+                        }
+                    })
+                    .or_else(|| {
+                        (crate::front::block0() && recording_mode != Some('U')).then_some(0)
+                    })
             } else {
                 None
             },
             reserve: fc.reserve,
-            write_only: file_env.apply_write_only.contains(&fc.name),
+            write_only: file_env.apply_write_only.contains(&fc.name)
+                || (qsam && recording_mode == Some('V') && crate::front::awo()),
+            same_sort_area: file_env
+                .same_sort_area
+                .iter()
+                .filter(|g| g.contains(&fc.name))
+                .flat_map(|g| g.iter().filter(|name| **name != fc.name).cloned())
+                .collect(),
             label_standard: fd.label_standard,
             code_set_ascii,
             same_area: if matches!(
@@ -681,7 +757,8 @@ impl<'a> Gen<'a> {
             for p in &sec.paragraphs {
                 // A paragraph consisting of a single GO TO can be ALTERed.
                 let alterable = p.sentences.len() == 1
-                    && matches!(p.sentences[0].as_slice(), [Stmt::Line(_), Stmt::GoTo { targets, depending: None, .. }] if targets.len() <= 1);
+                    && matches!(p.sentences[0].as_slice(), [Stmt::Line(_), Stmt::GoTo { targets, depending: None, .. }]
+                        if targets.len() <= 1 && !targets.iter().any(|t| t.name == "MORE-LABELS"));
                 if alterable {
                     let slot = self.alter_init.len() as u32;
                     self.alter_init.push(u32::MAX);
@@ -1033,9 +1110,66 @@ impl<'a> Gen<'a> {
         self.in_decl = true;
         let mut para_idx = decl_start as u32;
         let mut uses = Vec::new();
+        let mut label_uses: Vec<zir::LabelUse> = Vec::new();
         for sec in &proc.declaratives {
             let first = para_idx;
             para_idx = self.gen_section(sec, para_idx)?;
+            if let Some(UseStmt::Label {
+                target,
+                global,
+                beginning,
+                reel,
+            }) = &sec.use_stmt
+            {
+                let (files, mode) = match target {
+                    UseTarget::Files(names) => (
+                        names
+                            .iter()
+                            .map(|name| self.file(name))
+                            .collect::<Result<Vec<_>>>()?,
+                        None,
+                    ),
+                    UseTarget::Input => (vec![], Some(zir::OpenMode::Input)),
+                    UseTarget::Output => (vec![], Some(zir::OpenMode::Output)),
+                    UseTarget::InputOutput => (vec![], Some(zir::OpenMode::InputOutput)),
+                    UseTarget::Extend => (vec![], Some(zir::OpenMode::Extend)),
+                };
+                for &file in &files {
+                    if self.files[file as usize].sort || !self.files[file as usize].label_standard {
+                        return Err(Diag::error(
+                            self.pos,
+                            "LABEL declarative requires a nonsort file with standard labels",
+                        ));
+                    }
+                }
+                for prior in &label_uses {
+                    let same_target = if files.is_empty() && prior.files.is_empty() {
+                        mode == prior.mode
+                    } else {
+                        files.iter().any(|file| prior.files.contains(file))
+                    };
+                    if same_target
+                        && (beginning.is_none()
+                            || prior.beginning.is_none()
+                            || *beginning == prior.beginning)
+                        && (reel.is_none() || prior.reel.is_none() || *reel == prior.reel)
+                    {
+                        return Err(Diag::error(
+                            self.pos,
+                            "overlapping LABEL declaratives request multiple procedures for the same event",
+                        ));
+                    }
+                }
+                label_uses.push(zir::LabelUse {
+                    files,
+                    mode,
+                    start: first,
+                    end: para_idx - 1,
+                    global: *global,
+                    beginning: *beginning,
+                    reel: *reel,
+                });
+            }
             if let Some(UseStmt::Error(target, global)) = &sec.use_stmt {
                 let (files, mode) = match target {
                     UseTarget::Files(names) => (
@@ -1179,6 +1313,44 @@ impl<'a> Gen<'a> {
                 }
             })
             .collect::<Result<Vec<_>>>()?;
+        let using_by_value = if !self.prog.procedure.using.is_empty() {
+            self.prog.procedure.using_by_value.clone()
+        } else {
+            self.prog
+                .procedure
+                .sections
+                .iter()
+                .flat_map(|s| &s.paragraphs)
+                .flat_map(|p| &p.sentences)
+                .flatten()
+                .find_map(|st| match st {
+                    Stmt::Entry { using_by_value, .. } => Some(using_by_value.clone()),
+                    _ => None,
+                })
+                .unwrap_or_default()
+        };
+        for (r, &value) in self
+            .prog
+            .procedure
+            .using
+            .iter()
+            .chain(&entry_using)
+            .zip(&using_by_value)
+        {
+            let id = self.dm.resolve(r)?;
+            let item = &self.dm.items[id];
+            let desc = &self.dm.descs[item.desc as usize];
+            if !matches!(item.level, 1 | 77)
+                || r.refmod.is_some()
+                || !r.subscripts.is_empty()
+                || (value && !desc.ty.by_value_allowed(desc.len))
+            {
+                return Err(Diag::error(
+                    r.pos,
+                    "invalid formal USING item or BY VALUE category",
+                ));
+            }
+        }
         let result = if let Some(r) = &self.prog.procedure.giving {
             let id = self.dm.resolve(r)?;
             let item = &self.dm.items[id];
@@ -1206,6 +1378,117 @@ impl<'a> Gen<'a> {
             None
         };
         Ok(zir::ProgramCode {
+            ccsid: None,
+            compiled_at: None,
+            invocation_storage: {
+                self.dm
+                    .items
+                    .iter()
+                    .filter(|item| {
+                        item.area == Area::Special
+                            && item.owner.is_none()
+                            && ((self.prog.recursive
+                                && matches!(
+                                    item.name.as_deref(),
+                                    Some(
+                                        "RETURN-CODE"
+                                            | "TALLY"
+                                            | "SORT-RETURN"
+                                            | "SORT-CONTROL"
+                                            | "SORT-CORE-SIZE"
+                                            | "SORT-FILE-SIZE"
+                                            | "SORT-MESSAGE"
+                                            | "SORT-MODE-SIZE"
+                                    )
+                                ))
+                                || item.index_of.is_some_and(|table| {
+                                    let table = &self.dm.items[table];
+                                    (self.prog.recursive && matches!(table.area, Area::Linkage(_)))
+                                        || (table.area == Area::Working
+                                            && self.dm.local_storage.is_some_and(|(start, len)| {
+                                                table.offset >= start && table.offset < start + len
+                                            }))
+                                }))
+                    })
+                    .map(|item| item.desc)
+                    .collect()
+            },
+            ssrange: crate::front::ssrange(),
+            dynam: crate::front::dynam(),
+            dll: crate::front::dll() || crate::front::lp64(),
+            exportall: crate::front::exportall(),
+            thread: crate::front::thread(),
+            lp64: crate::front::lp64(),
+            decimal_comma: self.prog.env.decimal_point_comma,
+            currency_sign: self.prog.env.currency_sign.clone(),
+            rerun: self
+                .prog
+                .env
+                .rerun
+                .iter()
+                .map(|r| {
+                    if self.prog.recursive {
+                        return Err(Diag::error(
+                            r.pos,
+                            "RERUN is forbidden in RECURSIVE programs",
+                        ));
+                    }
+                    if self
+                        .prog
+                        .env
+                        .files
+                        .iter()
+                        .any(|f| zeus_ds::dd::same_assignment(&f.assign, &r.checkpoint))
+                    {
+                        return Err(Diag::error(
+                            r.pos,
+                            "RERUN checkpoint assignment must be distinct from file assignments",
+                        ));
+                    }
+                    let file = r.file.as_ref().map(|name| self.file(name)).transpose()?;
+                    if let Some(f) = file {
+                        let def = &self.files[f as usize];
+                        if def.owner.is_some()
+                            || def.external
+                            || def.sort
+                            || def.org != zir::Org::Sequential
+                        {
+                            return Err(Diag::error(
+                                r.pos,
+                                "RERUN requires a locally declared non-EXTERNAL sequential file",
+                            ));
+                        }
+                    } else if parent.is_some() {
+                        return Err(Diag::error(
+                            r.pos,
+                            "sort RERUN cannot occur in a contained program",
+                        ));
+                    }
+                    if self
+                        .prog
+                        .env
+                        .rerun
+                        .iter()
+                        .filter(|other| {
+                            other.file == r.file && other.records.is_some() == r.records.is_some()
+                        })
+                        .count()
+                        > 1
+                    {
+                        return Err(Diag::error(
+                            r.pos,
+                            "duplicate RERUN interval for the same file",
+                        ));
+                    }
+                    Ok(zir::Rerun {
+                        checkpoint: r.checkpoint.clone(),
+                        file,
+                        records: r.records,
+                    })
+                })
+                .collect::<Result<Vec<_>>>()?,
+            dynamic_init: self.dm.dynamic_init.clone(),
+            numeric: Some(crate::front::numeric()),
             name: self.prog.name.clone(),
             recursive: self.prog.recursive,
             initial: self.prog.initial,
@@ -1219,6 +1502,8 @@ impl<'a> Gen<'a> {
             files: self.files,
             linkage_count: self.dm.linkage_count,
             using,
+            using_by_value,
+            entries: self.entries,
             result,
             temps: self.temps,
             alter_slots: alter_init.len() as u32,
@@ -1242,6 +1527,7 @@ impl<'a> Gen<'a> {
                 .map(|&id| self.dm.items[id].desc),
             debugging: false,
             uses,
+            label_uses,
             return_code: self
                 .dm
                 .by_name
@@ -1733,6 +2019,8 @@ impl<'a> Gen<'a> {
     }
 
     fn gen_section(&mut self, sec: &Section, mut para_idx: u32) -> Result<u32> {
+        self.in_label_decl = matches!(sec.use_stmt, Some(UseStmt::Label { .. }));
+        self.dm.label_scope = self.in_label_decl;
         self.current_section = sec.name.clone();
         // A USE AFTER ERROR section named in USE FOR DEBUGGING.
         let use_debug = if self.in_decl && matches!(sec.use_stmt, Some(UseStmt::Error(..))) {
@@ -2020,13 +2308,56 @@ impl<'a> Gen<'a> {
     }
 
     fn stmt_code(&mut self, s: &Stmt) -> Result<()> {
-        if self.prog.recursive
+        let receivers = match s {
+            Stmt::Add { to, giving, .. } => Some(if giving.is_empty() { to } else { giving }),
+            Stmt::Subtract {
+                subtrahend_of,
+                giving,
+                ..
+            } => Some(if giving.is_empty() {
+                subtrahend_of
+            } else {
+                giving
+            }),
+            Stmt::Multiply { into, giving, .. } | Stmt::Divide { into, giving, .. } => {
+                Some(if giving.is_empty() { into } else { giving })
+            }
+            Stmt::Compute { targets, .. } => Some(targets),
+            _ => None,
+        };
+        if let Some(receivers) = receivers {
+            let mut decimals = 0;
+            let mut floating = false;
+            for receiver in receivers {
+                let mut items = vec![self.dm.resolve(&receiver.target)?];
+                while let Some(id) = items.pop() {
+                    let item = &self.dm.items[id];
+                    items.extend(item.children.iter().copied());
+                    match self.dm.descs[item.desc as usize].ty {
+                        DataType::Numeric(t) => {
+                            decimals = decimals.max(t.scale + i32::from(receiver.rounded))
+                        }
+                        DataType::NumericEdited { scale, .. } => {
+                            decimals = decimals.max(scale + i32::from(receiver.rounded))
+                        }
+                        DataType::Float { .. } | DataType::ExternalFloat { .. } => floating = true,
+                        _ => {}
+                    }
+                }
+            }
+            self.emit(Instr::NumericContext { decimals, floating });
+        }
+        if (self.prog.recursive || crate::front::lp64())
             && (matches!(s, Stmt::Alter(_))
                 || matches!(s, Stmt::GoTo { targets, .. } if targets.is_empty()))
         {
             return Err(Diag::error(
                 self.pos,
-                "RECURSIVE cannot use ALTER or GO TO without a procedure name",
+                if crate::front::lp64() {
+                    "LP(64) cannot use ALTER or GO TO without a procedure name"
+                } else {
+                    "RECURSIVE cannot use ALTER or GO TO without a procedure name"
+                },
             ));
         }
         match s {
@@ -2332,6 +2663,9 @@ impl<'a> Gen<'a> {
                 self.pos = *pos;
                 match depending {
                     None => match targets.first() {
+                        Some(t) if self.in_label_decl && t.name == "MORE-LABELS" => {
+                            self.emit(Instr::MoreLabels);
+                        }
                         Some(t) => {
                             let l = self.proc_start(t)?;
                             self.debug_goto();
@@ -2489,13 +2823,11 @@ impl<'a> Gen<'a> {
                 for (f, opt) in files {
                     let fi = self.file(f)?;
                     let lock = opt.as_deref() == Some("LOCK");
-                    if opt.as_deref() == Some("NO REWIND")
-                        || opt.as_deref() == Some("REEL FOR REMOVAL")
-                    {
+                    if opt.as_deref() == Some("NO REWIND") {
                         self.emit(Instr::CloseTape {
                             file: fi,
                             no_rewind: opt.as_deref() == Some("NO REWIND"),
-                            removal: opt.as_deref() == Some("REEL FOR REMOVAL"),
+                            removal: false,
                         });
                     } else if matches!(opt.as_deref(), Some(o) if o.starts_with("REEL") || o.starts_with("UNIT"))
                     {
@@ -2640,6 +2972,7 @@ impl<'a> Gen<'a> {
                 self.handlers(invalid_key, Cx::IoCond)?;
             }
             Stmt::Call {
+                interface,
                 program,
                 using,
                 returning,
@@ -2647,6 +2980,7 @@ impl<'a> Gen<'a> {
                 pos,
             } => {
                 self.pos = *pos;
+                self.validate_call_target(program, true)?;
                 let program = self.src(program)?;
                 let mut args = Vec::new();
                 for a in using {
@@ -2665,7 +2999,43 @@ impl<'a> Gen<'a> {
                             };
                             zir::CallArgMode::Content(self.src(op)?, len)
                         }
-                        CallArg::Value(op) => zir::CallArgMode::Value(self.ex_operand(op)?),
+                        CallArg::Value(op) => {
+                            match op {
+                                Operand::Ref(r) if self.symbolics.contains_key(&r.name) && r.qualifiers.is_empty() && r.subscripts.is_empty() && r.refmod.is_none() => {},
+                                Operand::Ref(r) => {
+                                    let loc = self.loc(r)?;
+                                    let desc = &self.dm.descs[loc.desc as usize];
+                                    let valid = if let Some((_, length)) = &r.refmod {
+                                        let display = desc.ty.is_national() || matches!(desc.ty,
+                                            DataType::Group | DataType::Alphabetic { .. } | DataType::Alphanumeric { .. }
+                                            | DataType::NumericEdited { national: false, .. } | DataType::AlphanumericEdited { national: false, .. }
+                                            | DataType::ExternalFloat { national: false, .. })
+                                            || matches!(&desc.ty, DataType::Numeric(t) if t.usage == zir::NumUsage::Display);
+                                        let length_valid = match length.as_deref() {
+                                            Some(Expr::Operand(Operand::Lit(Literal::Num(n)))) => n.parse::<u32>() == Ok(1),
+                                            _ => true, // Runtime verifies a computed slice's width.
+                                        };
+                                        display && length_valid
+                                    } else { desc.ty.by_value_allowed(desc.len) };
+                                    if !valid {
+                                        return Err(Diag::error(r.pos, "invalid CALL BY VALUE data category or length"));
+                                    }
+                                }
+                                Operand::Lit(Literal::Num(n)) if !n.contains('E') => {
+                                    if n.chars().filter(char::is_ascii_digit).count() > 9 {
+                                        return Err(Diag::error(*pos, "BY VALUE fixed-point literal must contain at most nine digits"));
+                                    }
+                                }
+                                Operand::Lit(l @ (Literal::Str(_) | Literal::Hex(_))) if super::lit::literal_bytes(l).len() != 1 => return Err(Diag::error(*pos, "BY VALUE character literal must have length one")),
+                                Operand::Lit(Literal::National(b)) if b.len() != 2 => return Err(Diag::error(*pos, "BY VALUE national literal must have length one")),
+                                _ => {},
+                            }
+                            match op {
+                                Operand::Ref(_) | Operand::Lit(Literal::Str(_) | Literal::Hex(_) | Literal::National(_))
+                                    | Operand::Fig(ast::Figurative::Space | ast::Figurative::Quote | ast::Figurative::HighValue | ast::Figurative::LowValue) => zir::CallArgMode::ValueData(self.src(op)?),
+                                _ => zir::CallArgMode::Value(self.ex_operand(op)?),
+                            }
+                        }
                         CallArg::Omitted => zir::CallArgMode::Omitted,
                     });
                 }
@@ -2674,6 +3044,7 @@ impl<'a> Gen<'a> {
                     None => None,
                 };
                 self.emit(Instr::Call {
+                    interface: *interface,
                     program,
                     args,
                     returning,
@@ -2682,6 +3053,7 @@ impl<'a> Gen<'a> {
             }
             Stmt::Cancel(progs) => {
                 for p in progs {
+                    self.validate_call_target(p, false)?;
                     let s = self.src(p)?;
                     self.emit(Instr::Cancel(s));
                 }
@@ -2778,13 +3150,59 @@ impl<'a> Gen<'a> {
             }
             // Alternate entry points are recorded only; executed in line,
             // ENTRY does nothing.
-            Stmt::Entry { .. } => {
+            Stmt::Entry {
+                name,
+                using,
+                using_by_value,
+                pos,
+            } => {
                 if self.prog.procedure.giving.is_some() {
                     return Err(Diag::error(
                         self.pos,
                         "PROCEDURE RETURNING cannot be combined with ENTRY",
                     ));
                 }
+                let name = name.to_ascii_uppercase();
+                if self.nested
+                    || self.prog.name.eq_ignore_ascii_case(&name)
+                    || self.entries.iter().any(|e| e.name == name)
+                {
+                    return Err(Diag::error(
+                        *pos,
+                        "ENTRY must be non-nested and its name must be unique",
+                    ));
+                }
+                let mut slots = Vec::new();
+                for (index, r) in using.iter().enumerate() {
+                    let id = self.dm.resolve(r)?;
+                    let item = &self.dm.items[id];
+                    let Area::Linkage(slot) = item.area else {
+                        return Err(Diag::error(r.pos, "ENTRY USING requires a LINKAGE item"));
+                    };
+                    if !matches!(item.level, 1 | 77)
+                        || !r.subscripts.is_empty()
+                        || r.refmod.is_some()
+                        || slots.contains(&slot)
+                    {
+                        return Err(Diag::error(
+                            r.pos,
+                            "ENTRY USING requires unique level 01/77 LINKAGE items",
+                        ));
+                    }
+                    slots.push(slot);
+                    let desc = &self.dm.descs[item.desc as usize];
+                    if using_by_value.get(index) == Some(&true)
+                        && !desc.ty.by_value_allowed(desc.len)
+                    {
+                        return Err(Diag::error(r.pos, "invalid ENTRY USING BY VALUE category"));
+                    }
+                }
+                self.entries.push(zir::EntryPoint {
+                    name,
+                    using: slots,
+                    using_by_value: using_by_value.clone(),
+                    pc: self.code.len() as u32,
+                });
             }
             Stmt::Exec(e) => {
                 self.pos = e.pos;
@@ -2800,17 +3218,77 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
+    /// CALL/CANCEL names have DISPLAY categories; entry pointers are a
+    /// separate CALL format, never a license to treat any numeric as a name.
+    fn validate_call_target(&mut self, target: &Operand, pointers: bool) -> Result<()> {
+        let valid = match target {
+            Operand::Lit(Literal::Str(_) | Literal::Hex(_)) => true,
+            Operand::Ref(r) => {
+                let loc = self.loc(r)?;
+                let ty = &self.dm.descs[loc.desc as usize].ty;
+                let display = matches!(
+                    ty,
+                    DataType::Group | DataType::Alphabetic { .. } | DataType::Alphanumeric { .. }
+                ) || matches!(ty, DataType::Numeric(t) if t.usage == zir::NumUsage::Display);
+                display
+                    || (r.refmod.is_some()
+                        && matches!(
+                            ty,
+                            DataType::NumericEdited {
+                                national: false,
+                                ..
+                            } | DataType::AlphanumericEdited {
+                                national: false,
+                                ..
+                            } | DataType::ExternalFloat {
+                                national: false,
+                                ..
+                            }
+                        ))
+                    || (pointers && ty.is_entry_pointer() && r.refmod.is_none())
+            }
+            _ => false,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(Diag::error(
+                self.pos,
+                if pointers {
+                    "CALL target requires an alphanumeric literal, a DISPLAY alphabetic/alphanumeric/numeric item, or an entry pointer"
+                } else {
+                    "CANCEL target requires an alphanumeric literal or a DISPLAY alphabetic/alphanumeric/numeric item"
+                },
+            ))
+        }
+    }
+
     fn set(&mut self, set: &SetStmt) -> Result<()> {
         match set {
-            SetStmt::Entry(targets, name) => {
+            SetStmt::Entry(targets, name, interface) => {
                 let valid_name = match name {
-                    Operand::Lit(Literal::Str(_)) => true,
+                    Operand::Lit(Literal::Str(_) | Literal::Hex(_)) => true,
                     Operand::Ref(r) => {
                         let loc = self.loc(r)?;
-                        matches!(
-                            self.dm.descs[loc.desc as usize].ty,
-                            DataType::Alphanumeric { .. }
-                        )
+                        let ty = &self.dm.descs[loc.desc as usize].ty;
+                        matches!(ty, DataType::Group | DataType::Alphanumeric { .. })
+                            || (r.refmod.is_some()
+                                && (matches!(
+                                    ty,
+                                    DataType::Alphabetic { .. }
+                                        | DataType::NumericEdited {
+                                            national: false,
+                                            ..
+                                        }
+                                        | DataType::AlphanumericEdited {
+                                            national: false,
+                                            ..
+                                        }
+                                        | DataType::ExternalFloat {
+                                            national: false,
+                                            ..
+                                        }
+                                ) || matches!(ty, DataType::Numeric(t) if t.usage == zir::NumUsage::Display)))
                     }
                     _ => false,
                 };
@@ -2834,7 +3312,11 @@ impl<'a> Gen<'a> {
                     locs.push(loc);
                 }
                 let name = self.src(name)?;
-                self.emit(Instr::SetEntry(locs, name));
+                if let Some(dynamic) = interface {
+                    self.emit(Instr::SetEntryWithInterface(locs, name, *dynamic));
+                } else {
+                    self.emit(Instr::SetEntry(locs, name));
+                }
             }
             SetStmt::To(targets, value) => {
                 let v = match value {
@@ -2969,7 +3451,9 @@ impl<'a> Gen<'a> {
                 DataType::Alphanumeric { .. } | DataType::Group => "ALPHANUMERIC",
                 DataType::Dbcs => "DBCS",
                 DataType::National => "NATIONAL",
-                DataType::Numeric(_) | DataType::Float { .. } => "NUMERIC",
+                DataType::Numeric(_) | DataType::Float { .. } | DataType::ExternalFloat { .. } => {
+                    "NUMERIC"
+                }
                 DataType::NumericEdited { .. } => "NUMERIC-EDITED",
                 DataType::AlphanumericEdited { national: true, .. } => "NATIONAL-EDITED",
                 DataType::AlphanumericEdited { .. } => "ALPHANUMERIC-EDITED",
@@ -3615,6 +4099,14 @@ impl<'a> Gen<'a> {
             } => self.sort_merge(file, keys, false, collating.as_deref(), None, output, using),
             Stmt::Release { record, from } => {
                 let fi = self.file_of_record(record)?;
+                if !self.files[fi as usize].sort
+                    || self.dm.items[self.dm.resolve(record)?].parent.is_some()
+                {
+                    return Err(Diag::error(
+                        self.pos,
+                        "RELEASE requires an SD logical record",
+                    ));
+                }
                 let from = match from {
                     Some(f) => Some(self.src(f)?),
                     None => None,
@@ -3624,6 +4116,9 @@ impl<'a> Gen<'a> {
             }
             Stmt::Return { file, into, at_end } => {
                 let fi = self.file(file)?;
+                if !self.files[fi as usize].sort {
+                    return Err(Diag::error(self.pos, "RETURN requires an SD file"));
+                }
                 let into = match into {
                     Some(i) => Some(self.loc(i)?),
                     None => None,
@@ -3647,10 +4142,54 @@ impl<'a> Gen<'a> {
         merge_using: &[String],
     ) -> Result<()> {
         let fi = self.file(file)?;
+        if crate::front::thread() {
+            return Err(Diag::error(
+                self.pos,
+                "file SORT/MERGE is not supported with THREAD",
+            ));
+        }
+        if input.is_none() && merge_using.len() < 2 {
+            return Err(Diag::error(
+                self.pos,
+                "MERGE requires at least two USING files",
+            ));
+        }
+        if !self.files[fi as usize].sort {
+            return Err(Diag::error(self.pos, "SORT/MERGE requires an SD file"));
+        }
         let mut ks = Vec::new();
         for (asc, refs) in keys {
             for r in refs {
+                if self.file_of_record(r)? != fi {
+                    return Err(Diag::error(
+                        r.pos,
+                        "SORT/MERGE key must belong to its SD file",
+                    ));
+                }
                 let l = self.loc(r)?;
+                let desc = &self.dm.descs[l.desc as usize];
+                if l.refmod.is_some()
+                    || !l.subs.is_empty()
+                    || !desc.dims.is_empty()
+                    || desc.dynamic_offset.is_some()
+                    || desc.dynamic_len.is_some()
+                    || desc.odo.is_some()
+                    || matches!(
+                        desc.ty,
+                        DataType::Dbcs
+                            | DataType::Index
+                            | DataType::Pointer
+                            | DataType::ProcedurePointer
+                            | DataType::FunctionPointer
+                            | DataType::ExternalFloat { national: true, .. }
+                    )
+                    || matches!(&desc.ty,DataType::Numeric(t) if t.usage == zir::NumUsage::National)
+                {
+                    return Err(Diag::error(
+                        r.pos,
+                        "invalid SORT/MERGE key category or variable/table layout",
+                    ));
+                }
                 ks.push(zir::SortKey {
                     ascending: *asc,
                     desc: l.desc,
@@ -3701,17 +4240,66 @@ impl<'a> Gen<'a> {
             Some(c) => Some(self.alphabet_weights(c)?),
             None => self.collating()?,
         };
-        self.emit(Instr::Sort {
+        let participants: Vec<_> = std::iter::once(fi)
+            .chain(using.iter().copied())
+            .chain(giving.iter().copied())
+            .collect();
+        for (n, &f) in participants.iter().enumerate() {
+            for &g in &participants[n + 1..] {
+                if self.files[f as usize]
+                    .same_sort_area
+                    .contains(&self.files[g as usize].name)
+                {
+                    return Err(Diag::error(
+                        self.pos,
+                        "SORT/MERGE files cannot share SAME SORT AREA",
+                    ));
+                }
+            }
+        }
+        let _ = duplicates;
+        self.emit(Instr::SortBegin(fi));
+        for file in using {
+            self.emit(Instr::SortRead(file));
+        }
+        if let Some((start, end)) = in_proc {
+            let ret = self.label();
+            self.emit(Instr::DebugCause(zir::debug_cause::SORT_INPUT, 0));
+            let in_decl = self.in_decl;
+            self.in_decl = true;
+            self.emit(Instr::Perform { start, end, ret });
+            self.in_decl = in_decl;
+            self.bind(ret);
+        }
+        self.emit(Instr::SortCheckpoint);
+        self.emit(Instr::SortOrder {
             file: fi,
             keys: ks,
-            duplicates,
-            using,
-            giving,
-            input: in_proc,
-            output: out_proc,
             collating,
             merge: input.is_none(),
         });
+        self.emit(Instr::SortCheckpoint);
+        if let Some((start, end)) = out_proc {
+            let ret = self.label();
+            self.emit(Instr::DebugCause(
+                if input.is_none() {
+                    zir::debug_cause::MERGE_OUTPUT
+                } else {
+                    zir::debug_cause::SORT_OUTPUT
+                },
+                0,
+            ));
+            let in_decl = self.in_decl;
+            self.in_decl = true;
+            self.emit(Instr::Perform { start, end, ret });
+            self.in_decl = in_decl;
+            self.bind(ret);
+        } else {
+            for file in giving {
+                self.emit(Instr::SortWrite(file));
+            }
+        }
+        self.emit(Instr::SortEnd);
         Ok(())
     }
 }
@@ -3747,7 +4335,112 @@ pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
     for p in programs {
         compile_nested(p, None, &[], &mut out)?;
     }
+    // IBM uses the first literal CALL convention for a name throughout
+    // a compilation unit, diagnosing later conflicting conventions.
+    let mut diagnostics = Vec::new();
+    let mut conventions = HashMap::new();
+    for program in &mut out {
+        if program.parent.is_none() {
+            conventions.clear();
+        }
+        for (pc, instruction) in program.code.iter_mut().enumerate() {
+            for (loc, receiving) in instr_locs(instruction) {
+                let name = &program.descs[loc.desc as usize].name;
+                if receiving
+                    && matches!(
+                        name.as_str(),
+                        "SORT-CONTROL"
+                            | "SORT-CORE-SIZE"
+                            | "SORT-FILE-SIZE"
+                            | "SORT-MESSAGE"
+                            | "SORT-MODE-SIZE"
+                    )
+                {
+                    let (file, line) = program
+                        .instr_stmt
+                        .get(pc)
+                        .and_then(|s| program.stmt_pos.get(*s as usize))
+                        .copied()
+                        .unwrap_or_default();
+                    diagnostics.push(Diag::warning(
+                        Pos { file, line },
+                        format!("setting {name}; SORT control statements take precedence"),
+                    ));
+                }
+            }
+            if let Instr::Call {
+                program: Src::Alnum(bytes),
+                interface,
+                ..
+            } = instruction
+            {
+                let name = crate::codepage::active()
+                    .decode(bytes)
+                    .trim()
+                    .to_ascii_uppercase();
+                let dynamic = interface
+                    .unwrap_or(zir::CallInterface::default_for(program.dynam, program.dll));
+                let first = *conventions.entry(name.clone()).or_insert(dynamic);
+                if first != dynamic {
+                    let (file, line) = program
+                        .instr_stmt
+                        .get(pc)
+                        .and_then(|s| program.stmt_pos.get(*s as usize))
+                        .copied()
+                        .unwrap_or_default();
+                    diagnostics.push(Diag::warning(
+                        Pos { file, line },
+                        format!(
+                            "conflicting CALLINTERFACE for {name}; using the first {} convention",
+                            first.name()
+                        ),
+                    ));
+                    *interface = Some(first);
+                }
+            }
+        }
+    }
+    let mut exports = std::collections::HashSet::new();
+    let mut externals = HashMap::new();
+    for program in &out {
+        for rule in &program.rerun {
+            if out.iter().any(|other| {
+                other
+                    .files
+                    .iter()
+                    .any(|file| zeus_ds::dd::same_assignment(&file.assign, &rule.checkpoint))
+            }) {
+                return Err(Diag::error(
+                    Pos::default(),
+                    "RERUN checkpoint assignment must be distinct throughout the compilation unit",
+                ));
+            }
+        }
+        for area in &program.externals {
+            if externals
+                .insert(area.name.clone(), area.len)
+                .is_some_and(|len| len != area.len)
+            {
+                return Err(Diag::error(
+                    Pos::default(),
+                    format!("EXTERNAL {} storage lengths must agree", area.name),
+                ));
+            }
+        }
+    }
+    for program in out.iter().filter(|p| p.parent.is_none()) {
+        for name in std::iter::once(&program.name).chain(program.entries.iter().map(|e| &e.name)) {
+            if !exports.insert(name.clone()) {
+                return Err(Diag::error(
+                    Pos::default(),
+                    format!("duplicate program/ENTRY export {name}"),
+                ));
+            }
+        }
+    }
     Ok(zir::Module {
+        diagnostics,
+        optimize: crate::front::optimize(),
         programs: out,
         ccsid: crate::codepage::active().ccsid,
         sources: Vec::new(),
@@ -3816,7 +4509,10 @@ fn instr_locs(ins: &Instr) -> Vec<(Loc, bool)> {
     // positional receiving operands of tuple variants
     let receiving_at = match ins {
         Instr::Move(..) | Instr::Return(..) => Some(1),
-        Instr::SetIndex(..) | Instr::Inspect(..) => Some(0),
+        Instr::SetIndex(..)
+        | Instr::Inspect(..)
+        | Instr::SetEntry(..)
+        | Instr::SetEntryWithInterface(..) => Some(0),
         _ => None,
     };
     match (&v, receiving_at) {

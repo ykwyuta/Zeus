@@ -20,6 +20,7 @@
 
 pub mod catalog;
 pub mod dd;
+mod dynamic;
 pub mod format;
 pub mod keyed;
 pub mod physical;

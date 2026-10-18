@@ -15,7 +15,7 @@ use std::path::Path;
 use crate::format::{self, RecordFormat};
 use crate::{DsError, Rel, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct KeySpec {
     pub offset: usize,
     pub len: usize,
@@ -25,7 +25,7 @@ pub struct KeySpec {
 
 /// Position in the order of a key of reference: key value and, for
 /// alternate keys, the write order among duplicates.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
 pub struct Position {
     pub key: Vec<u8>,
     pub seq: u64,
@@ -54,7 +54,35 @@ pub struct KeyedDataset {
     next_seq: u64,
 }
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Checkpoint {
+    keys: Vec<KeySpec>,
+    pad: u8,
+    records: Vec<(Vec<u8>, u64)>,
+    next_seq: u64,
+}
+
 impl KeyedDataset {
+    pub fn checkpoint(&self) -> Checkpoint {
+        Checkpoint {
+            keys: self.keys.clone(),
+            pad: self.pad,
+            records: self.primary.values().cloned().collect(),
+            next_seq: self.next_seq,
+        }
+    }
+    pub fn restore(checkpoint: Checkpoint) -> Result<Self> {
+        if checkpoint.keys.is_empty() {
+            return Err(DsError::Damaged("checkpoint has no primary key".into()));
+        }
+        let mut dataset = Self::new(checkpoint.keys, checkpoint.pad);
+        for (record, sequence) in checkpoint.records {
+            dataset.next_seq = sequence;
+            dataset.insert(record)?;
+        }
+        dataset.next_seq = checkpoint.next_seq;
+        Ok(dataset)
+    }
     /// An empty data set; `keys[0]` is the primary key.
     pub fn new(keys: Vec<KeySpec>, pad: u8) -> KeyedDataset {
         assert!(!keys.is_empty(), "a keyed data set needs a primary key");
@@ -394,5 +422,24 @@ mod tests {
                 .unwrap()
                 .is_none()
         );
+    }
+
+    #[test]
+    fn checkpoint_keeps_deleted_sequence_gaps_and_saved_browse_positions() {
+        let mut dataset = ds();
+        dataset.insert(b"01Ax".to_vec()).unwrap();
+        dataset.insert(b"02Ay".to_vec()).unwrap();
+        dataset.insert(b"03Az".to_vec()).unwrap();
+        dataset.delete(b"01").unwrap();
+        let position = dataset.get_by(1, b"A").unwrap().position;
+        let encoded = serde_json::to_vec(&dataset.checkpoint()).unwrap();
+        let mut restored =
+            KeyedDataset::restore(serde_json::from_slice(&encoded).unwrap()).unwrap();
+        assert_eq!(
+            restored.next(1, Some(&position), false).unwrap().primary,
+            b"03"
+        );
+        restored.insert(b"04Aw".to_vec()).unwrap();
+        assert_eq!(restored.next_seq, dataset.next_seq + 1);
     }
 }

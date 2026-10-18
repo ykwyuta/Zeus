@@ -10,7 +10,7 @@
 
 use std::fmt;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, serde::Serialize, serde::Deserialize)]
 pub struct Pos {
     /// Index into the compilation's file table.
     pub file: u32,
@@ -157,6 +157,15 @@ fn listing_directive(text: &[char]) -> bool {
 
 /// Joins the lines of a source file into a positioned character stream.
 pub fn read(text: &str, file: u32, debugging_mode: bool) -> Vec<(char, Pos)> {
+    read_input(text, file, debugging_mode, false)
+}
+
+pub(crate) fn read_input(
+    text: &str,
+    file: u32,
+    debugging_mode: bool,
+    padded: bool,
+) -> Vec<(char, Pos)> {
     let mut out: Vec<(char, Pos)> = Vec::new();
     let mut open: Option<char> = None;
     let mut in_comment_entry = false;
@@ -237,6 +246,9 @@ pub fn read(text: &str, file: u32, debugging_mode: bool) -> Vec<(char, Pos)> {
             out.extend(body.iter().map(|&c| (c, line.pos)));
         }
         out.push(('\n', line.pos));
+    }
+    if padded {
+        out.retain(|(c, _)| *c != super::input::PAD);
     }
     out
 }

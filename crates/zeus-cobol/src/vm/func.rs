@@ -5,7 +5,7 @@ use zeus_decimal::{Dec, Rounding};
 use super::eval::{Val, civil_from_days, days_from_civil};
 use super::{Machine, RResult, err};
 use crate::ebcdic;
-use crate::zir::{Arg, DataType, Ex, Func, Loc};
+use crate::zir::{Arg, DataType, Ex, Func};
 
 pub(crate) fn timestamp() -> String {
     let now = std::time::SystemTime::now()
@@ -53,6 +53,110 @@ fn f(v: f64) -> RResult<Dec> {
 }
 
 impl Machine {
+    pub(super) fn function_national(&self, cur: usize, func: Func, args: &[Arg]) -> bool {
+        use crate::zir::Src;
+        func == Func::NationalOf
+            || matches!(
+                func,
+                Func::UpperCase
+                    | Func::LowerCase
+                    | Func::Reverse
+                    | Func::Trim
+                    | Func::Max
+                    | Func::Min
+            ) && args.first().is_some_and(|arg| match arg {
+                Arg::Src(Src::National(_)) => true,
+                Arg::Src(Src::Loc(loc)) | Arg::All(loc) | Arg::Table { loc, .. } => {
+                    self.loc_type(cur, loc).is_national()
+                }
+                Arg::Src(Src::Func(func, args, _)) => self.function_national(cur, *func, args),
+                _ => false,
+            })
+    }
+    fn numeric_text_arguments(
+        &mut self,
+        cur: usize,
+        func: Func,
+        args: &[Arg],
+    ) -> RResult<Result<String, usize>> {
+        let values = self.arg_values(cur, args)?;
+        let currency = matches!(func, Func::NumValC | Func::TestNumValC);
+        if values.is_empty() || values.len() > if currency { 2 } else { 1 } {
+            return err("NUMVAL/TEST-NUMVAL argument count mismatch");
+        }
+        let text = |value: &Val| -> RResult<(String, bool)> {
+            Ok(match value {
+                Val::Item(ty, bytes) if ty.is_national() => {
+                    let units = bytes
+                        .chunks_exact(2)
+                        .map(|c| u16::from_be_bytes([c[0], c[1]]))
+                        .collect::<Vec<_>>();
+                    (
+                        String::from_utf16(&units).map_err(|e| super::RunError(e.to_string()))?,
+                        true,
+                    )
+                }
+                Val::Item(
+                    DataType::Alphanumeric { .. } | DataType::Alphabetic { .. } | DataType::Group,
+                    bytes,
+                )
+                | Val::Alnum(bytes) => (ebcdic::decode(bytes), false),
+                _ => return err("NUMVAL requires alphanumeric or national arguments"),
+            })
+        };
+        let (argument, national) = text(&values[0])?;
+        let symbol = if let Some(value) = values.get(1) {
+            let (symbol, other_national) = text(value)?;
+            if national != other_national
+                || symbol.starts_with(' ')
+                || symbol.ends_with(' ')
+                || symbol
+                    .chars()
+                    .any(|c| c.is_ascii_digit() || matches!(c, '+' | '-' | '.' | ','))
+            {
+                return err("NUMVAL-C currency argument has an invalid class or value");
+            }
+            symbol
+        } else {
+            self.instances[cur]
+                .code
+                .currency_sign
+                .clone()
+                .unwrap_or_else(|| "$".into())
+        };
+        let settings = self.instances[cur].code.numeric.unwrap_or_default();
+        Ok(crate::numeric::text::parse(
+            &argument,
+            currency.then_some(symbol.as_str()),
+            self.instances[cur].code.decimal_comma,
+            settings.operand_digits() as usize,
+        ))
+    }
+
+    pub(super) fn numval_number(
+        &mut self,
+        cur: usize,
+        func: Func,
+        args: &[Arg],
+    ) -> RResult<crate::numeric::number::Number> {
+        let text = self
+            .numeric_text_arguments(cur, func, args)?
+            .map_err(|position| {
+                super::RunError(format!("invalid NUMVAL argument at character {position}"))
+            })?;
+        crate::numeric::number::Number::parse(&text)
+            .and_then(|n| {
+                n.as_float(
+                    self.instances[cur]
+                        .code
+                        .numeric
+                        .unwrap_or_default()
+                        .float_width(),
+                    true,
+                )
+            })
+            .map_err(super::RunError)
+    }
     /// All values of the arguments (ALL subscripts expanded).
     fn arg_values(&mut self, cur: usize, args: &[Arg]) -> RResult<Vec<Val>> {
         let mut out = Vec::new();
@@ -61,35 +165,13 @@ impl Machine {
                 Arg::Num(e) => out.push(Val::Num(self.eval_ex(cur, e)?)),
                 Arg::Src(s) => out.push(self.eval_src(cur, s)?),
                 Arg::All(loc) => {
-                    let dims = self.instances[cur].code.descs[loc.desc as usize]
-                        .dims
-                        .clone();
-                    let counts: Vec<u32> = dims.iter().map(|d| d.max).collect();
-                    let mut idx = vec![1u32; counts.len()];
-                    loop {
-                        let l = Loc {
-                            desc: loc.desc,
-                            subs: idx
-                                .iter()
-                                .map(|&i| Ex::Lit(Dec::from_i64(i as i64)))
-                                .collect(),
-                            refmod: None,
-                        };
+                    for l in self.all_locations(cur, loc)? {
                         out.push(self.eval_src(cur, &crate::zir::Src::Loc(l))?);
-                        let mut k = counts.len();
-                        let mut done = true;
-                        while k > 0 {
-                            k -= 1;
-                            idx[k] += 1;
-                            if idx[k] <= counts[k] {
-                                done = false;
-                                break;
-                            }
-                            idx[k] = 1;
-                        }
-                        if done || counts.is_empty() {
-                            break;
-                        }
+                    }
+                }
+                Arg::Table { loc, subs } => {
+                    for loc in self.table_locations(cur, loc, subs)? {
+                        out.push(self.eval_src(cur, &crate::zir::Src::Loc(loc))?);
                     }
                 }
             }
@@ -103,6 +185,52 @@ impl Machine {
     }
 
     pub(super) fn func_num(&mut self, cur: usize, func: Func, args: &[Arg]) -> RResult<Dec> {
+        if self.instances[cur].code.numeric.is_some() {
+            if func == Func::Random {
+                return self
+                    .wide_expression(cur, &Ex::Func(func, args.to_vec()), 0, false)?
+                    .to_dec()
+                    .ok_or_else(|| {
+                        super::RunError("RANDOM result outside fixed-point range".into())
+                    });
+            }
+            if matches!(func, Func::NumVal | Func::NumValC) {
+                return self
+                    .numval_number(cur, func, args)?
+                    .to_dec()
+                    .ok_or_else(|| {
+                        super::RunError("NUMVAL result outside fixed-point range".into())
+                    });
+            }
+            if matches!(func, Func::TestNumVal | Func::TestNumValC) {
+                return Ok(Dec::from_i64(
+                    self.numeric_text_arguments(cur, func, args)?
+                        .err()
+                        .unwrap_or(0) as i64,
+                ));
+            }
+        }
+        if self.instances[cur].code.numeric.is_some()
+            && (matches!(
+                func,
+                Func::Sqrt
+                    | Func::Log
+                    | Func::Log10
+                    | Func::Sin
+                    | Func::Cos
+                    | Func::Tan
+                    | Func::Asin
+                    | Func::Acos
+                    | Func::Atan
+            ) || self.wide_numeric_function(cur, func, args))
+        {
+            return self
+                .wide_expression(cur, &Ex::Func(func, args.to_vec()), 0, false)?
+                .to_dec()
+                .ok_or_else(|| {
+                    super::RunError("function result outside fixed-point range".into())
+                });
+        }
         let need = |v: &Vec<Dec>, n: usize| -> RResult<()> {
             if v.len() < n {
                 return err(format!("function {func:?} needs {n} argument(s)"));
@@ -140,6 +268,9 @@ impl Machine {
             }
             Func::OrdMax | Func::OrdMin => {
                 let vals = self.arg_values(cur, args)?;
+                if vals.is_empty() {
+                    return err("ORD-MAX/ORD-MIN requires an argument");
+                }
                 let numeric = vals.iter().all(|v| {
                     matches!(
                         v,
@@ -150,6 +281,11 @@ impl Machine {
                 for i in 1..vals.len() {
                     let ord = if numeric {
                         self.val_num(&vals[i]).cmp(&self.val_num(&vals[best]))
+                    } else if matches!(&vals[0], Val::Item(ty, _) if ty.is_national()) {
+                        cmp_national(
+                            &self.national_bytes(cur, &vals[i])?,
+                            &self.national_bytes(cur, &vals[best])?,
+                        )
                     } else {
                         let a = self.alnum_bytes(cur, &vals[i], 0)?;
                         let b = self.alnum_bytes(cur, &vals[best], 0)?;
@@ -227,6 +363,7 @@ impl Machine {
 
     pub(super) fn func_alnum(&mut self, cur: usize, func: Func, args: &[Arg]) -> RResult<Vec<u8>> {
         let vals = self.arg_values(cur, args)?;
+        let national = self.function_national(cur, func, args);
         Ok(match func {
             // the code page: the second argument (a CCSID), else the
             // program's
@@ -269,6 +406,7 @@ impl Machine {
             }
             Func::Trim => {
                 let b = match vals.first() {
+                    Some(v) if national => self.national_bytes(cur, v)?,
                     Some(v) => self.alnum_bytes(cur, v, 0)?,
                     None => vec![],
                 };
@@ -281,14 +419,23 @@ impl Machine {
                     Some(0xE3) => (false, true), // T
                     _ => (true, true),
                 };
-                let sp = ebcdic::SPACE;
+                let width = if national { 2 } else { 1 };
+                let space: &[u8] = if national {
+                    &[0, 0x20]
+                } else {
+                    &[ebcdic::SPACE]
+                };
                 let s = if lead {
-                    b.iter().position(|&c| c != sp).unwrap_or(b.len())
+                    b.chunks_exact(width)
+                        .position(|c| c != space)
+                        .map_or(b.len(), |i| i * width)
                 } else {
                     0
                 };
                 let e = if trail {
-                    b.iter().rposition(|&c| c != sp).map_or(s, |p| p + 1)
+                    b.chunks_exact(width)
+                        .rposition(|c| c != space)
+                        .map_or(s, |i| (i + 1) * width)
                 } else {
                     b.len()
                 };
@@ -297,6 +444,47 @@ impl Machine {
                 if s >= e { Vec::new() } else { b[s..e].to_vec() }
             }
             Func::UpperCase | Func::LowerCase | Func::Reverse => {
+                if national && func != Func::Reverse {
+                    let bytes = self.national_bytes(cur, &vals[0])?;
+                    let units = bytes
+                        .chunks_exact(2)
+                        .map(|b| u16::from_be_bytes([b[0], b[1]]));
+                    let mut output = Vec::with_capacity(bytes.len());
+                    for character in char::decode_utf16(units) {
+                        let character = character.map_err(|_| {
+                            super::RunError("case conversion requires valid UTF-16".into())
+                        })?;
+                        let mapped = super::unicode_case::map(character, func == Func::UpperCase);
+                        let mut buffer = [0; 2];
+                        for unit in mapped.encode_utf16(&mut buffer) {
+                            output.extend_from_slice(&unit.to_be_bytes());
+                        }
+                    }
+                    return Ok(output);
+                }
+                if national && func == Func::Reverse {
+                    let bytes = self.national_bytes(cur, &vals[0])?;
+                    let units = bytes
+                        .chunks_exact(2)
+                        .map(|b| u16::from_be_bytes([b[0], b[1]]))
+                        .collect::<Vec<_>>();
+                    let mut characters = Vec::new();
+                    let mut index = 0;
+                    while index < units.len() {
+                        let paired = (0xD800..=0xDBFF).contains(&units[index])
+                            && units
+                                .get(index + 1)
+                                .is_some_and(|u| (0xDC00..=0xDFFF).contains(u));
+                        let end = index + if paired { 2 } else { 1 };
+                        characters.push(&units[index..end]);
+                        index = end;
+                    }
+                    return Ok(characters
+                        .into_iter()
+                        .rev()
+                        .flat_map(|c| c.iter().flat_map(|u| u.to_be_bytes()))
+                        .collect());
+                }
                 let mut b = match vals.first() {
                     Some(v) => self.alnum_bytes(cur, v, 0)?,
                     None => vec![],
@@ -320,13 +508,31 @@ impl Machine {
                 }
                 b
             }
-            Func::WhenCompiled => ebcdic::encode(self.instances[cur].module.compiled_at.as_deref()
-                .ok_or_else(|| super::RunError("WHEN-COMPILED is unavailable in this legacy module; recompile the source".into()))?),
+            Func::WhenCompiled => ebcdic::encode(self.compilation_time(cur).ok_or_else(|| {
+                super::RunError(
+                    "WHEN-COMPILED is unavailable in this legacy module; recompile the source"
+                        .into(),
+                )
+            })?),
             Func::WhenCompiledRegister => {
-                let t = self.instances[cur].module.compiled_at.as_deref().filter(|s| s.len() == 21 && s.is_ascii())
-                    .ok_or_else(|| super::RunError("WHEN-COMPILED timestamp unavailable; recompile the source".into()))?;
-                ebcdic::encode(&format!("{}/{}/{}{}.{}.{}", &t[4..6], &t[6..8], &t[2..4], &t[8..10], &t[10..12], &t[12..14]))
-            },
+                let t = self
+                    .compilation_time(cur)
+                    .filter(|s| s.len() == 21 && s.is_ascii())
+                    .ok_or_else(|| {
+                        super::RunError(
+                            "WHEN-COMPILED timestamp unavailable; recompile the source".into(),
+                        )
+                    })?;
+                ebcdic::encode(&format!(
+                    "{}/{}/{}{}.{}.{}",
+                    &t[4..6],
+                    &t[6..8],
+                    &t[2..4],
+                    &t[8..10],
+                    &t[10..12],
+                    &t[12..14]
+                ))
+            }
             Func::CurrentDate => {
                 let now = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -345,12 +551,20 @@ impl Machine {
             Func::Max | Func::Min => {
                 let mut best: Option<Vec<u8>> = None;
                 for v in &vals {
-                    let b = self.alnum_bytes(cur, v, 0)?;
+                    let b = if national {
+                        self.national_bytes(cur, v)?
+                    } else {
+                        self.alnum_bytes(cur, v, 0)?
+                    };
                     best = Some(match best {
                         None => b,
                         Some(p) => {
                             let coll = self.instances[cur].code.collating.clone();
-                            let o = cmp_padded(&b, &p, coll.as_deref());
+                            let o = if national {
+                                cmp_national(&b, &p)
+                            } else {
+                                cmp_padded(&b, &p, coll.as_deref())
+                            };
                             if (func == Func::Max && o == std::cmp::Ordering::Greater)
                                 || (func == Func::Min && o == std::cmp::Ordering::Less)
                             {
@@ -384,6 +598,21 @@ fn cmp_padded(a: &[u8], b: &[u8], coll: Option<&[u16]>) -> std::cmp::Ordering {
         }
     }
     std::cmp::Ordering::Equal
+}
+
+fn cmp_national(a: &[u8], b: &[u8]) -> std::cmp::Ordering {
+    let units = |bytes: &[u8]| {
+        bytes
+            .chunks_exact(2)
+            .map(|b| u16::from_be_bytes([b[0], b[1]]))
+            .collect::<Vec<_>>()
+    };
+    let mut a = units(a);
+    let mut b = units(b);
+    let length = a.len().max(b.len());
+    a.resize(length, 0x20);
+    b.resize(length, 0x20);
+    a.cmp(&b)
 }
 
 /// TEST-NUMVAL / TEST-NUMVAL-C: 0 when `s` is a valid argument of

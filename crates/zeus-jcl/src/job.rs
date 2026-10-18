@@ -356,7 +356,7 @@ fn disp_of(dd: &Stmt) -> (Status, Option<End>, Option<End>) {
 
 /// DCB attributes of a DD statement: RECFM and LRECL (DCB=(...),
 /// DCB=*.ddname or the keywords directly).
-fn io_attributes(dd: &Stmt, earlier: &[Dd]) -> zeus_ds::dd::IoAttributes {
+fn io_attributes(dd: &Stmt, earlier: &[Dd]) -> Result<zeus_ds::dd::IoAttributes, String> {
     let mut io = zeus_ds::dd::IoAttributes::default();
     if let Some(Value::Str(s)) = dd.get("DCB")
         && s.starts_with("*.")
@@ -366,18 +366,62 @@ fn io_attributes(dd: &Stmt, earlier: &[Dd]) -> zeus_ds::dd::IoAttributes {
     {
         io = d.io.clone();
     }
-    let parameter = |name| {
+    io.checkpoint_multiple = disp_of(dd).0 == Status::Mod;
+    io.dataset_name = dd
+        .get_str("DSN")
+        .or_else(|| dd.get_str("DSNAME"))
+        .map(str::to_string);
+    let parameter = |name: &str| {
         dd.get_str(name).or_else(|| match dd.get("DCB") {
             Some(Value::List(params)) => parse::get(params, name).and_then(Value::as_str),
             _ => None,
         })
     };
-    io.buffers = parameter("BUFNO")
-        .and_then(|n| n.parse().ok())
-        .or(io.buffers);
-    io.block_size = parameter("BLKSIZE")
-        .and_then(|n| n.parse().ok())
-        .or(io.block_size);
+    if let Some(value) = parameter("BUFNO") {
+        io.buffers = Some(
+            value
+                .parse::<u32>()
+                .ok()
+                .filter(|&n| (1..=255).contains(&n))
+                .ok_or_else(|| format!("invalid BUFNO={value}: expected 1 through 255"))?,
+        );
+    }
+    let size = |key: &str, minimum: u64| -> Result<Option<u32>, String> {
+        let Some(value) = parameter(key) else {
+            return Ok(None);
+        };
+        let (digits, factor) = match value.as_bytes().last() {
+            Some(b'K') => (&value[..value.len() - 1], 1024u64),
+            Some(b'M') => (&value[..value.len() - 1], 1024u64 * 1024),
+            Some(b'G') if key == "BLKSZLIM" => (&value[..value.len() - 1], 1024u64 * 1024 * 1024),
+            _ => (value, 1),
+        };
+        let n = digits
+            .parse::<u64>()
+            .ok()
+            .and_then(|n| n.checked_mul(factor))
+            .filter(|&n| (minimum..=2_147_483_648).contains(&n))
+            .ok_or_else(|| format!("invalid {key}={value}"))?;
+        Ok(Some(n as u32))
+    };
+    io.block_size = size("BLKSIZE", 0)?.or(io.block_size);
+    io.block_size_limit = size("BLKSZLIM", 32760)?.or(io.block_size_limit);
+    if let Some(value) = parameter("EXPDT") {
+        io.expiration =
+            Some(zeus_ds::tape::Expiration::from_jcl(value).map_err(|e| e.to_string())?);
+    }
+    if let Some(value) = parameter("RETPD") {
+        io.retention_days = Some(
+            value
+                .parse::<u32>()
+                .ok()
+                .filter(|&n| n <= 93000)
+                .ok_or_else(|| format!("invalid RETPD={value}"))?,
+        );
+    }
+    if io.expiration.is_some() && io.retention_days.is_some() {
+        return Err("EXPDT and RETPD are mutually exclusive".into());
+    }
     if let Some(unit) = dd
         .get("UNIT")
         .and_then(|v| v.items().first().and_then(|v| v.as_str()))
@@ -393,8 +437,26 @@ fn io_attributes(dd: &Stmt, earlier: &[Dd]) -> zeus_ds::dd::IoAttributes {
             .first()
             .and_then(|v| v.as_str())
             .and_then(|s| s.parse().ok());
+        io.standard_labels = label
+            .items()
+            .get(1)
+            .and_then(|v| v.as_str())
+            .and_then(|s| match s {
+                "SL" => Some(true),
+                "NL" => Some(false),
+                _ => None,
+            });
     }
-    io
+    if let Some(Value::List(volume)) = dd.get("VOL").or_else(|| dd.get("VOLUME"))
+        && let Some(serials) = parse::get(volume, "SER")
+    {
+        io.volume_serials = serials
+            .items()
+            .iter()
+            .filter_map(|s| s.as_str().map(str::to_string))
+            .collect();
+    }
+    Ok(io)
 }
 
 fn dcb_of(dd: &Stmt, earlier: &[Dd], catalog: &Catalog) -> (Option<Recfm>, Option<u32>) {
@@ -530,7 +592,7 @@ impl Runner<'_> {
             kind: DdKind::Dummy,
             path: PathBuf::from("/dev/null"),
             format: None,
-            io: io_attributes(st, earlier),
+            io: io_attributes(st, earlier)?,
             status,
             normal: normal.unwrap_or(End::Keep),
             abnormal: abnormal.or(normal).unwrap_or(End::Keep),
@@ -572,6 +634,7 @@ impl Runner<'_> {
             return Ok(dd);
         };
         let (dsn, member, new_gen) = self.resolve_dsn(dsn, status)?;
+        dd.io.dataset_name = Some(dsn.clone());
         let cat = &mut self.env.catalog;
         // MOD of a data set that does not exist creates it
         let status = if status == Status::Mod && member.is_none() && cat.get(&dsn).is_none() {
@@ -766,8 +829,10 @@ fn cobol_factory(
         .dd("SYSIN")
         .is_some()
         .then(|| ctx.read_text("SYSIN").unwrap_or_default());
+    let dynamic_catalog = ctx.env.catalog.root().to_path_buf();
     Box::new(move || {
         let mut m = zeus_cobol::vm::Machine::new(libs.clone());
+        m.set_dynamic_catalog(dynamic_catalog.clone());
         crate::native::register(&mut m);
         if let Some(h) = &db2 {
             m.set_exec_host(h.clone());
@@ -933,7 +998,7 @@ fn run_pli_ims(
     step: &Step,
     sched: zeus_ims::runtime::Schedule,
 ) -> ProgramResult {
-    zeus_cobol::codepage::set_active(module.ccsid);
+    zeus_cobol::codepage::set_default(module.ccsid);
     let mut temps = Vec::new();
     let db2 = zeus_db2::Db2Host::from_env().map(std::rc::Rc::new);
     let env = pli_env(ctx, &mut temps, db2.clone());
@@ -1373,5 +1438,65 @@ fn parm_text(v: &crate::parse::Value) -> String {
             })
             .collect::<Vec<_>>()
             .join(","),
+    }
+}
+
+#[cfg(test)]
+mod block_attribute_tests {
+    use super::*;
+
+    fn attributes(operands: &str) -> Result<zeus_ds::dd::IoAttributes, String> {
+        let statements = parse::parse(&format!("//INPUT DD {operands}\n")).unwrap();
+        io_attributes(&statements[0], &[])
+    }
+
+    #[test]
+    fn tape_sizes_accept_units_and_reject_invalid_values() {
+        let io = attributes("DCB=(BLKSIZE=64K,BUFNO=255),BLKSZLIM=2G").unwrap();
+        assert_eq!(io.block_size, Some(65536));
+        assert_eq!(io.block_size_limit, Some(2_147_483_648));
+        assert_eq!(io.buffers, Some(255));
+        assert_eq!(
+            attributes("BLKSIZE=2048M").unwrap().block_size,
+            Some(2_147_483_648)
+        );
+        for invalid in [
+            "BLKSIZE=ABC",
+            "BLKSIZE=2049M",
+            "BLKSIZE=2G",
+            "BLKSZLIM=32759",
+            "BLKSZLIM=3G",
+            "BUFNO=256",
+            "BUFNO=0",
+        ] {
+            assert!(attributes(invalid).is_err(), "{invalid}");
+        }
+    }
+
+    #[test]
+    fn retention_dates_and_periods_are_checked() {
+        assert_eq!(
+            attributes("EXPDT=99366").unwrap().expiration,
+            Some(zeus_ds::tape::Expiration::Never)
+        );
+        assert_eq!(
+            attributes("EXPDT=2028/366").unwrap().expiration,
+            Some(zeus_ds::tape::Expiration::Date {
+                year: 2028,
+                day: 366
+            })
+        );
+        assert_eq!(
+            attributes("RETPD=93000").unwrap().retention_days,
+            Some(93000)
+        );
+        for invalid in [
+            "EXPDT=2026/366",
+            "EXPDT=2156/001",
+            "RETPD=93001",
+            "RETPD=1,EXPDT=99365",
+        ] {
+            assert!(attributes(invalid).is_err(), "{invalid}");
+        }
     }
 }

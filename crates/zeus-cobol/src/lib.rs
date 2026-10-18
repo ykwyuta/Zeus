@@ -7,13 +7,17 @@
 pub mod codepage;
 pub mod coverage;
 pub mod diag;
+pub mod dll;
 pub mod ebcdic;
 pub mod front;
 pub mod hlasm;
 pub mod image;
 pub mod interlang;
 pub mod inventory;
+pub mod link;
+pub mod listing;
 pub mod native;
+pub mod numeric;
 pub mod sema;
 pub mod vm;
 pub mod zir;
@@ -25,32 +29,77 @@ use front::{FileTable, FrontOptions};
 
 /// Compiles a source file into a ZIR module. Diagnostics carry file names.
 pub fn compile_file(path: &Path, opts: &FrontOptions) -> Result<zir::Module, Diag> {
+    compile_impl(path, opts, None)
+}
+
+/// Compile once and return the configured listing, including error diagnostics.
+pub fn compile_file_with_listing(
+    path: &Path,
+    opts: &FrontOptions,
+) -> (Result<zir::Module, Diag>, String) {
+    let mut listing = String::new();
+    let module = compile_impl(path, opts, Some(&mut listing));
+    (module, listing)
+}
+
+fn compile_impl(
+    path: &Path,
+    opts: &FrontOptions,
+    listing: Option<&mut String>,
+) -> Result<zir::Module, Diag> {
     let compiled_at = vm::timestamp();
     let mut files = FileTable::default();
+    let mut listing_tokens = Vec::new();
     let name = |d: Diag, files: &FileTable| {
         let mut d = d;
-        d.file = files.names.get(d.pos.file as usize).cloned();
+        d.file = files
+            .names
+            .get(d.pos.file as usize)
+            .cloned()
+            .or_else(|| Some(path.display().to_string()));
         d
     };
-    let programs = front::parse_file(path, opts, &mut files).map_err(|d| name(d, &files))?;
-    let mut module = sema::codegen::compile(&programs).map_err(|d| name(d, &files))?;
-    module.compiled_at = Some(compiled_at);
-    // the source files, as absolute paths (coverage reports)
-    module.sources = files
-        .names
-        .iter()
-        .map(|n| {
-            std::fs::canonicalize(n)
-                .map(|p| p.display().to_string())
-                .unwrap_or_else(|_| n.clone())
-        })
-        .collect();
-    Ok(module)
+    let result = (|| {
+        let (tokens, cics) =
+            front::source_tokens(path, opts, &mut files).map_err(|d| name(d, &files))?;
+        if listing.is_some() {
+            listing_tokens.clone_from(&tokens);
+        }
+        let programs = front::parse_tokens(tokens, cics).map_err(|d| name(d, &files))?;
+        let _codepage = codepage::scope(Some(front::compilation_ccsid()));
+        let mut module = sema::codegen::compile(&programs).map_err(|d| name(d, &files))?;
+        module.compiled_at = Some(compiled_at);
+        for diagnostic in &mut module.diagnostics {
+            diagnostic.file = files.names.get(diagnostic.pos.file as usize).cloned();
+        }
+        // the source files, as absolute paths (coverage reports)
+        module.sources = files
+            .names
+            .iter()
+            .map(|n| {
+                std::fs::canonicalize(n)
+                    .map(|p| p.display().to_string())
+                    .unwrap_or_else(|_| n.clone())
+            })
+            .collect();
+        Ok(module)
+    })();
+    if let Some(listing) = listing {
+        *listing = crate::listing::render(
+            path,
+            &files,
+            &listing_tokens,
+            &result,
+            &front::listing_options(),
+        );
+    }
+    result
 }
 
 /// Serialised form of a module (`.zo` file).
 pub fn save_module(module: &zir::Module, path: &Path) -> std::io::Result<()> {
-    std::fs::write(path, module_bytes(module)?)
+    std::fs::write(path, module_bytes(module)?)?;
+    dll::save_sidefile(module, path)
 }
 
 /// The contents of a module's `.zo` file.

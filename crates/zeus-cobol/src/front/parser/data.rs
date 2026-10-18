@@ -524,6 +524,7 @@ impl Parser {
             "COMP-2" | "COMPUTATIONAL-2" => Usage::Double,
             "INDEX" => Usage::Index,
             "POINTER" => Usage::Pointer,
+            "POINTER-32" => Usage::Pointer32,
             "PROCEDURE-POINTER" => Usage::ProcedurePointer,
             "FUNCTION-POINTER" => Usage::FunctionPointer,
             _ => return None,

@@ -14,6 +14,238 @@ fn programs() -> PathBuf {
 }
 
 #[test]
+fn dll_calls_share_entry_storage_in_native_and_interpreted_executables() {
+    let dir = tempfile::tempdir().unwrap();
+    for lp64 in [false, true] {
+        let mut members = Vec::new();
+        for (name, text) in [
+            (
+                "MAIN",
+                "CBL DLL\nID DIVISION.\nPROGRAM-ID. MAIN.\nPROCEDURE DIVISION.\nCALL 'PRIMARY'\nCANCEL 'PRIMARY'\nCALL 'ALTENTRY'\nCALL 'PRIMARY'\nSTOP RUN.",
+            ),
+            (
+                "PRIMARY",
+                "CBL EXPORTALL\nID DIVISION.\nPROGRAM-ID. PRIMARY.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 N PIC 99 VALUE 0.\nPROCEDURE DIVISION.\nADD 1 TO N\nDISPLAY N\nGOBACK.\nENTRY 'ALTENTRY'.\nADD 10 TO N\nDISPLAY N\nGOBACK.",
+            ),
+        ] {
+            let text = if lp64 {
+                format!("CBL LP(64)\n{text}")
+            } else {
+                text.into()
+            };
+            let path = dir.path().join(format!("{name}.cbl"));
+            std::fs::write(
+                &path,
+                text.lines()
+                    .map(|line| format!("       {line}\n"))
+                    .collect::<String>(),
+            )
+            .unwrap();
+            let module = zeus_cobol::compile_file(&path, &Default::default()).unwrap();
+            members.push((name.into(), zeus_cobol::module_bytes(&module).unwrap()));
+        }
+        let exe = executable(
+            dir.path(),
+            if lp64 { "dll64" } else { "dll32" },
+            &Image { members },
+        );
+        for interpret in [false, true] {
+            assert_eq!(run_env(&exe, &[], "", interpret), ("01\n11\n12".into(), 0));
+        }
+    }
+}
+
+#[test]
+fn ebcdic_dbcs_source_runs_as_native_and_interpreted_executable() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("main.cbl");
+    let page = zeus_cobol::codepage::get(939).unwrap();
+    let text = "CBL CP(939)\nID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 TEXT-FIELD PIC X(6) VALUE '日本'.\nPROCEDURE DIVISION.\nDISPLAY TEXT-FIELD\nSTOP RUN.";
+    let cards: Vec<_> = text
+        .lines()
+        .flat_map(|line| {
+            let mut record = page.encode(&format!("       {line}"));
+            assert!(record.len() <= 72);
+            record.resize(80, 0x40);
+            record
+        })
+        .collect();
+    std::fs::write(&source, cards).unwrap();
+    let module = zeus_cobol::compile_file(
+        &source,
+        &zeus_cobol::front::FrontOptions {
+            source_encoding: zeus_cobol::front::SourceEncoding::Ebcdic80,
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    assert!(
+        !zeus_cobol::native::compile(&module, &zeus_cobol::native::host_triple())
+            .unwrap()
+            .programs
+            .is_empty()
+    );
+    let image = Image {
+        members: vec![("MAIN".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "ebcdic-input", &image);
+    for interpret in [false, true] {
+        assert_eq!(run_env(&exe, &[], "", interpret), ("日本".into(), 0));
+    }
+}
+
+#[test]
+fn optimize_levels_preserve_results_in_generated_executables() {
+    let dir = tempfile::tempdir().unwrap();
+    for level in 0..=2 {
+        let source = dir.path().join("opt.cbl");
+        let text = format!(
+            "CBL OPT({level})\nID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 I PIC 9(4) COMP-5.\n01 TOTAL PIC 9(9) COMP-5 VALUE 0.\nPROCEDURE DIVISION.\nPERFORM VARYING I FROM 1 BY 1 UNTIL I > 10\nCOMPUTE TOTAL = TOTAL + I * I\nEND-PERFORM\nDISPLAY TOTAL\nSTOP RUN."
+        );
+        std::fs::write(
+            &source,
+            text.lines()
+                .map(|line| format!("       {line}\n"))
+                .collect::<String>(),
+        )
+        .unwrap();
+        let module = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+        assert_eq!(module.optimize, level);
+        assert!(
+            !zeus_cobol::native::compile(&module, &zeus_cobol::native::host_triple())
+                .unwrap()
+                .programs
+                .is_empty()
+        );
+        let image = Image {
+            members: vec![("MAIN".into(), zeus_cobol::module_bytes(&module).unwrap())],
+        };
+        let exe = executable(dir.path(), &format!("opt{level}"), &image);
+        for interpret in [false, true] {
+            assert_eq!(run_env(&exe, &[], "", interpret), ("0000000385".into(), 0));
+        }
+    }
+}
+
+#[test]
+fn dynam_cancel_and_static_call_state_match_in_standalone_executables() {
+    let dir = tempfile::tempdir().unwrap();
+    let sub_path = dir.path().join("sub.cbl");
+    let sub_source = "ID DIVISION.\nPROGRAM-ID. SUB.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 N PIC 9 VALUE 0.\nPROCEDURE DIVISION.\nADD 1 TO N\nDISPLAY N\nGOBACK.";
+    std::fs::write(
+        &sub_path,
+        sub_source
+            .lines()
+            .map(|line| format!("       {line}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    let sub = zeus_cobol::compile_file(&sub_path, &Default::default()).unwrap();
+    for (option, directive, pointer, expected) in [
+        ("DYNAM", "", false, "1\n1"),
+        ("NODYNAM", "", false, "1\n2"),
+        ("NODYNAM", ">>CALLINTERFACE DYNAMIC", false, "1\n1"),
+        ("DYNAM", ">>CALLINTERFACE STATIC", false, "1\n2"),
+        ("DYNAM", "", true, "1\n1"),
+        ("NODYNAM", "", true, "1\n2"),
+        ("NODYNAM", ">>CALLINTERFACE DYNAMIC", true, "1\n1"),
+        ("DYNAM", ">>CALLINTERFACE STATIC", true, "1\n2"),
+    ] {
+        let main_path = dir.path().join("main.cbl");
+        let main_source = format!(
+            "CBL {option}\nID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 P USAGE PROCEDURE-POINTER.\nPROCEDURE DIVISION.\nCALL 'SUB'\nCANCEL 'SUB'\nCALL 'SUB'\nSTOP RUN."
+        );
+        let main_source = main_source.replace(
+            "PROCEDURE DIVISION.\n",
+            &format!("PROCEDURE DIVISION.\n{directive}\n"),
+        );
+        let main_source = if pointer {
+            main_source.replace("CALL 'SUB'", "SET P TO ENTRY 'SUB'\nCALL P")
+        } else {
+            main_source
+        };
+        std::fs::write(
+            &main_path,
+            main_source
+                .lines()
+                .map(|line| format!("       {line}\n"))
+                .collect::<String>(),
+        )
+        .unwrap();
+        let main = zeus_cobol::compile_file(&main_path, &Default::default()).unwrap();
+        let image = Image {
+            members: vec![
+                ("MAIN".into(), zeus_cobol::module_bytes(&main).unwrap()),
+                ("SUB".into(), zeus_cobol::module_bytes(&sub).unwrap()),
+            ],
+        };
+        let exe = executable(dir.path(), &format!("{option}-{pointer}"), &image);
+        for interpret in [false, true] {
+            assert_eq!(run_env(&exe, &[], "", interpret), (expected.into(), 0));
+        }
+    }
+}
+
+#[test]
+fn ssrange_in_standalone_executables_preserves_national_functions_and_checks() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("range.cbl");
+    let text = "CBL SSRANGE\nID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 A PIC X OCCURS 2.\nPROCEDURE DIVISION.\nIF FUNCTION REVERSE(N'日😀a') = N'a😀日'\nDISPLAY 'UNICODE' END-IF\nDISPLAY A(3)\nSTOP RUN.";
+    std::fs::write(
+        &source,
+        text.lines()
+            .map(|line| format!("       {line}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    let module = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    assert!(
+        zeus_cobol::native::compile(&module, &zeus_cobol::native::host_triple())
+            .unwrap()
+            .programs
+            .is_empty()
+    );
+    let image = Image {
+        members: vec![("MAIN".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "range", &image);
+    for interpret in [false, true] {
+        let mut command = Command::new(&exe);
+        if interpret {
+            command.env("ZEUS_INTERPRET", "1");
+        } else {
+            command.env_remove("ZEUS_INTERPRET");
+        }
+        let result = command.output().unwrap();
+        assert!(!result.status.success());
+        assert_eq!(result.stdout, b"UNICODE\n");
+        assert!(String::from_utf8_lossy(&result.stderr).contains("SSRANGE"));
+    }
+}
+
+#[test]
+fn apost_figuratives_match_in_native_and_interpreted_executables() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = dir.path().join("apost.cbl");
+    let text = "CBL APOST\nID DIVISION.\nPROGRAM-ID. MAIN.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 A PIC XXX VALUE QUOTES.\n01 B PIC XXX.\nPROCEDURE DIVISION.\nMOVE QUOTES TO B\nIF A = B AND B = QUOTES DISPLAY A B\nELSE MOVE 9 TO RETURN-CODE END-IF\nSTOP RUN.";
+    std::fs::write(
+        &source,
+        text.lines()
+            .map(|line| format!("       {line}\n"))
+            .collect::<String>(),
+    )
+    .unwrap();
+    let module = zeus_cobol::compile_file(&source, &Default::default()).unwrap();
+    assert!(zeus_cobol::native::compile(&module, &zeus_cobol::native::host_triple()).is_ok());
+    let image = Image {
+        members: vec![("MAIN".into(), zeus_cobol::module_bytes(&module).unwrap())],
+    };
+    let exe = executable(dir.path(), "apost", &image);
+    assert_eq!(run_env(&exe, &[], "", false), ("''''''".into(), 0));
+    assert_eq!(run_env(&exe, &[], "", true), ("''''''".into(), 0));
+}
+
+#[test]
 fn returning_national_trunc_and_entry_pointers_match_interpreted_execution() {
     let dir = tempfile::tempdir().unwrap();
     let source = dir.path().join("compat.cbl");

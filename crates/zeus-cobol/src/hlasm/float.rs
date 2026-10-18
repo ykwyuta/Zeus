@@ -47,14 +47,30 @@ impl Rounding {
 }
 
 /// Finite magnitude, with sign retained independently to preserve signed zero.
-#[derive(Clone, Debug)]
-pub(super) struct Ratio {
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(crate) struct Ratio {
     pub negative: bool,
     pub n: BigUint,
     pub d: BigUint,
 }
 
 impl Ratio {
+    /// Align HFP addends with the architecture's single hexadecimal guard
+    /// digit. Bits below that digit do not participate in subtraction borrow.
+    pub fn add_hex_guard(&self, other: &Self, exponent: i32, precision: usize) -> Self {
+        let quantum = 4 * exponent - precision as i32 - 4;
+        let a = Self::binary(
+            self.negative,
+            self.quantize(quantum, Rounding::Zero).0.to_u128().unwrap(),
+            quantum,
+        );
+        let b = Self::binary(
+            other.negative,
+            other.quantize(quantum, Rounding::Zero).0.to_u128().unwrap(),
+            quantum,
+        );
+        a.add(&b, false)
+    }
     pub fn add(&self, other: &Self, zero_negative: bool) -> Self {
         let a = &self.n * &other.d;
         let b = &other.n * &self.d;
@@ -98,7 +114,7 @@ impl Ratio {
         v
     }
 
-    fn decimal(text: &str, modifier: i32) -> Result<(Self, String, i32), String> {
+    pub(crate) fn decimal(text: &str, modifier: i32) -> Result<(Self, String, i32), String> {
         let negative = text.starts_with('-');
         let text = text.strip_prefix(['+', '-']).unwrap_or(text);
         let (digits, exponent) = if let Some((v, e)) = text.split_once(['E', 'e']) {

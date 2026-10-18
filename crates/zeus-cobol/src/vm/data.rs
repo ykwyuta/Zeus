@@ -64,11 +64,19 @@ pub fn num_value(t: &NumType, bytes: &[u8]) -> Dec {
 pub fn value_of(ty: &DataType, bytes: &[u8]) -> Dec {
     match ty {
         DataType::Numeric(t) => num_value(t, bytes),
-        DataType::Index
-        | DataType::Pointer
-        | DataType::ProcedurePointer
-        | DataType::FunctionPointer => Dec::new(binary::read(bytes, true), 0),
+        DataType::Index => Dec::new(binary::read(bytes, true), 0),
+        DataType::Pointer | DataType::ProcedurePointer | DataType::FunctionPointer => {
+            Dec::new(binary::read(bytes, false), 0)
+        }
         DataType::Float { .. } => float_dec(zeus_decimal::hfp::decode(bytes)),
+        DataType::ExternalFloat {
+            picture,
+            national,
+            comma,
+        } => crate::numeric::external::decode(picture, *national, *comma, bytes)
+            .ok()
+            .and_then(|n| n.to_dec())
+            .unwrap_or(Dec::ZERO),
         DataType::NumericEdited {
             edit,
             scale,

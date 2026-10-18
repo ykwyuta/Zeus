@@ -4,8 +4,8 @@
 //!   SYSIN; COPY members and %INCLUDE files come from the SYSLIB
 //!   libraries. The module is written to SYSLIN (Zeus has no object
 //!   decks: the "object" is the executable module). Messages go to
-//!   SYSPRINT; the return code is 0, or 12 when the compilation failed.
-//!   PARM options: `CICS`, `NSYMBOL(DBCS)` (COBOL); others are accepted.
+//!   SYSPRINT; COBOL returns 0, 4 with warnings, or 12 on source errors.
+//!   COBOL PARM options use the same option parser as CBL/PROCESS.
 //! * `IEWL`, `IEWBLINK`, `HEWL`, `HEWLH096` (binder) copy the module of
 //!   SYSLIN into the SYSLMOD library: the member named in the DSN, or by
 //!   a `NAME member(R)` control statement in SYSLIN or SYSIN.
@@ -44,13 +44,6 @@ fn syslib(ctx: &StepCtx, dir: &Path) -> Vec<PathBuf> {
     dirs
 }
 
-fn options(parm: &str) -> Vec<String> {
-    parm.split([',', ' '])
-        .map(|o| o.trim().to_ascii_uppercase())
-        .filter(|o| !o.is_empty())
-        .collect()
-}
-
 /// Source text of SYSIN and the source name for messages.
 fn source(ctx: &StepCtx) -> Result<(String, String), String> {
     let lines = ctx.read_text("SYSIN")?;
@@ -68,6 +61,103 @@ fn source_name(ctx: &StepCtx) -> String {
         },
         _ => "SYSIN".into(),
     }
+}
+
+/// Preserve binary SYSIN records for COBOL; in-stream and TEXT sources
+/// are already Unicode and must not pass through a Latin-1 conversion.
+fn cobol_source(
+    ctx: &StepCtx,
+) -> Result<(String, Vec<u8>, zeus_cobol::front::SourceEncoding), String> {
+    use zeus_cobol::front::SourceEncoding;
+    use zeus_ds::format::RecordFormat;
+    let dd = ctx.dd("SYSIN").ok_or("DD SYSIN missing")?;
+    let text_dd = |d: &crate::job::Dd| {
+        matches!(d.kind, DdKind::Instream(_)) || d.format == Some(RecordFormat::Text)
+    };
+    let text = text_dd(dd);
+    let mut bytes = Vec::new();
+    for part in std::iter::once(dd).chain(dd.concat.iter()) {
+        if text_dd(part) != text {
+            return Err("SYSIN concatenation mixes text and binary source representations".into());
+        }
+        if text {
+            if let DdKind::Instream(lines) = &part.kind {
+                for line in lines {
+                    bytes.extend_from_slice(line.as_bytes());
+                    bytes.push(b'\n');
+                }
+            } else {
+                for record in ctx.read_dd(part)? {
+                    std::str::from_utf8(&record)
+                        .map_err(|e| format!("SYSIN: invalid UTF-8 text: {e}"))?;
+                    bytes.extend(record);
+                    bytes.push(b'\n');
+                }
+            }
+        } else {
+            append_source_cards(&mut bytes, ctx.read_dd(part)?);
+        }
+    }
+    Ok((
+        source_name(ctx),
+        bytes,
+        if text {
+            SourceEncoding::Utf8
+        } else {
+            SourceEncoding::Ebcdic80
+        },
+    ))
+}
+
+fn cobol_syslib(
+    ctx: &StepCtx,
+    dir: &Path,
+    options: &mut zeus_cobol::front::FrontOptions,
+) -> Result<(), String> {
+    use zeus_cobol::front::SourceEncoding;
+    use zeus_ds::format::RecordFormat;
+    let Some(dd) = ctx.dd("SYSLIB") else {
+        return Ok(());
+    };
+    for (index, dd) in std::iter::once(dd).chain(dd.concat.iter()).enumerate() {
+        if !dd.path.is_dir() {
+            continue;
+        }
+        let out = dir.join(format!("lib{index}"));
+        std::fs::create_dir_all(&out).map_err(|e| e.to_string())?;
+        for entry in std::fs::read_dir(&dd.path).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            if !entry.file_type().map_err(|e| e.to_string())?.is_file() {
+                continue;
+            }
+            let data = std::fs::read(entry.path()).map_err(|e| e.to_string())?;
+            let utf8 = dd.format == Some(RecordFormat::Text)
+                || (std::str::from_utf8(&data).is_ok()
+                    && (data.contains(&b'\n')
+                        || data.is_empty()
+                        || data.starts_with(&[0xEF, 0xBB, 0xBF])
+                        || data.get(6).is_some_and(|b| {
+                            matches!(b, b' ' | b'-' | b'*' | b'/' | b'D' | b'd')
+                        })));
+            let (data, encoding) = if utf8 {
+                (data, SourceEncoding::Utf8)
+            } else {
+                let records =
+                    zeus_ds::format::decode(dd.format.unwrap_or(RecordFormat::Fixed(80)), &data)
+                        .map_err(|e| e.to_string())?;
+                let mut bytes = Vec::new();
+                append_source_cards(&mut bytes, records);
+                (bytes, SourceEncoding::Ebcdic80)
+            };
+            let path = out.join(entry.file_name());
+            std::fs::write(&path, data).map_err(|e| e.to_string())?;
+            options
+                .copy_encodings
+                .insert(path.canonicalize().map_err(|e| e.to_string())?, encoding);
+        }
+        options.copy_dirs.push(out);
+    }
+    Ok(())
 }
 
 /// Keep physical EBCDIC columns intact, particularly SO/SI and DBCS pairs.
@@ -94,14 +184,14 @@ fn assembler_source(ctx: &StepCtx) -> Result<Vec<u8>, String> {
         } else {
             ctx.read_dd(dd)?
         };
-        append_assembler_cards(&mut bytes, records);
+        append_source_cards(&mut bytes, records);
     }
     Ok(bytes)
 }
 
-fn append_assembler_cards(bytes: &mut Vec<u8>, records: Vec<Vec<u8>>) {
+fn append_source_cards(bytes: &mut Vec<u8>, records: Vec<Vec<u8>>) {
     for mut record in records {
-        // HLASM source columns and sequence fields end at column 80.
+        // Keep each COBOL/HLASM source card's physical 80-byte boundary.
         record.resize(80, 0x40);
         bytes.extend(record);
     }
@@ -134,7 +224,7 @@ fn assembler_syslib(ctx: &StepCtx, dir: &Path) -> Result<Vec<PathBuf>, String> {
                     .map_err(|e| e.to_string())?
             };
             let mut cards = vec![];
-            append_assembler_cards(&mut cards, records);
+            append_source_cards(&mut cards, records);
             std::fs::write(out.join(entry.file_name()), cards).map_err(|e| e.to_string())?;
         }
         dirs.push(out);
@@ -162,9 +252,8 @@ pub fn cobol(ctx: &mut StepCtx) -> ProgramResult {
     let mut print = ctx
         .sysout("SYSPRINT")
         .map_err(crate::job::Outcome::JclError)?;
-    let opts = options(&ctx.parm);
     let tmp = tempdir()?;
-    let (name, text) = match source(ctx) {
+    let (name, text, source_encoding) = match cobol_source(ctx) {
         Ok(s) => s,
         Err(e) => {
             let _ = writeln!(print, "IGYOS4001-U  SYSIN: {e}");
@@ -173,14 +262,17 @@ pub fn cobol(ctx: &mut StepCtx) -> ProgramResult {
     };
     let src = tmp.path().join(source_file(&name, "cbl"));
     std::fs::write(&src, text).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
-    let fo = zeus_cobol::front::FrontOptions {
-        copy_dirs: syslib(ctx, tmp.path()),
-        cics: opts.iter().any(|o| o == "CICS" || o.starts_with("CICS(")),
-        nsymbol_dbcs: opts.iter().any(|o| o == "NSYMBOL(DBCS)" || o == "NS(DBCS)"),
+    let mut fo = zeus_cobol::front::FrontOptions {
+        source_encoding,
+        compiler_options: ctx.parm.clone(),
         ..Default::default()
     };
+    cobol_syslib(ctx, tmp.path(), &mut fo).map_err(crate::job::Outcome::JclError)?;
     let _ = writeln!(print, "ZEUS COBOL COMPILER (IGYCRCTL)  SOURCE {name}");
-    let rc = match zeus_cobol::compile_file(&src, &fo) {
+    let (result, listing) = zeus_cobol::compile_file_with_listing(&src, &fo);
+    write!(print, "{listing}")
+        .map_err(|e| crate::job::Outcome::JclError(format!("SYSPRINT: {e}")))?;
+    let rc = match result {
         Ok(module) => {
             let out = tmp.path().join("module.zo");
             zeus_cobol::save_module(&module, &out)
@@ -190,13 +282,14 @@ pub fn cobol(ctx: &mut StepCtx) -> ProgramResult {
                 let _ = writeln!(print, "IGYOS4002-U  SYSLIN: {e}");
                 return Ok(16);
             }
-            let _ = writeln!(print, "END OF COMPILATION, HIGHEST SEVERITY 0");
-            0
+            let rc = module.compilation_return_code();
+            let _ = writeln!(print, "END OF COMPILATION, HIGHEST SEVERITY {rc}");
+            rc
         }
         Err(d) => {
-            let _ = writeln!(print, "{d}");
-            let _ = writeln!(print, "END OF COMPILATION, HIGHEST SEVERITY 12");
-            12
+            let rc = d.severity.return_code();
+            let _ = writeln!(print, "END OF COMPILATION, HIGHEST SEVERITY {rc}");
+            rc
         }
     };
     Ok(rc)
@@ -423,6 +516,20 @@ pub fn bind(ctx: &mut StepCtx) -> ProgramResult {
                 return Ok(12);
             }
         }
+    } else if zeus_cobol::load_module_bytes(first).is_ok() {
+        let result = data
+            .iter()
+            .map(|bytes| zeus_cobol::load_module_bytes(bytes).map_err(|e| e.to_string()))
+            .collect::<Result<Vec<_>, _>>()
+            .and_then(zeus_cobol::link::modules)
+            .and_then(|module| zeus_cobol::module_bytes(&module).map_err(|e| e.to_string()));
+        match result {
+            Ok(data) => data,
+            Err(error) => {
+                let _ = writeln!(print, "IEW2205E {error}");
+                return Ok(12);
+            }
+        }
     } else {
         first.clone()
     };
@@ -465,6 +572,17 @@ pub fn bind(ctx: &mut StepCtx) -> ProgramResult {
         std::fs::create_dir_all(p).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
     }
     std::fs::write(&path, &data).map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
+    if let Ok(module) = zeus_cobol::load_module_bytes(&data) {
+        zeus_cobol::dll::save_sidefile(&module, &path)
+            .map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
+        if let Some(side) = zeus_cobol::dll::sidefile_bytes(&module, &path)
+            .map_err(|e| crate::job::Outcome::JclError(e.to_string()))?
+            && let Some(dd) = ctx.dd("SYSDEFSD")
+        {
+            std::fs::write(&dd.path, side)
+                .map_err(|e| crate::job::Outcome::JclError(e.to_string()))?;
+        }
+    }
     let member = path
         .file_name()
         .map(|n| n.to_string_lossy().into_owned())

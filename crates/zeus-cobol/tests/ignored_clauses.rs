@@ -106,8 +106,8 @@ fn source_options_change_picture_category_and_unknown_settings_fail() {
     }
     for opt in [
         "TRUNC(BAD)",
-        "ARITH(EXTEND)",
-        "NUMPROC(PFD)",
+        "ARITH(BAD)",
+        "NUMPROC(BAD)",
         "NS(BAD)",
         "NS(DBCS",
         "CICS(BOGUS)",
@@ -217,6 +217,36 @@ fn code_set_translates_record_payload_but_preserves_rdw() {
 }
 
 #[test]
+fn code_set_conversion_is_independent_of_the_compilation_codepage() {
+    for ccsid in zeus_cobol::codepage::CCSIDS {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("ascii.dat");
+        let source = format!("CBL CP({ccsid})\n{}", file_source("RECORDING MODE V CODE-SET CS"))
+            .replace("INPUT-OUTPUT SECTION.", "CONFIGURATION SECTION.\nSPECIAL-NAMES. ALPHABET CS IS STANDARD-1.\nINPUT-OUTPUT SECTION.")
+            .replace("MOVE 'ABC' TO R", "MOVE X'7CC1C2' TO R");
+        let mut module = compile(&source).unwrap();
+        module.programs[0].files[0].assign = path.to_string_lossy().into_owned();
+        Machine::new(vec![]).run_main(module).unwrap();
+        assert_eq!(
+            std::fs::read(&path).unwrap(),
+            b"\0\x07\0\0@AB",
+            "CCSID {ccsid}"
+        );
+        let input = source.replace(
+            "OPEN OUTPUT F\nMOVE X'7CC1C2' TO R\nWRITE R",
+            "OPEN INPUT F\nREAD F\nIF R NOT = X'7CC1C2' MOVE 9 TO RETURN-CODE END-IF",
+        );
+        let mut module = compile(&input).unwrap();
+        module.programs[0].files[0].assign = path.to_string_lossy().into_owned();
+        assert_eq!(
+            Machine::new(vec![]).run_main(module).unwrap(),
+            0,
+            "CCSID {ccsid}"
+        );
+    }
+}
+
+#[test]
 fn code_set_checks_alphabet_and_record_usage() {
     let src = file_source("CODE-SET CS").replace(
         "INPUT-OUTPUT SECTION.",
@@ -242,6 +272,52 @@ fn code_set_checks_alphabet_and_record_usage() {
             .message
             .contains("not defined")
     );
+}
+
+#[test]
+fn same_single_file_and_optional_words_keep_file_behavior() {
+    for clause in [
+        "SAME F",
+        "SAME RECORD F",
+        "SAME AREA FOR F",
+        "SAME RECORD AREA F",
+    ] {
+        let source = format!(
+            "ID DIVISION.\nPROGRAM-ID. T.\nENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\nSELECT F ASSIGN TO OUTFILE.\nI-O-CONTROL.\n{clause}.\nDATA DIVISION.\nFILE SECTION.\nFD F.\n01 R PIC XX.\nPROCEDURE DIVISION.\nOPEN OUTPUT F\nWRITE R FROM 'OK'\nCLOSE F\nSTOP RUN."
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("out.dat");
+        let mut machine = Machine::new(vec![]);
+        machine.set_dd("OUTFILE", path.clone());
+        machine.run_main(compile(&source).unwrap()).unwrap();
+        assert_eq!(
+            std::fs::read(path).unwrap(),
+            zeus_cobol::ebcdic::encode("OK")
+        );
+    }
+    let source = "ID DIVISION.\nPROGRAM-ID. T.\nENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\nSELECT F ASSIGN TO SORTFILE.\nI-O-CONTROL.\nSAME SORT F.\nDATA DIVISION.\nFILE SECTION.\nSD F.\n01 R PIC XX.\nPROCEDURE DIVISION.\nSTOP RUN.";
+    compile(source).unwrap();
+    compile(&source.replace("SAME SORT F", "SAME SORT-MERGE AREA F")).unwrap();
+    let multiple = source
+        .replace("SD F", "FD F")
+        .replace("SAME SORT F", "MULTIPLE FILE F POSITION 1");
+    compile(&multiple).unwrap();
+    for invalid in [
+        multiple.replace("MULTIPLE FILE F POSITION 1", "MULTIPLE FILE"),
+        multiple.replace("MULTIPLE FILE F POSITION 1", "MULTIPLE FILE MISSING"),
+        multiple.replace(
+            "ASSIGN TO SORTFILE",
+            "ASSIGN TO SORTFILE ORGANIZATION RELATIVE",
+        ),
+        multiple.replace("FD F", "SD F"),
+    ] {
+        assert!(
+            compile(&invalid)
+                .unwrap_err()
+                .message
+                .contains("MULTIPLE FILE")
+        );
+    }
 }
 
 #[test]
@@ -297,12 +373,12 @@ fn no_effect_padding_clause_still_checks_its_operand() {
 }
 
 #[test]
-fn user_labels_and_screen_are_diagnosed() {
+fn invalid_label_records_and_screen_are_diagnosed() {
     assert!(
         compile(&file_source("LABEL RECORDS R"))
             .unwrap_err()
             .message
-            .contains("tape label")
+            .contains("data record distinct")
     );
     let src = "ID DIVISION.\nPROGRAM-ID. T.\nDATA DIVISION.\nSCREEN SECTION.\n01 S.\nPROCEDURE DIVISION.\nSTOP RUN.";
     assert!(compile(src).unwrap_err().message.contains("SCREEN SECTION"));

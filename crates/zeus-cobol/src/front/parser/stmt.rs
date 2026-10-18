@@ -20,13 +20,26 @@ impl Parser {
     fn is_verb(&self) -> bool {
         matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(w)) if VERBS.contains(&w.as_str()))
             || matches!(self.peek().map(|t| &t.tok), Some(Tok::Exec(..)))
+            || matches!(self.peek().map(|t| &t.tok), Some(Tok::CallInterface(_)))
             || (self.is("NEXT") && self.is_at(1, "SENTENCE"))
+    }
+
+    /// Directives at a procedure boundary have no executable statement.
+    pub(super) fn call_interfaces(&mut self) {
+        while let Some(Tok::CallInterface(mode)) = self.peek().map(|t| &t.tok) {
+            self.call_interface = *mode;
+            self.i += 1;
+        }
     }
 
     /// Statements while the next token starts a statement.
     pub(super) fn statements(&mut self) -> Result<Vec<Stmt>> {
         let mut out = Vec::new();
         while self.is_verb() {
+            self.call_interfaces();
+            if !self.is_verb() {
+                break;
+            }
             out.push(Stmt::Line(self.pos()));
             out.push(self.statement()?);
         }
@@ -242,14 +255,29 @@ impl Parser {
                     _ => return self.err("entry name literal expected"),
                 };
                 let mut using = Vec::new();
+                let mut using_by_value = Vec::new();
                 if self.accept("USING") {
-                    while self.is_operand_start() && !self.is_verb() {
-                        self.accept("BY");
-                        self.accept("REFERENCE");
+                    let mut by_value = false;
+                    while (self.is("BY") || self.is_operand_start()) && !self.is_verb() {
+                        if self.accept("BY") {
+                            if self.accept("REFERENCE") {
+                                by_value = false;
+                            } else if self.accept("VALUE") {
+                                by_value = true;
+                            } else {
+                                return self.err("ENTRY USING BY requires REFERENCE or VALUE");
+                            }
+                        }
                         using.push(self.data_ref()?);
+                        using_by_value.push(by_value);
                     }
                 }
-                Stmt::Entry { name, using, pos }
+                Stmt::Entry {
+                    name,
+                    using,
+                    using_by_value,
+                    pos,
+                }
             }
             "SUPPRESS" => {
                 self.accept("PRINTING");
@@ -294,6 +322,7 @@ impl Parser {
                 Stmt::Alter(pairs)
             }
             "CALL" => {
+                let interface = self.call_interface;
                 let program = self.operand()?;
                 let mut using = Vec::new();
                 if self.accept("USING") {
@@ -333,6 +362,7 @@ impl Parser {
                 let exception = self.handlers(&[Phrase::Overflow, Phrase::Exception])?;
                 self.end("END-CALL");
                 Stmt::Call {
+                    interface,
                     program,
                     using,
                     returning,
@@ -365,7 +395,11 @@ impl Parser {
                     if self.accept("WITH") || self.is("NO") || self.is("LOCK") {
                         if self.accept("NO") {
                             self.expect("REWIND")?;
-                            opt = Some("NO REWIND".to_string());
+                            opt = Some(if opt.as_ref().is_some_and(|o| o.starts_with("REEL")) {
+                                "REEL NO REWIND".to_string()
+                            } else {
+                                "NO REWIND".to_string()
+                            });
                         } else {
                             self.expect("LOCK")?;
                             opt = Some("LOCK".to_string());
@@ -1539,7 +1573,11 @@ impl Parser {
                 return Ok(Stmt::Set(SetStmt::CondFalse(targets)));
             }
             if self.accept("ENTRY") {
-                return Ok(Stmt::Set(SetStmt::Entry(targets, self.operand()?)));
+                return Ok(Stmt::Set(SetStmt::Entry(
+                    targets,
+                    self.operand()?,
+                    self.call_interface,
+                )));
             }
             let v = self.operand()?;
             return Ok(Stmt::Set(SetStmt::To(targets, v)));

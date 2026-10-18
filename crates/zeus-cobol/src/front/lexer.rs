@@ -23,6 +23,8 @@ pub enum Tok {
     Exec(String, Vec<(char, Pos)>),
     /// `== ... ==` pseudo-text.
     Pseudo(Vec<Token>),
+    /// Parser directive; None restores DLL/DYNAM compiler defaults.
+    CallInterface(Option<crate::zir::CallInterface>),
     Period,
     LParen,
     RParen,
@@ -72,6 +74,13 @@ impl Token {
             ),
             Tok::Pseudo(_) => "==...==".to_string(),
             Tok::Exec(k, _) => format!("EXEC {k}"),
+            Tok::CallInterface(mode) => match mode {
+                Some(crate::zir::CallInterface::Dynamic) => ">>CALLINTERFACE DYNAMIC",
+                Some(crate::zir::CallInterface::Static) => ">>CALLINTERFACE STATIC",
+                Some(crate::zir::CallInterface::Dll) => ">>CALLINTERFACE DLL",
+                None => ">>CALLINTERFACE",
+            }
+            .into(),
             Tok::Period => ".".into(),
             Tok::LParen => "(".into(),
             Tok::RParen => ")".into(),
@@ -196,11 +205,27 @@ impl Lexer<'_> {
             if c.is_ascii_digit() {
                 s.push(c);
                 self.i += 1;
-            } else if c == point && self.peek(1).is_some_and(|d| d.is_ascii_digit()) {
+            } else if c == point
+                && self
+                    .peek(1)
+                    .is_some_and(|d| d.is_ascii_digit() || matches!(d, 'E' | 'e'))
+            {
                 s.push('.');
                 self.i += 1;
             } else {
                 break;
+            }
+        }
+        if matches!(self.peek(0), Some('E' | 'e')) {
+            s.push('E');
+            self.i += 1;
+            if let Some(c @ ('+' | '-')) = self.peek(0) {
+                s.push(c);
+                self.i += 1;
+            }
+            while let Some(c) = self.peek(0).filter(char::is_ascii_digit) {
+                s.push(c);
+                self.i += 1;
             }
         }
         s
@@ -233,6 +258,10 @@ impl Lexer<'_> {
             let pos = self.pos();
             if is_space(c) {
                 self.i += 1;
+                continue;
+            }
+            if c == '>' && self.peek(1) == Some('>') {
+                self.call_interface()?;
                 continue;
             }
             if (c == ',' || c == ';') && self.at_separator_end(1) {
@@ -309,6 +338,18 @@ impl Lexer<'_> {
                                 self.i += 2;
                                 break;
                             }
+                            Some('>')
+                                if self.peek(1) == Some('>')
+                                    && matches!(
+                                        self.word_at(self.i + 2).0.as_str(),
+                                        "CALLINT" | "CALLINTERFACE"
+                                    ) =>
+                            {
+                                return Err(Diag::error(
+                                    self.pos(),
+                                    "CALLINTERFACE cannot occur within pseudo-text",
+                                ));
+                            }
                             _ => {
                                 let is_word_is = matches!(self.peek(0), Some('I' | 'i'))
                                     && matches!(self.peek(1), Some('S' | 's'))
@@ -384,6 +425,46 @@ impl Lexer<'_> {
             }
             i += 1;
         }
+    }
+
+    /// Read the whole physical directive line into a protected token.
+    fn call_interface(&mut self) -> Result<()> {
+        let pos = self.pos();
+        if self.s[..self.i]
+            .iter()
+            .rev()
+            .take_while(|(_, p)| *p == pos)
+            .any(|(c, _)| !c.is_whitespace())
+        {
+            return Err(Diag::error(
+                pos,
+                "CALLINTERFACE must occupy its own source line",
+            ));
+        }
+        let start = self.i;
+        while self.s.get(self.i).is_some_and(|(_, p)| *p == pos) {
+            self.i += 1;
+        }
+        let text: String = self.s[start..self.i].iter().map(|(c, _)| *c).collect();
+        let words: Vec<_> = text
+            .split_whitespace()
+            .map(str::to_ascii_uppercase)
+            .collect();
+        if !matches!(
+            words.first().map(String::as_str),
+            Some(">>CALLINTERFACE" | ">>CALLINT")
+        ) {
+            return Err(Diag::error(pos, "unknown compiler directive"));
+        }
+        let mode = match words.get(1).map(String::as_str) {
+            None => None,
+            Some("STATIC") if words.len() == 2 => Some(crate::zir::CallInterface::Static),
+            Some("DYNAMIC") if words.len() == 2 => Some(crate::zir::CallInterface::Dynamic),
+            Some("DLL") if words.len() == 2 => Some(crate::zir::CallInterface::Dll),
+            _ => return Err(Diag::error(pos, "invalid CALLINTERFACE suboptions")),
+        };
+        self.push(Tok::CallInterface(mode), pos);
+        Ok(())
     }
 
     /// Lexes one ordinary token at the current position.

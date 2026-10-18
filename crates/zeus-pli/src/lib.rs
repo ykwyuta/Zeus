@@ -211,7 +211,7 @@ pub fn load_module(path: &Path) -> std::io::Result<ir::Module> {
 
 /// Runs a module.
 pub fn run(module: ir::Module, env: vm::RunEnv) -> vm::RunEnd {
-    zeus_cobol::codepage::set_active(module.ccsid);
+    zeus_cobol::codepage::set_default(module.ccsid);
     let mut m = vm::Machine::new(module, env);
     m.run()
 }
@@ -224,7 +224,7 @@ pub fn run_in(
     env: vm::RunEnv,
     sys: zeus_cobol::vm::Machine,
 ) -> (vm::RunEnd, zeus_cobol::vm::Machine) {
-    zeus_cobol::codepage::set_active(module.ccsid);
+    zeus_cobol::codepage::set_default(module.ccsid);
     let mut m = vm::Machine::with_storage(module, env, sys);
     let end = m.run();
     (end, m.detach())

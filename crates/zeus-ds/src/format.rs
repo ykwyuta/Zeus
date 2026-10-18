@@ -10,7 +10,7 @@
 
 use crate::{DsError, Result};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub enum RecordFormat {
     Fixed(u32),
     Variable,

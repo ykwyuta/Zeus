@@ -17,7 +17,8 @@ GLOBAL OPTIONS
   --proclib DIR    JCL procedure search directory; repeatable.
   --loadlib DIR    Program load library; repeatable. STEPLIB/JOBLIB in JCL
                    can also identify libraries.
-  --ccsid N        Text code page: 37, 930, 939, 1390 or 1399; also ZEUS_CCSID.
+  --ccsid N        Text code page: 54 EBCDIC pages (codepages/README.md);
+                   also ZEUS_CCSID.
 
 SUBMIT
   Jobs are processed in argument order. EXEC PGM runs a compiled program or

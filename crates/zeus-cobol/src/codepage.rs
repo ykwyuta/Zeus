@@ -8,6 +8,9 @@
 //! characters with SO (X'0E') and back with SI (X'0F'); DBCS data (PIC G,
 //! DISPLAY-1) has double-byte characters only.
 //!
+//! Additional SBCS, Japanese, Korean and Chinese pages are selected by
+//! `codepages/SOURCES`; `tables.rs` and all mappings are generated together.
+//!
 //! The active code page of the process is `ZEUS_CCSID` (or what a tool
 //! sets with `set_active` before the first conversion).
 
@@ -34,31 +37,7 @@ pub struct CodePage {
     subchar: [u8; 2],
 }
 
-const TABLES: [(u32, &str, &str); 4] = [
-    (
-        930,
-        include_str!("../codepages/ibm-930.sbcs"),
-        include_str!("../codepages/ibm-300.dbcs"),
-    ),
-    (
-        939,
-        include_str!("../codepages/ibm-939.sbcs"),
-        include_str!("../codepages/ibm-300.dbcs"),
-    ),
-    (
-        1390,
-        include_str!("../codepages/ibm-1390.sbcs"),
-        include_str!("../codepages/ibm-16684.dbcs"),
-    ),
-    (
-        1399,
-        include_str!("../codepages/ibm-1399.sbcs"),
-        include_str!("../codepages/ibm-16684.dbcs"),
-    ),
-];
-
-/// The CCSIDs Zeus converts.
-pub const CCSIDS: [u32; 5] = [37, 930, 939, 1390, 1399];
+include!("../codepages/tables.rs");
 
 impl CodePage {
     fn cp037() -> CodePage {
@@ -137,6 +116,68 @@ impl CodePage {
     /// Whether the code page has double-byte characters (mixed data).
     pub fn is_mixed(&self) -> bool {
         !self.dbcs.is_empty()
+    }
+
+    /// Decode source characters with their original byte widths. Shift
+    /// controls consume columns but have no character content.
+    pub(crate) fn source_chars(
+        &self,
+        bytes: &[u8],
+        strict: bool,
+        column_offset: usize,
+    ) -> Result<Vec<(Vec<char>, usize)>, String> {
+        let mut out = Vec::new();
+        let mut double = false;
+        let mut i = 0;
+        while i < bytes.len() {
+            let byte = bytes[i];
+            if (self.is_mixed() || !strict) && matches!(byte, SO | SI) {
+                if strict && (double == (byte == SO)) {
+                    return Err(format!(
+                        "unexpected shift control in source column {}",
+                        column_offset + i + 1
+                    ));
+                }
+                double = byte == SO;
+                out.push((Vec::new(), 1));
+                i += 1;
+            } else if double {
+                let Some(&next) = bytes.get(i + 1).filter(|&&b| b != SI && b != SO) else {
+                    if strict {
+                        return Err(format!(
+                            "incomplete DBCS source character in column {}",
+                            column_offset + i + 1
+                        ));
+                    }
+                    out.push((vec!['\u{FFFD}'], 1));
+                    i += 1;
+                    continue;
+                };
+                let chars = self.dbcs.get(&u16::from_be_bytes([byte, next])).cloned();
+                if strict && chars.is_none() {
+                    return Err(format!(
+                        "unmapped DBCS source character in column {}",
+                        column_offset + i + 1
+                    ));
+                }
+                out.push((chars.unwrap_or_else(|| vec!['\u{FFFD}']), 2));
+                i += 2;
+            } else {
+                let ch = self.sbcs[byte as usize];
+                if strict && ch.is_none() {
+                    return Err(format!(
+                        "unmapped source byte in column {}",
+                        column_offset + i + 1
+                    ));
+                }
+                out.push((vec![ch.unwrap_or('\u{FFFD}')], 1));
+                i += 1;
+            }
+        }
+        if strict && double {
+            return Err("source record ends in DBCS shift state".into());
+        }
+        Ok(out)
     }
 
     fn sbcs_char(&self, b: u8) -> char {
@@ -260,6 +301,12 @@ pub fn get(ccsid: u32) -> Option<&'static CodePage> {
     static PAGES: OnceLock<Vec<CodePage>> = OnceLock::new();
     let pages = PAGES.get_or_init(|| {
         let mut v = vec![CodePage::cp037()];
+        let mut euro = CodePage::cp037();
+        euro.ccsid = 1140;
+        euro.sbcs[0x9F] = Some('€');
+        euro.to_ebcdic.remove(&vec!['¤']);
+        euro.to_ebcdic.insert(vec!['€'], vec![0x9F]);
+        v.push(euro);
         v.extend(
             TABLES
                 .iter()
@@ -271,15 +318,63 @@ pub fn get(ccsid: u32) -> Option<&'static CodePage> {
 }
 
 static ACTIVE: OnceLock<u32> = OnceLock::new();
+static EXPLICIT: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+thread_local! {
+    static SCOPED: std::cell::Cell<Option<u32>> = const { std::cell::Cell::new(None) };
+}
+
+/// A per-thread compilation or program conversion context. Nested calls restore
+/// their caller's context, including when compilation or execution fails.
+pub(crate) struct Scope(Option<u32>);
+pub(crate) fn scope(ccsid: Option<u32>) -> Scope {
+    Scope(SCOPED.replace(ccsid))
+}
+pub(crate) fn host_ccsid() -> u32 {
+    let _scope = scope(None);
+    active().ccsid
+}
+pub(crate) fn runtime_ccsid(program: u32) -> u32 {
+    if has_override() {
+        host_ccsid()
+    } else {
+        program
+    }
+}
+pub(crate) fn has_override() -> bool {
+    EXPLICIT.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("ZEUS_CCSID").is_some()
+}
+pub(crate) fn restore_override(enabled: bool) {
+    if enabled {
+        EXPLICIT.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+}
+impl Drop for Scope {
+    fn drop(&mut self) {
+        SCOPED.set(self.0);
+    }
+}
 
 /// Sets the active code page (before the first conversion); false if the
 /// CCSID is not supported or the code page was already chosen.
 pub fn set_active(ccsid: u32) -> bool {
+    let selected = set_default(ccsid);
+    if selected {
+        EXPLICIT.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+    selected
+}
+
+/// Select a module's host default without overriding CODEPAGE in called
+/// programs. CLI/API overrides should use `set_active` instead.
+pub fn set_default(ccsid: u32) -> bool {
     get(ccsid).is_some() && ACTIVE.set(ccsid).is_ok()
 }
 
 /// The active code page: `set_active`, else `ZEUS_CCSID`, else 037.
 pub fn active() -> &'static CodePage {
+    if let Some(ccsid) = SCOPED.get() {
+        return get(ccsid).expect("supported scoped CCSID");
+    }
     let ccsid = *ACTIVE.get_or_init(|| {
         std::env::var("ZEUS_CCSID")
             .ok()
@@ -293,6 +388,31 @@ pub fn active() -> &'static CodePage {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn additional_languages_and_euro_pages() {
+        for (ccsid, text, bytes) in [
+            (273, "ü", vec![0xD0]),
+            (500, "ü", vec![0xDC]),
+            (1147, "é€", vec![0xC0, 0x9F]),
+            (935, "中", vec![SO, 0x5B, 0xCF, SI]),
+            (933, "한", vec![SO, 0xD0, 0x65, SI]),
+        ] {
+            let cp = get(ccsid).unwrap();
+            assert_eq!(cp.encode(text), bytes, "{ccsid}");
+            assert_eq!(cp.decode(&bytes), text, "{ccsid}");
+        }
+        for (ccsid, text) in [
+            (937, "中文"),
+            (1364, "한국"),
+            (1388, "中文"),
+            (5026, "日本ｱ"),
+            (5035, "日本abc"),
+        ] {
+            let cp = get(ccsid).unwrap();
+            assert_eq!(cp.decode(&cp.encode(text)), text, "{ccsid}");
+        }
+    }
 
     #[test]
     fn mixed_japanese() {

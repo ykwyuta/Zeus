@@ -21,7 +21,13 @@ impl Parser {
     ) -> Result<ExecBlock> {
         let kind = match kind {
             "CICS" => ExecKind::Cics,
-            "SQL" | "SQLIMS" => ExecKind::Sql,
+            "SQL" => ExecKind::Sql,
+            "SQLIMS" => {
+                return Err(Diag::error(
+                    pos,
+                    "EXEC SQLIMS requires an IMS SQL coprocessor; Db2 EXEC SQL is a different interface",
+                ));
+            }
             _ => ExecKind::Dli,
         };
         if kind == ExecKind::Sql {

@@ -153,9 +153,15 @@ impl NativeModule {
 }
 
 /// The instruction set of a target triple.
-fn target_isa(triple: &str) -> Result<OwnedTargetIsa, String> {
+fn target_isa(triple: &str, optimize: u8) -> Result<OwnedTargetIsa, String> {
     let mut flags = settings::builder();
-    flags.set("opt_level", "speed").map_err(|e| e.to_string())?;
+    let level = match optimize {
+        0 => "none",
+        1 => "speed_and_size",
+        2 => "speed",
+        _ => return Err("invalid module OPTIMIZE level".into()),
+    };
+    flags.set("opt_level", level).map_err(|e| e.to_string())?;
     flags.set("is_pic", "true").map_err(|e| e.to_string())?;
     let builder = isa::lookup_by_name(triple).map_err(|e| format!("{triple}: {e}"))?;
     let isa = builder
@@ -169,9 +175,28 @@ fn target_isa(triple: &str) -> Result<OwnedTargetIsa, String> {
 
 /// Compiles the programs of a module for a target triple.
 pub fn compile(module: &Module, triple: &str) -> Result<NativeModule, String> {
-    let isa = target_isa(triple)?;
+    let isa = target_isa(triple, module.optimize)?;
     let mut programs = Vec::new();
     for p in &module.programs {
+        if p.ssrange
+            || p.lp64
+            || !p.invocation_storage.is_empty()
+            || !p.rerun.is_empty()
+            || module
+                .programs
+                .iter()
+                .any(|p| p.rerun.iter().any(|r| r.file.is_none()))
+        {
+            continue;
+        }
+        if p.descs.iter().any(|d| {
+            (d.right_justify && matches!(d.ty, DataType::National | DataType::Dbcs))
+                || d.dynamic_offset.is_some()
+                || d.dynamic_len.is_some()
+                || d.dims.iter().any(|dim| dim.dynamic_stride.is_some())
+        }) {
+            continue;
+        }
         let code = compile_program(p, &isa).map_err(|e| format!("{}: {e}", p.name))?;
         programs.push((p.name.clone(), p.code.len() as u32, code));
     }
@@ -1113,6 +1138,7 @@ impl Lower<'_, '_> {
                 Fig::Zero => crate::ebcdic::ZERO,
                 Fig::Space => crate::ebcdic::SPACE,
                 Fig::Quote => crate::ebcdic::QUOTE,
+                Fig::Apostrophe => crate::ebcdic::encode("'")[0],
                 Fig::High => self.p.high_value,
                 Fig::Low => self.p.low_value,
             }]),

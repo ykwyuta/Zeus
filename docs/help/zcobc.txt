@@ -6,6 +6,8 @@ USAGE
   zcobc check [options] SOURCE...
   zcobc inventory [options] SOURCE...
   zcobc run [options] MODULE
+  zcobc restart [--checkpoint ID] CHECKPOINT
+  zcobc checkpoints CHECKPOINT
   zcobc --version
   zcobc --help | zcobc SUBCOMMAND --help
 
@@ -16,6 +18,12 @@ COMMANDS
   inventory  Report statement, intrinsic-function and EXEC usage in sources.
   run        Interpret a compiled .zo module. DISPLAY goes to stdout; ACCEPT
              reads stdin. Subprograms are searched for alongside the module.
+  restart    Resume a Zeus RERUN checkpoint, including CALL/PERFORM frames,
+             storage and open dataset contents/positions. The checkpoint
+             contains its compiled modules, DD paths and subprogram search
+             paths. Previously emitted console output remains emitted.
+             Defaults to the newest image; --checkpoint ID selects an image.
+  checkpoints List saved checkpoint identifiers in ascending order.
 
 COMPILATION OPTIONS
   -I DIR, -IDIR       Add a COPY/INCLUDE search directory; repeat as needed.
@@ -25,8 +33,41 @@ COMPILATION OPTIONS
   --debugging-lines  Include fixed-format source lines marked D.
   --cics             Translate EXEC CICS and add the CICS program interface.
   --ccsid N          Select the EBCDIC code page for literals and host text.
+  --source-encoding MODE
+                     utf8 (default): strict UTF-8, optional BOM.
+                     ebcdic: records separated by EBCDIC NL/LF or host LF/CRLF.
+                     ebcdic80: concatenated records of exactly 80 bytes.
+                     Applies to SOURCE and external COPY members, using the
+                     effective CODEPAGE. Keeps physical EBCDIC byte columns.
   --nsymbol MODE     national (default): PIC N and N literals use UTF-16;
                      dbcs: use DBCS data instead.
+  --options TEXT     Invocation compiler options, e.g. OPT(2),MAP,XREF(SHORT).
+                     Repeat to append options. CBL/PROCESS takes precedence.
+  --listing FILE     compile: save the configured listing, including errors.
+                     SOURCE/MAP/LIST/OFFSET/XREF/VBREF control its sections.
+                     FLAG(level[,embedded-level]) filters listing diagnostics;
+                     NOFLAG hides diagnostics but preserves the return code.
+                     Warning-only compilations still emit an artifact and
+                     return 4. Options diagnostics remain visible in listings.
+                     Addresses are Zeus virtual offsets and ZIR instruction
+                     indices, rather than IBM machine-code locations.
+
+SOURCE COMPILER OPTIONS
+  DLL / NODLL       DLL calls resolve exported PROGRAM-ID and ENTRY names.
+  EXPORTALL / NOEXPORTALL
+                    Save public names in a Zeus .zo.x sidefile (or MEMBER.x
+                    for extensionless load-library members). Keep this file
+                    next to the module when literal calls import other names.
+  THREAD / NOTHREAD THREAD requires RECURSIVE. Rust host threads can share a
+                    vm::threaded::ThreadedRunUnit, which serializes calls and
+                    keeps WS shared while resetting invocation-local storage.
+  LP(32) / LP(64)   Select the Zeus virtual ABI's pointer and index widths.
+                    POINTER-32 remains four bytes. LP(64) runs in the VM.
+  >>CALLINTERFACE STATIC | DYNAMIC | DLL
+                    Override CALL/SET TO ENTRY linkage until another directive.
+                    A bare directive restores the compiler-option defaults.
+  These are Zeus program objects and sidefiles; host/IBM binary DLL ABIs and
+  IBM binder object records are not emitted by these options.
 
 STANDALONE EXECUTABLE OPTIONS (compile)
   --native           Embed the main module and runtime in an executable.
@@ -44,9 +85,13 @@ RUN OPTIONS
   --parm TEXT        Supply the main program's EXEC PARM.
   --ccsid N          Override the text code page.
   --coverage DIR    Write statement/branch coverage for zcov report.
+  --check-range ON|OFF
+                    Enable (default) or disable SSRANGE checks at runtime,
+                    equivalent to COBOL 4.2 CHECK(ON/OFF). Compile with
+                    CBL SSRANGE to generate checks; default is NOSSRANGE.
 
 ENVIRONMENT
-  ZEUS_CCSID        Default text code page; 37, 930, 939, 1390 or 1399.
+  ZEUS_CCSID        Override text code page; 54 supported EBCDIC pages; see codepages/README.md.
   ZEUS_COVERAGE     Coverage output directory.
   DD_NAME           Allocate DD NAME to a path, e.g. DD_INPUT=data.bin.
   ZEUS_DD_CONFIG    Allocation file with one NAME=path entry per line.
@@ -58,6 +103,7 @@ ENVIRONMENT
 EXAMPLES
   zcobc check -I copybooks src/report.cbl
   zcobc compile -I copybooks -o report.zo src/report.cbl
+  zcobc compile --options 'MAP,LIST' --listing report.lst src/report.cbl
   zcobc run --dd INPUT=input.dat --parm NIGHTLY report.zo
   zcobc run --coverage coverage report.zo
   zcobc inventory -I copybooks src/report.cbl src/helper.cbl

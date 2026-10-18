@@ -11,6 +11,7 @@ pub enum Category {
     Dbcs,
     Numeric,
     NumericEdited,
+    ExternalFloat,
     AlphanumericEdited,
 }
 
@@ -95,6 +96,17 @@ pub fn expand(pic: &str) -> Result<String, String> {
 
 pub fn analyze(pic: &str, decimal_comma: bool, currency: char) -> Result<Picture, String> {
     let s = expand(pic)?;
+    if s.contains('E') {
+        let (digits, scale, size) = crate::numeric::external::picture(&s, decimal_comma)?;
+        return Ok(Picture {
+            category: Category::ExternalFloat,
+            size,
+            digits,
+            scale,
+            signed: true,
+            edit: vec![],
+        });
+    }
     let chars: Vec<char> = s.chars().collect();
     let point_char = if decimal_comma { ',' } else { '.' };
     let comma_char = if decimal_comma { '.' } else { ',' };
