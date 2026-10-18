@@ -169,6 +169,7 @@ ORD系などのALL展開にもODOの現在件数を使用する。
 NUMVAL/NUMVAL-Cは18/31桁を検査し、64/128ビットHFPの近似値を返す。
 NATIONAL、通貨文字列の任意の長さと大文字小文字、DECIMAL-POINT IS COMMAを反映し、TEST-NUMVAL系も同じ解析器で文字位置を返す。
 RANDOMは省略時の初回シード0、指定による列の再開始、非負整数引数、0と1を含まない値域を実装する。生成アルゴリズムはZeus独自でIBMと同じ列は保証しない。
+大きなシードも従来のZeusの64ビット対応を維持する。IBMの「0～2,147,483,645で異なる列を保証する」という制約を、その範囲への剰余変換の指定とは解釈しない。先行変更の剰余変換は既存アプリケーションの生成データを変えていたため取り消し、大きなシードの再開始と従来列を回帰試験で確認する。
 根拠は4.2 Language ReferenceのFACTORIAL pp.525–526、NUMVAL/NUMVAL-C pp.535–538、RANDOM pp.540–541、および[MOD](https://www.ibm.com/docs/en/cobol-zos/6.3.0?topic=functions-mod)。
 
 APOST/QUOTEはVALUE・MOVE・比較・文字定義のQUOTE/QUOTESへ反映し、モジュール保存後も選択を保持する。

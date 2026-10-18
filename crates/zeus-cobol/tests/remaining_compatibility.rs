@@ -467,6 +467,14 @@ fn random_defaults_to_seed_zero_and_restarts_a_repeatable_open_interval_sequence
 }
 
 #[test]
+fn random_preserves_existing_large_seed_sequences() {
+    // A legacy Zeus sequence, not an assertion about IBM's random algorithm.
+    // The integer projection avoids depending on insignificant HFP bits.
+    let source = "ID DIVISION.\nPROGRAM-ID. T.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 A PIC 9(9).\n01 B PIC 9(9).\nPROCEDURE DIVISION.\nCOMPUTE A = FUNCTION RANDOM(1234567890123456) * 1000000000\nCOMPUTE B = FUNCTION RANDOM(1234567890123456) * 1000000000\nIF A = B DISPLAY 'RESTART' END-IF\nDISPLAY A\nSTOP RUN.";
+    assert_eq!(run(source), "RESTART\n936200262\n");
+}
+
+#[test]
 fn numeric_text_functions_honor_national_currency_decimal_comma_and_arithmetic() {
     let source = "CBL ARITH(EXTEND)\nID DIVISION.\nPROGRAM-ID. T.\nENVIRONMENT DIVISION.\nCONFIGURATION SECTION.\nSPECIAL-NAMES.\nDECIMAL-POINT IS COMMA\nCURRENCY SIGN IS '@'.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 I PIC 9(31).\n01 R PIC S9(4)V9.\nPROCEDURE DIVISION.\nCOMPUTE I =\nFUNCTION NUMVAL('1234567890123456789012345678901')\nDISPLAY I\nIF FUNCTION NUMVAL(N'1,5') = 1,5\nDISPLAY 'NATIONAL' END-IF\nCOMPUTE R = FUNCTION NUMVAL-C(N'EUR1.234,5CR' N'EUR')\nIF R = -1234,5 DISPLAY 'CURRENCY' END-IF\nIF FUNCTION NUMVAL-C('@12,5') = 12,5\nDISPLAY 'DEFAULT-CURRENCY' END-IF\nIF FUNCTION TEST-NUMVAL('12A') = 3\nDISPLAY 'POSITION' END-IF\nIF FUNCTION TEST-NUMVAL('1.5') = 2\nDISPLAY 'COMMA' END-IF\nIF FUNCTION TEST-NUMVAL-C('eur12' 'EUR') = 1\nDISPLAY 'CASE' END-IF\nSTOP RUN.";
     let module = compile(source).unwrap();

@@ -227,10 +227,14 @@ impl Machine {
                         {
                             return super::err("RANDOM seed must be a nonnegative integer");
                         }
+                        // IBM guarantees distinct sequences only for a smaller
+                        // seed range; it does not require reducing seeds to it.
+                        // Keep Zeus's existing 64-bit seed mapping so that
+                        // applications retain their deterministic sequences.
                         let seed = ((&seed.value.n / &seed.value.d)
-                            % num_bigint::BigUint::from(2_147_483_646u32))
-                        .to_u64()
-                        .unwrap();
+                            % (num_bigint::BigUint::from(1u8) << 64usize))
+                            .to_u64()
+                            .unwrap();
                         self.random = seed ^ 0x0005_DEEC_E66D;
                     }
                     self.random = self
