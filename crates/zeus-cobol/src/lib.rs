@@ -5,6 +5,7 @@
 //! interpreter ([`vm`]).
 
 pub mod codepage;
+pub mod concolic;
 pub mod coverage;
 pub mod diag;
 pub mod dll;

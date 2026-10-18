@@ -13,6 +13,7 @@ mod le;
 mod numeric;
 mod report;
 mod sort;
+mod sym;
 mod text;
 pub mod threaded;
 mod unicode_case;
@@ -449,6 +450,8 @@ pub struct Machine {
     /// Coverage counts (ZEUS_COVERAGE) by program code.
     cov: Option<HashMap<*const ProgramCode, CovCounts>>,
     ticks: u32,
+    /// Concolic execution (test generation).
+    sym: Option<Box<crate::concolic::SymState>>,
 }
 
 impl crate::hlasm::Host for Machine {
@@ -647,6 +650,7 @@ impl Machine {
             native: None,
             cov: crate::coverage::enabled().then(HashMap::new),
             ticks: 0,
+            sym: None,
             dd: zeus_ds::dd::DdTable::from_env().unwrap_or_else(|e| {
                 eprintln!("zcobc: ZEUS_DD_CONFIG: {e}");
                 zeus_ds::dd::DdTable::default()
@@ -1120,6 +1124,14 @@ impl Machine {
         r.transpose()
     }
 
+    /// Adds the programs of a module to the run unit (programs found by
+    /// name before the search directories).
+    pub fn add_module(&mut self, module: Rc<Module>) {
+        for i in 0..module.programs.len() {
+            self.instantiate(&module, i as u32);
+        }
+    }
+
     /// Passes `args` (addresses in this machine's storage, see
     /// [`Machine::getmain`]) to the USING parameters of the main program
     /// in place of the PARM.
@@ -1405,6 +1417,11 @@ impl Machine {
     }
 
     fn return_code_value(&self) -> i32 {
+        self.return_code
+    }
+
+    /// The return code of the last program run (RETURN-CODE).
+    pub fn return_code(&self) -> i32 {
         self.return_code
     }
 
@@ -1759,6 +1776,14 @@ impl Machine {
             return err("unsupported program CODEPAGE CCSID");
         }
         let _codepage = crate::codepage::scope(Some(ccsid));
+        if self.sym.is_some() {
+            return self.sym_step(s);
+        }
+        self.exec_counted(s)
+    }
+
+    /// Runs an instruction, counting it for coverage.
+    fn exec_counted(&mut self, s: &mut RunState) -> RResult<Option<Exit>> {
         if self.cov.is_none() {
             let result = self.exec_instr(s)?;
             self.write_pending_checkpoints(s)?;

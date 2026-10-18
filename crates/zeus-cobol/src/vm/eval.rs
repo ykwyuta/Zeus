@@ -861,7 +861,7 @@ impl Machine {
 
     /// Length an operand contributes to an alphanumeric comparison
     /// (0 for figurative constants, which adapt to the other operand).
-    fn alnum_len(&self, v: &Val) -> usize {
+    pub(super) fn alnum_len(&self, v: &Val) -> usize {
         match v {
             Val::Fig(_) | Val::All(_) => 0,
             Val::Item(DataType::Numeric(t), _) => t.digits as usize,

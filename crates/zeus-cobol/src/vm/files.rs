@@ -1391,6 +1391,17 @@ impl Machine {
         self.instances[cur].code.files[f as usize].clone()
     }
 
+    /// A sequential file's open mode, index of the next record and the
+    /// record the last READ got (for concolic execution).
+    pub(super) fn read_position(
+        &mut self,
+        cur: usize,
+        f: u32,
+    ) -> (Option<OpenMode>, u64, Option<u64>) {
+        let st = self.state(cur, f);
+        (st.open, st.pos, st.last_read)
+    }
+
     pub(super) fn state(&mut self, cur: usize, f: u32) -> &mut FileState {
         let slot = self.instances[cur].files[f as usize];
         &mut self.file_states[slot]
