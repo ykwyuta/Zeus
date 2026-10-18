@@ -108,7 +108,7 @@ impl Machine {
             return Ok(false);
         };
         let value = self.sort_register(continuation.owner, "SORT-RETURN")?;
-        if !value.is_some_and(|b| zeus_decimal::binary::read(&b, true) == 16) {
+        if value.is_none_or(|b| zeus_decimal::binary::read(&b, true) != 16) {
             return Ok(false);
         }
         while state.stack.len() > continuation.stack {

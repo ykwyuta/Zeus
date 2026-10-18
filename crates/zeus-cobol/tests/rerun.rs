@@ -205,7 +205,7 @@ fn checkpoint_resumes_nested_call_perform_input_output_and_returning() {
     first.add_native("CRASH", |_, _| Err("intentional interruption".into()));
     let error = first.run_main(module).unwrap_err();
     assert!(error.0.contains("intentional interruption"), "{error}");
-    assert_eq!(first.checkpoint_files(), &[checkpoint.clone()]);
+    assert_eq!(first.checkpoint_files(), std::slice::from_ref(&checkpoint));
     drop(first);
     let capture = Capture::default();
     let mut resumed = Machine::new(vec![]);

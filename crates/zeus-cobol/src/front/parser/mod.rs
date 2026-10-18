@@ -1120,7 +1120,7 @@ impl Parser {
                 None
             };
             let label = self.accept("LABEL");
-            if !label && !(self.accept("EXCEPTION") || self.accept("ERROR")) {
+            if !(label || self.accept("EXCEPTION") || self.accept("ERROR")) {
                 return self.err("EXCEPTION or ERROR expected");
             }
             self.accept("PROCEDURE");

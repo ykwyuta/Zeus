@@ -154,13 +154,21 @@ mod tests {
         calls: Vec<u32>,
     }
 
-    // Arithmetic can clear the runtime's size-error flag before its native
-    // store. Allow that bookkeeping, but stop at any other callback.
+    // Integer arithmetic sets precision metadata and clears the size-error
+    // flag before its native store. Permit only that bookkeeping; arithmetic,
+    // moves, noninteger precision contexts and other callbacks stop the test.
     extern "C" fn first_step(ctx: *mut Ctx, pc: u32) -> u32 {
         // SAFETY: the test passes TestCtx, whose first field is Ctx.
         let c = unsafe { &mut *ctx.cast::<TestCtx<'_>>() };
         c.calls.push(pc);
-        if matches!(c.code[pc as usize], Instr::ClearSizeError) {
+        if matches!(
+            c.code[pc as usize],
+            Instr::ClearSizeError
+                | Instr::NumericContext {
+                    decimals: 0,
+                    floating: false
+                }
+        ) {
             pc + 1
         } else {
             LEAVE
@@ -300,11 +308,14 @@ mod tests {
                 "unexpected interpreter fallback: {:?}",
                 p.code[last]
             );
-            assert!(
-                ctx.calls[..ctx.calls.len() - 1]
-                    .iter()
-                    .all(|&pc| matches!(p.code[pc as usize], Instr::ClearSizeError))
-            );
+            assert!(ctx.calls[..ctx.calls.len() - 1].iter().all(|&pc| matches!(
+                p.code[pc as usize],
+                Instr::ClearSizeError
+                    | Instr::NumericContext {
+                        decimals: 0,
+                        floating: false
+                    }
+            )));
             for (name, text) in [
                 ("Y", "GER"),
                 ("Z", if reverse { "      UV" } else { "      XY" }),

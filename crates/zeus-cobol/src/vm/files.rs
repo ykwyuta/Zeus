@@ -1848,17 +1848,17 @@ impl Machine {
                 self.tape_positions.get(&path).copied().unwrap_or(0)
             };
             st.tape_start = position;
-            if def.label_standard {
-                if let Err(error) = self.authorize_tape_labels(
+            if def.label_standard
+                && let Err(error) = self.authorize_tape_labels(
                     &st.tape_entries,
                     &volumes,
                     &path,
                     position,
                     media_mode,
                     &def,
-                ) {
-                    return self.io_error(cur, &def, "37", &format!("OPEN {}", error.0));
-                }
+                )
+            {
+                return self.io_error(cur, &def, "37", &format!("OPEN {}", error.0));
             }
             if media_mode != OpenMode::Output
                 && position < st.tape_entries.len()

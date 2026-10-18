@@ -61,6 +61,7 @@ pub fn clauses(e: &DataEntry, redefines: bool, values: bool) -> Vec<String> {
             Usage::NativeBinary => "COMP-5",
             Usage::Index => "INDEX",
             Usage::Pointer => "POINTER",
+            Usage::Pointer32 => "POINTER-32",
             Usage::ProcedurePointer => "PROCEDURE-POINTER",
             Usage::FunctionPointer => "FUNCTION-POINTER",
             Usage::Float => "COMP-1",

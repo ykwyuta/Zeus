@@ -851,10 +851,10 @@ impl Machine {
         }) {
             return i;
         }
-        if code.parent.is_none() {
-            if let Some(&i) = self.by_name.get(&code.name) {
-                return i;
-            }
+        if code.parent.is_none()
+            && let Some(&i) = self.by_name.get(&code.name)
+        {
+            return i;
         }
         let static_base = self.program_storage(&code.static_init);
         let mut ext_bases = Vec::new();

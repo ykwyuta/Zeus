@@ -247,13 +247,15 @@ impl DdTable {
     }
     /// A table with the allocation file named by `ZEUS_DD_CONFIG`, if any.
     pub fn from_env() -> std::io::Result<DdTable> {
-        let mut t = DdTable::default();
-        t.dynamic_catalog = Some(
-            std::env::var_os("ZEUS_HOME")
-                .map(PathBuf::from)
-                .unwrap_or_else(|| PathBuf::from("zeus"))
-                .join("catalog"),
-        );
+        let mut t = DdTable {
+            dynamic_catalog: Some(
+                std::env::var_os("ZEUS_HOME")
+                    .map(PathBuf::from)
+                    .unwrap_or_else(|| PathBuf::from("zeus"))
+                    .join("catalog"),
+            ),
+            ..Default::default()
+        };
         if let Ok(p) = std::env::var("ZEUS_DD_CONFIG") {
             t.load_config(Path::new(&p))?;
         }

@@ -259,8 +259,8 @@ impl Machine {
                 "CANCEL cannot cancel active program {name} or its containing object"
             ));
         }
-        if !self.instances[target].dynamic_calls.contains(name)
-            && !(nested.is_some() && self.instances[target].initialized)
+        if !(self.instances[target].dynamic_calls.contains(name)
+            || nested.is_some() && self.instances[target].initialized)
         {
             return Ok(());
         }
@@ -301,10 +301,10 @@ impl Machine {
                 for (&desc, &address) in &instance.invocation_bases {
                     released.insert((address, instance.code.descs[desc as usize].len as usize));
                 }
-                if let Some(base) = instance.local_base {
-                    if let Some((_, len)) = instance.code.local_storage {
-                        released.insert((base, len as usize));
-                    }
+                if let Some(base) = instance.local_base
+                    && let Some((_, len)) = instance.code.local_storage
+                {
+                    released.insert((base, len as usize));
                 }
                 for (file, definition) in instance.files.iter().zip(&instance.code.files) {
                     if !definition.external && definition.owner.is_none() {

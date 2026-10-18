@@ -1,6 +1,9 @@
 //! QSAM physical blocks. Lengths include the BDW/RDW/SDW, as on z/OS.
 use crate::{DsError, Result};
 
+/// Logical records and each record's inclusive physical block extent.
+pub type DecodedBlocks = (Vec<Vec<u8>>, Vec<(usize, usize)>);
+
 #[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Layout {
     pub mode: char,
@@ -139,10 +142,7 @@ impl Layout {
 
     /// Physical start/end block (zero based, inclusive) of each logical record.
     /// A volume can end in the middle of a spanned record.
-    pub fn decode_with_blocks(
-        self,
-        blocks: &[Vec<u8>],
-    ) -> Result<(Vec<Vec<u8>>, Vec<(usize, usize)>)> {
+    pub fn decode_with_blocks(self, blocks: &[Vec<u8>]) -> Result<DecodedBlocks> {
         self.validate()?;
         let mut records = Vec::new();
         let mut locations = Vec::new();
