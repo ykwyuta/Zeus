@@ -216,8 +216,8 @@ ztest run [--coverage DIR] DIR
 
 ## 実装 (2026-10)
 
-段階 A と、段階 B のうち順次ファイルの入力を `crates/zeus-testgen` (`ztestgen`、`ztest`) と zeus-cobol の
-記号の層 (`concolic.rs`、`vm/sym.rs`) に実装した。ソルバは外部に依存しない自前のもの (下記) で、Z3 はまだ
+段階 A と、段階 B のうち順次ファイル・索引ファイルの入力を `crates/zeus-testgen` (`ztestgen`、`ztest`) と
+zeus-cobol の記号の層 (`concolic.rs`、`vm/sym.rs`、ファイル入出力は `vm/sym_io.rs`) に実装した。ソルバは外部に依存しない自前のもの (下記) で、Z3 はまだ
 組み込んでいない (`Solver` トレイトで差し替えられる形にしてある)。
 
 ```text
@@ -249,8 +249,19 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
   READ で n 件目を読んだらレコード領域 (と INTO の先) の各項目が `F<ファイル>.R<n>.<項目>` に従い、件数
   `F<ファイル>.N` (0〜99) に対して AT END は `N <= n-1` の条件になる。FILE STATUS の 1 バイト目も件数の項
   (`'1'` か `'0'`) にするので、`IF WS-FS = '10'` の形の終了判定も解ける。
-- すべてのファイルは実行ごとの一時ディレクトリーにデータセットを割り当てる。主プログラムが書いた順次ファイルの
-  レコードは期待値 (`expect.files`) に記録し、`ztest` で比べる。
+- 索引ファイル: 主プログラムが OPEN INPUT または I-O する ORGANIZATION INDEXED のファイル。レコード n の項目は
+  読んだ順ではなく入力の n 件目の変数 (`F<ファイル>.R<n>.<項目>`)。条件は次のとおり。
+  - キーによる READ (乱・動的アクセス): 「`N` 件のいずれかのキーが探索キーに等しい」が見つかる条件で、INVALID KEY
+    はその否定。探索キー (レコード領域のキー) も入力に従う項になり得る。もう 1 件 (既定の内容の追加レコード) も
+    候補に含めるので、ソルバは件数を増やしてキーを合わせれば「見つかる」向きを作れる。
+  - START KEY >= / > / =: 同じ形で、キーの比較が関係に従う (探索キーがキーの先頭部分なら先頭部分で比べる)。
+  - WRITE: 主キーが既存のどれかに等しいことが INVALID KEY (状態 22)。
+  - READ NEXT: OPEN からの n 回目で AT END は `N <= n`。読んだレコードは主キーで入力のどれかを特定して従わせる。
+  - FILE STATUS の 2 バイトは条件による項 (`Term::If`) で、"00" と "23" / "10" / "22" を表す。
+  - WRITE・REWRITE・DELETE の後はデータセットが入力と違うので、それ以降のキーの条件は具体値、START の後の
+    READ NEXT の AT END も具体値。主キーや一意の副キーが重なるレコードは入力から除く (データセットに置けない)。
+- すべてのファイルは実行ごとの一時ディレクトリーにデータセットを割り当てる。主プログラムが書いた順次ファイル、
+  および OUTPUT・I-O・EXTEND で開いた索引ファイルの最終のレコードは期待値 (`expect.files`) に記録し、`ztest` で比べる。
 
 ### ソルバ
 
@@ -275,6 +286,9 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 |---|---|---|
 | `tests/programs/SAMPLE.cbl` | EVALUATE TRUE / 88、英数字・COMP-3 の比較、ACCEPT、PERFORM VARYING、ON SIZE ERROR | 17/18 (到達不能 1 を除いて 100%) |
 | `tests/programs/FILEPGM.cbl` | 順次ファイルを AT END と FILE STATUS で終わりまで読み、報告ファイルを書く | 16/16 (100%) |
+| `tests/programs/IDXPGM.cbl` | 索引ファイルのキーによる READ (INVALID KEY)、REWRITE、重複キーの WRITE、START と READ NEXT | 24/24 (100%) |
+| CardDemo `CBACT02C`・`CBACT03C`・`CBCUS01C` | KSDS を順に読んで表示 | 15/24 (63%)。残りは OPEN・CLOSE・READ の入出力エラーの経路 |
+| CardDemo `CBACT01C` | KSDS を読み、複数の出力ファイルへ書く | 19/46 (41%)。成功の経路でアセンブラーの COBDATFT を呼び、それがないと実行が止まる (`-L` で与えるか、段階 C のスタブ) |
 | CardDemo `CSUTLDTC` | LE の CEEDAYS の結果で分岐 | 7/18 (39%)。CEEDAYS の出力を追わないため (下記) |
 
 到達不能と報告した SAMPLE の 1 方向は、`LK-AMOUNT > 1000.50` を満たしたあとの `ON SIZE ERROR` の
@@ -282,8 +296,11 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 
 ### 未実装と制限
 
-- 段階 B の残り: 索引・相対ファイル (INVALID KEY、START、乱アクセス)、LINE SEQUENTIAL の入力、OCCURS の記号の
-  添字 (添字は具体値のまま)、REDEFINES のバイト層での再解釈 (別の型で読むと具体化)。
+- 段階 B の残り: 相対ファイル、LINE SEQUENTIAL の入力、OCCURS の記号の添字 (添字は具体値のまま)、REDEFINES の
+  バイト層での再解釈 (別の型で読むと具体化)。索引ファイルのキーのうち符号付き・パック 10 進の項目はバイトの
+  定数として扱う (そのキーの条件はそのレコードの値を変えられない)。
+- 入出力エラーの注入: OPEN 失敗 (35 など)、READ・WRITE のハードウェアエラーなど、レコードの内容では起こせない
+  状態の経路は通せない (業務バッチではこの経路が多く残る)。
 - 段階 C〜E: サブプログラムへ入った後の追跡 (呼び出し先は具体実行)、CALL のスタブ、INSPECT/STRING/UNSTRING、
   EXEC CICS/SQL/DLI のスタブ、段落の要約、C2・MC/DC、PL/I。
 - LE の呼び出し (CEEDAYS など) や組み込み関数の結果は具体値で、それに依存する分岐は「入力に依存しない」と報告される。

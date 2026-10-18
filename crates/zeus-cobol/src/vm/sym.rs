@@ -9,8 +9,8 @@ use zeus_decimal::Dec;
 use super::{Exit, Machine, RResult, RunState, err};
 use crate::concolic::{Branch, NumShadow, Pred, Step, SymState, Term, VarKind};
 use crate::zir::{
-    AcceptFrom, ClassKind, CmpMode, Cx, DataType, Ex, Instr, NumType, NumUsage, Op, OpenMode, Org,
-    Rel, SignKind, SignPos, Src,
+    AcceptFrom, ClassKind, CmpMode, Cx, DataType, Ex, Instr, NumType, NumUsage, Op, Rel, SignKind,
+    SignPos, Src,
 };
 
 /// A symbolic value: a number (term, scale) or alphanumeric bytes.
@@ -32,11 +32,8 @@ enum Pre {
     Accept(Option<(usize, usize)>),
     /// An instruction that may set the size-error flag.
     Arith,
-    /// A READ of an input file (file, index in `SymState::files`, record
-    /// index, INTO target).
-    Read(u32, usize, u64, Option<(usize, usize)>),
-    /// Another I/O statement (sets the I/O condition).
-    Io,
+    /// An I/O statement (sets the I/O condition).
+    File(super::sym_io::FilePre),
 }
 
 const SPACE: u8 = 0x40;
@@ -56,7 +53,7 @@ fn align(a: (Term, i32), b: (Term, i32)) -> Option<(Term, Term, i32)> {
 }
 
 /// Unsigned zoned decimal: every byte a digit with the F zone.
-fn plain_display(t: &NumType) -> bool {
+pub(super) fn plain_display(t: &NumType) -> bool {
     t.usage == NumUsage::Display && !t.signed && t.sign == SignPos::None
 }
 
@@ -98,7 +95,7 @@ impl Machine {
     }
 
     /// Drops what follows inputs in `[a, a+l)`.
-    fn sym_forget(&mut self, a: usize, l: usize) {
+    pub(super) fn sym_forget(&mut self, a: usize, l: usize) {
         let Some(st) = self.sym.as_mut() else { return };
         st.nums.retain(|n| n.addr + n.len <= a || n.addr >= a + l);
         if !st.bytes.is_empty() {
@@ -145,7 +142,7 @@ impl Machine {
         Some(term)
     }
 
-    fn sym_read_bytes(&mut self, a: usize, l: usize) -> Option<Vec<Term>> {
+    pub(super) fn sym_read_bytes(&mut self, a: usize, l: usize) -> Option<Vec<Term>> {
         let mem = &self.mem;
         let st = self.sym.as_mut()?;
         if st.bytes.is_empty() && st.nums.is_empty() {
@@ -256,7 +253,7 @@ impl Machine {
     }
 
     /// The concrete value of a term in this run.
-    fn sym_value(&self, t: &Term) -> Option<i128> {
+    pub(super) fn sym_value(&self, t: &Term) -> Option<i128> {
         let st = self.sym.as_ref()?;
         t.eval(&|v| st.value(v))
     }
@@ -446,16 +443,16 @@ impl Machine {
             Some(Instr::JumpUnless(c, t)) => Pre::Jump(self.sym_cx(cur, c), *t, false),
             Some(Instr::GoDepending(ex, _)) => Pre::Pin(self.sym_ex(cur, ex)),
             Some(Instr::ClearSizeError) => Pre::ClearSize,
-            Some(Instr::Read { file, into, .. }) => self.sym_pre_read(cur, *file, into.as_ref()),
             Some(
-                Instr::Write { .. }
+                i @ (Instr::Read { .. }
+                | Instr::Write { .. }
                 | Instr::Rewrite { .. }
                 | Instr::Delete(_)
                 | Instr::Start { .. }
                 | Instr::Open(..)
                 | Instr::Close(..)
-                | Instr::SortRead(_),
-            ) => Pre::Io,
+                | Instr::SortRead(_)),
+            ) => Pre::File(self.sym_io_pre(cur, i)),
             Some(Instr::Accept {
                 dst,
                 from: AcceptFrom::Stdin,
@@ -588,12 +585,7 @@ impl Machine {
                         .push(Step::Assume(Pred::Cmp(t, Rel::Eq, Term::Const(x))));
                 }
             }
-            Pre::Io => {
-                if let Some(st) = self.sym.as_mut() {
-                    st.io_cond = None;
-                }
-            }
-            Pre::Read(f, k, pos, into) => self.sym_post_read(cur, f, k, pos, into),
+            Pre::File(p) => self.sym_io_post(cur, p),
             Pre::Accept(dst) => {
                 if let Some((a, l)) = dst
                     && let Some(st) = self.sym.as_mut()
@@ -613,124 +605,7 @@ impl Machine {
         r
     }
 
-    fn sym_pre_read(&mut self, cur: usize, f: u32, into: Option<&crate::zir::Loc>) -> Pre {
-        let def = &self.instances[cur].code.files[f as usize];
-        let name = def.name.clone();
-        let seq = matches!(def.org, Org::Sequential | Org::LineSequential);
-        let Some(k) = self
-            .sym
-            .as_ref()
-            .and_then(|st| st.files.iter().position(|x| x.name == name))
-        else {
-            return Pre::Io;
-        };
-        let (open, pos, _) = self.read_position(cur, f);
-        if !seq || !matches!(open, Some(OpenMode::Input | OpenMode::InputOutput)) {
-            return Pre::Io;
-        }
-        let into = into.and_then(|l| self.addr(cur, l).ok());
-        Pre::Read(f, k, pos, into)
-    }
-
-    /// After a READ of an input file: the record's fields follow its
-    /// variables, the I/O condition is `count <= pos` and FILE STATUS
-    /// "00"/"10" depends on the count.
-    fn sym_post_read(
-        &mut self,
-        cur: usize,
-        f: u32,
-        k: usize,
-        pos: u64,
-        into: Option<(usize, usize)>,
-    ) {
-        let def = self.instances[cur].code.files[f as usize].clone();
-        let (_, _, last) = self.read_position(cur, f);
-        let Some(fi) = self.sym.as_ref().map(|st| st.files[k].clone()) else {
-            return;
-        };
-        let count = Term::Var(fi.count);
-        let at_end = Pred::Cmp(count.clone(), Rel::Le, Term::Const(pos as i128));
-        let got = last == Some(pos) && !self.io_cond;
-        if !got && !self.io_cond {
-            self.sym.as_mut().unwrap().io_cond = None;
-            return;
-        }
-        self.sym.as_mut().unwrap().io_cond = Some(at_end);
-        if got {
-            let loc = crate::zir::Loc {
-                desc: def.record,
-                subs: Vec::new(),
-                refmod: None,
-            };
-            let Ok((ra, rl)) = self.addr(cur, &loc) else {
-                return;
-            };
-            let n = pos + 1;
-            let mut places = vec![(ra, rl)];
-            places.extend(into);
-            for &(a, l) in &places {
-                self.sym_forget(a, l);
-            }
-            for rf in &fi.fields {
-                if rf.offset + rf.len > rl {
-                    continue;
-                }
-                let bytes = self.mem[ra + rf.offset..ra + rf.offset + rf.len].to_vec();
-                match &rf.num {
-                    Some(t) => {
-                        let value = crate::vm::data::num_value(t, &bytes)
-                            .rescale(t.scale.max(0) as u32, zeus_decimal::Rounding::Truncate)
-                            .map_or(0, |d| d.coef);
-                        let st = self.sym.as_mut().unwrap();
-                        let v = st.var_named(
-                            format!("F{}.R{n}.{}", fi.name, rf.name),
-                            VarKind::Num {
-                                digits: t.digits,
-                                signed: t.signed,
-                            },
-                            value,
-                        );
-                        for &(a, l) in &places {
-                            if rf.offset + rf.len <= l {
-                                self.sym_bind_num(a + rf.offset, rf.len, *t, v);
-                            }
-                        }
-                    }
-                    None => {
-                        for (i, b) in bytes.iter().enumerate() {
-                            let st = self.sym.as_mut().unwrap();
-                            let v = st.var_named(
-                                format!("F{}.R{n}.{}#{}", fi.name, rf.name, i + 1),
-                                VarKind::Byte,
-                                i128::from(*b),
-                            );
-                            for &(a, l) in &places {
-                                if rf.offset + i < l {
-                                    self.sym_bind_byte(a + rf.offset + i, v);
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-        // FILE STATUS: its first byte is '1' when count <= pos, else '0'
-        // ((count + 99 - pos) / 100 is 1 when count > pos, for counts
-        // below 100)
-        if let Some(st) = &def.status
-            && pos < 100
-            && let Ok((a, l)) = self.addr(cur, st)
-            && l >= 2
-            && matches!(&self.mem[a..a + 2], [0xF0 | 0xF1, 0xF0])
-        {
-            let more = Term::div(Term::add(count, Term::Const(99 - pos as i128)), 100);
-            let t = Term::sub(Term::Const(0xF1), more);
-            self.sym_forget(a, 1);
-            self.sym_bind_byte_term(a, t);
-        }
-    }
-
-    fn sym_bind_term(&mut self, a: usize, l: usize, ty: NumType, term: Term) {
+    pub(super) fn sym_bind_term(&mut self, a: usize, l: usize, ty: NumType, term: Term) {
         if term.konst().is_some() {
             return;
         }
@@ -746,7 +621,7 @@ impl Machine {
         }
     }
 
-    fn sym_bind_byte_term(&mut self, a: usize, t: Term) {
+    pub(super) fn sym_bind_byte_term(&mut self, a: usize, t: Term) {
         let b = self.mem[a];
         if let Some(st) = self.sym.as_mut() {
             st.bytes.insert(a, (t, b));

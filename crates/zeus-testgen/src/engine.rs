@@ -209,6 +209,15 @@ pub struct FileSpec {
     pub input: bool,
     pub output: bool,
     pub fields: Vec<RecordField>,
+    /// Indexed files: the primary key and the alternate keys (offset,
+    /// length, duplicates allowed).
+    pub keys: Vec<(usize, usize, bool)>,
+}
+
+impl FileSpec {
+    pub fn indexed(&self) -> bool {
+        !self.keys.is_empty()
+    }
 }
 
 /// Records an input file has at most.
@@ -243,11 +252,31 @@ pub fn file_specs(module: &Module, program: &str) -> Vec<FileSpec> {
                     .iter()
                     .any(|i| matches!(i, Instr::Open(x, o) if *x as usize == f && m.contains(o)))
             };
-            let input = main && def.org == Org::Sequential && !text && opens(&[OpenMode::Input]);
+            let indexed = def.org == Org::Indexed;
+            let input = main
+                && ((def.org == Org::Sequential && !text && opens(&[OpenMode::Input]))
+                    || (indexed && opens(&[OpenMode::Input, OpenMode::InputOutput])));
             let output = main
-                && matches!(def.org, Org::Sequential | Org::LineSequential)
-                && opens(&[OpenMode::Output, OpenMode::Extend]);
+                && (matches!(def.org, Org::Sequential | Org::LineSequential)
+                    && opens(&[OpenMode::Output, OpenMode::Extend])
+                    || indexed
+                        && opens(&[OpenMode::Output, OpenMode::InputOutput, OpenMode::Extend]));
             let mut fields = Vec::new();
+            let mut keys = Vec::new();
+            if indexed && let Some(rec) = p.descs.get(def.record as usize) {
+                let key = |l: &zeus_cobol::zir::Loc| {
+                    let d = &p.descs[l.desc as usize];
+                    (d.offset.saturating_sub(rec.offset) as usize, d.len as usize)
+                };
+                if let Some(l) = &def.record_key {
+                    let (o, n) = key(l);
+                    keys.push((o, n, false));
+                    for (l, dup) in &def.alternate_keys {
+                        let (o, n) = key(l);
+                        keys.push((o, n, *dup));
+                    }
+                }
+            }
             if input && let Some(rec) = p.descs.get(def.record as usize) {
                 let descs: Vec<_> = p.descs.iter().filter(|d| d.base == rec.base).collect();
                 for (name, offset, len, num) in
@@ -269,6 +298,7 @@ pub fn file_specs(module: &Module, program: &str) -> Vec<FileSpec> {
                 input,
                 output,
                 fields,
+                keys,
             });
         }
     }
@@ -284,6 +314,37 @@ pub fn default_record(f: &FileSpec) -> Vec<u8> {
         }
     }
     r
+}
+
+/// The records of the indexed input files without the ones whose primary
+/// key or unique alternate key an earlier record has (a data set cannot
+/// hold them).
+fn normalize(inputs: &mut Inputs, specs: &[FileSpec]) {
+    for (f, recs) in specs
+        .iter()
+        .filter(|f| f.input)
+        .zip(inputs.files.iter_mut())
+    {
+        recs.truncate(MAX_RECORDS);
+        if !f.indexed() {
+            continue;
+        }
+        let mut seen: HashSet<(usize, Vec<u8>)> = HashSet::new();
+        recs.retain(|r| {
+            let ks: Vec<(usize, Vec<u8>)> = f
+                .keys
+                .iter()
+                .enumerate()
+                .filter(|(_, k)| !k.2)
+                .filter_map(|(i, &(o, l, _))| Some((i, r.get(o..o + l)?.to_vec())))
+                .collect();
+            if ks.iter().any(|k| seen.contains(k)) {
+                return false;
+            }
+            seen.extend(ks);
+            true
+        });
+    }
 }
 
 /// Inputs with every numeric field zero and the others spaces.
@@ -340,8 +401,13 @@ pub fn run(
         let path = dir.join(&f.assign);
         if f.input {
             let mut data = Vec::new();
+            let format = if f.indexed() {
+                RecordFormat::Variable
+            } else {
+                f.format
+            };
             for r in inputs.files.get(k).map(|r| &r[..]).unwrap_or(&[]) {
-                zeus_ds::format::encode_into(f.format, r, 0x40, &mut data);
+                zeus_ds::format::encode_into(format, r, 0x40, &mut data);
             }
             k += 1;
             let _ = std::fs::write(&path, data);
@@ -350,7 +416,7 @@ pub fn run(
             &f.assign,
             Allocation {
                 path,
-                format: (f.format != RecordFormat::Text).then_some(f.format),
+                format: (f.format != RecordFormat::Text && !f.indexed()).then_some(f.format),
             },
         );
     }
@@ -408,10 +474,19 @@ pub fn run(
                 },
                 n as i128,
             );
+            let records = inputs.files.get(k).cloned().unwrap_or_default();
             st.files.push(FileInput {
                 name: f.name.clone(),
                 fields: f.fields.clone(),
                 count,
+                keys: f.keys.iter().map(|&(o, l, _)| (o, l)).collect(),
+                blank: if f.indexed() && records.len() < MAX_RECORDS {
+                    default_record(f)
+                } else {
+                    Vec::new()
+                },
+                records: if f.indexed() { records } else { Vec::new() },
+                ..Default::default()
             });
         }
     }
@@ -437,7 +512,12 @@ pub fn run(
         .filter(|f| f.output)
         .map(|f| {
             let data = std::fs::read(dir.join(&f.assign)).unwrap_or_default();
-            let recs = zeus_ds::format::decode(f.format, &data).unwrap_or_default();
+            let format = if f.indexed() {
+                RecordFormat::Variable
+            } else {
+                f.format
+            };
+            let recs = zeus_ds::format::decode(format, &data).unwrap_or_default();
             (f.name.clone(), recs)
         })
         .collect();
@@ -667,6 +747,7 @@ fn apply(
             }
         }
     }
+    normalize(&mut new, specs);
     new
 }
 
@@ -745,7 +826,36 @@ fn mutate(
         if recs.is_empty() || spec.fields.is_empty() || next(rng).is_multiple_of(3) {
             let n = [0, 1, 2, 3, recs.len() + 1, recs.len().saturating_sub(1)];
             let n = n[next(rng) as usize % n.len()].min(MAX_RECORDS);
+            let old = recs.len();
             recs.resize(n, default_record(spec));
+            // records added to an indexed file need keys of their own
+            if let Some(&(ko, kl, _)) = spec.keys.first() {
+                let key: Vec<Field> = spec
+                    .fields
+                    .iter()
+                    .filter(|rf| rf.offset < ko + kl && ko < rf.offset + rf.len)
+                    .map(|rf| Field {
+                        param: 0,
+                        name: rf.name.clone(),
+                        offset: rf.offset,
+                        len: rf.len,
+                        num: rf.num,
+                    })
+                    .collect();
+                for r in recs.iter_mut().skip(old) {
+                    for f in &key {
+                        let one = Inputs {
+                            params: vec![r.clone()],
+                            accept: Vec::new(),
+                            files: Vec::new(),
+                        };
+                        *r = mutate(&one, std::slice::from_ref(f), &[], dict, rng)
+                            .params
+                            .remove(0);
+                    }
+                }
+            }
+            normalize(&mut new, specs);
             return new;
         }
         let r = next(rng) as usize % recs.len();
@@ -764,6 +874,7 @@ fn mutate(
         };
         one = mutate(&one, &[field], &[], dict, rng);
         recs[r] = one.params.remove(0);
+        normalize(&mut new, specs);
         return new;
     }
     if let Some(f) = fields.get(k) {

@@ -154,3 +154,57 @@ fn covers_a_file_program() {
     assert_eq!(o.status.code(), Some(1), "{text}");
     assert!(text.contains("file RPT-FILE: records"), "{text}");
 }
+
+/// A program on an indexed file (random READ with INVALID KEY, REWRITE,
+/// WRITE with a duplicate key, START and READ NEXT): the records and
+/// their keys are inputs, the data set's final records expected results.
+#[test]
+fn covers_an_indexed_file_program() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/programs/IDXPGM.cbl");
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("cases");
+    let o = Command::new(env!("CARGO_BIN_EXE_ztestgen"))
+        .arg("--out")
+        .arg(&out)
+        .arg(&src)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&o.stdout);
+    assert!(o.status.success(), "{text}");
+    assert!(
+        text.contains("C1: 24 of 24 branch directions (100.0%)"),
+        "{text}"
+    );
+    let cases: Vec<String> = std::fs::read_dir(&out)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap())
+        .collect();
+    // the final records of the data set are expected results
+    assert!(
+        cases.iter().any(|c| c.contains("\"name\": \"ACCT-FILE\"")),
+        "{cases:?}"
+    );
+    let o = Command::new(env!("CARGO_BIN_EXE_ztest"))
+        .arg(&src)
+        .arg(&out)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&o.stdout);
+    assert!(o.status.success(), "{text}");
+    // a new account written with another status: the data set differs
+    let changed = tmp.path().join("IDXPGM.cbl");
+    let text = std::fs::read_to_string(&src)
+        .unwrap()
+        .replace("MOVE 'A' TO AC-STATUS", "MOVE 'X' TO AC-STATUS");
+    std::fs::write(&changed, text).unwrap();
+    let o = Command::new(env!("CARGO_BIN_EXE_ztest"))
+        .arg(&changed)
+        .arg(&out)
+        .output()
+        .unwrap();
+    let text = String::from_utf8_lossy(&o.stdout);
+    assert_eq!(o.status.code(), Some(1), "{text}");
+    assert!(text.contains("file ACCT-FILE: records"), "{text}");
+}

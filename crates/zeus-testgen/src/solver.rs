@@ -190,6 +190,11 @@ fn constants(p: &Pred, out: &mut HashSet<i128>) {
                 term(b, out);
             }
             Term::Neg(a) | Term::Abs(a) | Term::Div(a, _) | Term::Rem(a, _) => term(a, out),
+            Term::If(p, a, b) => {
+                constants(p, out);
+                term(a, out);
+                term(b, out);
+            }
         }
     }
     match p {

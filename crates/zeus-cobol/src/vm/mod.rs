@@ -14,6 +14,7 @@ mod numeric;
 mod report;
 mod sort;
 mod sym;
+mod sym_io;
 mod text;
 pub mod threaded;
 mod unicode_case;

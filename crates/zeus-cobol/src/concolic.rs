@@ -26,6 +26,8 @@ pub enum Term {
     /// Remainder (with the sign of the dividend) of a division by a
     /// positive constant.
     Rem(Box<Term>, i128),
+    /// The first term when the condition holds, else the second.
+    If(Box<Pred>, Box<Term>, Box<Term>),
 }
 
 // The constructors fold constants (they are not the operators).
@@ -93,6 +95,15 @@ impl Term {
         }
     }
 
+    pub fn ite(p: Pred, a: Term, b: Term) -> Term {
+        match p {
+            Pred::Bool(true) => a,
+            Pred::Bool(false) => b,
+            _ if a == b => a,
+            p => Term::If(Box::new(p), Box::new(a), Box::new(b)),
+        }
+    }
+
     pub fn rem(a: Term, k: i128) -> Term {
         match a.konst() {
             Some(x) => Term::Const(x % k),
@@ -123,6 +134,13 @@ impl Term {
             Term::Abs(a) => a.eval(v)?.checked_abs()?,
             Term::Div(a, k) => a.eval(v)? / k,
             Term::Rem(a, k) => a.eval(v)? % k,
+            Term::If(p, a, b) => {
+                if p.eval(v)? {
+                    a.eval(v)?
+                } else {
+                    b.eval(v)?
+                }
+            }
         })
     }
 
@@ -139,6 +157,11 @@ impl Term {
                 b.vars(out);
             }
             Term::Neg(a) | Term::Abs(a) | Term::Div(a, _) | Term::Rem(a, _) => a.vars(out),
+            Term::If(p, a, b) => {
+                p.vars(out);
+                a.vars(out);
+                b.vars(out);
+            }
         }
     }
 }
@@ -324,17 +347,37 @@ pub struct RecordField {
     pub num: Option<crate::zir::NumType>,
 }
 
-/// A file read sequentially whose records are inputs: the record `n`
-/// read has the variables `F<file>.R<n>.<field>` (numeric) or
-/// `F<file>.R<n>.<field>#<i>` (bytes), and its number of records is the
-/// variable `count` (`F<file>.N`): AT END of the READ of record `n` is
-/// the condition `count < n`.
-#[derive(Debug, Clone)]
+/// An input file whose records are inputs: record `n` has the variables
+/// `F<file>.R<n>.<field>` (numeric) or `F<file>.R<n>.<field>#<i>`
+/// (bytes), and its number of records is the variable `count`
+/// (`F<file>.N`).
+///
+/// Sequential files: record `n` is the `n`-th read, and AT END of that
+/// READ is `count < n`. Indexed files (`keys` not empty): record `n` is
+/// the `n`-th of `records`, and a READ or START by key finds a record
+/// when `n <= count` and its key compares with the search key; one record
+/// more than there are (`blank`) lets the solver add a record.
+#[derive(Debug, Clone, Default)]
 pub struct FileInput {
     /// The file's name (FD).
     pub name: String,
     pub fields: Vec<RecordField>,
     pub count: u32,
+    /// Indexed files: the primary key and the alternate keys (offset and
+    /// length in the record).
+    pub keys: Vec<(usize, usize)>,
+    /// Indexed files: the records, in the order of their variables.
+    pub records: Vec<Vec<u8>>,
+    /// Indexed files: the contents of a record added.
+    pub blank: Vec<u8>,
+    /// READs since the file was opened.
+    pub reads: u64,
+    /// Records were written, rewritten or deleted (the data set is no
+    /// longer the inputs).
+    pub modified: bool,
+    /// The file was positioned by START, or written since it was opened
+    /// (its records are no longer the inputs' in key order).
+    pub moved: bool,
 }
 
 /// The symbolic state of a run.
