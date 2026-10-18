@@ -233,6 +233,7 @@ pub enum ExecKind {
     Cics,
     Sql,
     Dli,
+    SqlIms,
 }
 
 /// An embedded EXEC statement, run by the host interface (CICS, Db2, IMS).

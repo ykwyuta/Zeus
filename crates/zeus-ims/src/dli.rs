@@ -107,11 +107,11 @@ struct Position {
 }
 
 pub struct Session {
-    database: Database,
-    psb: Psb,
+    pub(crate) database: Database,
+    pub(crate) psb: Psb,
     positions: Vec<Position>,
-    transaction: Transaction,
-    lock_timeout: Duration,
+    pub(crate) transaction: Transaction,
+    pub(crate) lock_timeout: Duration,
 }
 
 /// A relational operator of a qualification statement.
@@ -1219,7 +1219,7 @@ impl Session {
     }
 }
 
-fn delete_subtree(
+pub(crate) fn delete_subtree(
     transaction: &mut Transaction,
     dbd: &Dbd,
     dbd_name: &str,

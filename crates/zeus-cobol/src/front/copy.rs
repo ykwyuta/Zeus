@@ -369,7 +369,7 @@ fn sql_include(t: &Token) -> Option<String> {
     let Tok::Exec(kind, text) = &t.tok else {
         return None;
     };
-    if kind != "SQL" {
+    if kind != "SQL" && kind != "SQLIMS" {
         return None;
     }
     let text: String = text.iter().map(|(c, _)| *c).collect();

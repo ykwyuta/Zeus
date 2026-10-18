@@ -5,6 +5,7 @@ use crate::diag::{Diag, Result};
 pub(super) struct Effective {
     pub optimize: u8,
     pub sql: Option<bool>,
+    pub sqlims: bool,
     pub listing: crate::listing::ListingOptions,
     pub cics: bool,
     pub dbcs: bool,
@@ -28,6 +29,7 @@ impl Effective {
             compiler_options: String::new(),
             optimize: self.optimize,
             sql: self.sql,
+            sqlims: self.sqlims,
             listing: self.listing.clone(),
             cics: self.cics,
             nsymbol_dbcs: self.dbcs,
@@ -52,6 +54,7 @@ impl Effective {
 pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
     let mut optimize = defaults.optimize;
     let mut sql = defaults.sql;
+    let mut sqlims = defaults.sqlims;
     let mut listing = defaults.listing.clone();
     let (mut list_here, mut offset_here) = (None, None);
     let mut cics = defaults.cics;
@@ -103,7 +106,8 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
             ("OPTIMIZE" | "OPT", Some("2" | "FULL")) => optimize = 2,
             ("LP", Some("32")) => lp64 = false,
             ("LP", Some("64")) => lp64 = true,
-            ("NOSQLIMS", None) => {}
+            ("SQLIMS", None) => sqlims = true,
+            ("NOSQLIMS", None) => sqlims = false,
             ("THREAD", None) => thread = true,
             ("NOTHREAD", None) => thread = false,
             ("DLL", None) => dll = true,
@@ -245,6 +249,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
     if lp64 {
         dll = false;
         thread = false;
+        sqlims = false;
     }
     if dynam && dll {
         return Err(Diag::error(Default::default(), "DLL requires NODYNAM"));
@@ -280,6 +285,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         exportall,
         optimize,
         sql,
+        sqlims,
         listing,
         dynam,
         codepage,

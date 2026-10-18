@@ -416,6 +416,16 @@ impl Transaction {
             }
         }
     }
+    /// Marks statement-local changes without ending the IMS unit of work.
+    pub(crate) fn statement_mark(&self) -> usize {
+        self.changes.len()
+    }
+
+    /// Undo a failed SQL statement. Locks remain held until the IMS sync point.
+    pub(crate) fn undo_statement(&mut self, mark: usize) {
+        self.changes.truncate(mark);
+    }
+
     pub fn record(&self, id: u64) -> Option<Record> {
         for change in self.changes.iter().rev() {
             match change {

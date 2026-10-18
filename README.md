@@ -223,7 +223,8 @@ COBOL-85 の主要な文と z/OS のデータ表現には広く対応してい�
 | 項目 | 現在の範囲 |
 |---|---|
 | IBM COBOL の言語全体 | OO/Java、XML、DATEPROC、特殊なデータカテゴリーなどに未対応・部分対応あり |
-| コンパイラー設定 | NSYMBOL、CICS、SQL、TRUNC、ARITH、NUMPROC、APOST、AWO、BLOCK0、SSRANGE、CODEPAGE、DYNAM、OPTIMIZEと各NO指定に対応。条件付きコンパイル・定義済み変数、SOURCE/MAP/LIST/OFFSET/XREF/VBREFのZeus形式のリストを提供。DLL/EXPORTALLとDLL側ファイル、THREADの共有実行単位、LP(64)の仮想ABIにも対応。ARCH・SQLIMS等には残件があり、未対応指定を診断。EXEC SQLIMSをDb2へ転送する処理も廃止し、未実装として診断 |
+| コンパイラー設定 | NSYMBOL、CICS、SQL、SQLIMS、TRUNC、ARITH、NUMPROC、APOST、AWO、BLOCK0、SSRANGE、CODEPAGE、DYNAM、OPTIMIZEと各NO指定に対応。条件付きコンパイル・定義済み変数、SOURCE/MAP/LIST/OFFSET/XREF/VBREFを提供。DLL/EXPORTALL、THREAD、LP(64)の仮想ABIにも対応。ARCH等には残件あり |
+| IMS SQL | SQLIMSとLP(32)を指定したCOBOLから、BMP／メッセージ処理のIMSデータを動的SQLで検索・更新。PREPARE、EXECUTE、EXECUTE IMMEDIATE、OPEN／FETCH／CLOSE、DESCRIBE、SQLIMSCA／SQLIMSDA、WHENEVER、ホスト構造体・標識配列を実装。DL/Iと同じトランザクションを使用。日時型、メタデータ・意味制約の一部、IBM診断コードの網羅には残件あり |
 | 呼び出し規約 | RECURSIVE、PROCEDURE DIVISION RETURNING と結果転送、仮想エントリーへの間接CALLに対応。IBMのロードモジュール・実アドレスABIの直接実行は対象外 |
 | ファイル・テープ | 物理ブロック、標準ラベル／ラベルなしの複数巻、REEL/UNITラベル、RERUN再始動に対応。全媒体属性の照合などには残件あり |
 | アセンブラー | 対応するアプリケーション命令を Zeus の実行エンジンで処理。IBM オブジェクトデック／ロードモジュールの直接実行、HLASM のホスト CPU 向けネイティブ生成は対象外 |

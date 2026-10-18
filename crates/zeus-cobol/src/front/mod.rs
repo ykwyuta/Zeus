@@ -37,6 +37,7 @@ pub struct FrontOptions {
     pub optimize: u8,
     /// None keeps the integrated translator's automatic SQL extension.
     pub sql: Option<bool>,
+    pub sqlims: bool,
     pub apost: bool,
     pub awo: bool,
     pub block0: bool,
@@ -412,6 +413,12 @@ pub fn source_tokens(
         return Err(Diag::error(
             Default::default(),
             "embedded SQL is disabled by NOSQL",
+        ));
+    }
+    if !effective_opts.sqlims && cics::uses(&tokens, "SQLIMS") {
+        return Err(Diag::error(
+            Default::default(),
+            "EXEC SQLIMS requires SQLIMS and LP(32) compiler options",
         ));
     }
     Ok((tokens, cics_option))

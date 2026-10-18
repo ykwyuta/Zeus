@@ -22,6 +22,7 @@ pub struct Gen<'a> {
     execs: Vec<zir::ExecDef>,
     /// SQL cursor declarations (DECLARE c CURSOR FOR ...) by cursor name.
     sql_cursors: HashMap<String, SqlText>,
+    sqlims_whenever: HashMap<String, ProcName>,
     pub prog: &'a ast::Program,
     pub dm: DataModel,
     pub code: Vec<Instr>,
@@ -223,6 +224,7 @@ impl<'a> Gen<'a> {
             reports: Vec::new(),
             execs: Vec::new(),
             sql_cursors: sql_cursors(prog),
+            sqlims_whenever: HashMap::new(),
             pos: prog.pos,
         };
         g.environment()?;
@@ -831,10 +833,74 @@ impl<'a> Gen<'a> {
 
     /// ZIR form of an EXEC block: option arguments resolved to data
     /// areas, values, procedure labels or names.
+    fn sqlims_whenever(&mut self, e: &ExecBlock) -> Result<()> {
+        let words: Vec<_> = e
+            .sql
+            .as_ref()
+            .map(|s| s.text.split_whitespace().collect())
+            .unwrap_or_default();
+        let mut i = 1;
+        let condition = if words.get(i).is_some_and(|w| w.eq_ignore_ascii_case("NOT")) {
+            i += 1;
+            if !words
+                .get(i)
+                .is_some_and(|w| w.eq_ignore_ascii_case("FOUND"))
+            {
+                return Err(Diag::error(e.pos, "WHENEVER NOT FOUND expected"));
+            }
+            "NOTFOUND"
+        } else if words
+            .get(i)
+            .is_some_and(|w| w.eq_ignore_ascii_case("SQLERROR"))
+        {
+            "SQLERROR"
+        } else if words
+            .get(i)
+            .is_some_and(|w| w.eq_ignore_ascii_case("SQLWARNING"))
+        {
+            "SQLWARNING"
+        } else {
+            return Err(Diag::error(e.pos, "WHENEVER condition expected"));
+        };
+        i += 1;
+        if words
+            .get(i)
+            .is_some_and(|w| w.eq_ignore_ascii_case("CONTINUE"))
+            && words.len() == i + 1
+        {
+            self.sqlims_whenever.remove(condition);
+            return Ok(());
+        }
+        if words.get(i).is_some_and(|w| w.eq_ignore_ascii_case("GO")) {
+            i += 1;
+            if !words.get(i).is_some_and(|w| w.eq_ignore_ascii_case("TO")) {
+                return Err(Diag::error(e.pos, "GO TO expected"));
+            }
+        } else if !words.get(i).is_some_and(|w| w.eq_ignore_ascii_case("GOTO")) {
+            return Err(Diag::error(e.pos, "WHENEVER requires CONTINUE or GO TO"));
+        }
+        i += 1;
+        if words.len() != i + 1 {
+            return Err(Diag::error(
+                e.pos,
+                "WHENEVER requires an unqualified procedure name",
+            ));
+        }
+        let target = ProcName {
+            name: words[i].to_ascii_uppercase(),
+            section: None,
+            pos: e.pos,
+        };
+        self.proc_start(&target)?;
+        self.sqlims_whenever.insert(condition.into(), target);
+        Ok(())
+    }
+
     fn exec_def(&mut self, e: &ExecBlock) -> Result<zir::ExecDef> {
         let kind = match e.kind {
             ExecKind::Cics => zir::ExecKind::Cics,
             ExecKind::Sql => zir::ExecKind::Sql,
+            ExecKind::SqlIms => zir::ExecKind::SqlIms,
             ExecKind::Dli => zir::ExecKind::Dli,
         };
         let mut options = Vec::new();
@@ -910,14 +976,14 @@ impl<'a> Gen<'a> {
         let mut host = Vec::new();
         let mut host_varchar = Vec::new();
         let mut sql = e.sql.clone();
-        if e.kind == ExecKind::Sql {
+        if matches!(e.kind, ExecKind::Sql | ExecKind::SqlIms) {
             // OPEN: the query and host variables of the cursor declaration
             // (the declaration itself is not executable)
             if e.command == "OPEN"
                 && let Some(text) = &sql
                 && let Some(name) = text.text.split_whitespace().nth(1)
             {
-                let name = name.to_ascii_uppercase();
+                let name = format!("{:?}:{}", e.kind, name.to_ascii_uppercase());
                 let Some(decl) = self.sql_cursors.get(&name).cloned() else {
                     return Err(Diag::error(e.pos, format!("cursor {name} is not declared")));
                 };
@@ -936,25 +1002,118 @@ impl<'a> Gen<'a> {
             }
             // the SQLCA the statement reports to
             let ca = DataRef {
-                name: "SQLCA".into(),
+                name: if e.kind == ExecKind::SqlIms {
+                    "SQLIMSCA"
+                } else {
+                    "SQLCA"
+                }
+                .into(),
                 qualifiers: Vec::new(),
                 subscripts: Vec::new(),
                 refmod: None,
                 pos: e.pos,
             };
             if self.dm.resolve(&ca).is_ok() {
+                if e.kind == ExecKind::SqlIms {
+                    let id = self.dm.resolve(&ca)?;
+                    if self.dm.items[id].len != 224 {
+                        return Err(Diag::error(
+                            e.pos,
+                            "SQLIMSCA must contain exactly 224 bytes",
+                        ));
+                    }
+                }
                 options.push(zir::ExecOpt {
-                    name: "SQLCA".into(),
+                    name: ca.name.clone(),
                     arg: Some(zir::ExecVal::Area(self.loc(&ca)?)),
                 });
+            } else if e.kind == ExecKind::SqlIms
+                && !matches!(
+                    e.command.as_str(),
+                    "DECLARE" | "BEGIN" | "END" | "WHENEVER" | "INCLUDE"
+                )
+            {
+                return Err(Diag::error(e.pos, "executable SQLIMS requires SQLIMSCA"));
             }
         }
         if let Some(sql) = &sql {
-            for h in &sql.host {
-                let v = self.loc(&h.var)?;
-                let i = h.indicator.as_ref().map(|r| self.loc(r)).transpose()?;
-                host_varchar.push(self.is_varchar(&h.var));
-                host.push((v, i));
+            for (index, h) in sql.host.iter().enumerate() {
+                let descriptor = e.kind == ExecKind::SqlIms
+                    && (e.command == "DESCRIBE"
+                        || (e.command == "FETCH"
+                            && sql
+                                .text
+                                .split_whitespace()
+                                .any(|w| w.eq_ignore_ascii_case("DESCRIPTOR")))
+                        || (e.command == "PREPARE"
+                            && index == 0
+                            && sql
+                                .text
+                                .split_whitespace()
+                                .nth(2)
+                                .is_some_and(|w| w.eq_ignore_ascii_case("INTO"))));
+                let refs = if e.kind == ExecKind::SqlIms && !descriptor {
+                    self.sqlims_host_fields(&h.var)?
+                } else {
+                    vec![h.var.clone()]
+                };
+                for (n, r) in refs.iter().enumerate() {
+                    let v = self.loc(r)?;
+                    let indicator = if let Some(indicator) = &h.indicator {
+                        let mut indicator = indicator.clone();
+                        let id = self.dm.resolve(&indicator)?;
+                        if let Some(occurs) = &self.dm.items[id].occurs
+                            && e.kind == ExecKind::SqlIms
+                        {
+                            if n >= occurs.max as usize {
+                                None
+                            } else {
+                                indicator.subscripts.push(Subscript::Expr(Expr::Operand(
+                                    Operand::Lit(Literal::Num((n + 1).to_string())),
+                                )));
+                                Some(indicator)
+                            }
+                        } else if n == 0 {
+                            Some(indicator)
+                        } else {
+                            None
+                        }
+                    } else {
+                        None
+                    };
+                    let i = indicator.as_ref().map(|r| self.loc(r)).transpose()?;
+                    if e.kind == ExecKind::SqlIms
+                        && let Some(i) = &i
+                    {
+                        let desc = &self.dm.descs[i.desc as usize];
+                        if desc.len != 2
+                            || !matches!(
+                                desc.ty,
+                                DataType::Numeric(zir::NumType {
+                                    usage: zir::NumUsage::Binary | zir::NumUsage::Native,
+                                    signed: true,
+                                    scale: 0,
+                                    ..
+                                })
+                            )
+                        {
+                            return Err(Diag::error(
+                                e.pos,
+                                "SQLIMS indicator must be a signed binary halfword",
+                            ));
+                        }
+                    }
+                    host_varchar.push(self.is_varchar(r));
+                    host.push((v, i));
+                }
+            }
+        }
+        if e.kind == ExecKind::SqlIms {
+            for (condition, target) in &self.sqlims_whenever {
+                options.push(zir::ExecOpt {
+                    name: condition.clone(),
+                    arg: Some(zir::ExecVal::Label(self.proc_start(target)?)),
+                });
             }
         }
         Ok(zir::ExecDef {
@@ -1032,6 +1191,30 @@ impl<'a> Gen<'a> {
 
     /// A VARCHAR host variable: a group of a halfword length and the
     /// text, both level 49 (as DCLGEN writes them).
+    fn sqlims_host_fields(&self, r: &DataRef) -> Result<Vec<DataRef>> {
+        let id = self.dm.resolve(r)?;
+        let item = &self.dm.items[id];
+        if item.children.is_empty() || self.is_varchar(r) {
+            return Ok(vec![r.clone()]);
+        }
+        let mut refs = Vec::new();
+        for &child in &item.children {
+            let child = &self.dm.items[child];
+            let Some(name) = &child.name else { continue };
+            if child.entry.redefines.is_some() || child.occurs.is_some() {
+                return Err(Diag::error(
+                    r.pos,
+                    "SQLIMS host structure cannot contain REDEFINES or OCCURS",
+                ));
+            }
+            let mut field = r.clone();
+            field.name = name.clone();
+            field.qualifiers.insert(0, r.name.clone());
+            refs.extend(self.sqlims_host_fields(&field)?);
+        }
+        Ok(refs)
+    }
+
     fn is_varchar(&self, r: &DataRef) -> bool {
         let Ok(id) = self.dm.resolve(r) else {
             return false;
@@ -1100,6 +1283,12 @@ impl<'a> Gen<'a> {
         self.mark_print_files(&proc.sections);
         self.setup_debugging()?;
         self.build_reports()?;
+
+        for e in &self.prog.data.execs {
+            if e.kind == ExecKind::SqlIms && e.command == "WHENEVER" {
+                self.sqlims_whenever(e)?;
+            }
+        }
 
         let mut para_idx = 0u32;
         for sec in &proc.sections {
@@ -3206,6 +3395,21 @@ impl<'a> Gen<'a> {
             }
             Stmt::Exec(e) => {
                 self.pos = e.pos;
+                if e.kind == ExecKind::SqlIms {
+                    if self.in_decl {
+                        return Err(Diag::error(
+                            e.pos,
+                            "EXEC SQLIMS is not permitted in COBOL declaratives",
+                        ));
+                    }
+                    if e.command == "WHENEVER" {
+                        self.sqlims_whenever(e)?;
+                        return Ok(());
+                    }
+                    if matches!(e.command.as_str(), "DECLARE" | "BEGIN" | "END") {
+                        return Ok(());
+                    }
+                }
                 let def = self.exec_def(e)?;
                 self.execs.push(def);
                 self.emit(Instr::Exec(self.execs.len() as u32 - 1));
@@ -4554,7 +4758,7 @@ fn line_pos(l: LineClause) -> zir::LinePos {
 fn sql_cursors(prog: &ast::Program) -> HashMap<String, SqlText> {
     let mut out = HashMap::new();
     let mut add = |e: &ExecBlock| {
-        if e.kind != ExecKind::Sql || e.command != "DECLARE" {
+        if !matches!(e.kind, ExecKind::Sql | ExecKind::SqlIms) || e.command != "DECLARE" {
             return;
         }
         let Some(sql) = &e.sql else { return };
@@ -4580,7 +4784,10 @@ fn sql_cursors(prog: &ast::Program) -> HashMap<String, SqlText> {
             .get(i)
             .is_some_and(|w| w.eq_ignore_ascii_case("CURSOR"))
         {
-            out.insert(words[1].to_ascii_uppercase(), sql.clone());
+            out.insert(
+                format!("{:?}:{}", e.kind, words[1].to_ascii_uppercase()),
+                sql.clone(),
+            );
         }
     };
     for e in &prog.data.execs {

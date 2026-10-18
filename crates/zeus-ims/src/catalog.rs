@@ -5,6 +5,8 @@ use std::path::Path;
 #[derive(Clone, Debug)]
 pub struct Field {
     pub name: String,
+    pub external_name: Option<String>,
+    pub marshal: Option<Marshaling>,
     pub start: usize,
     pub bytes: usize,
     pub field_type: String,
@@ -14,8 +16,18 @@ pub struct Field {
 }
 
 #[derive(Clone, Debug)]
+pub struct Marshaling {
+    pub converter: Option<String>,
+    pub signed: bool,
+    pub encoding: Option<String>,
+    pub pattern: Option<String>,
+    pub custom: Option<String>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Segment {
     pub name: String,
+    pub external_name: Option<String>,
     pub parent: Option<String>,
     pub min_bytes: usize,
     pub max_bytes: usize,
@@ -99,6 +111,7 @@ impl Dbd {
 #[derive(Clone, Debug)]
 pub struct Pcb {
     pub name: Option<String>,
+    pub external_name: Option<String>,
     pub kind: String,
     pub dbd_name: Option<String>,
     pub procopt: Option<String>,
@@ -375,6 +388,7 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                     return Err(format!("line {}: invalid segment length", stmt.line));
                 }
                 dbd.segments.push(Segment {
+                    external_name: value(&p, "EXTERNALNAME").map(str::to_string),
                     name: required(&p, "NAME", stmt.line)?.to_ascii_uppercase(),
                     parent: parent_name(required(&p, "PARENT", stmt.line)?),
                     min_bytes,
@@ -387,7 +401,11 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                     .as_mut()
                     .and_then(|d| d.segments.last_mut())
                     .ok_or_else(|| format!("line {}: FIELD before SEGM", stmt.line))?;
-                let raw = required(&p, "NAME", stmt.line)?;
+                let raw = value(&p, "NAME")
+                    .or_else(|| value(&p, "EXTERNALNAME"))
+                    .ok_or_else(|| {
+                        format!("line {}: FIELD requires NAME or EXTERNALNAME", stmt.line)
+                    })?;
                 let flags: Vec<_> = raw
                     .trim_matches(|c| c == '(' || c == ')')
                     .split(',')
@@ -402,6 +420,8 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                     ));
                 }
                 segment.fields.push(Field {
+                    external_name: value(&p, "EXTERNALNAME").map(str::to_string),
+                    marshal: None,
                     name: flags[0].to_ascii_uppercase(),
                     start,
                     bytes,
@@ -465,7 +485,41 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                         .unwrap_or_default(),
                 });
             }
-            "DBDGEN" | "FINISH" | "END" | "TITLE" | "PRINT" | "EJECT" | "SPACE" | "DFSMARSH" => {}
+            "DFSMARSH" => {
+                let field = dbd
+                    .as_mut()
+                    .and_then(|d| d.segments.last_mut())
+                    .and_then(|s| s.fields.last_mut())
+                    .ok_or_else(|| format!("line {}: DFSMARSH must follow FIELD", stmt.line))?;
+                if p.iter().any(|(key, _)| {
+                    !matches!(
+                        key.as_str(),
+                        "INTERNALTYPECONVERTER"
+                            | "ISSIGNED"
+                            | "ENCODING"
+                            | "PATTERN"
+                            | "USERTYPECONVERTER"
+                            | "PROPERTIES"
+                    )
+                }) {
+                    return Err(format!("line {}: unsupported DFSMARSH operand", stmt.line));
+                }
+                let signed = match value(&p, "ISSIGNED") {
+                    None | Some("Y" | "YES") => true,
+                    Some("N" | "NO") => false,
+                    _ => return Err(format!("line {}: invalid ISSIGNED", stmt.line)),
+                };
+                field.marshal = Some(Marshaling {
+                    converter: value(&p, "INTERNALTYPECONVERTER").map(str::to_ascii_uppercase),
+                    signed,
+                    encoding: value(&p, "ENCODING").map(str::to_string),
+                    pattern: value(&p, "PATTERN").map(|s| s.trim_matches('\'').to_string()),
+                    custom: value(&p, "USERTYPECONVERTER")
+                        .or_else(|| value(&p, "PROPERTIES"))
+                        .map(str::to_string),
+                });
+            }
+            "DBDGEN" | "FINISH" | "END" | "TITLE" | "PRINT" | "EJECT" | "SPACE" => {}
             other => return Err(format!("line {}: {other} is invalid in DBD", stmt.line)),
         }
     }
@@ -497,6 +551,7 @@ pub fn parse_psb(source: &str) -> Result<Psb, String> {
         let p = params(&stmt.args);
         match stmt.op.as_str() {
             "PCB" => psb.pcbs.push(Pcb {
+                external_name: value(&p, "EXTERNALNAME").map(str::to_string),
                 name: value(&p, "PCBNAME")
                     .or(stmt.label.as_deref())
                     .map(str::to_string),

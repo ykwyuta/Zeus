@@ -188,6 +188,9 @@ pub struct CallAdapter {
     numeric_byte_order: NumericByteOrder,
 }
 impl CallAdapter {
+    pub(crate) fn sql_session(&mut self) -> &mut Session {
+        &mut self.session
+    }
     pub fn new(database: Database, psb: Psb, pcb_encoding: PcbEncoding) -> Result<Self, String> {
         let dbds = psb
             .pcbs

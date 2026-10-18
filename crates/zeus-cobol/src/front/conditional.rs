@@ -69,7 +69,7 @@ impl Variables {
             ("DLL", Value::Boolean(options.dll)),
             ("DYNAM", Value::Boolean(options.dynam)),
             ("SQL", Value::Boolean(options.sql == Some(true))),
-            ("SQLIMS", Value::Boolean(false)),
+            ("SQLIMS", Value::Boolean(options.sqlims)),
             ("THREAD", Value::Boolean(options.thread)),
             (
                 "LP",

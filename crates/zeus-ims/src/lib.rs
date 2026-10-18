@@ -13,6 +13,7 @@ pub mod csv_load;
 pub mod dli;
 pub mod gsam;
 pub mod runtime;
+pub mod sql;
 pub mod store;
 pub mod tm;
 pub mod unload;

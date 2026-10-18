@@ -22,15 +22,10 @@ impl Parser {
         let kind = match kind {
             "CICS" => ExecKind::Cics,
             "SQL" => ExecKind::Sql,
-            "SQLIMS" => {
-                return Err(Diag::error(
-                    pos,
-                    "EXEC SQLIMS requires an IMS SQL coprocessor; Db2 EXEC SQL is a different interface",
-                ));
-            }
+            "SQLIMS" => ExecKind::SqlIms,
             _ => ExecKind::Dli,
         };
-        if kind == ExecKind::Sql {
+        if matches!(kind, ExecKind::Sql | ExecKind::SqlIms) {
             let sql = sql_text(text, pos)?;
             let command = sql
                 .text
@@ -38,6 +33,27 @@ impl Parser {
                 .next()
                 .unwrap_or_default()
                 .to_ascii_uppercase();
+            if kind == ExecKind::SqlIms
+                && !matches!(
+                    command.as_str(),
+                    "PREPARE"
+                        | "DECLARE"
+                        | "OPEN"
+                        | "FETCH"
+                        | "CLOSE"
+                        | "EXECUTE"
+                        | "DESCRIBE"
+                        | "WHENEVER"
+                        | "BEGIN"
+                        | "END"
+                        | "INCLUDE"
+                )
+            {
+                return Err(Diag::error(
+                    pos,
+                    "SQLIMS supports dynamic SQL; use PREPARE/EXECUTE or OPEN/FETCH, and DL/I system services for commit/rollback",
+                ));
+            }
             return Ok(ExecBlock {
                 kind,
                 pos,

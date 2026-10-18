@@ -493,3 +493,22 @@ RERUNのチェックポイント名も環境変数のPATH／既存DSNで解決�
 根拠: [QSAMの環境変数割当とPDS作成の制約](https://www.ibm.com/docs/en/SS6SG3_6.5/pdf/pgmvs.pdf)、[OUTPUTとDISP=MODによる拡張](https://www.ibm.com/docs/en/zos/3.1.0?topic=volumes-multiple-volume-considerations-sequential-data-sets)。
 
 この追加実装後の関連3パッケージ回帰（`cargo test -p zeus-cobol -p zeus-ds -p zeus-jcl`）は **948 passed / 0 failed / 1 ignored**。全workspace CIは残件実装後に行う。
+
+### SQLIMSの実行経路と動的SQL（2026-10-18追加、K02進行中）
+
+EXEC SQLIMSを独立した命令種別として翻訳し、IMSの既存DL/Iセッションへ接続した。SQLIMS／NOSQLIMSとIGY-SQLIMSを反映し、LP(64)ではSQLIMSを無効にする。JCLのBMPと既存のメッセージ処理経路で有効化し、DLI／DBBではエラーを返す。Db2には転送しない。
+
+実装した範囲は次のとおり。
+
+- PREPARE、EXECUTE、EXECUTE IMMEDIATE、DECLARE CURSOR、OPEN、FETCH、CLOSE、DESCRIBE [OUTPUT]、PREPARE INTO。
+- SELECT／INSERT／UPDATE／DELETE、比較述語とAND／OR、同じPCB・階層パスのテーブル参照、GROUP BY／ORDER BY、COUNT／SUM／AVG／MIN／MAX。AVGはIBM仕様に従い整数なら小数を捨て、DECIMALなら引数と同じ小数桁数を用いる。
+- SQLIMSCAの224バイト、SQLIMSDAの16バイトのヘッダーと44バイトの記述子。公開のフィールド表から独自生成した宣言をINCLUDEで提供する。DESCRIBEはレコードの読み取りや更新を行わず、SQLIMSN不足は+239を返す。FETCH INTO DESCRIPTORはZeusの32ビット仮想ポインターを用いる。
+- 文字・整数・パック／ゾーン10進、ホスト構造体、VARCHAR、標識配列、NULL・文字切り詰めの通知。WHENEVERはソース上の指定位置以降の命令へ分岐先を付ける。
+- PCB・セグメント・フィールドのEXTERNALNAME、仮想外部キーの検索と子INSERTの親特定。仮想外部キーのUPDATEはSQLIMSSTATE 23504とする。DFSMARSHの組み込み10進変換と文字コードを参照する。Javaのカスタム変換器は自動実行しない。
+- DL/Iと同じ未確定変更を読み書きし、SYNC／CHKP／ROLBで同じ作業単位を確定・取り消す。SQL文の失敗ではその文の変更だけを取り消す。DL/Iの検索位置は変更しない。カーソルは同時に1個とし、同期点で閉じる。
+
+K02はまだ完了扱いにしない。日時型とDFSMARSHのPATTERN、フィールド単位の感応性・メタデータ制約、宣言と修飾・述語の意味制約、診断の網羅を引き続き監査・実装する。SQLIMSCODEは0／100／239、-122／-199の仕様を反映し、数値の対応を確認できていないエラーは暫定的にZeusの-1と公開仕様のSQLIMSSTATEを返す。IBMの全数値コードとの一致は主張しない。IFPの専用スケジューラーも未追加であり、I/O PCBの存在だけでSQLを許可しない。
+
+構文解析5件とSQLIMS統合16件を確認した。統合試験にはCOBOLソースからの実行、DL/Iとの未確定データ共有、子INSERT、文の途中での失敗、記述子、WHENEVER、同期点、警告・NULLを含む。途中時点の関連3パッケージ回帰（COBOL／IMS／JCL）は980件成功。その後のメタデータ拡張については追加の関連回帰を実施する。ユーザー指定の順序に従い、SQLIMS対応後に全体CIのエラーを解消する。
+
+根拠: [IMS Application Programming APIs 第8章](https://public.dhe.ibm.com/software/IMS/documentation/ims15pdfs/IMS_15_Application_Programming_APIs.pdf)、[COBOL SQLの制約](https://www.ibm.com/docs/en/ims/15.5.0?topic=sql-considerations-restrictions-cobol)、[COBOLの集計関数](https://www.ibm.com/docs/en/ims/15.4.0?topic=programs-sql-aggregate-functions-supported-cobol)、[SQLIMSSTATE](https://www.ibm.com/docs/en/ims/15.4.0?topic=codes-sqlimsstate-values-common-error)、[型指定とDFSMARSH](https://www.ibm.com/docs/en/ims/15.4.0?topic=utilities-specifying-data-types-application-programs)。

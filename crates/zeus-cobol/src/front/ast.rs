@@ -143,6 +143,7 @@ pub struct DataDivision {
 /// Kind of an embedded EXEC block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecKind {
+    SqlIms,
     Cics,
     Sql,
     Dli,

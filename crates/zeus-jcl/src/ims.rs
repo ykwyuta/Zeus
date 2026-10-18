@@ -131,10 +131,13 @@ pub(crate) fn run(ctx: &mut StepCtx, libs: &[PathBuf], job: &str, step: &Step) -
         .iter()
         .map(|d| (d.name.clone(), d.path.clone()))
         .collect();
-    let sched = match zeus_ims::runtime::Schedule::new(&ims, &psb, io_pcb, &dds) {
+    let mut sched = match zeus_ims::runtime::Schedule::new(&ims, &psb, io_pcb, &dds) {
         Ok(s) => s,
         Err(e) => return fail(ctx, &e, "U0456"),
     };
+    if region == "BMP" {
+        sched.enable_sqlims();
+    }
     crate::job::run_program(ctx, &program, libs, job, step, Some(sched))
 }
 
@@ -284,6 +287,7 @@ fn message_region(
                 }
             };
             sched.tm = Some(zeus_ims::runtime::Tm::new(vec![input], "ZEUSUSER"));
+            sched.enable_sqlims();
             if let Ok(mut f) = ctx.sysout("SYSPRINT") {
                 let _ = writeln!(f, "ZEUS IMS: transaction {tran} (program {program})");
             }

@@ -2,7 +2,7 @@ use std::{cell::RefCell, io::Write, path::Path, rc::Rc};
 use zeus_cobol::{front::FrontOptions, vm::Machine};
 
 #[test]
-fn unimplemented_sqlims_cannot_be_silently_routed_to_db2() {
+fn sqlims_requires_its_explicit_compiler_option() {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("sqlims.cbl");
     for position in ["DATA", "PROCEDURE"] {
@@ -18,7 +18,7 @@ fn unimplemented_sqlims_cannot_be_silently_routed_to_db2() {
             ),
         );
         let error = zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap_err();
-        assert!(error.message.contains("IMS SQL coprocessor"), "{error}");
+        assert!(error.message.contains("requires SQLIMS"), "{error}");
     }
 }
 
