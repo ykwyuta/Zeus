@@ -1,5 +1,5 @@
       *================================================================*
-      * ZE123N - NEGATIVE TEST: USER TAPE LABEL RECORDS CLAUSE         *
+      * ZE123N - NEGATIVE TEST: UNDEFINED USER TAPE LABEL RECORD       *
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. ZE123N.

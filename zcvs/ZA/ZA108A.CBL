@@ -78,7 +78,7 @@
 
       * TEST 05: FUNCTION NUMVAL AND NUMVAL-C IN EBCDIC
            MOVE 'FN-NUMVAL-C' TO ZCVS-TEST-NAME.
-           COMPUTE WS-DEC =
+           COMPUTE WS-DEC ROUNDED =
              FUNCTION NUMVAL(' -123.45 ')
              + FUNCTION NUMVAL-C(' $1,200.50CR ').
            IF WS-DEC = -1323.9500

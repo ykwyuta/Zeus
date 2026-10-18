@@ -1,5 +1,5 @@
       *================================================================*
-      * ZE122N - NEGATIVE TEST: UNSUPPORTED RERUN CHECKPOINT CLAUSE    *
+      * ZE122N - NEGATIVE TEST: RERUN RECORD INTERVAL WITHOUT FILE    *
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. ZE122N.

@@ -46,9 +46,9 @@ impl Manifest {
         }
         let text =
             fs::read_to_string(&path).with_context(|| format!("reading {}", path.display()))?;
-        Ok(Some(Self::parse(&text).with_context(|| {
-            format!("parsing {}", path.display())
-        })?))
+        Ok(Some(
+            Self::parse(&text).with_context(|| format!("parsing {}", path.display()))?,
+        ))
     }
 
     /// All modules in canonical order (`required_modules` then `optional_modules`).
@@ -100,10 +100,10 @@ impl Manifest {
                     let cfg = m.programs.entry(prog.clone()).or_default();
                     match key {
                         "ccsid" => {
-                            cfg.ccsid = Some(
-                                val.parse()
-                                    .with_context(|| format!("line {}: invalid ccsid", lineno + 1))?,
-                            );
+                            cfg.ccsid =
+                                Some(val.parse().with_context(|| {
+                                    format!("line {}: invalid ccsid", lineno + 1)
+                                })?);
                         }
                         "parm" => cfg.parm = Some(parse_str(val, lineno + 1)?),
                         "expect_exit_code" => {
@@ -118,19 +118,13 @@ impl Manifest {
                                 "run" => ExpectKind::Run,
                                 "compile-only" => ExpectKind::CompileOnly,
                                 "compile-error" => ExpectKind::CompileError,
-                                _ => bail!(
-                                    "line {}: unknown expect value '{s}'",
-                                    lineno + 1
-                                ),
+                                _ => bail!("line {}: unknown expect value '{s}'", lineno + 1),
                             };
                         }
                         "diagnostic_contains" => {
                             cfg.diagnostic_contains = Some(parse_str(val, lineno + 1)?);
                         }
-                        _ => bail!(
-                            "line {}: unknown [programs.{prog}] key '{key}'",
-                            lineno + 1
-                        ),
+                        _ => bail!("line {}: unknown [programs.{prog}] key '{key}'", lineno + 1),
                     }
                 }
             }

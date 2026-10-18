@@ -4,7 +4,9 @@ use std::collections::BTreeMap;
 use std::fmt::Write;
 
 use crate::report::Counts;
-use crate::runner::{ALL_MODULES, MODULES, ModuleResult, Outcome, SuiteResult, ZCVS_MODULES, order};
+use crate::runner::{
+    ALL_MODULES, MODULES, ModuleResult, Outcome, SuiteResult, ZCVS_MODULES, order,
+};
 
 /// CCVS85 modules that must pass (docs/proposal/0003 section 5.2).
 pub const REQUIRED: &[&str] = &["NC", "SM", "IC", "SQ", "RL", "IX", "ST", "IF"];
@@ -212,7 +214,11 @@ pub fn markdown(current: &SuiteResult, baseline: Option<&SuiteResult>) -> String
         out.push('\n');
     }
     let active_required: Vec<&str> = match (has_ccvs, has_zcvs) {
-        (true, true) => REQUIRED.iter().chain(ZCVS_REQUIRED.iter()).copied().collect(),
+        (true, true) => REQUIRED
+            .iter()
+            .chain(ZCVS_REQUIRED.iter())
+            .copied()
+            .collect(),
         (false, true) => ZCVS_REQUIRED.to_vec(),
         _ => REQUIRED.to_vec(),
     };

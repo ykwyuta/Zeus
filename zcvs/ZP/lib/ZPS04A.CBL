@@ -12,8 +12,9 @@
        01  LK-VAL                   PIC S9(9) COMP-5.
        01  LK-OPT                   PIC X(4).
        01  LK-OPT-STATUS            PIC X(1).
-       PROCEDURE DIVISION USING LK-REF LK-CONTENT LK-VAL
-                                LK-OPT LK-OPT-STATUS.
+       PROCEDURE DIVISION USING BY REFERENCE LK-REF LK-CONTENT
+                                BY VALUE LK-VAL
+                                BY REFERENCE LK-OPT LK-OPT-STATUS.
        MAIN-PARM.
            COMPUTE LK-REF = LK-REF + LK-CONTENT + LK-VAL.
            MOVE 999 TO LK-CONTENT.

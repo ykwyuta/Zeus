@@ -2,7 +2,7 @@
       * ZPS04B - SUBPROGRAM USING ENTRY STATEMENT PARAMETER BINDING    *
       *================================================================*
        IDENTIFICATION DIVISION.
-       PROGRAM-ID. ZPS04B.
+       PROGRAM-ID. ZPS04X.
        DATA DIVISION.
        LINKAGE SECTION.
        01  LK-IN                    PIC X(4).
@@ -12,4 +12,4 @@
            ENTRY 'ZPS04B' USING LK-IN LK-OUT.
            STRING 'ENT:' LK-IN DELIMITED BY SIZE INTO LK-OUT.
            GOBACK.
-       END PROGRAM ZPS04B.
+       END PROGRAM ZPS04X.

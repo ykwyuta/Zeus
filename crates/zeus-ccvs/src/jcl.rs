@@ -66,9 +66,15 @@ pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
         if rest.contains("SYSOUT=") || rest.contains("DUMMY") {
             continue;
         }
-        let is_tape = ["UNIT=3480", "UNIT=3490", "UNIT=3590", "UNIT=3420", "UNIT=TAPE"]
-            .iter()
-            .any(|u| rest.contains(u));
+        let is_tape = [
+            "UNIT=3480",
+            "UNIT=3490",
+            "UNIT=3590",
+            "UNIT=3420",
+            "UNIT=TAPE",
+        ]
+        .iter()
+        .any(|u| rest.contains(u));
         let kind = if is_tape {
             DdKind::Tape
         } else {
@@ -202,7 +208,7 @@ fn stem_upper(path: &Path) -> Result<String> {
     Ok(name)
 }
 
-fn sorted_entries(dir: &Path, exts: &[&str]) -> Result<Vec< std::path::PathBuf >> {
+fn sorted_entries(dir: &Path, exts: &[&str]) -> Result<Vec<std::path::PathBuf>> {
     let mut files: Vec<_> = fs::read_dir(dir)?
         .filter_map(|e| e.ok().map(|e| e.path()))
         .filter(|p| {
@@ -232,10 +238,7 @@ fn format_fixed80(text: &str) -> Result<String> {
 
 fn render_job_card(jobname: &str, desc: &str) -> String {
     let mut s = String::new();
-    let _ = writeln!(
-        s,
-        "//{jobname:<8} JOB (ZCVS),'{desc}',CLASS=A,MSGCLASS=X,"
-    );
+    let _ = writeln!(s, "//{jobname:<8} JOB (ZCVS),'{desc}',CLASS=A,MSGCLASS=X,");
     let _ = writeln!(s, "//         MSGLEVEL=(1,1),NOTIFY=&SYSUID");
     let _ = writeln!(
         s,
@@ -288,10 +291,7 @@ fn render_program_steps(
     }
     let parm_str = parms.join(",");
     let _ = writeln!(s, "//* PROGRAM {member}");
-    let _ = writeln!(
-        s,
-        "//C{member:<7} EXEC PGM=IGYCRCTL,PARM='{parm_str}'"
-    );
+    let _ = writeln!(s, "//C{member:<7} EXEC PGM=IGYCRCTL,PARM='{parm_str}'");
     let _ = writeln!(s, "//STEPLIB  DD DSN=IGY.V6R4M0.SIGYCOMP,DISP=SHR");
     let _ = writeln!(s, "//SYSLIB   DD DSN={hlq}.COPY,DISP=SHR");
     let _ = writeln!(s, "//SYSIN    DD DSN={hlq}.SRCLIB({member}),DISP=SHR");
@@ -333,10 +333,7 @@ fn render_program_steps(
             "//G{member:<7} EXEC PGM={member},PARM='{run_parm}',COND=(4,LT,L{member})"
         );
     } else {
-        let _ = writeln!(
-            s,
-            "//G{member:<7} EXEC PGM={member},COND=(4,LT,L{member})"
-        );
+        let _ = writeln!(s, "//G{member:<7} EXEC PGM={member},COND=(4,LT,L{member})");
     }
     let _ = writeln!(s, "//STEPLIB  DD DSN={hlq}.LOAD,DISP=SHR");
     let _ = writeln!(s, "//         DD DSN=CEE.SCEERUN,DISP=SHR");

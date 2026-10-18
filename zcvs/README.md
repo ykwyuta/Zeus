@@ -22,13 +22,15 @@ All programs use the CCVS85-compatible self-checking report format (`PASS`, `FAI
 Run ZCVS with the Zeus interpreter (`zeus`):
 
 ```bash
-cargo run -p zeus-ccvs -- run --suite zcvs --toolchain zeus --out work/zcvs-zeus.json --markdown work/zcvs-zeus.md
+cargo run -p zeus-ccvs -- run --suite zcvs --toolchain zeus --out work/zcvs-zeus.json
+cargo run -p zeus-ccvs -- report --results work/zcvs-zeus.json --programs
 ```
 
 Run ZCVS with the Zeus native backend (`zeus-native`):
 
 ```bash
-cargo run -p zeus-ccvs -- run --suite zcvs --toolchain zeus-native --out work/zcvs-native.json --markdown work/zcvs-native.md
+cargo run -p zeus-ccvs -- run --suite zcvs --toolchain zeus-native --out work/zcvs-native.json
+cargo run -p zeus-ccvs -- report --results work/zcvs-native.json --programs
 ```
 
 Export 80-column z/OS PDS datasets and `IGYWCLG` batch JCL jobs:

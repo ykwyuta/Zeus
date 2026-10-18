@@ -471,3 +471,11 @@ DSNのNEW／MOD、SPACE／UNIT／VOL／SMSクラス等の割当属性、割当�
 ### 区切りの検証結果（2026-10-18）
 
 `cargo test -p zeus-cobol -p zeus-ds -p zeus-jcl`を直列実行し、75ターゲット合計 **940 passed / 0 failed / 1 ignored**。ignoredは任意コーパス。`cargo fmt --all --check`と`git diff --check`も成功した。この区切りは全workspaceのCI完了やK01～K06の実装完了を意味しない。全体CIと既知のzeus-native NumericContext検査の修正は、合意した順序に従い残件実装後に行う。
+
+### リモート試験基盤との統合
+
+先行する`e4e7ba8`のZCVS試験基盤を取り込んだ。統合時の差異は試験の前提を修正して解消した。CANCELで再初期化を確認するZP101AはDYNAMを明示し、ZPS04AはBY VALUEの仮引数を宣言する。ENTRY試験はPROGRAM-IDと別の入口名を用いる。NUMVAL／NUMVAL-Cは浮動小数点近似値を返すため、十進小数4桁を照合するZA108AではROUNDEDを明示する。未実装を前提としていた負例は、不完全なRERUN、未定義ラベル、無効なARITH値を検査するように整理した。ARITH(EXTEND)の有効指定をエラー扱いしない。
+
+現行CLIを構築後、`cargo test -p zeus-ccvs`は **24 passed / 0 failed**。ZCVSの66プログラムを実行する統合試験、ソース桁数、JCL出力の検証を含む。全workspaceのCI完了を示すものではない。
+
+根拠: [動的CALLとCANCEL](https://www.ibm.com/docs/en/SS6SG3_6.5/pdf/pgmvs.pdf)、[CALLのBY VALUE対応](https://www.ibm.com/docs/en/cobol-zos/6.3.0?topic=statements-call-statement)、[NUMVAL系の戻り値と精度](https://www.ibm.com/docs/en/cobol-zos/6.4.0?topic=functions-converting-numbers-numval-numval-c-numval-f)。

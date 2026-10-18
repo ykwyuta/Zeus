@@ -306,8 +306,8 @@ fn run_program(
     }
     if let Some(jcl_name) = &cfg.jcl {
         let jcl_path = dir.join(jcl_name);
-        let jcl_text =
-            fs::read_to_string(&jcl_path).with_context(|| format!("reading {}", jcl_path.display()))?;
+        let jcl_text = fs::read_to_string(&jcl_path)
+            .with_context(|| format!("reading {}", jcl_path.display()))?;
         for dd in parse_dd_allocations(&jcl_text) {
             let ext = match dd.kind {
                 DdKind::Tape => "aws",

@@ -1,6 +1,7 @@
       *================================================================*
       * ZP101A - LOCAL-STORAGE VS WORKING-STORAGE AND CANCEL           *
       *================================================================*
+       CBL DYNAM
        IDENTIFICATION DIVISION.
        PROGRAM-ID. ZP101A.
        ENVIRONMENT DIVISION.

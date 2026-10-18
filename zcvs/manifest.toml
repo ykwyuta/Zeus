@@ -111,11 +111,11 @@ diagnostic_contains = "PADDING CHARACTER"
 
 [programs.ZE122N]
 expect = "compile-error"
-diagnostic_contains = "RERUN"
+diagnostic_contains = "name expected"
 
 [programs.ZE123N]
 expect = "compile-error"
-diagnostic_contains = "tape label"
+diagnostic_contains = "label record"
 
 [programs.ZE124N]
 expect = "compile-error"

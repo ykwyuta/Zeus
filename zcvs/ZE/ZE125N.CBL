@@ -1,6 +1,6 @@
-       CBL ARITH(EXTEND)
+       CBL ARITH(UNKNOWN)
       *================================================================*
-      * ZE125N - NEGATIVE TEST: UNSUPPORTED CBL ARITH(EXTEND) OPTION   *
+      * ZE125N - NEGATIVE TEST: INVALID CBL ARITH VALUE               *
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. ZE125N.
