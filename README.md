@@ -225,12 +225,14 @@ COBOL-85 の主要な文と z/OS のデータ表現には広く対応してい�
 | 項目 | 現在の範囲 |
 |---|---|
 | IBM COBOL の言語全体 | OO/Java、XML、DATEPROC、特殊なデータカテゴリーなどに未対応・部分対応あり |
-| コンパイラー設定 | NSYMBOL、CICS、SQL、SQLIMS、TRUNC、ARITH、NUMPROC、APOST、AWO、BLOCK0、SSRANGE、CODEPAGE、DYNAM、OPTIMIZEと各NO指定に対応。条件付きコンパイル・定義済み変数、SOURCE/MAP/LIST/OFFSET/XREF/VBREFを提供。DLL/EXPORTALL、THREAD、LP(64)の仮想ABIにも対応。ARCH等には残件あり |
+| コンパイラー設定 | NSYMBOL、CICS、SQL、SQLIMS、TRUNC、ARITH、NUMPROC、APOST、AWO、BLOCK0、SSRANGE、CODEPAGE、DYNAM、OPTIMIZEと各NO指定に対応。条件付きコンパイル・定義済み変数、SOURCE/MAP/LIST/OFFSET/XREF/VBREFを提供。DLL/EXPORTALL、THREAD、LP(64)の仮想ABIにも対応。ARCHは下記の移植用設定として対応 |
 | IMS SQL | 動的SQL、SQLIMSCA／SQLIMSDA、WHENEVER、ホスト構造体・標識配列、日時型、バイナリー、HFPに対応。DL/Iとトランザクションを共有し、SENFLDの感応性・置換制約、SENSEGの処理権限も反映。確認できていない数値診断などの差異は[監査一覧](docs/proposal/0018-cobol-compatibility-completion.md)に記載 |
 | 呼び出し規約 | RECURSIVE、PROCEDURE DIVISION RETURNING と結果転送、仮想エントリーへの間接CALLに対応。IBMのロードモジュール・実アドレスABIの直接実行は対象外 |
 | ファイル・テープ | 物理ブロック、標準ラベル／ラベルなしの複数巻、REEL/UNITラベル、RERUN再始動に対応。全媒体属性の照合などには残件あり |
 | アセンブラー | 対応するアプリケーション命令を Zeus の実行エンジンで処理。IBM オブジェクトデック／ロードモジュールの直接実行、HLASM のホスト CPU 向けネイティブ生成は対象外 |
 | システム環境 | OS、JES、CICS、Db2、IMS、各種ユーティリティの全機能を置き換えるものではなく、実装したアプリケーション向けの機能を提供 |
+
+既存の `ARCH(6)`～`ARCH(15)` は移植用設定として受理し、その値を条件付きコンパイルの `ARCH`／`IGY-ARCH` へ反映します。指定を省略した場合は両変数ともZeus独自の未指定値 `0` です。IBMで使用していた分岐を選びたい場合は元のARCH値を明示してください。IBM Z向けの命令生成やCPU世代の制限には影響しません。[対応範囲と優先順位](docs/proposal/0019-cobol-compatibility-reaudit.md)を参照してください。
 
 「構文を受理する」「実行できる」「IBM と同じ結果になる」は別の確認です。次の一覧では実装済み・部分対応・未対応・未検証を区別しています。
 

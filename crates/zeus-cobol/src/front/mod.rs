@@ -35,6 +35,9 @@ pub struct FrontOptions {
     pub compiler_options: String,
     pub listing: crate::listing::ListingOptions,
     pub optimize: u8,
+    /// Migration-only IBM ARCH level (6..=15). None exposes ARCH/IGY-ARCH
+    /// as zero, meaning unspecified; never selects IBM Z instructions.
+    pub arch: Option<u8>,
     /// None keeps the integrated translator's automatic SQL extension.
     pub sql: Option<bool>,
     pub sqlims: bool,

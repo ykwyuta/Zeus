@@ -6,7 +6,7 @@
 
 | ID | 現状 | 次の実装・確認 |
 |---|---|---|
-| K01 | ARCH指定とIGY-ARCHは未対応。IBM CPU世代をZeusのホストCPUへ置き換えていない | CPU世代指定による生成・実行の契約を決める。値の受理や定義済み変数の追加だけで完了にしない |
+| K01 | 対応完了（移植用設定） | ユーザー合意によりIBM Zの命令生成は対象に含めない。ARCH(6～15)を受理し、指定値を読み取り専用のARCH／IGY-ARCHへ反映。省略時はZeus独自の「未指定」を示す0。下記の契約を参照 |
 | K02 | SQLIMSの動的SQL、SQLIMSCA/DA、日時、感応性、DL/Iとの作業単位共有は実装済み | IFP専用スケジューラー、未確認のSQLIMSCODE、現在対応していない日時PATTERNを個別に監査する。IBMの全IMS機能・全診断との一致は未保証 |
 | K03 | RERUNのassignment-name、接頭辞、環境変数、保存・再開は実装済み | ON file-name分岐のチェックポイントDD割当規則を確定する。データファイルへの埋込みや、根拠のない既定DD名の追加はしない |
 | K04-A | 動的PATH、既存/NEW/MODのDSNと終了時DISP処理は実装済み | SPACE、UNIT、VOL、SMSクラス等の動的割当属性は`zeus-ds/src/dynamic.rs`で未対応として診断。仮想データセット上の具体的な意味を決めて実装する |
@@ -20,6 +20,20 @@
 Zeusの仮想アドレス、仮想テープ、チェックポイント形式と、IBMのロードモジュール・物理装置・チェックポイントイメージとの相互運用は、既存の実行モデルの境界として利用者へ明示する。対応済みと書かれた個別機能についても、IBM実機との比較を完了したという意味ではない。
 
 ## 今回の追加対応
+
+### ARCHの対応範囲確定（K01完了）
+
+ユーザー指定により、ARCHは既存ソース・ビルド設定の移植と条件付きコンパイルのための設定とする。IBM Z用の命令選択、CPU世代の実行制約、IBMの既定ARCHの再現は対象に含めない。この合意した範囲でK01を完了とする。
+
+- `CBL ARCH(n)`、`PROCESS ARCH(n)`、CLIの`--options 'ARCH(n)'`、JCLコンパイルステップのPARMに対応。過去のCOBOL 5.1から6.5の移植を想定し、整数6～15を受理する。省略、不正な形式、範囲外の引数は診断する。
+- 有効な指定値を数値の`ARCH`と`IGY-ARCH`へ反映する。`>>IF`／`>>EVALUATE`とCOPY内でも参照できる。ユーザーのDEFINEによる再定義・OFF・上書きはできない。
+- ARCH指定自体を省略した場合は両変数を0とする。0はZeus独自の未指定値であり、`ARCH(0)`は受理しない。IBMで使っていた分岐を同じ値で選択したい場合は、元のコンパイル設定のARCH値を明示する。
+- `FrontOptions.arch`、呼出しオプション、CBL/PROCESSの順に上書きする。同じオプション列では最後の指定を採用する。次のコンパイルへ設定を持ち越さない。
+- この値が影響するのは条件付きコンパイルによるソースの選択のみ。IBM Zの世代に応じた生成・最適化や命令の利用可否は表さない。条件分岐でHLASM等を選択した場合、そのコード自身の対応可否は別途判定する。
+
+根拠: [IBM ARCHの目的と現行の値](https://www.ibm.com/docs/en/cobol-zos/6.5.0?topic=options-arch)、[旧版のARCH(6)とARCH(7)](https://public.dhe.ibm.com/software/os/systemz/pdf/Track_4_Session_6_Why_should_I_upgrade_to_the_latest_compiler_Final_Q2.pdf)。Zeusの0と移植専用の扱いは、IBMの設定を再現したものではなく今回合意した契約である。
+
+### Db2の分岐・取得通知
 
 Db2のWHENEVERを実行時の登録命令からではなく、翻訳時の指令として扱う。NOT FOUNDはSQLCODE +100、SQLERRORは負数、SQLWARNINGはSQLWARN0=Wまたは+100以外の正数で分岐する。GO TO/GOTO、コロン付きの手続き名、CONTINUEによる解除に対応する。実行されない段落や宣言部に書かれていてもソース上の順序で効力を持ち、SQLCAを格納してから分岐する。SQLIMSとの状態共有はしない。
 
