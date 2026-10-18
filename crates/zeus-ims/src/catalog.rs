@@ -5,6 +5,8 @@ use std::path::Path;
 #[derive(Clone, Debug)]
 pub struct Field {
     pub name: String,
+    pub external_name: Option<String>,
+    pub marshal: Option<Marshaling>,
     pub start: usize,
     pub bytes: usize,
     pub field_type: String,
@@ -14,8 +16,18 @@ pub struct Field {
 }
 
 #[derive(Clone, Debug)]
+pub struct Marshaling {
+    pub converter: Option<String>,
+    pub signed: bool,
+    pub encoding: Option<String>,
+    pub pattern: Option<String>,
+    pub custom: Option<String>,
+}
+
+#[derive(Clone, Debug)]
 pub struct Segment {
     pub name: String,
+    pub external_name: Option<String>,
     pub parent: Option<String>,
     pub min_bytes: usize,
     pub max_bytes: usize,
@@ -99,6 +111,7 @@ impl Dbd {
 #[derive(Clone, Debug)]
 pub struct Pcb {
     pub name: Option<String>,
+    pub external_name: Option<String>,
     pub kind: String,
     pub dbd_name: Option<String>,
     pub procopt: Option<String>,
@@ -108,6 +121,53 @@ pub struct Pcb {
     pub modifiable: bool,
     pub sensitive_segments: Vec<String>,
     pub indices: Vec<(String, Vec<String>)>,
+    pub views: Vec<SegmentView>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SegmentView {
+    pub segment: String,
+    pub procopt: Option<String>,
+    pub fields: Vec<SensitiveField>,
+}
+
+#[derive(Clone, Debug)]
+pub struct SensitiveField {
+    pub name: String,
+    pub start: usize,
+    pub replace: bool,
+}
+
+impl Pcb {
+    pub fn view(&self, name: &str) -> Option<&SegmentView> {
+        self.views.iter().find(|v| v.segment == name)
+    }
+    pub fn segment_procopt(&self, name: &str) -> &str {
+        self.view(name)
+            .and_then(|v| v.procopt.as_deref())
+            .or(self.procopt.as_deref())
+            .unwrap_or("")
+    }
+    pub fn view_len(&self, segment: &Segment) -> usize {
+        if self.segment_procopt(&segment.name).contains('K') {
+            return 0;
+        }
+        self.view(&segment.name)
+            .filter(|v| !v.fields.is_empty())
+            .map_or(segment.max_bytes, |v| {
+                v.fields
+                    .iter()
+                    .filter_map(|f| {
+                        segment
+                            .fields
+                            .iter()
+                            .find(|d| d.name == f.name)
+                            .map(|d| f.start - 1 + d.bytes)
+                    })
+                    .max()
+                    .unwrap_or(0)
+            })
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -127,6 +187,9 @@ impl Psb {
     pub fn validate(&self, dbds: &[Dbd]) -> Result<(), String> {
         for pcb in &self.pcbs {
             if pcb.kind == "GSAM" {
+                if pcb.views.iter().any(|v| !v.fields.is_empty()) {
+                    return Err("GSAM does not support SENFLD".into());
+                }
                 let name = pcb.dbd_name.as_deref().ok_or("GSAM PCB has no DBDNAME")?;
                 if !dbds
                     .iter()
@@ -137,6 +200,9 @@ impl Psb {
                 continue;
             }
             if pcb.kind == "TP" {
+                if !pcb.views.is_empty() {
+                    return Err("TP PCBs do not support SENSEG/SENFLD".into());
+                }
                 if pcb.lterm.as_ref().is_some_and(|name| {
                     name.is_empty()
                         || name.len() > 8
@@ -175,6 +241,66 @@ impl Psb {
                     ));
                 }
             }
+            for view in &pcb.views {
+                let segment = dbd
+                    .segment(&view.segment)
+                    .ok_or_else(|| format!("unknown SENSEG {}", view.segment))?;
+                let opt = pcb.segment_procopt(&view.segment);
+                if let Some(override_opt) = &view.procopt {
+                    if pcb.procopt.as_deref().is_some_and(|p| p.contains('L'))
+                        || override_opt.contains(['N', 'T'])
+                    {
+                        return Err("invalid SENSEG PROCOPT override".into());
+                    }
+                    let pcb_opt = pcb.procopt.as_deref().unwrap_or("");
+                    for c in override_opt
+                        .chars()
+                        .filter(|c| matches!(c, 'G' | 'I' | 'R' | 'D' | 'A'))
+                    {
+                        let available = pcb_opt.contains('A')
+                            || pcb_opt.contains(c)
+                            || (c == 'G' && pcb_opt.contains(['R', 'D']));
+                        if !available {
+                            return Err("SENSEG PROCOPT exceeds PCB permissions".into());
+                        }
+                    }
+                }
+                if !view.fields.is_empty()
+                    && (matches!(dbd.access.as_str(), "MSDB" | "DEDB") || opt.contains('K'))
+                {
+                    return Err("SENFLD is not valid for MSDB/DEDB or key-only SENSEG".into());
+                }
+                let mut ranges = Vec::new();
+                for sensitive in &view.fields {
+                    if !(1..=32767).contains(&sensitive.start) {
+                        return Err("invalid SENFLD START".into());
+                    }
+                    let field = segment
+                        .fields
+                        .iter()
+                        .find(|f| f.name == sensitive.name)
+                        .ok_or_else(|| format!("unknown SENFLD {}", sensitive.name))?;
+                    let end = sensitive.start - 1 + field.bytes;
+                    if end > 32767 || (segment.min_bytes != segment.max_bytes && field.start == 1) {
+                        return Err("invalid SENFLD extent or variable segment length field".into());
+                    }
+                    if ranges
+                        .iter()
+                        .any(|&(start, old_end)| sensitive.start - 1 < old_end && start < end)
+                    {
+                        return Err("SENFLD I/O fields overlap".into());
+                    }
+                    ranges.push((sensitive.start - 1, end));
+                }
+                if !view.fields.is_empty()
+                    && opt.contains(['I', 'L'])
+                    && segment
+                        .key()
+                        .is_some_and(|key| !view.fields.iter().any(|f| f.name == key.name))
+                {
+                    return Err("insert-sensitive SENFLD view must include sequence key".into());
+                }
+            }
         }
         Ok(())
     }
@@ -191,7 +317,7 @@ struct Statement {
 fn statements(source: &str) -> Result<Vec<Statement>, String> {
     const OPS: &[&str] = &[
         "DBD", "DATASET", "SEGM", "FIELD", "LCHILD", "XDFLD", "DBDGEN", "FINISH", "END", "PCB",
-        "SENSEG", "PSBGEN", "TITLE", "PRINT", "EJECT", "SPACE", "DFSMARSH",
+        "SENSEG", "SENFLD", "PSBGEN", "TITLE", "PRINT", "EJECT", "SPACE", "DFSMARSH",
     ];
     let mut result: Vec<Statement> = Vec::new();
     for (index, full_line) in source.lines().enumerate() {
@@ -375,6 +501,7 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                     return Err(format!("line {}: invalid segment length", stmt.line));
                 }
                 dbd.segments.push(Segment {
+                    external_name: value(&p, "EXTERNALNAME").map(str::to_string),
                     name: required(&p, "NAME", stmt.line)?.to_ascii_uppercase(),
                     parent: parent_name(required(&p, "PARENT", stmt.line)?),
                     min_bytes,
@@ -387,7 +514,11 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                     .as_mut()
                     .and_then(|d| d.segments.last_mut())
                     .ok_or_else(|| format!("line {}: FIELD before SEGM", stmt.line))?;
-                let raw = required(&p, "NAME", stmt.line)?;
+                let raw = value(&p, "NAME")
+                    .or_else(|| value(&p, "EXTERNALNAME"))
+                    .ok_or_else(|| {
+                        format!("line {}: FIELD requires NAME or EXTERNALNAME", stmt.line)
+                    })?;
                 let flags: Vec<_> = raw
                     .trim_matches(|c| c == '(' || c == ')')
                     .split(',')
@@ -402,6 +533,8 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                     ));
                 }
                 segment.fields.push(Field {
+                    external_name: value(&p, "EXTERNALNAME").map(str::to_string),
+                    marshal: None,
                     name: flags[0].to_ascii_uppercase(),
                     start,
                     bytes,
@@ -465,7 +598,41 @@ pub fn parse_dbd(source: &str) -> Result<Dbd, String> {
                         .unwrap_or_default(),
                 });
             }
-            "DBDGEN" | "FINISH" | "END" | "TITLE" | "PRINT" | "EJECT" | "SPACE" | "DFSMARSH" => {}
+            "DFSMARSH" => {
+                let field = dbd
+                    .as_mut()
+                    .and_then(|d| d.segments.last_mut())
+                    .and_then(|s| s.fields.last_mut())
+                    .ok_or_else(|| format!("line {}: DFSMARSH must follow FIELD", stmt.line))?;
+                if p.iter().any(|(key, _)| {
+                    !matches!(
+                        key.as_str(),
+                        "INTERNALTYPECONVERTER"
+                            | "ISSIGNED"
+                            | "ENCODING"
+                            | "PATTERN"
+                            | "USERTYPECONVERTER"
+                            | "PROPERTIES"
+                    )
+                }) {
+                    return Err(format!("line {}: unsupported DFSMARSH operand", stmt.line));
+                }
+                let signed = match value(&p, "ISSIGNED") {
+                    None | Some("Y" | "YES") => true,
+                    Some("N" | "NO") => false,
+                    _ => return Err(format!("line {}: invalid ISSIGNED", stmt.line)),
+                };
+                field.marshal = Some(Marshaling {
+                    converter: value(&p, "INTERNALTYPECONVERTER").map(str::to_ascii_uppercase),
+                    signed,
+                    encoding: value(&p, "ENCODING").map(str::to_string),
+                    pattern: value(&p, "PATTERN").map(|s| s.trim_matches('\'').to_string()),
+                    custom: value(&p, "USERTYPECONVERTER")
+                        .or_else(|| value(&p, "PROPERTIES"))
+                        .map(str::to_string),
+                });
+            }
+            "DBDGEN" | "FINISH" | "END" | "TITLE" | "PRINT" | "EJECT" | "SPACE" => {}
             other => return Err(format!("line {}: {other} is invalid in DBD", stmt.line)),
         }
     }
@@ -497,6 +664,7 @@ pub fn parse_psb(source: &str) -> Result<Psb, String> {
         let p = params(&stmt.args);
         match stmt.op.as_str() {
             "PCB" => psb.pcbs.push(Pcb {
+                external_name: value(&p, "EXTERNALNAME").map(str::to_string),
                 name: value(&p, "PCBNAME")
                     .or(stmt.label.as_deref())
                     .map(str::to_string),
@@ -519,6 +687,7 @@ pub fn parse_psb(source: &str) -> Result<Psb, String> {
                 },
                 sensitive_segments: Vec::new(),
                 indices: Vec::new(),
+                views: Vec::new(),
             }),
             "SENSEG" => {
                 let segment = required(&p, "NAME", stmt.line)?.to_ascii_uppercase();
@@ -527,6 +696,11 @@ pub fn parse_psb(source: &str) -> Result<Psb, String> {
                     .last_mut()
                     .ok_or_else(|| format!("line {}: SENSEG before PCB", stmt.line))?;
                 pcb.sensitive_segments.push(segment.clone());
+                pcb.views.push(SegmentView {
+                    segment: segment.clone(),
+                    procopt: value(&p, "PROCOPT").map(str::to_ascii_uppercase),
+                    fields: Vec::new(),
+                });
                 if let Some(raw) = value(&p, "INDICES") {
                     let indexes: Vec<String> = raw
                         .trim_matches(|ch| ch == '(' || ch == ')')
@@ -542,6 +716,27 @@ pub fn parse_psb(source: &str) -> Result<Psb, String> {
                     pcb.indices.push((segment, indexes));
                 }
             }
+            "SENFLD" => {
+                let view = psb
+                    .pcbs
+                    .last_mut()
+                    .and_then(|p| p.views.last_mut())
+                    .ok_or_else(|| format!("line {}: SENFLD before SENSEG", stmt.line))?;
+                let start = number(&p, "START", stmt.line)?;
+                if !(1..=32767).contains(&start) || view.fields.len() >= 255 {
+                    return Err(format!("line {}: SENFLD limit exceeded", stmt.line));
+                }
+                let replace = match value(&p, "REPLACE").or_else(|| value(&p, "REPL")) {
+                    None | Some("Y" | "YES") => true,
+                    Some("N" | "NO") => false,
+                    _ => return Err(format!("line {}: invalid SENFLD REPLACE", stmt.line)),
+                };
+                view.fields.push(SensitiveField {
+                    name: required(&p, "NAME", stmt.line)?.to_ascii_uppercase(),
+                    start,
+                    replace,
+                });
+            }
             "PSBGEN" => {
                 psb.name = required(&p, "PSBNAME", stmt.line)?.to_ascii_uppercase();
                 psb.cmpat = p
@@ -554,6 +749,16 @@ pub fn parse_psb(source: &str) -> Result<Psb, String> {
     }
     if psb.name.is_empty() {
         return Err("missing PSBGEN".into());
+    }
+    if psb
+        .pcbs
+        .iter()
+        .flat_map(|p| &p.views)
+        .map(|v| v.fields.len())
+        .sum::<usize>()
+        > 10000
+    {
+        return Err("PSB exceeds 10000 SENFLD statements".into());
     }
     Ok(psb)
 }

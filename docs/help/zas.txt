@@ -38,7 +38,7 @@ OPTIONS
   --source-encoding FORMAT
                compile/check: utf8 (default), or ebcdic:CCSID:RECORD_LENGTH.
                Example: ebcdic:939:80 reads fixed 80-byte mixed Japanese
-               EBCDIC records. Supported CCSIDs: 37, 930, 939, 1390, 1399.
+               EBCDIC records. 54 EBCDIC CCSIDs; see codepages/README.md.
                The setting also applies to COPY and macro library members.
                UTF-8 source accepts a BOM. EBCDIC records must be complete;
                malformed SO/SI sequences are errors. Column positions count

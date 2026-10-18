@@ -79,6 +79,121 @@ const JOB: &str = "\
 ";
 
 #[test]
+fn cobol_sysin_and_syslib_preserve_ebcdic_dbcs_source_columns() {
+    for (binary, source_option) in [(true, true), (true, false), (false, true)] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut env = env(dir.path());
+        for (name, kind) in [
+            (
+                "ZEUS.SOURCE",
+                EntryKind::Sequential {
+                    recfm: Recfm::Fb,
+                    lrecl: 80,
+                },
+            ),
+            (
+                "ZEUS.COPYLIB",
+                EntryKind::Partitioned {
+                    recfm: Recfm::Fb,
+                    lrecl: 80,
+                },
+            ),
+        ] {
+            env.catalog
+                .define(Entry {
+                    name: name.into(),
+                    kind,
+                })
+                .unwrap();
+        }
+        let page = zeus_cobol::codepage::get(939).unwrap();
+        let cards = |text: &str| -> Vec<u8> {
+            text.lines()
+                .flat_map(|line| {
+                    let mut card = page.encode(&format!("       {line}"));
+                    assert!(card.len() <= 72);
+                    card.resize(72, 0x40);
+                    card.extend(page.encode("BAD'CODE"));
+                    card
+                })
+                .collect()
+        };
+        let library = env.catalog.path("ZEUS.COPYLIB");
+        std::fs::create_dir_all(&library).unwrap();
+        std::fs::write(library.join("RAW"), cards("DISPLAY '日本'")).unwrap();
+        std::fs::write(library.join("UNICODE"), "       DISPLAY 'UTF8日本'").unwrap();
+        let main = format!(
+            "{}ID DIVISION.\nPROGRAM-ID. JPMAIN.\nPROCEDURE DIVISION.\nCOPY RAW.\nCOPY UNICODE.\nGOBACK.\n",
+            if source_option { "CBL CP(939)\n" } else { "" }
+        );
+        let sysin = if binary {
+            std::fs::write(env.catalog.path("ZEUS.SOURCE"), cards(&main)).unwrap();
+            "//SYSIN DD DSN=ZEUS.SOURCE,DISP=SHR\n".to_string()
+        } else {
+            format!(
+                "//SYSIN DD *\n{}/*\n",
+                main.lines()
+                    .map(|line| format!("       {line}\n"))
+                    .collect::<String>()
+            )
+        };
+        let parm = if source_option { "" } else { ",PARM='CP(939)'" };
+        let job = format!(
+            "//JPINPUT JOB\n//COMP EXEC PGM=IGYCRCTL{parm}\n//SYSPRINT DD SYSOUT=*\n//SYSLIB DD DSN=ZEUS.COPYLIB,DISP=SHR\n//SYSLIN DD DSN=&&OBJ,DISP=(MOD,PASS)\n{sysin}//LINK EXEC PGM=IEWL\n//SYSLIN DD DSN=&&OBJ,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=ZEUS.LOADLIB(JPMAIN),DISP=SHR\n//RUN EXEC PGM=JPMAIN\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//SYSOUT DD SYSOUT=*\n"
+        );
+        let mut log = Vec::new();
+        let results = run_job(&mut env, &job, &mut log).unwrap();
+        assert!(
+            results.iter().all(|step| step.outcome == Outcome::Rc(0)),
+            "{results:?}\n{}",
+            String::from_utf8_lossy(&log)
+        );
+        let spool = env.spool.join("JPINPUT");
+        let output = std::fs::read_dir(&spool)
+            .unwrap()
+            .flatten()
+            .filter(|entry| entry.file_name().to_string_lossy().contains("RUN.SYSOUT"))
+            .map(|entry| std::fs::read_to_string(entry.path()).unwrap())
+            .collect::<String>();
+        assert!(output.contains("日本\nUTF8日本\n"), "{output}");
+        let listing = std::fs::read_dir(&spool)
+            .unwrap()
+            .flatten()
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("COMP.SYSPRINT")
+            })
+            .map(|entry| std::fs::read_to_string(entry.path()).unwrap())
+            .collect::<String>();
+        assert!(listing.contains("DISPLAY '日本'"));
+        assert!(!listing.contains('\u{FDD0}'));
+    }
+}
+
+#[test]
+fn cobol_callinterface_warning_preserves_object_and_sets_step_rc_four() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let job = JOB.replace("       PROCEDURE DIVISION.", "       PROCEDURE DIVISION.\n       >>CALLINT DYNAMIC\n       CALL 'MISSING' ON EXCEPTION CONTINUE END-CALL\n       >>CALLINT STATIC\n       CALL 'MISSING' ON EXCEPTION CONTINUE END-CALL");
+    let mut log = Vec::new();
+    let results = run_job(&mut env, &job, &mut log).unwrap();
+    assert_eq!(results[0].outcome, Outcome::Rc(4), "{results:?}");
+    assert_eq!(results[1].outcome, Outcome::Rc(0));
+    let listing = std::fs::read_dir(env.spool.join("COMPGO"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains("COMP.SYSPRINT"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap())
+        .collect::<String>();
+    assert!(listing.contains("W: conflicting CALLINTERFACE"));
+    assert!(listing.contains("HIGHEST SEVERITY 4"));
+    let module = zeus_cobol::load_module(&env.catalog.path("ZEUS.LOADLIB").join("HELLO")).unwrap();
+    assert_eq!(module.compilation_return_code(), 4);
+}
+
+#[test]
 fn compile_bind_and_conditions() {
     let dir = tempfile::tempdir().unwrap();
     let mut env = env(dir.path());
@@ -108,6 +223,85 @@ fn compile_bind_and_conditions() {
 }
 
 #[test]
+fn cobol_parm_options_and_source_overrides_produce_a_real_listing() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let job = JOB.replace("//COMP     EXEC PGM=IGYCRCTL", "//COMP     EXEC PGM=IGYCRCTL,\n// PARM='DYNAM,OPT(FULL),NOSOURCE,MAP,XREF(SHORT)'")
+        .replace("       IDENTIFICATION DIVISION.", "       CBL NODYNAM OPT(STD) SOURCE(HEX)\n       IDENTIFICATION DIVISION.")
+        .replace("           DISPLAY 'HELLO FROM A COMPILED STEP'", "       >>IF NOT IGY-DYNAM AND IGY-OPTIMIZE = 1\n           DISPLAY 'EFFECTIVE SETTINGS'\n       >>END-IF");
+    let mut log = Vec::new();
+    let results = run_job(&mut env, &job, &mut log).unwrap();
+    assert_eq!(
+        results[0].outcome,
+        Outcome::Rc(0),
+        "{}",
+        String::from_utf8_lossy(&log)
+    );
+    let listing = std::fs::read_dir(env.spool.join("COMPGO"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.file_name().to_string_lossy().contains("COMP.SYSPRINT"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap())
+        .collect::<String>();
+    for text in [
+        "ZEUS COBOL",
+        "DATA MAP",
+        "0001:000001",
+        "OPTIMIZE=1",
+        "END OF COMPILATION; RC=0",
+    ] {
+        assert!(listing.contains(text), "missing {text}\n{listing}");
+    }
+    let module = zeus_cobol::load_module(&env.catalog.path("ZEUS.LOADLIB").join("HELLO")).unwrap();
+    assert_eq!(module.optimize, 1);
+    assert!(!module.programs[0].dynam);
+}
+
+#[test]
+fn cobol_output_with_mod_appends_instead_of_replacing_prior_step_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let program = "       ID DIVISION.\n       PROGRAM-ID. APPENDER.\n       ENVIRONMENT DIVISION.\n       INPUT-OUTPUT SECTION.\n       FILE-CONTROL.\n       SELECT F ASSIGN TO OUTFILE.\n       DATA DIVISION.\n       FILE SECTION.\n       FD F.\n       01 R PIC X(3).\n       PROCEDURE DIVISION.\n       OPEN OUTPUT F\n       WRITE R FROM 'ABC'\n       GOBACK.\n";
+    let job = format!(
+        "//APPEND JOB\n//COMP EXEC PGM=IGYCRCTL\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&OBJ,DISP=(MOD,PASS)\n//SYSIN DD *\n{program}/*\n//LINK EXEC PGM=IEWL\n//SYSLIN DD DSN=&&OBJ,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=ZEUS.LOADLIB(APPENDER),DISP=SHR\n//FIRST EXEC PGM=APPENDER\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//OUTFILE DD DSN=APP.DATA,DISP=(NEW,CATLG),\n// DCB=(RECFM=F,LRECL=3)\n//SECOND EXEC PGM=APPENDER\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//OUTFILE DD DSN=APP.DATA,DISP=MOD\n"
+    );
+    let mut log = Vec::new();
+    let result = run_job(&mut env, &job, &mut log).unwrap();
+    assert!(
+        result.iter().all(|s| s.outcome == Outcome::Rc(0)),
+        "{result:?}\n{}",
+        String::from_utf8_lossy(&log)
+    );
+    assert_eq!(
+        std::fs::read(env.catalog.path("APP.DATA")).unwrap(),
+        zeus_cobol::ebcdic::encode("ABCABC")
+    );
+}
+
+#[test]
+fn rerun_dd_disposition_selects_single_or_multiple_checkpoint_images() {
+    for (disposition, ids) in [("NEW", vec![1]), ("MOD", vec![1, 2, 3])] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut env = env(dir.path());
+        let program = "       ID DIVISION.\n       PROGRAM-ID. CHECKTEST.\n       ENVIRONMENT DIVISION.\n       INPUT-OUTPUT SECTION.\n       FILE-CONTROL.\n       SELECT F ASSIGN TO OUTFILE.\n       I-O-CONTROL.\n       RERUN ON CKPT EVERY 1 RECORDS OF F.\n       DATA DIVISION.\n       FILE SECTION.\n       FD F.\n       01 R PIC XX.\n       PROCEDURE DIVISION.\n       OPEN OUTPUT F\n       WRITE R FROM 'AA'\n       WRITE R FROM 'BB'\n       WRITE R FROM 'CC'\n       CLOSE F\n       GOBACK.\n";
+        let job = format!(
+            "//CHECKJOB JOB\n//COMP EXEC PGM=IGYCRCTL\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&OBJ,DISP=(MOD,PASS)\n//SYSIN DD *\n{program}/*\n//LINK EXEC PGM=IEWL\n//SYSLIN DD DSN=&&OBJ,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=ZEUS.LOADLIB(CHECKTEST),DISP=SHR\n//RUN EXEC PGM=CHECKTEST\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//OUTFILE DD DSN=ZEUS.OUTPUT,DISP=(NEW,CATLG),\n// DCB=(RECFM=FB,LRECL=2)\n//CKPT DD DSN=ZEUS.CHECKPOINT,DISP=({disposition},CATLG),\n// DCB=(RECFM=U)\n"
+        );
+        let mut log = Vec::new();
+        let results = run_job(&mut env, &job, &mut log).unwrap();
+        assert!(
+            results.iter().all(|s| s.outcome == Outcome::Rc(0)),
+            "{results:?}\n{}",
+            String::from_utf8_lossy(&log)
+        );
+        assert_eq!(
+            zeus_cobol::vm::Machine::checkpoint_ids(&env.catalog.path("ZEUS.CHECKPOINT")).unwrap(),
+            ids
+        );
+    }
+}
+
+#[test]
 fn cobol_tape_dd_passes_unit_and_block_size_to_virtual_media() {
     let dir = tempfile::tempdir().unwrap();
     let mut env = env(dir.path());
@@ -119,8 +313,9 @@ fn cobol_tape_dd_passes_unit_and_block_size_to_virtual_media() {
     let result = run_job(&mut env, &job, &mut log).unwrap();
     assert!(
         result.iter().all(|s| s.outcome == Outcome::Rc(0)),
-        "{result:?}\n{}",
-        String::from_utf8_lossy(&log)
+        "{result:?}\n{}\n{}",
+        String::from_utf8_lossy(&log),
+        std::fs::read_to_string(env.spool.join("TAPEJOB/03.SYSOUT")).unwrap_or_default()
     );
     let bytes = std::fs::read(env.catalog.path("ZEUS.TAPE")).unwrap();
     assert_eq!(
@@ -343,6 +538,65 @@ fn compile_step(name: &str, compiler: &str, src: &str) -> String {
     )
 }
 
+#[test]
+fn cobol_binder_includes_every_concatenated_object() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let job = "//MANYOBJ JOB\n//CMAIN EXEC PGM=IGYCRCTL\n//SYSLIN DD DSN=&&MAIN,DISP=(MOD,PASS)\n//SYSIN DD *\n       CBL DLL\n       ID DIVISION.\n       PROGRAM-ID. MAIN.\n       PROCEDURE DIVISION.\n           CALL 'PRIVATE'\n           STOP RUN.\n/*\n//CSUB EXEC PGM=IGYCRCTL\n//SYSLIN DD DSN=&&SUB,DISP=(MOD,PASS)\n//SYSIN DD *\n       ID DIVISION.\n       PROGRAM-ID. PRIVATE.\n       PROCEDURE DIVISION.\n           DISPLAY 'BOUND'\n           GOBACK.\n/*\n//LINK EXEC PGM=IEWL\n//SYSLIN DD DSN=&&MAIN,DISP=(OLD,DELETE)\n// DD DSN=&&SUB,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=ZEUS.LOADLIB(MAIN),DISP=SHR\n//RUN EXEC PGM=MAIN\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//SYSOUT DD SYSOUT=*\n";
+    let mut log = Vec::new();
+    let results = run_job(&mut env, job, &mut log).unwrap();
+    assert!(
+        results.iter().all(|r| r.outcome == Outcome::Rc(0)),
+        "{}",
+        String::from_utf8_lossy(&log)
+    );
+    let module = zeus_cobol::load_module(&env.catalog.path("ZEUS.LOADLIB").join("MAIN")).unwrap();
+    assert_eq!(module.programs.len(), 2);
+    assert_eq!(module.programs[1].name, "PRIVATE");
+}
+
+#[test]
+fn cobol_dll_binder_sidefile_and_shared_entry_storage() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let cards = |text: &str| {
+        text.lines()
+            .map(|line| format!("       {line}\n"))
+            .collect::<String>()
+    };
+    let sub = cards(
+        "CBL EXPORTALL\nID DIVISION.\nPROGRAM-ID. PRIMARY.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 N PIC 99 VALUE 0.\nPROCEDURE DIVISION.\nADD 1 TO N\nDISPLAY N\nGOBACK.\nENTRY 'ALTENTRY'.\nADD 10 TO N\nDISPLAY N\nGOBACK.",
+    );
+    let main = cards(
+        "CBL DLL\nID DIVISION.\nPROGRAM-ID. MAIN.\nPROCEDURE DIVISION.\nCALL 'PRIMARY'\nCANCEL 'PRIMARY'\nCALL 'ALTENTRY'\nSTOP RUN.",
+    );
+    let mut job = String::from("//DLLJOB JOB\n");
+    job.push_str(&compile_step("BUNDLE", "IGYCRCTL", &sub));
+    job.push_str("//SYSDEFSD DD DSN=ZEUS.EXPORTS,DISP=(NEW,CATLG)\n");
+    job.push_str(&compile_step("MAIN", "IGYCRCTL", &main));
+    job.push_str(
+        "//RUN EXEC PGM=MAIN\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//SYSOUT DD SYSOUT=*\n",
+    );
+    let mut log = Vec::new();
+    let results = run_job(&mut env, &job, &mut log).unwrap();
+    assert!(
+        results.iter().all(|r| r.outcome == Outcome::Rc(0)),
+        "{}",
+        String::from_utf8_lossy(&log)
+    );
+    let output = std::fs::read_dir(dir.path().join("spool/DLLJOB"))
+        .unwrap()
+        .filter_map(Result::ok)
+        .filter(|entry| entry.file_name().to_string_lossy().contains("RUN.SYSOUT"))
+        .map(|entry| std::fs::read_to_string(entry.path()).unwrap())
+        .collect::<String>();
+    assert_eq!(output, "01\n11\n");
+    let side = std::fs::read_to_string(env.catalog.path("ZEUS.EXPORTS")).unwrap();
+    for symbol in ["BUNDLE", "PRIMARY", "ALTENTRY"] {
+        assert!(side.contains(symbol));
+    }
+}
+
 const CSUB: &str = "       IDENTIFICATION DIVISION.
        PROGRAM-ID. CSUB.
        DATA DIVISION.
@@ -453,7 +707,7 @@ fn calls_between_languages() {
     assert_eq!(lines(spool("RCMAIN", "SYSPRINT")), ["PSUB 7 HELLO"]);
     assert_eq!(
         lines(spool("RCMAIN", "SYSOUT")),
-        ["CSUB 001 HELLO", "BACK 00000012A COBOL RC 000B"]
+        ["CSUB 001 HELLO", "BACK 000000121 COBOL RC 0002"]
     );
     assert_eq!(
         lines(spool("RPMAIN", "SYSPRINT")),
@@ -1362,7 +1616,7 @@ fn ims_batch_regions() {
         [
             "DBD SHOPDB   PROCOPT A",
             "ISRT DUPLICATE II",
-            "GHU    BOB                       CUSTOMER 01 0000E C0002",
+            "GHU    BOB                       CUSTOMER 01 00005 C0002",
             "REPL",
             "GU C0009 GE",
             "DLET",

@@ -30,20 +30,25 @@ mod cli_help;
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] [--nsymbol dbcs|national] -o <artifact> <source>"
+        "usage: zcobc compile [-I <dir>]... [--subprogram] [--debugging-lines] [--cics] [--ccsid N] [--source-encoding utf8|ebcdic|ebcdic80] [--nsymbol dbcs|national] [--options TEXT] [--listing FILE] -o <artifact> <source>"
     );
     eprintln!(
         "       zcobc compile --native [--target <triple>] [--with <module.zo>]... [--no-machine-code] [options] -o <executable> <source>"
     );
     eprintln!(
-        "       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] [--coverage DIR] <artifact>"
+        "       zcobc run [--dd NAME=PATH]... [--parm TEXT] [--ccsid N] [--coverage DIR] [--check-range ON|OFF] <artifact>"
     );
     eprintln!("       zcobc check [-I <dir>]... [--cics] <source>...");
     eprintln!("       zcobc inventory [-I <dir>]... <source>...");
+    eprintln!("       zcobc restart [--checkpoint ID] <checkpoint>");
+    eprintln!("       zcobc checkpoints <checkpoint>");
     ExitCode::from(2)
 }
 
 struct Args {
+    source_encoding: zeus_cobol::front::SourceEncoding,
+    compiler_options: String,
+    listing: Option<PathBuf>,
     copy_dirs: Vec<PathBuf>,
     output: Option<PathBuf>,
     subprogram: bool,
@@ -65,10 +70,15 @@ struct Args {
     with: Vec<PathBuf>,
     /// `--no-machine-code`: the executable interprets the programs.
     no_machine_code: bool,
+    checkpoint: Option<u64>,
+    range_checking: bool,
 }
 
 fn parse_args(args: &[String]) -> Option<Args> {
     let mut a = Args {
+        source_encoding: Default::default(),
+        compiler_options: String::new(),
+        listing: None,
         copy_dirs: Vec::new(),
         output: None,
         subprogram: false,
@@ -82,10 +92,37 @@ fn parse_args(args: &[String]) -> Option<Args> {
         target: None,
         with: Vec::new(),
         no_machine_code: false,
+        checkpoint: None,
+        range_checking: true,
     };
     let mut it = args.iter();
     while let Some(arg) = it.next() {
         match arg.as_str() {
+            "--source-encoding" => {
+                a.source_encoding = match it.next()?.to_ascii_lowercase().as_str() {
+                    "utf8" | "utf-8" => zeus_cobol::front::SourceEncoding::Utf8,
+                    "ebcdic" => zeus_cobol::front::SourceEncoding::Ebcdic,
+                    "ebcdic80" => zeus_cobol::front::SourceEncoding::Ebcdic80,
+                    _ => return None,
+                };
+            }
+            "--options" => {
+                if !a.compiler_options.is_empty() {
+                    a.compiler_options.push(' ');
+                }
+                a.compiler_options.push_str(it.next()?);
+            }
+            "--listing" => a.listing = Some(PathBuf::from(it.next()?)),
+            "--check-range" => {
+                a.range_checking = match it.next()?.to_ascii_uppercase().as_str() {
+                    "ON" => true,
+                    "OFF" => false,
+                    _ => return None,
+                }
+            }
+            "--checkpoint" => {
+                a.checkpoint = Some(it.next()?.parse::<u64>().ok().filter(|&id| id != 0)?)
+            }
             "-I" => a.copy_dirs.push(PathBuf::from(it.next()?)),
             "-o" => a.output = Some(PathBuf::from(it.next()?)),
             "--subprogram" => a.subprogram = true,
@@ -127,15 +164,22 @@ fn parse_args(args: &[String]) -> Option<Args> {
 
 fn check(args: &Args) -> ExitCode {
     let opts = FrontOptions {
+        source_encoding: args.source_encoding,
+        compiler_options: args.compiler_options.clone(),
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
         cics: args.cics,
         nsymbol_dbcs: args.nsymbol_dbcs,
+        ..Default::default()
     };
     let mut worst = 0;
     for input in &args.inputs {
         match zeus_cobol::compile_file(input, &opts) {
             Ok(module) => {
+                for diagnostic in &module.diagnostics {
+                    eprintln!("{diagnostic}");
+                }
+                worst = worst.max(module.compilation_return_code());
                 println!(
                     "{}: OK ({} program(s))",
                     input.display(),
@@ -153,10 +197,13 @@ fn check(args: &Args) -> ExitCode {
 
 fn inventory(args: &Args) -> ExitCode {
     let opts = FrontOptions {
+        source_encoding: args.source_encoding,
+        compiler_options: args.compiler_options.clone(),
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
         cics: args.cics,
         nsymbol_dbcs: args.nsymbol_dbcs,
+        ..Default::default()
     };
     let paths: Vec<&std::path::Path> = args.inputs.iter().map(|p| p.as_path()).collect();
     let (inv, failed) = zeus_cobol::inventory::inventory(&paths, &opts);
@@ -172,12 +219,53 @@ fn compile(args: &Args) -> ExitCode {
         return usage();
     };
     let opts = FrontOptions {
+        source_encoding: args.source_encoding,
+        compiler_options: args.compiler_options.clone(),
         copy_dirs: args.copy_dirs.clone(),
         debugging_lines: args.debugging_lines,
         cics: args.cics,
         nsymbol_dbcs: args.nsymbol_dbcs,
+        ..Default::default()
     };
-    match zeus_cobol::compile_file(input, &opts) {
+    let result = if let Some(path) = &args.listing {
+        let artifact = args
+            .output
+            .clone()
+            .unwrap_or_else(|| input.with_extension(if args.native { "" } else { "zo" }));
+        let absolute = |path: &std::path::Path| {
+            std::fs::canonicalize(path).ok().or_else(|| {
+                std::fs::canonicalize(
+                    path.parent()
+                        .filter(|p| !p.as_os_str().is_empty())
+                        .unwrap_or(std::path::Path::new(".")),
+                )
+                .ok()
+                .map(|parent| parent.join(path.file_name().unwrap_or_default()))
+            })
+        };
+        if let Some(listing_path) = absolute(path)
+            && (Some(listing_path.clone()) == absolute(input)
+                || Some(listing_path) == absolute(&artifact))
+        {
+            eprintln!("zcobc: listing path must differ from source and artifact");
+            return ExitCode::from(16);
+        }
+        let (result, listing) = zeus_cobol::compile_file_with_listing(input, &opts);
+        if let Err(error) = std::fs::write(path, listing) {
+            eprintln!("zcobc: cannot write listing {}: {error}", path.display());
+            return ExitCode::from(16);
+        }
+        result
+    } else {
+        zeus_cobol::compile_file(input, &opts)
+    };
+    let rc = result.as_ref().map_or(0, |module| {
+        for diagnostic in &module.diagnostics {
+            eprintln!("{diagnostic}");
+        }
+        module.compilation_return_code() as u8
+    });
+    match result {
         Ok(module) if args.native => {
             let out = args
                 .output
@@ -189,7 +277,7 @@ fn compile(args: &Args) -> ExitCode {
                 .map(|p| p.name.clone())
                 .unwrap_or_default();
             match native(name, zeus_cobol::module_bytes(&module), args, &out) {
-                Ok(()) => ExitCode::SUCCESS,
+                Ok(()) => ExitCode::from(rc),
                 Err(e) => {
                     eprintln!("zcobc: {e}");
                     ExitCode::from(16)
@@ -205,7 +293,7 @@ fn compile(args: &Args) -> ExitCode {
                 eprintln!("zcobc: cannot write {}: {e}", out.display());
                 return ExitCode::from(16);
             }
-            ExitCode::SUCCESS
+            ExitCode::from(rc)
         }
         Err(d) => {
             eprintln!("{d}");
@@ -257,7 +345,7 @@ fn run(args: &Args) -> ExitCode {
     };
     // the module's code page, unless --ccsid or ZEUS_CCSID chose one
     if std::env::var_os("ZEUS_CCSID").is_none() {
-        zeus_cobol::codepage::set_active(module.ccsid);
+        zeus_cobol::codepage::set_default(module.ccsid);
     }
     let dir = artifact
         .parent()
@@ -270,6 +358,7 @@ fn run(args: &Args) -> ExitCode {
         })
         .unwrap_or_else(|| PathBuf::from("."));
     let mut machine = zeus_cobol::vm::Machine::new(vec![dir]);
+    machine.set_range_checking(args.range_checking);
     for (n, p) in &args.dds {
         machine.set_dd(n, p.clone());
     }
@@ -311,6 +400,11 @@ fn main() -> ExitCode {
             "--parm",
             "--ccsid",
             "--dd",
+            "--checkpoint",
+            "--check-range",
+            "--options",
+            "--source-encoding",
+            "--listing",
         ],
     ) {
         return ExitCode::SUCCESS;
@@ -327,6 +421,40 @@ fn main() -> ExitCode {
         "inventory" => inventory(&parsed),
         "compile" => compile(&parsed),
         "run" => run(&parsed),
+        "restart" => {
+            let [path] = parsed.inputs.as_slice() else {
+                return usage();
+            };
+            let mut machine = zeus_cobol::vm::Machine::new(vec![
+                path.parent()
+                    .unwrap_or(std::path::Path::new("."))
+                    .to_path_buf(),
+            ]);
+            match machine.restart_checkpoint_at(path, parsed.checkpoint) {
+                Ok(rc) => ExitCode::from((rc & 255) as u8),
+                Err(error) => {
+                    eprintln!("zcobc: {error}");
+                    ExitCode::from(16)
+                }
+            }
+        }
+        "checkpoints" => {
+            let [path] = parsed.inputs.as_slice() else {
+                return usage();
+            };
+            match zeus_cobol::vm::Machine::checkpoint_ids(path) {
+                Ok(ids) => {
+                    for id in ids {
+                        println!("{id}");
+                    }
+                    ExitCode::SUCCESS
+                }
+                Err(error) => {
+                    eprintln!("zcobc: {error}");
+                    ExitCode::from(16)
+                }
+            }
+        }
         "--version" => {
             println!("zcobc {}", env!("CARGO_PKG_VERSION"));
             ExitCode::SUCCESS

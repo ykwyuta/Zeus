@@ -8,7 +8,7 @@ use crate::diag::{Diag, Result};
 /// Loads and lexes a COPY member: name, library, the COPY token and the
 /// partial-word replacements to apply to its text first.
 pub type Loader<'a> =
-    dyn FnMut(&str, Option<&str>, &Token, &[(String, String)]) -> Result<Vec<Token>> + 'a;
+    dyn FnMut(&str, Option<&str>, &Token, &[(String, String)], bool) -> Result<Vec<Token>> + 'a;
 
 /// A replacement pair: tokens to match and their replacement.
 struct Pair {
@@ -56,6 +56,9 @@ fn same(a: &Token, b: &Token) -> bool {
 fn matches_at(text: &[Token], at: usize, pattern: &[Token]) -> bool {
     !pattern.is_empty()
         && text.len() >= at + pattern.len()
+        && !text[at..at + pattern.len()]
+            .iter()
+            .any(|t| matches!(t.tok, Tok::CallInterface(_)))
         && text[at..at + pattern.len()]
             .iter()
             .zip(pattern)
@@ -133,6 +136,12 @@ fn operand(tokens: &[Token], i: &mut usize, stop: &[&str]) -> Result<Vec<Token>>
     let t = tokens
         .get(*i)
         .ok_or_else(|| Diag::error(tokens[*i - 1].pos, "REPLACING operand expected"))?;
+    if matches!(t.tok, Tok::CallInterface(_)) {
+        return Err(Diag::error(
+            t.pos,
+            "CALLINTERFACE cannot occur within COPY or REPLACE",
+        ));
+    }
     if let Tok::Pseudo(inner) = &t.tok {
         *i += 1;
         return Ok(inner.clone());
@@ -242,6 +251,15 @@ fn replacing_pairs(tokens: &[Token], i: &mut usize, end_period: bool) -> Result<
 
 /// Expands COPY statements (recursively) in `tokens`.
 pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Result<Vec<Token>> {
+    expand_copy_context(tokens, load, depth, false)
+}
+
+pub(super) fn expand_copy_context(
+    tokens: Vec<Token>,
+    load: &mut Loader,
+    depth: usize,
+    replacing: bool,
+) -> Result<Vec<Token>> {
     if depth > 20 {
         let pos = tokens.first().map(|t| t.pos).unwrap_or_default();
         return Err(Diag::error(pos, "COPY nesting too deep"));
@@ -257,8 +275,8 @@ pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Resul
             if tokens.get(i).is_some_and(|t| t.tok == Tok::Period) {
                 i += 1;
             }
-            let text = load(&name, None, t, &[])?;
-            out.extend(expand_copy(text, load, depth + 1)?);
+            let text = load(&name, None, t, &[], replacing)?;
+            out.extend(expand_copy_context(text, load, depth + 1, replacing)?);
             continue;
         }
         if !t.is_word("COPY") {
@@ -291,6 +309,12 @@ pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Resul
         }
         let mut pairs = Vec::new();
         if tokens.get(i).is_some_and(|t| t.is_word("REPLACING")) {
+            if replacing {
+                return Err(Diag::error(
+                    copy_tok.pos,
+                    "only one COPY REPLACING is allowed in a nested COPY chain",
+                ));
+            }
             i += 1;
             pairs = replacing_pairs(&tokens, &mut i, false)?;
         }
@@ -332,8 +356,9 @@ pub fn expand_copy(tokens: Vec<Token>, load: &mut Loader, depth: usize) -> Resul
             partial.push((tag, by));
             false
         });
-        let text = load(&name, library.as_deref(), &copy_tok, &partial)?;
-        let text = expand_copy(text, load, depth + 1)?;
+        let replacing = replacing || !pairs.is_empty() || !partial.is_empty();
+        let text = load(&name, library.as_deref(), &copy_tok, &partial, replacing)?;
+        let text = expand_copy_context(text, load, depth + 1, replacing)?;
         out.extend(replace(text, &pairs)?);
     }
     Ok(out)
@@ -344,7 +369,7 @@ fn sql_include(t: &Token) -> Option<String> {
     let Tok::Exec(kind, text) = &t.tok else {
         return None;
     };
-    if kind != "SQL" {
+    if kind != "SQL" && kind != "SQLIMS" {
         return None;
     }
     let text: String = text.iter().map(|(c, _)| *c).collect();
@@ -435,11 +460,12 @@ mod tests {
     #[test]
     fn copy_with_replacing() {
         let src = toks("A. COPY LIB1 REPLACING ==X== BY ==Y Z== \"Q\" BY 5. B.");
-        let mut load = |name: &str, lib: Option<&str>, _: &Token, _: &[(String, String)]| {
-            assert_eq!(name, "LIB1");
-            assert_eq!(lib, None);
-            Ok(toks("MOVE X TO \"Q\" X."))
-        };
+        let mut load =
+            |name: &str, lib: Option<&str>, _: &Token, _: &[(String, String)], _: bool| {
+                assert_eq!(name, "LIB1");
+                assert_eq!(lib, None);
+                Ok(toks("MOVE X TO \"Q\" X."))
+            };
         let out = expand_copy(src, &mut load, 0).unwrap();
         assert_eq!(text(&out), "A . MOVE Y Z TO 5 Y Z . B .");
     }
@@ -447,8 +473,11 @@ mod tests {
     #[test]
     fn nested_copy_and_library() {
         let src = toks("COPY A OF \"../lib\".");
-        let mut load = |name: &str, lib: Option<&str>, _: &Token, _: &[(String, String)]| match name
-        {
+        let mut load = |name: &str,
+                        lib: Option<&str>,
+                        _: &Token,
+                        _: &[(String, String)],
+                        _: bool| match name {
             "A" => {
                 assert_eq!(lib, Some("../lib"));
                 Ok(toks("1 COPY B. 2"))

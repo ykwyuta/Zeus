@@ -41,7 +41,7 @@ submit() { # template
 
 setup() {
     tools/fetch-bankofz.sh >/dev/null
-    cargo build --release -q -p zeus-cobol -p zeus-pli -p zeus-jcl -p zeus-ims -p zeus-zconnect
+    cargo build --release -q -p zeus-cobol -p zeus-pli -p zeus-jcl -p zeus-ims -p zeus-zconnect || return $?
     rm -rf "$home"
     mkdir -p "$home/cntl"
     for lib in DBDLIB PSBLIB; do
@@ -68,14 +68,14 @@ setup() {
     for f in $i/cobol/*.cbl; do
         n=$(basename "$f" .cbl)
         [ "$n" = IBTRAN ] && continue
-        $bin/zcobc compile -I $i/copy -o "$tmp/$n.zo" "$f"
-        $zjob catalog put "$hlq.PGMLIB($n)" "$tmp/$n.zo"
+        $bin/zcobc compile -I $i/copy -o "$tmp/$n.zo" "$f" || return $?
+        $zjob catalog put "$hlq.PGMLIB($n)" "$tmp/$n.zo" || return $?
     done
-    $bin/zpli compile -o "$tmp/IBLOGIN.zo" $i/pli/IBLOGIN.pli
-    $zjob catalog put "$hlq.PGMLIB(IBLOGIN)" "$tmp/IBLOGIN.zo"
+    $bin/zpli compile -o "$tmp/IBLOGIN.zo" $i/pli/IBLOGIN.pli || return $?
+    $zjob catalog put "$hlq.PGMLIB(IBLOGIN)" "$tmp/IBLOGIN.zo" || return $?
     rm -rf "$tmp"
     for j in Ims-load-cust Ims-load-acct Ims-load-cusa Ims-load-hist Ims-load-tsta; do
-        submit $j.j2
+        submit $j.j2 || return $?
     done
     # the transactions (type-2 commands)
     submit Ims-spoc.jcl.j2

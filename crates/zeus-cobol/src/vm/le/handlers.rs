@@ -4,13 +4,13 @@ use super::super::{Machine, RResult, RunError};
 use crate::hlasm;
 use std::collections::{HashMap, VecDeque};
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Handler {
     id: u64,
     entry: u32,
     token: [u8; 4],
 }
-#[derive(Default)]
+#[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
 pub(crate) struct Conditions {
     pub frames: Vec<Vec<Handler>>,
     next_handler: u64,

@@ -1,7 +1,10 @@
 //! QSAM physical blocks. Lengths include the BDW/RDW/SDW, as on z/OS.
 use crate::{DsError, Result};
 
-#[derive(Debug, Clone, Copy)]
+/// Logical records and each record's inclusive physical block extent.
+pub type DecodedBlocks = (Vec<Vec<u8>>, Vec<(usize, usize)>);
+
+#[derive(Debug, Clone, Copy, serde::Serialize, serde::Deserialize)]
 pub struct Layout {
     pub mode: char,
     pub record_len: usize,
@@ -15,9 +18,30 @@ fn damaged(message: &str) -> DsError {
     DsError::Damaged(message.into())
 }
 
+fn bdw_length(bytes: &[u8]) -> Result<usize> {
+    let header: [u8; 4] = bytes
+        .get(..4)
+        .ok_or_else(|| damaged("truncated BDW"))?
+        .try_into()
+        .unwrap();
+    let length = if header[0] & 0x80 != 0 {
+        (u32::from_be_bytes(header) & 0x7fff_ffff) as usize
+    } else {
+        let length = u16::from_be_bytes([header[0], header[1]]) as usize;
+        if header[2..] != [0, 0] || length > 32760 {
+            return Err(damaged("invalid nonextended BDW"));
+        }
+        length
+    };
+    if length < 8 {
+        return Err(damaged("invalid BDW length"));
+    }
+    Ok(length)
+}
+
 impl Layout {
     pub fn validate(self) -> Result<()> {
-        if self.block_size == 0 || self.block_size > 32760 || self.record_len == 0 {
+        if self.block_size == 0 || self.block_size > 0x7fff_ffff || self.record_len == 0 {
             return Err(damaged("invalid QSAM block/record size"));
         }
         match self.mode {
@@ -26,8 +50,8 @@ impl Layout {
             {
                 Ok(())
             }
-            'V' if self.block_size >= self.record_len + 8 => Ok(()),
-            'S' if self.block_size >= 9 => Ok(()),
+            'V' if self.record_len <= 32756 && self.block_size >= self.record_len + 8 => Ok(()),
+            'S' if (9..=32760).contains(&self.block_size) => Ok(()),
             'U' if self.block_size >= self.record_len => Ok(()),
             _ => Err(damaged(
                 "record does not fit the selected physical block format",
@@ -48,8 +72,12 @@ impl Layout {
                 if block.len() == 4 {
                     return;
                 }
-                let n = (block.len() as u16).to_be_bytes();
-                block[..2].copy_from_slice(&n);
+                let length = block.len();
+                if length > 32760 {
+                    block[..4].copy_from_slice(&(length as u32 | 0x8000_0000).to_be_bytes());
+                } else {
+                    block[..2].copy_from_slice(&(length as u16).to_be_bytes());
+                }
                 blocks.push(std::mem::replace(block, vec![0; 4]));
             } else if !block.is_empty() {
                 blocks.push(std::mem::take(block));
@@ -109,15 +137,24 @@ impl Layout {
     }
 
     pub fn decode(self, blocks: &[Vec<u8>]) -> Result<Vec<Vec<u8>>> {
+        self.decode_with_blocks(blocks).map(|(records, _)| records)
+    }
+
+    /// Physical start/end block (zero based, inclusive) of each logical record.
+    /// A volume can end in the middle of a spanned record.
+    pub fn decode_with_blocks(self, blocks: &[Vec<u8>]) -> Result<DecodedBlocks> {
         self.validate()?;
         let mut records = Vec::new();
+        let mut locations = Vec::new();
+        let mut pending_start = 0;
         let mut pending: Option<Vec<u8>> = None;
-        for block in blocks {
+        for (block_index, block) in blocks.iter().enumerate() {
             if block.len() > self.block_size {
                 return Err(damaged("block exceeds BLKSIZE"));
             }
             if self.mode == 'U' {
                 records.push(block.clone());
+                locations.push((block_index, block_index));
                 continue;
             }
             if self.mode == 'F' {
@@ -125,12 +162,13 @@ impl Layout {
                     return Err(damaged("short fixed record"));
                 }
                 records.extend(block.chunks(self.record_len).map(<[u8]>::to_vec));
+                locations.extend(std::iter::repeat_n(
+                    (block_index, block_index),
+                    block.len() / self.record_len,
+                ));
                 continue;
             }
-            if block.len() < 4
-                || u16::from_be_bytes([block[0], block[1]]) as usize != block.len()
-                || block[2..4] != [0, 0]
-            {
+            if bdw_length(block)? != block.len() || self.mode == 'S' && block[0] & 0x80 != 0 {
                 return Err(damaged("invalid BDW"));
             }
             let mut offset = 4;
@@ -150,8 +188,14 @@ impl Layout {
                 }
                 let data = &block[offset + 4..offset + n];
                 match (flag, &mut pending) {
-                    (0, None) => records.push(data.to_vec()),
-                    (1, None) => pending = Some(data.to_vec()),
+                    (0, None) => {
+                        records.push(data.to_vec());
+                        locations.push((block_index, block_index));
+                    }
+                    (1, None) => {
+                        pending = Some(data.to_vec());
+                        pending_start = block_index;
+                    }
                     (2 | 3, Some(record)) => {
                         record.extend_from_slice(data);
                         if record.len() > self.record_len {
@@ -159,6 +203,7 @@ impl Layout {
                         }
                         if flag == 2 {
                             records.push(pending.take().unwrap());
+                            locations.push((pending_start, block_index));
                         }
                     }
                     _ => return Err(damaged("out-of-order spanned segments")),
@@ -172,7 +217,7 @@ impl Layout {
         if pending.is_some() {
             return Err(damaged("unterminated spanned record"));
         }
-        Ok(records)
+        Ok((records, locations))
     }
 
     /// Raw F/V/S host files have inferable block boundaries. U must use a
@@ -193,8 +238,8 @@ impl Layout {
             if offset + 4 > bytes.len() {
                 return Err(damaged("truncated BDW"));
             }
-            let n = u16::from_be_bytes([bytes[offset], bytes[offset + 1]]) as usize;
-            if n < 4 || n > self.block_size || offset + n > bytes.len() {
+            let n = bdw_length(&bytes[offset..])?;
+            if n > self.block_size || offset + n > bytes.len() {
                 return Err(damaged("invalid block length"));
             }
             blocks.push(bytes[offset..offset + n].to_vec());
@@ -207,6 +252,45 @@ impl Layout {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn large_variable_blocks_use_extended_bdw_and_small_tail_uses_classic_bdw() {
+        let layout = Layout {
+            mode: 'V',
+            record_len: 32,
+            block_size: 65536,
+            write_only: false,
+        };
+        let records = vec![vec![0xc1; 32]; 2100];
+        let blocks = layout.encode(&records, 0x40).unwrap();
+        assert_eq!(blocks.len(), 2);
+        assert_eq!(
+            u32::from_be_bytes(blocks[0][..4].try_into().unwrap()),
+            0x8000_fff4
+        );
+        assert_eq!(blocks[1][0] & 0x80, 0);
+        assert_eq!(layout.split(&blocks.concat()).unwrap(), blocks);
+        assert_eq!(layout.decode(&blocks).unwrap(), records);
+        let mut bad = blocks.clone();
+        bad[0][0] &= 0x7f;
+        assert!(layout.decode(&bad).is_err());
+        assert!(
+            Layout {
+                mode: 'S',
+                ..layout
+            }
+            .validate()
+            .is_err()
+        );
+        assert!(
+            Layout {
+                record_len: 32757,
+                ..layout
+            }
+            .validate()
+            .is_err()
+        );
+    }
 
     #[test]
     fn variable_blocks_match_known_descriptor_bytes_and_awo_packing() {

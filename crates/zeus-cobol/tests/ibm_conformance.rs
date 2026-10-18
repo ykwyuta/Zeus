@@ -471,7 +471,8 @@ END PROGRAM T."#),
 #[test]
 fn local_storage_value_is_reinitialized_without_resetting_working_storage() {
     assert_eq!(
-        run(r#"ID DIVISION.
+        run(r#"CBL DYNAM
+ID DIVISION.
 PROGRAM-ID. T.
 PROCEDURE DIVISION.
     CALL "U"

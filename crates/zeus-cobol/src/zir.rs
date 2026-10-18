@@ -10,9 +10,67 @@ use zeus_decimal::Dec;
 
 pub use crate::sema::picture::{Category, EditSym};
 
+/// Linkage selected for a CALL or SET TO ENTRY. Boolean serialization
+/// retains compatibility with modules containing STATIC/DYNAMIC directives.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(try_from = "InterfaceValue", into = "InterfaceValue")]
+pub enum CallInterface {
+    Static,
+    Dynamic,
+    Dll,
+}
+#[derive(Serialize, Deserialize)]
+#[serde(untagged)]
+enum InterfaceValue {
+    Legacy(bool),
+    Name(String),
+}
+impl TryFrom<InterfaceValue> for CallInterface {
+    type Error = String;
+    fn try_from(value: InterfaceValue) -> Result<Self, String> {
+        match value {
+            InterfaceValue::Legacy(false) => Ok(Self::Static),
+            InterfaceValue::Legacy(true) => Ok(Self::Dynamic),
+            InterfaceValue::Name(name) if name == "DLL" => Ok(Self::Dll),
+            _ => Err("invalid CALL interface".into()),
+        }
+    }
+}
+impl From<CallInterface> for InterfaceValue {
+    fn from(value: CallInterface) -> Self {
+        match value {
+            CallInterface::Static => Self::Legacy(false),
+            CallInterface::Dynamic => Self::Legacy(true),
+            CallInterface::Dll => Self::Name("DLL".into()),
+        }
+    }
+}
+impl CallInterface {
+    pub fn default_for(dynam: bool, dll: bool) -> Self {
+        if dynam {
+            Self::Dynamic
+        } else if dll {
+            Self::Dll
+        } else {
+            Self::Static
+        }
+    }
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Static => "STATIC",
+            Self::Dynamic => "DYNAMIC",
+            Self::Dll => "DLL",
+        }
+    }
+}
+
 /// A whole compilation unit: the outermost program and nested programs.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Module {
+    #[serde(default)]
+    pub diagnostics: Vec<crate::diag::Diag>,
+    #[serde(default)]
+    pub optimize: u8,
     pub programs: Vec<ProgramCode>,
     /// The CCSID of the literals (the code page the module was compiled
     /// for).
@@ -22,6 +80,19 @@ pub struct Module {
     /// the file numbers of `ProgramCode::stmt_pos` (for coverage).
     #[serde(default)]
     pub sources: Vec<String>,
+    /// UTC compilation timestamp; absent in modules produced by older Zeus.
+    #[serde(default)]
+    pub compiled_at: Option<String>,
+}
+
+impl Module {
+    pub fn compilation_return_code(&self) -> i32 {
+        self.diagnostics
+            .iter()
+            .map(|d| d.severity.return_code())
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 fn default_ccsid() -> u32 {
@@ -30,6 +101,36 @@ fn default_ccsid() -> u32 {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgramCode {
+    /// Per-compile-unit metadata retained when the binder combines objects.
+    #[serde(default)]
+    pub ccsid: Option<u32>,
+    #[serde(default)]
+    pub compiled_at: Option<String>,
+    #[serde(default)]
+    pub lp64: bool,
+    /// Special registers and LINKAGE indexes allocated for each invocation.
+    #[serde(default)]
+    pub invocation_storage: Vec<u32>,
+    #[serde(default)]
+    pub thread: bool,
+    #[serde(default)]
+    pub dll: bool,
+    #[serde(default)]
+    pub exportall: bool,
+    #[serde(default)]
+    pub ssrange: bool,
+    #[serde(default)]
+    pub dynam: bool,
+    #[serde(default)]
+    pub decimal_comma: bool,
+    #[serde(default)]
+    pub currency_sign: Option<String>,
+    #[serde(default)]
+    pub rerun: Vec<Rerun>,
+    #[serde(default)]
+    pub dynamic_init: Vec<(Loc, Vec<u8>)>,
+    #[serde(default)]
+    pub numeric: Option<crate::numeric::Settings>,
     pub name: String,
     #[serde(default)]
     pub recursive: bool,
@@ -54,6 +155,13 @@ pub struct ProgramCode {
     pub externals: Vec<ExternalArea>,
     /// Linkage base numbers bound by PROCEDURE DIVISION USING.
     pub using: Vec<u32>,
+    #[serde(default)]
+    pub using_by_value: Vec<bool>,
+    #[serde(default)]
+    pub entries: Vec<EntryPoint>,
+    /// PROCEDURE DIVISION RETURNING result in LINKAGE storage.
+    #[serde(default)]
+    pub result: Option<Loc>,
     /// Number of temporary numeric registers.
     pub temps: u32,
     /// Number of ALTER-able GO TO slots.
@@ -72,6 +180,8 @@ pub struct ProgramCode {
     pub debugging: bool,
     /// USE AFTER ERROR declaratives.
     pub uses: Vec<UseDecl>,
+    #[serde(default)]
+    pub label_uses: Vec<LabelUse>,
     /// Segmentation: (first instruction, segment number) of every
     /// paragraph in code order; empty when the program has no independent
     /// segments.
@@ -102,11 +212,28 @@ pub struct ProgramCode {
     pub instr_stmt: Vec<u32>,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Rerun {
+    pub checkpoint: String,
+    pub file: Option<u32>,
+    pub records: Option<u32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EntryPoint {
+    #[serde(default)]
+    pub using_by_value: Vec<bool>,
+    pub name: String,
+    pub pc: u32,
+    pub using: Vec<u32>,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum ExecKind {
     Cics,
     Sql,
     Dli,
+    SqlIms,
 }
 
 /// An embedded EXEC statement, run by the host interface (CICS, Db2, IMS).
@@ -312,6 +439,10 @@ pub struct ExternalArea {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Dim {
+    #[serde(default)]
+    pub count: Option<Box<Ex>>,
+    #[serde(default)]
+    pub dynamic_stride: Option<Box<Ex>>,
     pub stride: u32,
     pub max: u32,
 }
@@ -328,6 +459,7 @@ pub enum SignPos {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub enum NumUsage {
     Display,
+    National,
     Packed,
     /// Binary truncated to the picture (COMP, COMP-4, BINARY).
     Binary,
@@ -359,6 +491,8 @@ pub enum DataType {
     National,
     Numeric(NumType),
     NumericEdited {
+        #[serde(default)]
+        national: bool,
         edit: Vec<EditSym>,
         digits: u32,
         scale: i32,
@@ -367,22 +501,92 @@ pub enum DataType {
         point: u8,
     },
     AlphanumericEdited {
+        #[serde(default)]
+        national: bool,
         edit: Vec<EditSym>,
     },
     /// USAGE INDEX / index-name: 4-byte binary occurrence number.
     Index,
     Pointer,
+    ProcedurePointer,
+    FunctionPointer,
     /// COMP-1 (short) / COMP-2 (long): IBM hexadecimal floating point.
     Float {
         long: bool,
     },
+    ExternalFloat {
+        picture: String,
+        national: bool,
+        comma: bool,
+    },
 }
 
 impl DataType {
+    pub fn abi_type(&self) -> Self {
+        let mut ty = self.clone();
+        match &mut ty {
+            Self::NumericEdited {
+                currency,
+                point,
+                edit,
+                ..
+            } => {
+                for symbol in edit {
+                    if let EditSym::Insert(byte) = symbol
+                        && matches!(crate::ebcdic::to_latin1(*byte), b',' | b'.')
+                    {
+                        *byte = 0;
+                    }
+                }
+                *currency = 0;
+                *point = 0;
+            }
+            Self::ExternalFloat { picture, comma, .. } => {
+                *picture = picture.replace(',', ".");
+                *comma = false;
+            }
+            _ => {}
+        }
+        ty
+    }
+    pub fn by_value_allowed(&self, len: u32) -> bool {
+        match self {
+            Self::Numeric(t) => matches!(t.usage, NumUsage::Binary | NumUsage::Native),
+            Self::Float { .. } | Self::Pointer | Self::ProcedurePointer | Self::FunctionPointer => {
+                true
+            }
+            Self::Alphabetic { .. } | Self::Alphanumeric { .. } => len == 1,
+            Self::National => len == 2,
+            _ => false,
+        }
+    }
+    pub fn is_floating(&self) -> bool {
+        matches!(self, Self::Float { .. } | Self::ExternalFloat { .. })
+    }
+    pub fn is_entry_pointer(&self) -> bool {
+        matches!(self, Self::ProcedurePointer | Self::FunctionPointer)
+    }
+    pub fn is_national(&self) -> bool {
+        matches!(
+            self,
+            Self::National
+                | Self::Numeric(NumType {
+                    usage: NumUsage::National,
+                    ..
+                })
+                | Self::NumericEdited { national: true, .. }
+                | Self::AlphanumericEdited { national: true, .. }
+                | Self::ExternalFloat { national: true, .. }
+        )
+    }
+
     pub fn is_numeric(&self) -> bool {
         matches!(
             self,
-            DataType::Numeric(_) | DataType::Index | DataType::Float { .. }
+            DataType::Numeric(_)
+                | DataType::Index
+                | DataType::Float { .. }
+                | DataType::ExternalFloat { .. }
         )
     }
 }
@@ -390,6 +594,18 @@ impl DataType {
 /// Descriptor of a data item.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Desc {
+    #[serde(default)]
+    pub definition: (u32, u32),
+    #[serde(default)]
+    pub table_bounds: Option<TableBounds>,
+    #[serde(default)]
+    pub right_justify: bool,
+    #[serde(default)]
+    pub dynamic_offset: Option<Box<Ex>>,
+    #[serde(default)]
+    pub dynamic_len: Option<Box<Ex>>,
+    #[serde(default)]
+    pub abi: Vec<AbiField>,
     pub name: String,
     pub base: Base,
     pub offset: u32,
@@ -399,6 +615,22 @@ pub struct Desc {
     pub ty: DataType,
     /// Group containing an OCCURS DEPENDING ON table: the variable part.
     pub odo: Option<Odo>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TableBounds {
+    pub offset: u32,
+    pub dynamic_offset: Option<Box<Ex>>,
+    pub len: u32,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AbiField {
+    pub offset: u32,
+    pub len: u32,
+    pub ty: DataType,
+    pub synchronized: bool,
+    pub occurs: Vec<u32>,
 }
 
 /// Variable-length group: its length is `fixed + count * stride`, where
@@ -431,6 +663,7 @@ pub enum Op {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Ex {
     Lit(Dec),
+    Float(String),
     Load(Loc),
     Bin(Op, Box<Ex>, Box<Ex>),
     Neg(Box<Ex>),
@@ -450,6 +683,11 @@ pub enum Arg {
     Src(Src),
     /// All occurrences of a table (subscript ALL).
     All(Loc),
+    /// A table argument retaining fixed subscripts alongside ALL positions.
+    Table {
+        loc: Loc,
+        subs: Vec<Option<Ex>>,
+    },
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
@@ -507,6 +745,7 @@ pub enum Func {
     UpperCase,
     Variance,
     WhenCompiled,
+    WhenCompiledRegister,
     DateToYyyymmdd,
     DayToYyyyddd,
     YearToYyyy,
@@ -519,11 +758,13 @@ pub enum Fig {
     High,
     Low,
     Quote,
+    Apostrophe,
 }
 
 /// A general operand (MOVE source, comparison operand, DISPLAY item).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Src {
+    Float(String),
     Loc(Loc),
     /// Alphanumeric literal (EBCDIC bytes).
     Alnum(Vec<u8>),
@@ -619,6 +860,10 @@ pub enum AccessMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FileDef {
+    #[serde(default)]
+    pub same_sort_area: Vec<String>,
+    #[serde(default)]
+    pub label_records: Vec<Loc>,
     pub name: String,
     pub assign: String,
     pub org: Org,
@@ -647,6 +892,8 @@ pub struct FileDef {
     pub same_area: Vec<String>,
     pub record_depending: Option<Loc>,
     pub status: Option<Loc>,
+    #[serde(default)]
+    pub vsam_status: Option<Loc>,
     pub relative_key: Option<Loc>,
     pub record_key: Option<Loc>,
     pub alternate_keys: Vec<(Loc, bool)>,
@@ -661,6 +908,17 @@ pub struct FileDef {
     /// GLOBAL file of a containing program: (module program index, file
     /// index there) holding the file's state.
     pub owner: Option<(u32, u32)>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LabelUse {
+    pub files: Vec<u32>,
+    pub mode: Option<OpenMode>,
+    pub start: u32,
+    pub end: u32,
+    pub global: bool,
+    pub beginning: Option<bool>,
+    pub reel: Option<bool>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -681,6 +939,7 @@ pub enum Advance {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum CallArgMode {
+    ValueData(Src),
     Reference(Loc),
     Content(Src, u32),
     Value(Ex),
@@ -725,6 +984,11 @@ pub struct SortKey {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Instr {
+    MoreLabels,
+    NumericContext {
+        decimals: i32,
+        floating: bool,
+    },
     /// No operation (placeholder).
     Nop,
     Move(Src, Loc),
@@ -771,6 +1035,9 @@ pub enum Instr {
     Segment(u8),
     /// SET ADDRESS OF a linkage record (linkage base number) TO value.
     SetAddress(u32, Ex),
+    SetEntry(Vec<Loc>, Src),
+    /// Explicit CALLINTERFACE selection; old SetEntry retains compiler defaults.
+    SetEntryWithInterface(Vec<Loc>, Src, CallInterface),
     /// Report Writer statements (report index; group index for GENERATE
     /// of a detail, None for summary reporting).
     Initiate(u32),
@@ -863,6 +1130,8 @@ pub enum Instr {
         key: Option<Loc>,
     },
     Call {
+        #[serde(default)]
+        interface: Option<CallInterface>,
         program: Src,
         args: Vec<CallArgMode>,
         returning: Option<Loc>,
@@ -897,6 +1166,17 @@ pub enum Instr {
         max: Ex,
         at_end: u32,
     },
+    SortBegin(u32),
+    SortRead(u32),
+    SortOrder {
+        file: u32,
+        keys: Vec<SortKey>,
+        collating: Option<Vec<u16>>,
+        merge: bool,
+    },
+    SortWrite(u32),
+    SortCheckpoint,
+    SortEnd,
     Sort {
         file: u32,
         keys: Vec<SortKey>,

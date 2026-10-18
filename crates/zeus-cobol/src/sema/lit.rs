@@ -12,6 +12,7 @@ pub enum FigByte {
     High,
     Low,
     Quote,
+    Apostrophe,
 }
 
 impl FigByte {
@@ -22,6 +23,7 @@ impl FigByte {
             FigByte::High => 0xFF,
             FigByte::Low => 0x00,
             FigByte::Quote => ebcdic::QUOTE,
+            FigByte::Apostrophe => ebcdic::encode("'")[0],
         }
     }
 }
@@ -40,6 +42,13 @@ pub enum Const {
 
 pub fn numeric(text: &str) -> Result<(Dec, Vec<u8>), String> {
     let t = text.replace(',', ".");
+    if t.chars().filter(char::is_ascii_digit).count()
+        > crate::front::numeric().operand_digits() as usize
+    {
+        return Err(format!(
+            "numeric literal exceeds ARITH operand limit: {text}"
+        ));
+    }
     let d = Dec::parse(&t).ok_or_else(|| format!("invalid numeric literal {text}"))?;
     let digits: Vec<u8> = t
         .chars()
@@ -55,7 +64,13 @@ pub fn figurative(f: &Figurative) -> Option<FigByte> {
         Figurative::Space => FigByte::Space,
         Figurative::HighValue => FigByte::High,
         Figurative::LowValue => FigByte::Low,
-        Figurative::Quote => FigByte::Quote,
+        Figurative::Quote => {
+            if crate::front::apost() {
+                FigByte::Apostrophe
+            } else {
+                FigByte::Quote
+            }
+        }
         Figurative::Symbolic(_) => return None,
     })
 }

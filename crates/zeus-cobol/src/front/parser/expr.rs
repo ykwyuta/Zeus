@@ -236,6 +236,16 @@ impl Parser {
             return Ok(Operand::Fig(f));
         }
         match word.as_str() {
+            "WHEN-COMPILED" => {
+                let pos = self.pos();
+                self.i += 1;
+                Ok(Operand::Func(Box::new(FuncCall {
+                    name: "__WHEN-COMPILED-REGISTER".into(),
+                    args: Vec::new(),
+                    refmod: None,
+                    pos,
+                })))
+            }
             "ALL" => {
                 self.i += 1;
                 let inner = self.operand()?;

@@ -85,12 +85,12 @@ fn japanese_through_db2() {
     assert_eq!(
         lines,
         [
-            "INSERT 00000000{",
-            "SELECT 00000000{",
+            "INSERT 0000000000",
+            "SELECT 0000000000",
             "ヤマダ 山田太郎",
             "東京都千代田区",
             "大阪市北区",
-            "LIKE 00000000A"
+            "LIKE 000000001"
         ]
     );
 }

@@ -107,11 +107,11 @@ struct Position {
 }
 
 pub struct Session {
-    database: Database,
-    psb: Psb,
+    pub(crate) database: Database,
+    pub(crate) psb: Psb,
     positions: Vec<Position>,
-    transaction: Transaction,
-    lock_timeout: Duration,
+    pub(crate) transaction: Transaction,
+    pub(crate) lock_timeout: Duration,
 }
 
 /// A relational operator of a qualification statement.
@@ -452,6 +452,13 @@ fn path_matches(tx: &Transaction, dbd: &Dbd, ssas: &[Ssa], record: &Record) -> b
 }
 
 impl Session {
+    pub(crate) fn held_record(&self, pcb: usize) -> Option<Record> {
+        let position = self.positions.get(pcb)?;
+        position
+            .held
+            .filter(|id| position.current == Some(*id))
+            .and_then(|id| self.transaction.record(id))
+    }
     pub fn indexed_fields(&self, pcb_index: usize) -> Result<Vec<(String, String, usize)>, String> {
         let pcb = self
             .psb
@@ -612,7 +619,7 @@ impl Session {
         {
             return Err(format!("PCB is not sensitive to {segment}"));
         }
-        let procopt = pcb.procopt.as_deref().unwrap_or("");
+        let procopt = pcb.segment_procopt(segment);
         let allowed = match op {
             WriteOp::Isrt => procopt.contains(['I', 'A', 'L']),
             WriteOp::Repl => procopt.contains(['R', 'A']),
@@ -800,6 +807,11 @@ impl Session {
         let tx = &self.transaction;
         let fits = |r: &Record| {
             (sensitive.is_empty() || sensitive.contains(&r.segment))
+                && (pcb
+                    .segment_procopt(&r.segment)
+                    .contains(['G', 'R', 'D', 'A'])
+                    || (pcb.segment_procopt(&r.segment).contains('K')
+                        && !(base == ReadOp::Gn && ssas.is_empty())))
                 && path_matches(tx, &dbd, &ssas, r)
         };
         let last_code = |c: char| ssas.last().is_some_and(|s| s.code(c));
@@ -1219,7 +1231,7 @@ impl Session {
     }
 }
 
-fn delete_subtree(
+pub(crate) fn delete_subtree(
     transaction: &mut Transaction,
     dbd: &Dbd,
     dbd_name: &str,

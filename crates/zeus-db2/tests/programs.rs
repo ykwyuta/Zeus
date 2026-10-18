@@ -108,18 +108,18 @@ PROCEDURE DIVISION.
     DISPLAY 'SET ' WS-NEXT.
     STOP RUN.",
     );
-    // DISPLAY of signed binary items shows the sign in the last digit, as
-    // on z/OS ({ = +0, L = -3, J = -1, ...)
+    // Positive binary values use ordinary digits; negative values retain
+    // the trailing sign overpunch. COMP-5 uses the full storage width.
     assert_eq!(
         out,
-        "CREATE 00000000{\n\
-         DUP 00000080L 23505\n\
-         COUNT 00000000C SUM       63.00\n\
-         00000000B O'HAR       21.00 ABC 000J\n\
-         00000000C O'HAR       31.50 ABC 000{\n\
-         END 00000010{\n\
-         NOTFOUND 00000010{\n\
-         SET 00000004B\n"
+        "CREATE 0000000000\n\
+         DUP 000000080L 23505\n\
+         COUNT 000000003 SUM       63.00\n\
+         000000002 O'HAR       21.00 ABC 000J\n\
+         000000003 O'HAR       31.50 ABC 0000\n\
+         END 0000000100\n\
+         NOTFOUND 0000000100\n\
+         SET 000000042\n"
     );
 }
 
@@ -202,12 +202,12 @@ PROCEDURE DIVISION.
     assert_eq!(
         lines,
         [
-            "CREATE 00000000{",
-            "INSERT 00000000{",
-            "DESCRIBE 00000000{ 000C",
-            "00000000B     4.50 XYZ",
-            "00000000C     6.75 XYZ",
-            "S3 00000051M",
+            "CREATE 0000000000",
+            "INSERT 0000000000",
+            "DESCRIBE 0000000000 00003",
+            "000000002     4.50 XYZ",
+            "000000003     6.75 XYZ",
+            "S3 000000051M",
         ]
     );
 }

@@ -7,6 +7,8 @@
 - 基準: [0003](0003-cobol-compiler.md) と同じ Enterprise COBOL **4.2**。
   追加実装した 5.x/6.x 系の構文は拡張として別に記載する。
 
+後続実装は [0015](0015-cobol-ignored-clauses.md)、[0016](0016-cobol-physical-tape-recursion.md)、[0017](0017-cobol-remaining-compatibility.md) を参照。以下の表も現在の実装に合わせて更新した。過去の試験件数は各実装時点の記録。
+
 ## 参照した IBM 公式資料
 
 以下の文書の目次と該当節を、実装と照合した。ページ番号は冊子のページであり、
@@ -73,14 +75,14 @@ R42 Chapters 1–17 と実装を照合した。
 | データ名の修飾、添字、参照変更 | 実装 | テーブル認識、名前解決、参照変更。7 次元等の上限・境界診断は未検証 |
 | PROGRAM-ID、INITIAL、COMMON、END PROGRAM | 修正 | 終端名・引用符形式・ピリオドを確認。入れ子を持つ親の終端を要求 |
 | 入れ子プログラム、GLOBAL、独立コンパイル | 実装 | parser/sema/VM に経路あり。COMMON の可視性など全制約は未検証 |
-| RECURSIVE | 部分 | 属性を解析するが VM は active program の CALL を拒否する |
+| RECURSIVE | 実装／部分 | WS・ファイルを共有し、LS・LINKAGE・実行フレームを呼出しごとに分離。INITIAL・入れ子、ALTER・セグメント・デバッグ等の禁止を検査。0016/0017参照 |
 | CLASS-ID、METHOD-ID、FACTORY、OBJECT、INVOKE | 未対応 | OO/Java の構文・実行モデルなし。0003 の初期範囲外だが IBM 4.2 全体には存在する |
-| SOURCE-COMPUTER、OBJECT-COMPUTER | 部分 | debugging/collating は保持。一部の語は読み飛ばす |
+| SOURCE-COMPUTER、OBJECT-COMPUTER | 部分 | debugging/collatingを実装。MEMORY SIZE等は構文検査する。未知の句は診断 |
 | SPECIAL-NAMES: ALPHABET、CLASS、SYMBOLIC、DECIMAL-POINT | 実装 | `parser/mod.rs`, `codegen.rs`。全制約は未検証 |
 | CURRENCY SIGN | 部分 | 単一の通貨記号のみ。複数定義・WITH PICTURE SYMBOL 等は不足 |
 | XML-SCHEMA、REPOSITORY | 未対応 | XML スキーマ・クラス定義への対応なし |
-| SELECT/ASSIGN、ORGANIZATION、ACCESS、KEY、FILE STATUS | 実装／部分 | 順次・相対・索引の経路あり。ASSIGN の複数名は先頭のみ使用。2 個目の状態項目等は不足 |
-| I-O-CONTROL | 部分 | SAME RECORD AREA は実装。一部のテープ・RERUN/APPLY 等は読み飛ばす |
+| SELECT/ASSIGN、ORGANIZATION、ACCESS、KEY、FILE STATUS | 実装／部分 | 順次・相対・索引、VSAMの第2状態項目に対応。ASSIGNの複数割当は診断。全属性照合は残る |
+| I-O-CONTROL | 部分 | SAME RECORD/SORT/AREA、APPLY WRITE-ONLY等に対応。未実装のRERUN等は診断。0015/0016参照 |
 
 ### データ部
 
@@ -88,19 +90,19 @@ R42 Chapters 17–19 と `parser/data.rs`, `sema/data.rs`, `picture.rs` を照�
 
 | 項目 | 判定 | 実装の到達点・制限 |
 |---|---|---|
-| FILE SECTION、FD、SD | 実装／部分 | 記録域・ファイル定義あり。RECORDING MODE は解析後に値を破棄する |
+| FILE SECTION、FD、SD | 実装／部分 | 記録域、F/V/S/U、物理ブロック、基本媒体ラベルを実装。複数巻・属性照合等は0016参照 |
 | WORKING-STORAGE、LINKAGE | 実装 | 記憶域・USING・アドレス設定の経路あり |
-| LOCAL-STORAGE | 修正／部分 | 呼出しごとの VALUE 再初期化、EXTERNAL 禁止を修正。再帰プログラムは引き続き未対応 |
+| LOCAL-STORAGE | 実装 | 呼出しごとのVALUE初期化、再帰起動ごとの分離、EXTERNAL禁止 |
 | レベル 01–49/66/77/88、FILLER、VALUE、RENAMES | 実装 | 空の 88 VALUE は今回診断を追加。すべてのレベル・句の合法な組合せ検査は未検証 |
 | REDEFINES、EXTERNAL、GLOBAL | 実装 | 共有配置・外部記憶域・親の大域項目。組合せ制約は未検証 |
 | OCCURS、DEPENDING ON、KEY、INDEXED BY | 実装 | 配置・添字・ODO。可変位置項目など IBM の全制限は未検証 |
 | PICTURE、SIGN、SYNC、JUSTIFIED、BLANK WHEN ZERO | 実装／部分 | 表示・編集 PIC と配置あり。全記号・順序・桁数制限を保証しない |
-| DISPLAY、COMP/BINARY/COMP-4、COMP-3、COMP-5 | 実装 | `NumType` と decimal runtime。TRUNC/NUMPROC 等による挙動切替は不足 |
+| DISPLAY、COMP/BINARY/COMP-4、COMP-3、COMP-5 | 実装／部分 | 十進ランタイムとTRUNC(STD/OPT/BIN)を実装。ARITH/NUMPROC等による切替は不足 |
 | COMP-1、COMP-2 | 実装／部分 | HFP 記憶域と変換あり。指数リテラル等の構文が不足 |
-| DISPLAY-1、NATIONAL、NSYMBOL | 実装／部分 | DBCS、UTF-16、変換・移送テストあり。national-edited、numeric NATIONAL 等は不足 |
-| GROUP-USAGE NATIONAL | 未対応 | グループカテゴリの指定なし |
+| DISPLAY-1、NATIONAL、NSYMBOL | 実装／部分 | DBCS、UTF-16、固定小数点NATIONAL、数値編集・national-editedを実装。外部浮動小数点NATIONAL等は不足 |
+| GROUP-USAGE NATIONAL | 実装／部分 | カテゴリー・暗黙USAGEの継承、グループのMOVE・比較・参照変更・INITIALIZEを実装。全句の合法性検査は未完 |
 | POINTER、INDEX | 実装 | 31-bit 仮想アドレス・索引。IBM の実アドレス/ABI そのものではない |
-| PROCEDURE-POINTER、FUNCTION-POINTER | 未対応 | `usage_word` と呼出し規約に経路がない |
+| PROCEDURE-POINTER、FUNCTION-POINTER | 実装／部分 | 8/4バイトの仮想エントリー、SET TO ENTRY、相互SET、NULL、間接CALL。実機ABIと一般ENTRY別名等は不足 |
 | OBJECT REFERENCE、USAGE NATIVE | 未対応 | OO 用データ型なし |
 | DATE FORMAT と日付フィールド | 未対応 | DATEPROC 関連の型情報・演算規則なし |
 
@@ -113,8 +115,8 @@ R42 Chapter 21 の文単位で照合。以下の「実装」は、文全体の�
 |---|---|---|
 | ACCEPT | 実装 | 入力・DATE/DAY/TIME 等。全装置名・環境名は未検証 |
 | ADD | 実装 | 通常/GIVING/CORRESPONDING、丸め・サイズエラー |
-| ALTER | 実装 | GO TO の変更。再帰/THREAD の制約は未検証 |
-| CALL | 部分 | REFERENCE/CONTENT/VALUE、OMITTED、RETURNING、例外。再帰・procedure/function pointer 呼出しが不足 |
+| ALTER | 実装／部分 | GO TOの変更。再帰プログラムでは禁止。THREADは未対応 |
+| CALL | 実装／部分 | REFERENCE/CONTENT/VALUE、OMITTED、RETURNING、例外、再帰、手続き・関数ポインター。全ABI制約は不足 |
 | CANCEL | 実装 | プログラムの状態リセット |
 | CLOSE | 部分 | ファイルクローズ。REEL/UNIT/LOCK 等のホスト意味は未検証 |
 | COMPUTE | 実装 | 式、複数受信、丸め・サイズエラー |
@@ -122,12 +124,12 @@ R42 Chapter 21 の文単位で照合。以下の「実装」は、文全体の�
 | DELETE | 実装 | ファイル削除・INVALID KEY |
 | DISPLAY | 実装／部分 | 文字/数値/DBCS/NATIONAL、NO ADVANCING。装置別のレコード分割・長さ制限は未検証 |
 | DIVIDE | 実装 | INTO/BY/GIVING/REMAINDER、丸め・サイズエラー |
-| ENTRY | 部分 | 引数の名前・エントリ登録。BY VALUE 等の全形式は未検証 |
+| ENTRY | 部分 | 引数名を解析し、一部の既存呼出し経路で使用。一般の別名解決・開始位置・エントリー別引数は不足 |
 | EVALUATE | 実装 | 複数 subject、ALSO、THRU、ANY、OTHER |
 | EXIT、EXIT PROGRAM、GOBACK | 実装 | VM の呼出し復帰経路。EXIT METHOD は未対応 |
 | GO TO | 実装／部分 | 通常/DEPENDING/ALTER。MORE-LABELS は未対応 |
 | IF、NEXT SENTENCE | 実装 | 文終端の分岐。IBM のすべてのスコープ合法性検査は未検証 |
-| INITIALIZE | 修正／部分 | NATIONAL/DBCS 選択、float、FILLER 集団内の名前付き項目を修正。national-edited 型は不足 |
+| INITIALIZE | 実装／部分 | NATIONAL/DBCS、float、FILLER等の追加句、nationalグループ・編集カテゴリーを処理。全組合せは未検証 |
 | INSPECT | 実装 | TALLYING/REPLACING/CONVERTING。DBCS/NATIONAL の全組合せは未検証 |
 | INVOKE | 未対応 | OO/Java 呼出しモデルなし |
 | MERGE | 実装 | キー、USING、出力手続き/GIVING |
@@ -140,7 +142,7 @@ R42 Chapter 21 の文単位で照合。以下の「実装」は、文全体の�
 | RETURN | 実装 | ソート出力・INTO・AT END |
 | REWRITE | 実装 | ファイル更新・FROM・INVALID KEY |
 | SEARCH | 実装 | 逐次/ALL、VARYING、WHEN、AT END |
-| SET | 実装／部分 | 条件名 TRUE、索引、ポインタ、switch。手続きポインタ・OO 形式は不足 |
+| SET | 実装／部分 | 条件名TRUE/FALSE、索引、データ・手続き・関数ポインター、switch。OO形式は不足 |
 | SORT | 実装 | キー、入出力手続き、USING/GIVING |
 | START | 実装 | キー関係条件、INVALID KEY |
 | STOP | 実装／部分 | STOP RUN/定数を解析。定数形式のオペレータ対話は未検証 |
@@ -162,9 +164,9 @@ COMMUNICATION SECTION / ENABLE / DISABLE / SEND / RECEIVE / PURGE の解析も�
 | NATIONAL-OF / DISPLAY-OF | 実装 | コードページ変換テストあり |
 | DATE-TO-YYYYMMDD / DAY-TO-YYYYDDD / YEAR-TO-YYYY | 修正／部分 | 2026 固定を廃止し実行時の年を使用。世紀窓の範囲を検査。時計は既存日付関数と同じ UTC 基準。全引数の検査は未完 |
 | DATEVAL / UNDATE / YEARWINDOW | 未対応 | DATEPROC とともに未実装 |
-| WHEN-COMPILED | 部分 | VM が CURRENT-DATE と同じ処理を使用。コンパイル時刻をモジュールに保存していない |
+| WHEN-COMPILED | 実装／部分 | コンパイル開始日時を保存し、関数21文字・特殊レジスター16文字で返す。時計はUTC。全使用箇所の型制約は未検証 |
 | COPY / REPLACING / REPLACE / OFF | 修正／部分 | 別プログラムへの REPLACE 漏れを修正。separator 単独の置換・前処理時の PICTURE 文脈等に未検証部分がある |
-| CBL/PROCESS | 部分 | CICS/NSYMBOL 等を拾うが、全オプションの構文検証・実行意味はない |
+| CBL/PROCESS | 部分 | CICS/NSYMBOL/TRUNC等を適用し、未知・未対応設定を診断。全設定の実装はない |
 | EJECT / SKIP1/2/3 / TITLE | 修正／部分 | 単独行の正しい形式を実行対象から除外。IBM 互換のリスト出力・全診断は未実装 |
 | ENTER / READY/RESET TRACE | 未対応 | 予約語としての専用処理がない |
 | BASIS / INSERT / DELETE（ライブラリ文） | 未対応 | ソース更新前処理なし |

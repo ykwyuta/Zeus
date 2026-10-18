@@ -16,6 +16,8 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
+use crate::jcl::{DdKind, parse_dd_allocations};
+use crate::manifest::{ExpectKind, Manifest, ProgramConfig};
 use crate::report::{self, Counts};
 use crate::special::special;
 use crate::toolchain::Toolchain;
@@ -71,6 +73,8 @@ pub struct ModuleResult {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SuiteResult {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub suite: Option<String>,
     pub toolchain: String,
     pub version: String,
     pub modules: Vec<ModuleResult>,
@@ -78,7 +82,7 @@ pub struct SuiteResult {
 
 #[derive(Debug, Clone)]
 pub struct RunOptions {
-    /// Extracted suite (output of `zeus-ccvs extract`).
+    /// Extracted suite (output of `zeus-ccvs extract`) or ZCVS directory.
     pub suite: PathBuf,
     /// Scratch directory for compilation and execution.
     pub work: PathBuf,
@@ -90,9 +94,15 @@ pub struct RunOptions {
 }
 
 pub fn run(tc: &Toolchain, opts: &RunOptions) -> Result<SuiteResult> {
+    let manifest = Manifest::load(&opts.suite)?;
     fs::create_dir_all(&opts.work)?;
-    for lib in ["copy", "copyalt"] {
-        copy_dir(&opts.suite.join(lib), &opts.work.join(lib))?;
+    copy_dir(&opts.suite.join("copy"), &opts.work.join("copy"))?;
+    let copyalt_src = opts.suite.join("copyalt");
+    if copyalt_src.is_dir() {
+        copy_dir(&copyalt_src, &opts.work.join("copyalt"))?;
+        if !opts.work.join("COPYALT").exists() {
+            let _ = copy_dir(&copyalt_src, &opts.work.join("COPYALT"));
+        }
     }
     let queue = Mutex::new(opts.modules.clone());
     let results = Mutex::new(Vec::new());
@@ -104,7 +114,7 @@ pub fn run(tc: &Toolchain, opts: &RunOptions) -> Result<SuiteResult> {
                     let Some(module) = queue.lock().unwrap().pop() else {
                         break;
                     };
-                    match run_module(tc, opts, &module) {
+                    match run_module(tc, opts, manifest.as_ref(), &module) {
                         Ok(r) => results.lock().unwrap().push(r),
                         Err(e) => errors.lock().unwrap().push(format!("{module}: {e:#}")),
                     }
@@ -119,25 +129,40 @@ pub fn run(tc: &Toolchain, opts: &RunOptions) -> Result<SuiteResult> {
     let mut modules = results.into_inner().unwrap();
     modules.sort_by_key(|m: &ModuleResult| order(&m.module));
     Ok(SuiteResult {
+        suite: manifest.and_then(|m| (!m.name.is_empty()).then_some(m.name)),
         toolchain: tc.name().to_string(),
         version: tc.version(),
         modules,
     })
 }
 
-/// Canonical module order for reports.
+/// Canonical CCVS85 module order for reports.
 pub const MODULES: &[&str] = &[
     "NC", "SM", "IC", "SQ", "RL", "IX", "ST", "IF", "SG", "OB", "DB", "RW", "CM",
 ];
 
+/// Canonical ZCVS module order for reports.
+pub const ZCVS_MODULES: &[&str] = &["ZD", "ZA", "ZN", "ZP", "ZF", "ZS", "ZE", "ZX"];
+
+/// Combined canonical module order across CCVS85 and ZCVS.
+pub const ALL_MODULES: &[&str] = &[
+    "NC", "SM", "IC", "SQ", "RL", "IX", "ST", "IF", "SG", "OB", "DB", "RW", "CM", "ZD", "ZA", "ZN",
+    "ZP", "ZF", "ZS", "ZE", "ZX",
+];
+
 pub fn order(module: &str) -> usize {
-    MODULES
+    ALL_MODULES
         .iter()
         .position(|m| *m == module)
-        .unwrap_or(MODULES.len())
+        .unwrap_or(ALL_MODULES.len())
 }
 
-fn run_module(tc: &Toolchain, opts: &RunOptions, module: &str) -> Result<ModuleResult> {
+fn run_module(
+    tc: &Toolchain,
+    opts: &RunOptions,
+    manifest: Option<&Manifest>,
+    module: &str,
+) -> Result<ModuleResult> {
     let src = opts.suite.join(module);
     let dir = opts.work.join(module);
     if dir.exists() {
@@ -145,6 +170,7 @@ fn run_module(tc: &Toolchain, opts: &RunOptions, module: &str) -> Result<ModuleR
     }
     copy_dir(&src, &dir).with_context(|| format!("module {module} not found in suite"))?;
     let dir = dir.canonicalize()?;
+    let ibm_std = manifest.is_some();
 
     // Called subprograms first.
     let lib = dir.join("lib");
@@ -152,7 +178,7 @@ fn run_module(tc: &Toolchain, opts: &RunOptions, module: &str) -> Result<ModuleR
         for source in sorted_files(&lib, &["CBL"])? {
             let program = stem(&source);
             let rel = Path::new("lib").join(source.file_name().unwrap());
-            let mut cmd = tc.compile_subprogram(&program, &rel);
+            let mut cmd = tc.compile_subprogram_with(&program, &rel, ibm_std);
             let log = dir.join(format!("{program}.compile.log"));
             run_logged(&mut cmd, &dir, &log, opts.timeout)?;
         }
@@ -164,8 +190,12 @@ fn run_module(tc: &Toolchain, opts: &RunOptions, module: &str) -> Result<ModuleR
         if !opts.programs.is_empty() && !opts.programs.contains(&program) {
             continue;
         }
+        let cfg = manifest
+            .and_then(|m| m.programs.get(&program))
+            .cloned()
+            .unwrap_or_default();
         let start = Instant::now();
-        let outcome = run_program(tc, opts, &dir, module, &source, &program)?;
+        let outcome = run_program(tc, opts, &dir, module, &source, &program, &cfg, ibm_std)?;
         programs.push(ProgramResult {
             program,
             outcome,
@@ -178,6 +208,7 @@ fn run_module(tc: &Toolchain, opts: &RunOptions, module: &str) -> Result<ModuleR
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 fn run_program(
     tc: &Toolchain,
     opts: &RunOptions,
@@ -185,20 +216,66 @@ fn run_program(
     module: &str,
     source: &Path,
     program: &str,
+    cfg: &ProgramConfig,
+    ibm_std: bool,
 ) -> Result<Outcome> {
     let sp = special(program);
     for a in tc.artifacts(program) {
         let _ = fs::remove_file(dir.join(a));
     }
     let rel = Path::new(source.file_name().unwrap());
-    let mut compile = tc.compile_main(program, rel, sp.needs);
+    let mut compile = tc.compile_main_with(program, rel, sp.needs, cfg.ccsid, ibm_std);
     let log = dir.join(format!("{program}.compile.log"));
-    match run_logged(&mut compile, dir, &log, opts.timeout)? {
+    let compile_status = run_logged(&mut compile, dir, &log, opts.timeout)?;
+    if cfg.expect == ExpectKind::CompileError {
+        return match compile_status {
+            None => Ok(Outcome::Timeout),
+            Some(status) if status.success() => {
+                // Expected a compile error, but compilation succeeded!
+                Ok(Outcome::Ran {
+                    counts: Counts {
+                        total: 1,
+                        fail: 1,
+                        ..Counts::default()
+                    },
+                })
+            }
+            Some(_) => {
+                let diag_ok = match (&cfg.diagnostic_contains, tc) {
+                    (Some(needle), Toolchain::Zeus { .. } | Toolchain::ZeusNative { .. }) => {
+                        let text = fs::read_to_string(&log).unwrap_or_default();
+                        text.to_ascii_lowercase()
+                            .contains(&needle.to_ascii_lowercase())
+                    }
+                    _ => true,
+                };
+                if diag_ok {
+                    Ok(Outcome::Ran {
+                        counts: Counts {
+                            total: 1,
+                            pass: 1,
+                            ..Counts::default()
+                        },
+                    })
+                } else {
+                    Ok(Outcome::Ran {
+                        counts: Counts {
+                            total: 1,
+                            fail: 1,
+                            ..Counts::default()
+                        },
+                    })
+                }
+            }
+        };
+    }
+
+    match compile_status {
         Some(status) if status.success() => {}
         Some(_) => return Ok(Outcome::CompileError),
         None => return Ok(Outcome::Timeout),
     }
-    if sp.compile_only {
+    if sp.compile_only || cfg.expect == ExpectKind::CompileOnly {
         return Ok(Outcome::Compiled);
     }
 
@@ -221,11 +298,25 @@ fn run_program(
 
     let report_file = dir.join(format!("{program}.log"));
     let _ = fs::remove_file(&report_file);
-    let mut cmd = tc.run(program);
+    let mut cmd = tc.run_in(dir, program, cfg.parm.as_deref());
     cmd.env("DD_REPORT", &report_file);
     tc.debug_env(&mut cmd, module == "DB" && program != "DB102A");
     if module == "RW" {
         cmd.env("DD_XXXXX049", dir.join(format!("{program}.rep")));
+    }
+    if let Some(jcl_name) = &cfg.jcl {
+        let jcl_path = dir.join(jcl_name);
+        let jcl_text = fs::read_to_string(&jcl_path)
+            .with_context(|| format!("reading {}", jcl_path.display()))?;
+        for dd in parse_dd_allocations(&jcl_text) {
+            let ext = match dd.kind {
+                DdKind::Tape => "aws",
+                DdKind::Dataset => "dat",
+            };
+            let dd_path = dir.join(format!("{}.{ext}", dd.ddname));
+            let _ = fs::remove_file(&dd_path);
+            cmd.env(format!("DD_{}", dd.ddname), &dd_path);
+        }
     }
     let stdin_data = match sp.stdin {
         Some(bytes) => Some(bytes.to_vec()),
@@ -239,7 +330,13 @@ fn run_program(
     let Some(status) = status else {
         return Ok(Outcome::Timeout);
     };
-    if !status.success() && !sp.may_fail {
+    if let Some(expected_rc) = cfg.expect_exit_code {
+        if status.code() != Some(expected_rc) {
+            return Ok(Outcome::ExecuteError {
+                code: status.code(),
+            });
+        }
+    } else if !status.success() && !sp.may_fail {
         return Ok(Outcome::ExecuteError {
             code: status.code(),
         });

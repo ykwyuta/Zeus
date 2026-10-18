@@ -7,7 +7,7 @@ use std::path::Path;
 use crate::format::{self, RecordFormat};
 use crate::{DsError, Rel, Result};
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct RelativeDataset {
     slots: Vec<Option<Vec<u8>>>,
 }

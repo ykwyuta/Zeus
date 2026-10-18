@@ -211,21 +211,10 @@ pub(super) fn execute(
             } else {
                 spec.width * 8 - 8
             };
-            let quantum = 4 * exponent - precision as i32 - 4;
-            let a = Ratio::binary(
-                a.negative,
-                a.quantize(quantum, Rounding::Zero).0.to_u128().unwrap(),
-                quantum,
-            );
-            let b = Ratio::binary(
-                b.negative,
-                b.quantize(quantum, Rounding::Zero).0.to_u128().unwrap(),
-                quantum,
-            );
             if spec.unnormalized {
                 forced = Some(exponent);
             }
-            a.add(&b, false)
+            a.add_hex_guard(&b, exponent, precision)
         }
         Kind::Multiply => a.multiply(&b),
         Kind::Divide => {

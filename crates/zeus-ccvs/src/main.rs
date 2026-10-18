@@ -16,10 +16,12 @@ use std::time::Duration;
 use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 
-use zeus_ccvs::{exec85, extract, population, runner, summary, toolchain::Toolchain};
+use zeus_ccvs::{
+    exec85, extract, jcl, manifest::Manifest, population, runner, summary, toolchain::Toolchain,
+};
 
 #[derive(Parser)]
-#[command(version, about = "NIST CCVS85 COBOL-85 test suite harness", after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
+#[command(version, about = "NIST CCVS85 and z/OS ZCVS COBOL test suite harness", after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
 struct Cli {
     #[command(subcommand)]
     cmd: Cmd,
@@ -53,7 +55,7 @@ enum Cmd {
         #[arg(long)]
         verify: Option<PathBuf>,
     },
-    /// Compile and run the extracted suite.
+    /// Compile and run the extracted suite or ZCVS suite.
     #[command(after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
     Run {
         #[arg(long)]
@@ -82,11 +84,11 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
     },
-    /// Print a summary of a results file.
+    /// Print a summary of one or more results files.
     #[command(after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
     Report {
-        #[arg(long)]
-        results: PathBuf,
+        #[arg(long, required = true)]
+        results: Vec<PathBuf>,
         /// Results to compare against (e.g. the GnuCOBOL baseline).
         #[arg(long)]
         baseline: Option<PathBuf>,
@@ -100,6 +102,20 @@ enum Cmd {
         #[arg(long)]
         out: PathBuf,
         files: Vec<PathBuf>,
+    },
+    /// Export a suite into z/OS 80-column PDS members and IGYCRCTL+IEWL JCL jobs.
+    #[command(after_help = include_str!("../../../docs/help/zeus-ccvs.txt"))]
+    ExportJcl {
+        #[arg(long)]
+        suite: PathBuf,
+        #[arg(long)]
+        out: PathBuf,
+        /// Dataset high-level qualifier on z/OS (e.g. `USER.ZCVS`).
+        #[arg(long, default_value = "USER.ZCVS")]
+        hlq: String,
+        /// Comma-separated modules (default: all present in the suite).
+        #[arg(long, value_delimiter = ',')]
+        modules: Vec<String>,
     },
 }
 
@@ -177,7 +193,8 @@ fn real_main() -> Result<ExitCode> {
                 ToolchainKind::Zeus | ToolchainKind::ZeusNative => {
                     let zcobc = match zcobc {
                         Some(p) => p,
-                        None => std::env::current_exe()?.with_file_name("zcobc"),
+                        None => std::env::current_exe()?
+                            .with_file_name(format!("zcobc{}", std::env::consts::EXE_SUFFIX)),
                     };
                     let zcobc = zcobc.canonicalize().context("locating zcobc")?;
                     if matches!(toolchain, ToolchainKind::Zeus) {
@@ -188,11 +205,18 @@ fn real_main() -> Result<ExitCode> {
                 }
             };
             let modules = if modules.is_empty() {
-                runner::MODULES
-                    .iter()
-                    .filter(|m| suite.join(m).is_dir())
-                    .map(|m| m.to_string())
-                    .collect()
+                if let Some(m) = Manifest::load(&suite)? {
+                    m.all_modules()
+                        .into_iter()
+                        .filter(|name| suite.join(name).is_dir())
+                        .collect()
+                } else {
+                    runner::ALL_MODULES
+                        .iter()
+                        .filter(|m| suite.join(m).is_dir())
+                        .map(|m| m.to_string())
+                        .collect()
+                }
             } else {
                 modules
             };
@@ -205,6 +229,11 @@ fn real_main() -> Result<ExitCode> {
                 timeout: Duration::from_secs(timeout),
             };
             let result = runner::run(&tc, &opts)?;
+            if let Some(parent) = out.parent()
+                && !parent.as_os_str().is_empty()
+            {
+                fs::create_dir_all(parent)?;
+            }
             fs::write(&out, serde_json::to_string_pretty(&result)? + "\n")?;
             print!("{}", summary::markdown(&result, None));
         }
@@ -213,7 +242,9 @@ fn real_main() -> Result<ExitCode> {
             baseline,
             programs,
         } => {
-            let current = load_results(&results)?;
+            let sets: Vec<runner::SuiteResult> =
+                results.iter().map(load_results).collect::<Result<_>>()?;
+            let current = summary::merge_results(&sets);
             let base = baseline.as_ref().map(load_results).transpose()?;
             print!("{}", summary::markdown(&current, base.as_ref()));
             if programs {
@@ -227,6 +258,21 @@ fn real_main() -> Result<ExitCode> {
             let manifest = extract::manifest_from_exec85_output(&texts)?;
             fs::write(&out, extract::format_manifest(&manifest))?;
             println!("{} members written to {}", manifest.len(), out.display());
+        }
+        Cmd::ExportJcl {
+            suite,
+            out,
+            hlq,
+            modules,
+        } => {
+            let s = jcl::export_jcl(&suite, &out, &hlq, &modules)?;
+            println!(
+                "exported {} COPY members, {} SRCLIB members, {} JCL jobs into {}",
+                s.copy_members,
+                s.source_members,
+                s.jcl_members,
+                out.display()
+            );
         }
     }
     Ok(ExitCode::SUCCESS)

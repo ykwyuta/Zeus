@@ -129,6 +129,7 @@ pub const GSAM_PCB_LEN: usize = 44;
 
 /// A scheduled PSB: its PCBs and the unit of work of its database calls.
 pub struct Schedule {
+    sqlims: crate::sql::host::State,
     pub psb: Psb,
     pub pcbs: Vec<PcbKind>,
     /// Message processing (an MPP): the input messages and the output.
@@ -153,6 +154,12 @@ fn text_of(b: &[u8]) -> String {
 }
 
 impl Schedule {
+    /// Enable SQLIMS only for a scheduler-established BMP/IFP/MPR region.
+    /// An I/O PCB alone is insufficient (DLI CMPAT also has an I/O PCB).
+    pub fn enable_sqlims(&mut self) {
+        self.sqlims.enabled = true;
+    }
+
     /// Schedules PSB `name`; `io_pcb`: the program's PCB list starts with
     /// the I/O PCB. GSAM data sets are found through `dds`.
     pub fn new(
@@ -204,6 +211,7 @@ impl Schedule {
             });
         }
         Ok(Schedule {
+            sqlims: crate::sql::host::State::default(),
             psb,
             pcbs,
             tm: None,
@@ -277,22 +285,21 @@ impl Schedule {
                     .as_deref()
                     .and_then(|d| self.dbds.get(d));
                 let Some(dbd) = dbd else { return 0 };
+                let view_len =
+                    |segment: &crate::catalog::Segment| self.psb.pcbs[i].view_len(segment);
                 let named = ssas
                     .last()
                     .filter(|_| matches!(function, "ISRT" | "REPL" | "DLET"))
                     .map(|s| text_of(&s[..s.len().min(8)]))
-                    .and_then(|n| dbd.segment(&n).map(|s| s.max_bytes));
-                let one = named
-                    .unwrap_or_else(|| dbd.segments.iter().map(|s| s.max_bytes).max().unwrap_or(0));
+                    .and_then(|n| dbd.segment(&n).map(view_len));
+                let one =
+                    named.unwrap_or_else(|| dbd.segments.iter().map(view_len).max().unwrap_or(0));
                 // a path call (command code D) gets the parents' segments too
                 let path: usize = ssas
                     .iter()
                     .take(ssas.len().saturating_sub(1))
                     .filter(|s| path_call(s))
-                    .filter_map(|s| {
-                        dbd.segment(&text_of(&s[..s.len().min(8)]))
-                            .map(|d| d.max_bytes)
-                    })
+                    .filter_map(|s| dbd.segment(&text_of(&s[..s.len().min(8)])).map(view_len))
                     .sum();
                 one + path
             }
@@ -419,6 +426,7 @@ impl Schedule {
     /// Commits the unit of work (with a checkpoint ID).
     pub fn commit(&mut self, checkpoint: Option<[u8; 8]>) -> Result<(), String> {
         self.adapter.commit_checkpoint(checkpoint)?;
+        self.sqlims.syncpoint();
         for g in self.gsam.values_mut() {
             g.commit()?;
         }
@@ -434,6 +442,7 @@ impl Schedule {
             data.extend_from_slice(a);
         }
         self.adapter.commit_symbolic(id, data)?;
+        self.sqlims.syncpoint();
         for g in self.gsam.values_mut() {
             g.commit()?;
         }
@@ -476,6 +485,7 @@ impl Schedule {
 
     pub fn rollback(&mut self) {
         self.adapter.rollback();
+        self.sqlims.syncpoint();
         for g in self.gsam.values_mut() {
             g.rollback();
         }
@@ -1261,6 +1271,15 @@ pub struct BatchHost {
 
 impl ExecHost for BatchHost {
     fn exec(&self, m: &mut Machine, call: &ExecCall) -> RResult<ExecOutcome> {
+        if call.kind == ExecKind::SqlIms {
+            return BATCH.with(|b| {
+                let mut b = b.borrow_mut();
+                let b = b
+                    .as_mut()
+                    .ok_or_else(|| RunError("EXEC SQLIMS: no PSB is scheduled".into()))?;
+                b.sched.sqlims.exec(m, call, b.sched.adapter.sql_session())
+            });
+        }
         if call.kind != ExecKind::Dli {
             return match &self.sql {
                 Some(h) => h.exec(m, call),

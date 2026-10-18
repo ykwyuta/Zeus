@@ -62,12 +62,26 @@ impl Toolchain {
     /// Command compiling the main program `source` (relative to the module
     /// directory) into an executable artifact named after `program`.
     pub fn compile_main(&self, program: &str, source: &Path, needs: &[Need]) -> Command {
+        self.compile_main_with(program, source, needs, None, false)
+    }
+
+    /// Command compiling the main program with optional CCSID and IBM dialect
+    /// selection (used when `manifest.toml` is present).
+    pub fn compile_main_with(
+        &self,
+        program: &str,
+        source: &Path,
+        needs: &[Need],
+        ccsid: Option<u32>,
+        ibm_std: bool,
+    ) -> Command {
+        let exe = format!("{program}{}", std::env::consts::EXE_SUFFIX);
         match self {
             Toolchain::GnuCobol { cobc } => {
-                let mut cmd = gnucobol_base(cobc);
+                let mut cmd = gnucobol_base(cobc, ibm_std);
                 cmd.arg("-x");
                 gnucobol_needs(&mut cmd, program, needs);
-                cmd.arg("-o").arg(program).arg(source);
+                cmd.arg("-o").arg(&exe).arg(source);
                 cmd
             }
             Toolchain::Zeus { zcobc } => {
@@ -76,7 +90,10 @@ impl Toolchain {
                 if needs.contains(&Need::DebuggingLines) {
                     cmd.arg("--debugging-lines");
                 }
-                cmd.args(["-I", "../copy", "-o"])
+                if let Some(cp) = ccsid {
+                    cmd.arg("--ccsid").arg(cp.to_string());
+                }
+                cmd.args(["-I", "../copy", "-I", "..", "-o"])
                     .arg(format!("{program}.zo"))
                     .arg(source);
                 cmd
@@ -87,7 +104,12 @@ impl Toolchain {
                 if needs.contains(&Need::DebuggingLines) {
                     cmd.arg("--debugging-lines");
                 }
-                cmd.args(["-I", "../copy", "-o"]).arg(program).arg(source);
+                if let Some(cp) = ccsid {
+                    cmd.arg("--ccsid").arg(cp.to_string());
+                }
+                cmd.args(["-I", "../copy", "-I", "..", "-o"])
+                    .arg(&exe)
+                    .arg(source);
                 cmd
             }
         }
@@ -96,15 +118,20 @@ impl Toolchain {
     /// Command compiling the called subprogram `source` into a module that
     /// the runtime loads by program-id from the module directory.
     pub fn compile_subprogram(&self, program: &str, source: &Path) -> Command {
+        self.compile_subprogram_with(program, source, false)
+    }
+
+    /// Command compiling the called subprogram with optional IBM dialect mode.
+    pub fn compile_subprogram_with(&self, program: &str, source: &Path, ibm_std: bool) -> Command {
         match self {
             Toolchain::GnuCobol { cobc } => {
-                let mut cmd = gnucobol_base(cobc);
+                let mut cmd = gnucobol_base(cobc, ibm_std);
                 cmd.arg("-m").arg(source);
                 cmd
             }
             Toolchain::Zeus { zcobc } | Toolchain::ZeusNative { zcobc } => {
                 let mut cmd = Command::new(zcobc);
-                cmd.args(["compile", "--subprogram", "-I", "../copy", "-o"])
+                cmd.args(["compile", "--subprogram", "-I", "../copy", "-I", "..", "-o"])
                     .arg(format!("{program}.zo"))
                     .arg(source);
                 cmd
@@ -114,9 +141,23 @@ impl Toolchain {
 
     /// Command running the compiled program.
     pub fn run(&self, program: &str) -> Command {
+        self.run_with(program, None)
+    }
+
+    /// Command running the compiled program with optional JCL `PARM=` text.
+    pub fn run_with(&self, program: &str, parm: Option<&str>) -> Command {
+        self.run_in(Path::new("."), program, parm)
+    }
+
+    /// Command running the compiled program inside `dir` with optional JCL `PARM=` text.
+    pub fn run_in(&self, dir: &Path, program: &str, parm: Option<&str>) -> Command {
+        let exe = dir.join(format!("{program}{}", std::env::consts::EXE_SUFFIX));
         match self {
             Toolchain::GnuCobol { .. } => {
-                let mut cmd = Command::new(format!("./{program}"));
+                let mut cmd = Command::new(&exe);
+                if let Some(p) = parm {
+                    cmd.arg(p);
+                }
                 // Switch settings expected by the suite (X-51 / X-52).
                 cmd.env("COB_SWITCH_1", "ON")
                     .env("COB_SWITCH_2", "OFF")
@@ -126,14 +167,18 @@ impl Toolchain {
             }
             Toolchain::Zeus { zcobc } => {
                 let mut cmd = Command::new(zcobc);
-                cmd.arg("run")
-                    .arg(format!("{program}.zo"))
-                    .env("ZEUS_SWITCH_1", "ON")
-                    .env("ZEUS_SWITCH_2", "OFF");
+                cmd.arg("run").arg(format!("{program}.zo"));
+                if let Some(p) = parm {
+                    cmd.args(["--parm", p]);
+                }
+                cmd.env("ZEUS_SWITCH_1", "ON").env("ZEUS_SWITCH_2", "OFF");
                 cmd
             }
             Toolchain::ZeusNative { .. } => {
-                let mut cmd = Command::new(format!("./{program}"));
+                let mut cmd = Command::new(&exe);
+                if let Some(p) = parm {
+                    cmd.args(["--parm", p]);
+                }
                 cmd.env("ZEUS_SWITCH_1", "ON").env("ZEUS_SWITCH_2", "OFF");
                 cmd
             }
@@ -151,17 +196,26 @@ impl Toolchain {
 
     /// Files a compilation leaves behind for `program` (removed on recompile).
     pub fn artifacts(&self, program: &str) -> Vec<String> {
+        let exe = format!("{program}{}", std::env::consts::EXE_SUFFIX);
         match self {
-            Toolchain::GnuCobol { .. } => vec![program.to_string(), format!("{program}.so")],
+            Toolchain::GnuCobol { .. } => vec![
+                program.to_string(),
+                exe,
+                format!("{program}.so"),
+                format!("{program}.dll"),
+            ],
             Toolchain::Zeus { .. } => vec![format!("{program}.zo")],
-            Toolchain::ZeusNative { .. } => vec![program.to_string(), format!("{program}.zo")],
+            Toolchain::ZeusNative { .. } => {
+                vec![program.to_string(), exe, format!("{program}.zo")]
+            }
         }
     }
 }
 
-fn gnucobol_base(cobc: &Path) -> Command {
+fn gnucobol_base(cobc: &Path, ibm_std: bool) -> Command {
     let mut cmd = Command::new(cobc);
-    cmd.args(["-std=cobol85", "--debug", "-I", "../copy"]);
+    let std_flag = if ibm_std { "-std=ibm" } else { "-std=cobol85" };
+    cmd.args([std_flag, "--debug", "-I", "../copy", "-I", ".."]);
     cmd
 }
 

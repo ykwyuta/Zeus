@@ -2,6 +2,8 @@
 
 2026-10-16。0015 の I04/I11/I12/I13/I14/I19/I20/I25 の追加対応。
 
+この文書は当初の追加実装の記録。複数巻、ユーザーラベル、CLOSE REEL、RERUN、DD属性照合の追加対応と現在の残件は[0018の一覧](0018-cobol-compatibility-completion.md)を参照。
+
 ## Zeus での媒体の実体
 
 ホスト OS 上のファイルを使用する。「物理ブロック」は z/OS の記録単位を表すバイト列であり、ホストディスクのセクターではない。
@@ -72,8 +74,8 @@ RECFM と FD の記録形式も整合させる必要がある。上の COBOL と
 - DD LABEL のラベル種別 SL/NL は未配線。今回ラベル有無は COBOL FD の LABEL RECORDS で指定する。DD LABEL の先頭のファイル番号は有効。
 - JCL のカタログは従来の論理 RECFM/LRECL を維持する。今回の物理イメージは対応する COBOL VM と物理データセット API で扱う。他言語・全ユーティリティへ同じ媒体機能を展開する作業は残る。
 - 再帰の非アクティブな起動領域は再利用する。CLOSE までのファイル共有は維持する。CALL 深さの Zeus 制限は 1000。再帰プログラムは現在インタープリターで実行し、既存ネイティブ最適化を迂回して LOCAL-STORAGE のアドレスを正しく分離する。
-- RECURSIVE に対する ALTER/デバッグ等の細かい禁止条件の網羅的なコンパイル検査、スレッド並行実行、PROCEDURE DIVISION RETURNING の ABI は別途残る。
-- RERUN のチェックポイント保存・再始動は未実装であり診断する。TRUNC/ARITH/NUMPROC 等の未対応設定も 0015 のとおり。
+- RECURSIVEのALTER・宛先なしGO TO・セグメント・デバッグの禁止検査と、PROCEDURE DIVISION RETURNINGは0017で実装した。スレッド並行実行と実機のバイナリーABIは未対応。
+- RERUNのチェックポイント保存・再始動は未実装であり診断する。TRUNCは0017で追加した。ARITH/NUMPROC等の未対応設定は0015のとおり。
 
 ## 検証
 
@@ -84,7 +86,7 @@ RECFM と FD の記録形式も整合させる必要がある。上の COBOL と
 
 IBM 実機／コンパイラーとの差分実行および実テープ装置との接続試験は行っていない。
 
-最終結果: `cargo test --workspace` は **970 passed / 0 failed**。
+0016実装時点の結果: `cargo test --workspace` は **970 passed / 0 failed**。追加実装後の結果は0017を参照。
 `cargo clippy -p zeus-cobol -p zeus-ds -p zeus-jcl -p zeus-layout --all-targets -- -D warnings`、
 `cargo fmt --all --check`、`git diff --check` も通過した。
 全体試験は既存の Windows IMS ファイル置換試験のためサンドボックス外で実行した。

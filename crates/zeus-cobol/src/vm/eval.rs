@@ -33,6 +33,7 @@ fn fig_byte(f: Fig) -> u8 {
         Fig::High => 0xFF,
         Fig::Low => 0x00,
         Fig::Quote => ebcdic::QUOTE,
+        Fig::Apostrophe => ebcdic::encode("'")[0],
     }
 }
 
@@ -56,6 +57,36 @@ impl Machine {
             .unwrap_or(0))
     }
 
+    pub(super) fn range_checks(&self, cur: usize) -> bool {
+        self.range_checking && self.instances[cur].code.ssrange
+    }
+
+    fn reference_slice(
+        &mut self,
+        cur: usize,
+        total: usize,
+        start: &Ex,
+        length: Option<&Ex>,
+    ) -> RResult<(usize, usize)> {
+        let first = self.int_of(cur, start)?;
+        let count = match length {
+            Some(ex) => self.int_of(cur, ex)?,
+            None => (total as i64).saturating_sub(first.saturating_sub(1)),
+        };
+        if self.range_checks(cur)
+            && (first < 1
+                || first > total as i64
+                || count < 1
+                || first
+                    .checked_sub(1)
+                    .and_then(|n| n.checked_add(count))
+                    .is_none_or(|n| n > total as i64))
+        {
+            return err("SSRANGE: reference modification outside the data item");
+        }
+        Ok((first.max(1) as usize, count.max(0) as usize))
+    }
+
     /// Whether a location has storage (a linkage record whose address
     /// was not set has none).
     pub(super) fn addressable(&self, cur: usize, loc: &Loc) -> bool {
@@ -69,38 +100,25 @@ impl Machine {
     /// Absolute address and length of a location.
     pub(super) fn addr(&mut self, cur: usize, loc: &Loc) -> RResult<(usize, usize)> {
         let code = self.instances[cur].code.clone();
+        let checking = self.range_checks(cur);
         let desc = &code.descs[loc.desc as usize];
-        let base = match desc.base {
-            Base::Static => {
-                let ci = &self.instances[cur];
-                match (ci.local_base, ci.code.local_storage) {
-                    (Some(base), Some((offset, len)))
-                        if desc.offset >= offset && desc.offset < offset + len =>
-                    {
-                        base - offset as usize
+        let invocation_base = self.instances[cur].invocation_bases.get(&loc.desc).copied();
+        let base = if let Some(base) = invocation_base {
+            base
+        } else {
+            match desc.base {
+                Base::Static => {
+                    let ci = &self.instances[cur];
+                    match (ci.local_base, ci.code.local_storage) {
+                        (Some(base), Some((offset, len)))
+                            if desc.offset >= offset && desc.offset < offset + len =>
+                        {
+                            base - offset as usize
+                        }
+                        _ => ci.static_base,
                     }
-                    _ => ci.static_base,
                 }
-            }
-            Base::Linkage(n) => match self.instances[cur].linkage[n as usize] {
-                Some(a) => a,
-                None => {
-                    return err(format!(
-                        "{}: linkage item {} is not addressable",
-                        code.name, desc.name
-                    ));
-                }
-            },
-            Base::External(k) => self.instances[cur].ext_bases[k as usize],
-            Base::Outer(p) => {
-                let module = self.instances[cur].module.clone();
-                let o = self.instantiate(&module, p);
-                self.instances[o].static_base
-            }
-            Base::OuterLinkage(p, n) => {
-                let module = self.instances[cur].module.clone();
-                let o = self.instantiate(&module, p);
-                match self.instances[o].linkage[n as usize] {
+                Base::Linkage(n) => match self.instances[cur].linkage[n as usize] {
                     Some(a) => a,
                     None => {
                         return err(format!(
@@ -108,20 +126,94 @@ impl Machine {
                             code.name, desc.name
                         ));
                     }
+                },
+                Base::External(k) => self.instances[cur].ext_bases[k as usize],
+                Base::Outer(p) => {
+                    let module = self.instances[cur].module.clone();
+                    let o = self.instantiate(&module, p);
+                    self.instances[o].static_base
+                }
+                Base::OuterLinkage(p, n) => {
+                    let module = self.instances[cur].module.clone();
+                    let o = self.instantiate(&module, p);
+                    match self.instances[o].linkage[n as usize] {
+                        Some(a) => a,
+                        None => {
+                            return err(format!(
+                                "{}: linkage item {} is not addressable",
+                                code.name, desc.name
+                            ));
+                        }
+                    }
                 }
             }
         };
-        let mut a = base + desc.offset as usize;
-        let mut len = desc.len as usize;
+        let owner = match desc.base {
+            Base::Outer(p) | Base::OuterLinkage(p, _) => {
+                let module = self.instances[cur].module.clone();
+                self.instantiate(&module, p)
+            }
+            _ => cur,
+        };
+        let offset = if invocation_base.is_some() {
+            0
+        } else {
+            match &desc.dynamic_offset {
+                Some(e) => self.int_of(owner, e)?,
+                None => desc.offset as i64,
+            }
+        };
+        let length = match &desc.dynamic_len {
+            Some(e) => self.int_of(owner, e)?,
+            None => desc.len as i64,
+        };
+        if checking
+            && (offset < 0
+                || length < 0
+                || length > desc.len as i64
+                || (length == 0 && desc.dynamic_len.is_some()))
+        {
+            return err(format!(
+                "SSRANGE: variable-length item {} exceeds its defined storage",
+                desc.name
+            ));
+        }
+        let mut address = base as i128 + offset.max(0) as i128;
+        let mut len = length.max(0) as usize;
         for (k, dim) in desc.dims.iter().enumerate() {
             let s = match loc.subs.get(k) {
                 Some(e) => self.int_of(cur, e)?,
                 None => 1,
             };
-            let s = s.max(1) as usize;
-            a += (s - 1) * dim.stride as usize;
+            let s = if checking {
+                s as i128
+            } else {
+                s.max(1) as i128
+            };
+            let stride = match &dim.dynamic_stride {
+                Some(e) => self.int_of(owner, e)?.max(0) as usize,
+                None => dim.stride as usize,
+            };
+            address += (s - 1) * stride as i128;
         }
-        if let Some(odo) = &desc.odo {
+        if checking && let Some(bounds) = &desc.table_bounds {
+            let offset = match &bounds.dynamic_offset {
+                Some(ex) => self.int_of(owner, ex)? as i128,
+                None => bounds.offset as i128,
+            };
+            let start = base as i128 + offset;
+            if address < start || address + len as i128 > start + bounds.len as i128 {
+                return err(format!(
+                    "SSRANGE: table reference {} outside its defined region",
+                    desc.name
+                ));
+            }
+        }
+        let mut a = usize::try_from(address)
+            .map_err(|_| super::RunError("reference outside storage".into()))?;
+        if let Some(odo) = &desc.odo
+            && desc.dynamic_len.is_none()
+        {
             let n = {
                 let l = (*odo.depending).clone();
                 let (oa, ol) = self.addr(cur, &l)?;
@@ -133,19 +225,21 @@ impl Machine {
             };
             len = odo.fixed as usize + n * odo.stride as usize;
         }
+        if checking && (len > desc.len as usize || (len == 0 && desc.odo.is_some())) {
+            return err(format!(
+                "SSRANGE: variable-length item {} exceeds its defined storage",
+                desc.name
+            ));
+        }
         if let Some((start, l)) = &loc.refmod {
             // national items are positioned in characters (two bytes)
-            let w = if desc.ty == DataType::National { 2 } else { 1 };
-            let s = self.int_of(cur, start)?.max(1) as usize;
+            let w = if desc.ty.is_national() { 2 } else { 1 };
             let total = len / w;
-            let l = match l {
-                Some(l) => self.int_of(cur, l)?.max(0) as usize,
-                None => total.saturating_sub(s - 1),
-            };
+            let (s, l) = self.reference_slice(cur, total, start, l.as_deref())?;
             a += (s - 1) * w;
             len = l * w;
         }
-        if a + len > self.mem.len() {
+        if a.checked_add(len).is_none_or(|end| end > self.mem.len()) {
             return err(format!(
                 "{}: reference to {} out of storage",
                 code.name, desc.name
@@ -156,8 +250,12 @@ impl Machine {
 
     pub(super) fn loc_type(&self, cur: usize, loc: &Loc) -> DataType {
         let ty = &self.instances[cur].code.descs[loc.desc as usize].ty;
-        if loc.refmod.is_some() && *ty != DataType::National {
-            DataType::Alphanumeric { just: false }
+        if loc.refmod.is_some() {
+            if ty.is_national() {
+                DataType::National
+            } else {
+                DataType::Alphanumeric { just: false }
+            }
         } else {
             ty.clone()
         }
@@ -166,8 +264,29 @@ impl Machine {
     // ---- evaluation ----------------------------------------------------
 
     pub(super) fn eval_ex(&mut self, cur: usize, e: &Ex) -> RResult<Dec> {
+        if self.instances[cur].code.numeric.is_some()
+            && matches!(e, Ex::Bin(..) | Ex::Neg(_) | Ex::Temp(_))
+        {
+            let number = self.wide_expression(
+                cur,
+                e,
+                self.expression_decimals(cur, e),
+                self.float_expression(cur, e),
+            )?;
+            return number
+                .to_dec()
+                .ok_or_else(|| super::RunError(SIZE_ERROR.into()));
+        }
         Ok(match e {
             Ex::Lit(v) => *v,
+            Ex::Float(text) => crate::numeric::floating_literal(text)
+                .map_err(super::RunError)?
+                .to_dec()
+                .ok_or_else(|| {
+                    super::RunError(
+                        "floating value cannot be converted to this fixed-point context".into(),
+                    )
+                })?,
             Ex::Temp(t) => self.instances[cur].temps[*t as usize],
             Ex::Load(loc) => {
                 let (a, l) = self.addr(cur, loc)?;
@@ -210,6 +329,21 @@ impl Machine {
             Src::Alnum(b) => Val::Alnum(b.clone()),
             Src::National(b) => Val::Item(DataType::National, b.clone()),
             Src::NumLit(v, digits) => Val::NumLit(*v, digits.clone()),
+            Src::Float(text) => Val::Item(
+                DataType::Float { long: true },
+                crate::numeric::floating_literal(text)
+                    .and_then(|n| {
+                        n.hfp(
+                            self.instances[cur]
+                                .code
+                                .numeric
+                                .unwrap_or_default()
+                                .float_width(),
+                            true,
+                        )
+                    })
+                    .map_err(super::RunError)?,
+            ),
             // With a PROGRAM COLLATING SEQUENCE, HIGH-VALUE and LOW-VALUE
             // are its highest and lowest characters.
             Src::Fig(Fig::High) if self.instances[cur].code.high_value != 0xFF => {
@@ -220,16 +354,53 @@ impl Machine {
             }
             Src::Fig(f) => Val::Fig(*f),
             Src::All(p) => Val::All(p.clone()),
-            Src::Num(e) => Val::Num(self.eval_ex(cur, e)?),
+            Src::Num(e) => {
+                if matches!(e, Ex::LengthOf(_) | Ex::AddressOf(_)) {
+                    let lp64 = self.instances[cur].code.lp64;
+                    let mut bytes = vec![0; if lp64 { 8 } else { 4 }];
+                    binary::write(&mut bytes, self.eval_ex(cur, e)?.coef);
+                    let ty = if matches!(e, Ex::AddressOf(_)) {
+                        DataType::Pointer
+                    } else {
+                        DataType::Numeric(crate::zir::NumType {
+                            usage: NumUsage::Binary,
+                            digits: if lp64 { 18 } else { 9 },
+                            scale: 0,
+                            signed: false,
+                            sign: crate::zir::SignPos::None,
+                        })
+                    };
+                    Val::Item(ty, bytes)
+                } else if self.float_expression(cur, e) {
+                    let number =
+                        self.wide_expression(cur, e, self.expression_decimals(cur, e), true)?;
+                    Val::Item(
+                        DataType::Float { long: true },
+                        number
+                            .hfp(
+                                self.instances[cur]
+                                    .code
+                                    .numeric
+                                    .unwrap_or_default()
+                                    .float_width(),
+                                false,
+                            )
+                            .map_err(super::RunError)?,
+                    )
+                } else {
+                    Val::Num(self.eval_ex(cur, e)?)
+                }
+            }
             Src::Func(f, args, refmod) => {
-                let national = *f == crate::zir::Func::NationalOf;
+                let national = self.function_national(cur, *f, args);
                 let mut b = self.func_alnum(cur, *f, args)?;
                 if let Some((s, l)) = refmod {
-                    let s = self.int_of(cur, s)?.max(1) as usize;
-                    let l = match l {
-                        Some(l) => self.int_of(cur, l)?.max(0) as usize,
-                        None => b.len().saturating_sub(s - 1),
-                    };
+                    let (s, l) = self.reference_slice(
+                        cur,
+                        b.len() / if national { 2 } else { 1 },
+                        s,
+                        l.as_deref(),
+                    )?;
                     // national results are positioned in characters
                     let (s, l) = if national { (2 * s - 1, 2 * l) } else { (s, l) };
                     b = b
@@ -250,7 +421,7 @@ impl Machine {
     /// alphanumeric data converted from the code page.
     pub(super) fn national_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
         Ok(match v {
-            Val::Item(DataType::National, b) => b.clone(),
+            Val::Item(ty, b) if ty.is_national() => b.clone(),
             Val::Item(DataType::Dbcs, b) => d::utf16(&crate::codepage::active().decode_dbcs(b)),
             Val::Fig(f) => d::national_fig(fig_byte(*f)),
             Val::All(p) => d::national_of(p),
@@ -279,6 +450,23 @@ impl Machine {
                 d::display_digits(raw, t.digits as usize)
             }
             Val::Item(DataType::Index, b) => int_digits(Dec::new(binary::read(b, true), 0)),
+            Val::Item(DataType::Float { long }, b) => {
+                let picture = if *long {
+                    "-9.9999999999999999E+99"
+                } else {
+                    "-9.99999999E+99"
+                };
+                let mut out = vec![0; picture.len()];
+                crate::numeric::external::encode(
+                    &crate::numeric::number::Number::from_hfp(b),
+                    picture,
+                    false,
+                    false,
+                    &mut out,
+                )
+                .map_err(super::RunError)?;
+                out
+            }
             Val::Item(_, b) | Val::Alnum(b) => b.clone(),
             Val::NumLit(_, digits) => digits.clone(),
             Val::Num(x) => int_digits(*x),
@@ -295,21 +483,33 @@ impl Machine {
     /// Bytes shown by DISPLAY.
     pub(super) fn display_bytes(&self, _cur: usize, v: &Val) -> RResult<Vec<u8>> {
         Ok(match v {
+            Val::Item(ty, b) if ty.is_national() => d::display_of(b),
             Val::Item(DataType::Numeric(t), b) => match t.usage {
                 NumUsage::Display => b.clone(),
                 _ => {
                     let x = d::value_of(&DataType::Numeric(*t), b);
                     let raw = d::to_raw(x, t.scale, false);
-                    let mut digits = d::display_digits(raw, t.digits as usize);
+                    let width = if t.usage == NumUsage::Native {
+                        match b.len() {
+                            2 => 5,
+                            4 => 10,
+                            _ => 20,
+                        }
+                    } else {
+                        t.digits as usize
+                    };
+                    let mut digits = d::display_digits(raw, width);
                     if t.signed
+                        && raw < 0
                         && let Some(last) = digits.last_mut()
                     {
-                        *last = (if raw < 0 { 0xD0 } else { 0xC0 }) | (*last & 0xF);
+                        *last = 0xD0 | (*last & 0xF);
                     }
                     digits
                 }
             },
             Val::Item(DataType::Index, b) => int_digits(Dec::new(binary::read(b, true), 0)),
+            Val::Item(DataType::Float { .. }, _) => self.alnum_bytes(_cur, v, 0)?,
             // national data is displayed in the code page
             Val::Item(DataType::National, b) => d::display_of(b),
             // DBCS data is displayed between SO and SI
@@ -342,8 +542,99 @@ impl Machine {
                 l = max;
             }
         }
+        if let Some(length) = &desc.dynamic_len
+            && dst.refmod.is_none()
+        {
+            fn objects(ex: &Ex, out: &mut Vec<Loc>) {
+                match ex {
+                    Ex::Load(loc) => out.push(loc.clone()),
+                    Ex::Bin(_, a, b) => {
+                        objects(a, out);
+                        objects(b, out);
+                    }
+                    Ex::Func(_, args) => {
+                        for arg in args {
+                            if let crate::zir::Arg::Num(ex) = arg {
+                                objects(ex, out);
+                            }
+                        }
+                    }
+                    _ => (),
+                }
+            }
+            let mut counts = vec![];
+            objects(length, &mut counts);
+            let owner = match desc.base {
+                Base::Outer(p) | Base::OuterLinkage(p, _) => {
+                    let module = self.instances[cur].module.clone();
+                    self.instantiate(&module, p)
+                }
+                _ => cur,
+            };
+            for count in counts {
+                let (da, _) = self.addr(owner, &count)?;
+                let max = desc.len as usize;
+                if da >= a && da < a + max && a + max <= self.mem.len() {
+                    l = max;
+                    break;
+                }
+            }
+        }
         let ty = self.loc_type(cur, dst);
         let mut out = self.mem[a..a + l].to_vec();
+        if desc.right_justify
+            && dst.refmod.is_none()
+            && matches!(ty, DataType::National | DataType::Dbcs)
+            && !matches!(v, Val::Fig(_) | Val::All(_))
+        {
+            let bytes = if ty == DataType::National {
+                match v {
+                    Val::Item(t, bytes) if t.is_national() => bytes.clone(),
+                    Val::Item(DataType::Dbcs, bytes) => {
+                        d::utf16(&crate::codepage::active().decode_dbcs(bytes))
+                    }
+                    _ => d::national_of(&alnum_source(v)),
+                }
+            } else {
+                alnum_source(v)
+            };
+            let count = bytes.len().min(l) & !1;
+            let pad = if ty == DataType::National {
+                [0, 32]
+            } else {
+                [0x40, 0x40]
+            };
+            d::fill_pattern(&mut out, &pad);
+            out[l - count..].copy_from_slice(&bytes[bytes.len() - count..]);
+            self.mem[a..a + l].copy_from_slice(&out);
+            return Ok(());
+        }
+        if let Val::Item(source_ty, bytes) = v
+            && source_ty.is_floating()
+        {
+            let value = crate::numeric::number::Number::from_item(source_ty, bytes);
+            value.store(&ty, &mut out, false).map_err(super::RunError)?;
+            self.mem[a..a + l].copy_from_slice(&out);
+            return Ok(());
+        }
+        if ty.is_floating() {
+            let value = match v {
+                Val::Item(source_ty, bytes) => {
+                    crate::numeric::number::Number::from_item(source_ty, bytes)
+                }
+                _ => {
+                    let d = self.val_num(v);
+                    crate::numeric::number::Number::decimal(
+                        d,
+                        d.integer_digits() as i32,
+                        d.scale as i32,
+                    )
+                }
+            };
+            value.store(&ty, &mut out, false).map_err(super::RunError)?;
+            self.mem[a..a + l].copy_from_slice(&out);
+            return Ok(());
+        }
         move_into(v, &ty, &mut out);
         self.mem[a..a + l].copy_from_slice(&out);
         Ok(())
@@ -371,14 +662,7 @@ impl Machine {
                 }
                 d::store_num(t, field, v, rounded);
             }
-            DataType::NumericEdited {
-                edit,
-                digits,
-                scale,
-                blank_zero,
-                currency,
-                point,
-            } => {
+            DataType::NumericEdited { digits, scale, .. } => {
                 let raw = d::to_raw(v, *scale, rounded);
                 if raw.unsigned_abs() >= 10u128.pow((*digits).min(38)) {
                     self.size_error = true;
@@ -387,16 +671,7 @@ impl Machine {
                     }
                 }
                 let vv = d::scaled(raw, *scale);
-                d::edit_num(
-                    edit,
-                    *digits,
-                    *scale,
-                    *blank_zero,
-                    *currency,
-                    *point,
-                    vv,
-                    field,
-                );
+                move_into(&Val::Num(vv), &ty, field);
             }
             DataType::Index => binary::write(field, d::to_raw(v, 0, rounded)),
             DataType::Float { .. } => d::store_float(field, v),
@@ -461,7 +736,10 @@ impl Machine {
         let (a, l) = self.addr(cur, loc)?;
         let field = &mut self.mem[a..a + l];
         match &ty {
-            DataType::Index | DataType::Pointer => {
+            DataType::Index
+            | DataType::Pointer
+            | DataType::ProcedurePointer
+            | DataType::FunctionPointer => {
                 binary::write(field, d::to_raw(v, 0, false));
             }
             DataType::Numeric(t) => {
@@ -503,18 +781,43 @@ impl Machine {
             }
             Cx::Class(s, k) => {
                 let v = self.eval_src(cur, s)?;
-                class_test(&v, k)
+                class_test(&v, k, self.instances[cur].code.numeric.unwrap_or_default())
             }
             Cx::Cmp(a, op, b, mode) => {
+                if *mode == CmpMode::Numeric {
+                    let decimals = self
+                        .source_decimals(cur, a)
+                        .max(self.source_decimals(cur, b));
+                    let mut a = self.numeric_source(cur, a, decimals)?;
+                    let mut b = self.numeric_source(cur, b, decimals)?;
+                    if a.floating || b.floating {
+                        let width = self.instances[cur]
+                            .code
+                            .numeric
+                            .unwrap_or_default()
+                            .float_width();
+                        a = a.as_float(width, true).map_err(super::RunError)?;
+                        b = b.as_float(width, true).map_err(super::RunError)?;
+                    }
+                    let order = a.compare(&b);
+                    return Ok(match op {
+                        Rel::Eq => order == Ordering::Equal,
+                        Rel::Ne => order != Ordering::Equal,
+                        Rel::Lt => order == Ordering::Less,
+                        Rel::Le => order != Ordering::Greater,
+                        Rel::Gt => order == Ordering::Greater,
+                        Rel::Ge => order != Ordering::Less,
+                    });
+                }
                 let va = self.eval_src(cur, a)?;
                 let vb = self.eval_src(cur, b)?;
                 let ord = match mode {
-                    CmpMode::Numeric => self.val_num(&va).cmp(&self.val_num(&vb)),
+                    CmpMode::Numeric => unreachable!(),
                     // national comparison: both operands as national
                     // data, the shorter padded with national spaces
                     CmpMode::Alnum
-                        if matches!(va, Val::Item(DataType::National, _))
-                            || matches!(vb, Val::Item(DataType::National, _)) =>
+                        if matches!(&va, Val::Item(t, _) if t.is_national())
+                            || matches!(&vb, Val::Item(t, _) if t.is_national()) =>
                     {
                         let x = self.national_bytes(cur, &va)?;
                         let y = self.national_bytes(cur, &vb)?;
@@ -573,6 +876,9 @@ impl Machine {
     /// Next line of standard input (the operator console), None at end.
     pub(super) fn stdin_line(&mut self) -> Option<String> {
         let _ = self.stdout.flush();
+        if let Some(lines) = &mut self.stdin_buffer {
+            return lines.pop_front();
+        }
         if self.stdin_lines.is_none() {
             self.stdin_lines = Some(Box::new(std::io::stdin().lock().lines()));
         }
@@ -595,8 +901,9 @@ impl Machine {
                 };
                 // The data is transferred as alphanumeric data, whatever
                 // the receiving item's class (national: converted).
-                let national =
-                    self.instances[cur].code.descs[dst.desc as usize].ty == DataType::National;
+                let national = self.instances[cur].code.descs[dst.desc as usize]
+                    .ty
+                    .is_national();
                 let (a, l) = self.addr(cur, dst)?;
                 if national {
                     d::move_national(&d::utf16(&line), &mut self.mem[a..a + l]);
@@ -662,10 +969,41 @@ impl Machine {
                     Some((self.alloc(&bytes), bytes.len()))
                 }
                 CallArgMode::Value(e) => {
+                    if let Ex::Float(text) = e {
+                        let value =
+                            crate::numeric::floating_literal(text).map_err(super::RunError)?;
+                        let bytes = value.hfp(8, true).map_err(super::RunError)?;
+                        out.push(Some((self.alloc(&bytes), bytes.len())));
+                        continue;
+                    }
                     let v = self.eval_ex(cur, e)?;
-                    let mut b = [0u8; 4];
+                    let width = if self.instances[cur].code.lp64
+                        && matches!(e, Ex::AddressOf(_) | Ex::LengthOf(_))
+                    {
+                        8
+                    } else {
+                        4
+                    };
+                    let mut b = vec![0u8; width];
                     binary::write(&mut b, d::to_raw(v, 0, false));
-                    Some((self.alloc(&b), 4))
+                    Some((self.alloc(&b), width))
+                }
+                CallArgMode::ValueData(src) => {
+                    let value = self.eval_src(cur, src)?;
+                    if let Val::Item(ty, bytes) = &value {
+                        if !ty.by_value_allowed(bytes.len() as u32) {
+                            return err("CALL BY VALUE data category or computed width is invalid");
+                        }
+                    } else if let Val::Alnum(bytes) = &value
+                        && bytes.len() != 1
+                    {
+                        return err("CALL BY VALUE alphanumeric argument must have length one");
+                    }
+                    let bytes = match value {
+                        Val::Item(_, bytes) | Val::Alnum(bytes) => bytes,
+                        other => self.alnum_bytes(cur, &other, 1)?,
+                    };
+                    Some((self.alloc(&bytes), bytes.len()))
                 }
                 CallArgMode::Omitted => None,
             });
@@ -814,14 +1152,31 @@ fn is_lower(b: u8) -> bool {
     matches!(b, 0x81..=0x89 | 0x91..=0x99 | 0xA2..=0xA9)
 }
 
-fn class_test(v: &Val, k: &ClassKind) -> bool {
+fn class_test(v: &Val, k: &ClassKind, settings: crate::numeric::Settings) -> bool {
     let bytes: &[u8] = match v {
         Val::Item(_, b) | Val::Alnum(b) => b,
         _ => return false,
     };
     match k {
         ClassKind::Numeric => match v {
+            Val::Item(
+                DataType::ExternalFloat {
+                    picture,
+                    national,
+                    comma,
+                },
+                b,
+            ) => crate::numeric::external::decode(picture, *national, *comma, b).is_ok(),
             Val::Item(DataType::Numeric(t), b) => match t.usage {
+                NumUsage::National => {
+                    let mut t = *t;
+                    t.usage = NumUsage::Display;
+                    class_test(
+                        &Val::Item(DataType::Numeric(t), d::display_of(b)),
+                        k,
+                        settings,
+                    )
+                }
                 NumUsage::Display => {
                     let pos = if !t.signed {
                         zoned::SignPosition::Unsigned
@@ -839,10 +1194,42 @@ fn class_test(v: &Val, k: &ClassKind) -> bool {
                             }
                         }
                     };
-                    zoned::is_valid(b, pos)
+                    let mut valid = b.clone();
+                    if t.signed && !pos.is_separate() && !b.is_empty() {
+                        let index = if matches!(pos, zoned::SignPosition::LeadingOverpunch) {
+                            0
+                        } else {
+                            b.len() - 1
+                        };
+                        let zone = b[index] >> 4;
+                        let allowed = if settings.numproc == crate::numeric::Numproc::Pfd {
+                            matches!(zone, 0xC | 0xD)
+                                || (zone == 0xF && b.iter().all(|x| *x == 0xF0))
+                        } else if settings.numcls == crate::numeric::Numcls::Alternate {
+                            zone >= 0xA
+                        } else {
+                            matches!(zone, 0xC | 0xD | 0xF)
+                        };
+                        if !allowed {
+                            return false;
+                        }
+                        valid[index] = 0xC0 | (valid[index] & 0xF);
+                    }
+                    zoned::is_valid(&valid, pos)
                 }
                 NumUsage::Packed => {
-                    packed::is_valid(b) && (t.signed || b.last().is_some_and(|x| x & 0xF == 0xF))
+                    let sign = b.last().map_or(0, |x| x & 0xF);
+                    let allowed = if !t.signed {
+                        sign == 0xF
+                    } else if settings.numproc == crate::numeric::Numproc::Pfd {
+                        matches!(sign, 0xC | 0xD)
+                            || (sign == 0xF && packed::decode_unchecked(b).0 == 0)
+                    } else if settings.numcls == crate::numeric::Numcls::Alternate {
+                        sign >= 0xA
+                    } else {
+                        matches!(sign, 0xC | 0xD | 0xF)
+                    };
+                    packed::is_valid(b) && allowed
                 }
                 _ => true,
             },
@@ -859,9 +1246,67 @@ fn class_test(v: &Val, k: &ClassKind) -> bool {
 
 /// The MOVE statement's data conversion into a receiving field.
 pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
+    if matches!(ty, DataType::ExternalFloat { .. }) {
+        let number = match v {
+            Val::Item(source, bytes) if source.is_numeric() => {
+                crate::numeric::number::Number::from_item(source, bytes)
+            }
+            _ => {
+                let value = numeric_val(v);
+                crate::numeric::number::Number::decimal(
+                    value,
+                    value.integer_digits() as i32,
+                    value.scale as i32,
+                )
+            }
+        };
+        let _ = number.store(ty, out, false);
+        return;
+    }
+    if let DataType::NumericEdited { national: true, .. } = ty {
+        let mut display_type = ty.clone();
+        if let DataType::NumericEdited { national, .. } = &mut display_type {
+            *national = false;
+        }
+        let mut display = vec![0; out.len() / 2];
+        move_into(v, &display_type, &mut display);
+        out.copy_from_slice(&d::national_of(&display));
+        return;
+    }
+    if let DataType::AlphanumericEdited {
+        national: true,
+        edit,
+    } = ty
+    {
+        let src = match v {
+            Val::Item(t, b) if t.is_national() => b.clone(),
+            Val::Fig(f) => {
+                let mut src = vec![0; out.len()];
+                d::fill_pattern(&mut src, &d::national_fig(fig_byte(*f)));
+                src
+            }
+            Val::All(b) => {
+                let mut src = vec![0; out.len()];
+                d::fill_pattern(&mut src, &d::national_of(b));
+                src
+            }
+            _ => d::national_of(&alnum_source(v)),
+        };
+        let mut source = src.as_chunks::<2>().0.iter();
+        for (sym, target) in edit.iter().zip(out.as_chunks_mut::<2>().0) {
+            match sym {
+                crate::zir::EditSym::Char => {
+                    target.copy_from_slice(source.next().unwrap_or(&[0, 32]))
+                }
+                crate::zir::EditSym::Insert(b) => target.copy_from_slice(&[0, *b]),
+                _ => target.copy_from_slice(&[0, 32]),
+            }
+        }
+        return;
+    }
     // Into an alphanumeric-edited item, a figurative constant or ALL
     // literal is the sending item of the receiver's size, then edited.
-    if let DataType::AlphanumericEdited { edit } = ty
+    if let DataType::AlphanumericEdited { edit, .. } = ty
         && matches!(v, Val::Fig(_) | Val::All(_))
     {
         let mut src = vec![0u8; out.len()];
@@ -933,9 +1378,13 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
     }
     // Numeric value of the source, when the source is numeric.
     let numeric_src: Option<Dec> = match v {
-        Val::Item(DataType::Numeric(_) | DataType::Index | DataType::Float { .. }, _) => {
-            Some(numeric_val(v))
-        }
+        Val::Item(
+            DataType::Numeric(_)
+            | DataType::Index
+            | DataType::Float { .. }
+            | DataType::ExternalFloat { .. },
+            _,
+        ) => Some(numeric_val(v)),
         Val::Item(DataType::NumericEdited { .. }, _) => {
             if matches!(ty, DataType::Numeric(_) | DataType::NumericEdited { .. }) {
                 Some(numeric_val(v))
@@ -947,11 +1396,23 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         _ => None,
     };
     match ty {
+        DataType::ExternalFloat { .. } => {
+            let value = numeric_src.unwrap_or_else(|| numeric_val(v));
+            let number = crate::numeric::number::Number::decimal(
+                value,
+                value.integer_digits() as i32,
+                value.scale as i32,
+            );
+            let _ = number.store(ty, out, false);
+        }
         DataType::Numeric(t) => {
             let val = numeric_src.unwrap_or_else(|| numeric_val(v));
             d::store_num(t, out, val, false);
         }
-        DataType::Index | DataType::Pointer => {
+        DataType::Index
+        | DataType::Pointer
+        | DataType::ProcedurePointer
+        | DataType::FunctionPointer => {
             let val = numeric_src.unwrap_or_else(|| numeric_val(v));
             binary::write(out, d::to_raw(val, 0, false));
         }
@@ -966,6 +1427,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             blank_zero,
             currency,
             point,
+            ..
         } => {
             let val = numeric_src.unwrap_or_else(|| numeric_val(v));
             d::edit_num(
@@ -991,7 +1453,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         // national: converted from the code page (DBCS and mixed data),
         // padded with national spaces
         DataType::National => match v {
-            Val::Item(DataType::National, b) => d::move_national(b, out),
+            Val::Item(ty, b) if ty.is_national() => d::move_national(b, out),
             Val::Item(DataType::Dbcs, b) => {
                 d::move_national(&d::utf16(&crate::codepage::active().decode_dbcs(b)), out)
             }
@@ -999,7 +1461,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             Val::All(p) => d::fill_pattern(out, &d::national_of(p)),
             _ => d::move_national(&d::national_of(&alnum_source(v)), out),
         },
-        DataType::AlphanumericEdited { edit } => {
+        DataType::AlphanumericEdited { edit, .. } => {
             let bytes = alnum_source(v);
             d::edit_alnum(edit, &bytes, out);
         }
@@ -1033,7 +1495,7 @@ fn alnum_source(v: &Val) -> Vec<u8> {
         }
         Val::Item(DataType::Index, b) => int_digits(Dec::new(binary::read(b, true), 0)),
         // national data moves to alphanumeric data in the code page
-        Val::Item(DataType::National, b) => d::display_of(b),
+        Val::Item(ty, b) if ty.is_national() => d::display_of(b),
         Val::Item(_, b) | Val::Alnum(b) => b.clone(),
         Val::NumLit(_, digits) => digits.clone(),
         Val::Num(x) => int_digits(*x),

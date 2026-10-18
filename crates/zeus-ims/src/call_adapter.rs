@@ -188,6 +188,9 @@ pub struct CallAdapter {
     numeric_byte_order: NumericByteOrder,
 }
 impl CallAdapter {
+    pub(crate) fn sql_session(&mut self) -> &mut Session {
+        &mut self.session
+    }
     pub fn new(database: Database, psb: Psb, pcb_encoding: PcbEncoding) -> Result<Self, String> {
         let dbds = psb
             .pcbs
@@ -338,6 +341,20 @@ impl CallAdapter {
                     };
                     let converted = if function == DliFunction::Dlet {
                         None
+                    } else if pcb.view(&segment).is_some_and(|v| !v.fields.is_empty()) {
+                        Some(view_input(
+                            dbd,
+                            pcb,
+                            &segment,
+                            io_area,
+                            if function == DliFunction::Repl {
+                                self.session.held_record(pcb_index)
+                            } else {
+                                None
+                            },
+                            function == DliFunction::Repl,
+                            self.numeric_byte_order,
+                        )?)
                     } else {
                         Some(convert_numeric_fields(
                             dbd,
@@ -358,17 +375,41 @@ impl CallAdapter {
             // a path call: the parents' segments first
             let mut at = 0;
             for r in outcome.path.iter().chain(std::iter::once(record)) {
-                if at + r.data.len() > io_area.len() {
+                if pcb.segment_procopt(&r.segment).contains('K') {
+                    continue;
+                }
+                let definition = dbd.segment(&r.segment).ok_or("unknown segment")?;
+                let length = if pcb.view(&r.segment).is_some_and(|v| !v.fields.is_empty()) {
+                    pcb.view_len(definition)
+                } else {
+                    r.data.len()
+                };
+                if at + length > io_area.len() {
                     return Err(format!(
                         "I/O area needs {} bytes; got {}",
-                        at + r.data.len(),
+                        at + length,
                         io_area.len()
                     ));
                 }
                 let converted =
                     convert_numeric_fields(dbd, &r.segment, &r.data, self.numeric_byte_order)?;
-                io_area[at..at + r.data.len()].copy_from_slice(&converted);
-                at += r.data.len();
+                if let Some(view) = pcb.view(&r.segment).filter(|v| !v.fields.is_empty()) {
+                    for sensitive in &view.fields {
+                        let field = definition
+                            .fields
+                            .iter()
+                            .find(|f| f.name == sensitive.name)
+                            .ok_or("unknown SENFLD")?;
+                        let source = converted
+                            .get(field.start - 1..field.start - 1 + field.bytes)
+                            .ok_or("SENFLD exceeds physical record")?;
+                        io_area[at + sensitive.start - 1..at + sensitive.start - 1 + field.bytes]
+                            .copy_from_slice(source);
+                    }
+                } else {
+                    io_area[at..at + length].copy_from_slice(&converted);
+                }
+                at += length;
             }
         }
         if !outcome.secondary_key {
@@ -382,6 +423,54 @@ impl CallAdapter {
         mask.apply(dbd, &outcome)?;
         Ok(outcome.status)
     }
+}
+
+fn view_input(
+    dbd: &Dbd,
+    pcb: &Pcb,
+    segment: &str,
+    input: &[u8],
+    original: Option<crate::Record>,
+    replacing: bool,
+    order: NumericByteOrder,
+) -> Result<Vec<u8>, String> {
+    let definition = dbd.segment(segment).ok_or("unknown segment")?;
+    let view = pcb.view(segment).ok_or("missing SENSEG view")?;
+    let mut output = if let Some(record) = original {
+        record.data
+    } else {
+        let mut data = vec![0; definition.max_bytes];
+        for field in &definition.fields {
+            if field.field_type == "C" {
+                data[field.start - 1..field.start - 1 + field.bytes].fill(0x40);
+            }
+        }
+        data
+    };
+    for sensitive in &view.fields {
+        if replacing && !sensitive.replace {
+            continue;
+        }
+        let field = definition
+            .fields
+            .iter()
+            .find(|f| f.name == sensitive.name)
+            .ok_or("unknown SENFLD")?;
+        let mut data = input
+            .get(sensitive.start - 1..sensitive.start - 1 + field.bytes)
+            .ok_or("I/O area is shorter than SENFLD view")?
+            .to_vec();
+        if order == NumericByteOrder::Little
+            && matches!(field.datatype.as_deref(), Some("INT" | "LONG" | "SHORT"))
+        {
+            data.reverse();
+        }
+        output
+            .get_mut(field.start - 1..field.start - 1 + field.bytes)
+            .ok_or("SENFLD exceeds physical record")?
+            .copy_from_slice(&data);
+    }
+    Ok(output)
 }
 
 fn normalize_ssa(

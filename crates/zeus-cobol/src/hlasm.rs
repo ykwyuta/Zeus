@@ -17,7 +17,7 @@ mod data_management;
 mod diagnostics;
 mod execute;
 mod expression;
-mod float;
+pub(crate) mod float;
 mod link;
 mod listing;
 mod machine;

@@ -164,6 +164,53 @@ pub fn pli_member(name: &str) -> Option<String> {
     super::syslib_mq::pli_member(name)
 }
 
+/// Own declarations generated from the SQLIMSCA field table in the IMS
+/// Application Programming APIs reference (224 bytes), not IBM copybook text.
+fn sqlimsca() -> String {
+    let mut source = String::from("       01 SQLIMSCA.\n");
+    for (level, name, picture) in [
+        (2, "SQLIMSCAID", "PIC X(8) VALUE 'SQLIMSCA'"),
+        (2, "SQLIMSCABC", "PIC S9(9) COMP-5 VALUE 224"),
+        (2, "SQLIMSCODE", "PIC S9(9) COMP-5"),
+        (2, "SQLIMSERRM", ""),
+        (3, "SQLIMSERRML", "PIC S9(4) COMP-5"),
+        (3, "SQLIMSERRMC", "PIC X(158)"),
+        (2, "SQLIMSERRP", "PIC X(8)"),
+        (2, "SQLIMSERRD", "PIC S9(9) COMP-5 OCCURS 6"),
+        (2, "SQLIMSWARN", ""),
+    ] {
+        source.push_str(&format!("           {level:02} {name} {picture}.\n"));
+    }
+    for suffix in "0123456789A".chars() {
+        source.push_str(&format!("           03 SQLIMSWARN{suffix} PIC X.\n"));
+    }
+    source.push_str("           02 SQLIMSSTATE PIC X(5).\n");
+    source
+}
+
+/// SQLIMSDA header (16 bytes) and descriptor entries (44 bytes), generated
+/// independently from the published field/type tables for the LP(32) API.
+fn sqlimsda() -> String {
+    let mut source = String::from("       01 SQLIMSDA.\n");
+    for (level, name, picture) in [
+        (2, "SQLIMSDAID", "PIC X(8)"),
+        (2, "SQLIMSDABC", "PIC S9(9) COMP-5"),
+        (2, "SQLIMSN", "PIC S9(4) COMP-5"),
+        (2, "SQLIMSD", "PIC S9(4) COMP-5"),
+        (2, "SQLIMSVAR", "OCCURS 750 TIMES"),
+        (3, "SQLIMSTYPE", "PIC S9(4) COMP-5"),
+        (3, "SQLIMSLEN", "PIC S9(4) COMP-5"),
+        (3, "SQLIMSDATA", "USAGE POINTER"),
+        (3, "SQLIMSIND", "USAGE POINTER"),
+        (3, "SQLIMSNAME", ""),
+        (4, "SQLIMSNAMEL", "PIC S9(4) COMP-5"),
+        (4, "SQLIMSNAMEC", "PIC X(30)"),
+    ] {
+        source.push_str(&format!("           {level:02} {name} {picture}.\n"));
+    }
+    source
+}
+
 /// Source text of a system member, in fixed format.
 pub fn member(name: &str) -> Option<String> {
     Some(match name {
@@ -171,6 +218,8 @@ pub fn member(name: &str) -> Option<String> {
         "DFHBMSCA" => dfhbmsca(),
         "SQLCA" => SQLCA.to_string(),
         "SQLDA" => SQLDA.to_string(),
+        "SQLIMSCA" => sqlimsca(),
+        "SQLIMSDA" => sqlimsda(),
         "CEEIGZCT" => CEEIGZCT.to_string(),
         _ => return super::syslib_mq::member(name),
     })

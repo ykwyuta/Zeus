@@ -95,6 +95,7 @@ impl Inventory {
                 let kind = match e.kind {
                     ExecKind::Cics => "EXEC CICS",
                     ExecKind::Sql => "EXEC SQL",
+                    ExecKind::SqlIms => "EXEC SQLIMS",
                     ExecKind::Dli => "EXEC DLI",
                 };
                 self.add(kind, e.command.clone(), name);

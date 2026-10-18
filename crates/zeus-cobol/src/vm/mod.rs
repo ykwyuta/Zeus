@@ -2,16 +2,23 @@
 
 mod assembler;
 mod assembler_io;
+mod calls;
+mod checkpoint;
 pub mod data;
-mod eval;
+pub(crate) mod eval;
 pub mod exec;
 mod files;
 mod func;
 mod le;
+mod numeric;
 mod report;
+mod sort;
 mod text;
+pub mod threaded;
+mod unicode_case;
 
 pub use eval::{civil_from_days, days_from_civil};
+pub(crate) use func::timestamp;
 
 use std::collections::HashMap;
 use std::io::Write;
@@ -24,6 +31,8 @@ use zeus_decimal::Dec;
 use crate::ebcdic;
 use crate::zir::{self, Instr, Module, ProgramCode};
 use files::FileState;
+pub use files::TapeAccessRequest;
+type TapeAuthorizer = Box<dyn FnMut(&TapeAccessRequest) -> bool>;
 
 /// A run-time error that ends the run unit.
 #[derive(Debug)]
@@ -42,8 +51,24 @@ pub fn err<T>(msg: impl Into<String>) -> RResult<T> {
 }
 
 /// An activated program.
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Instance {
+    #[serde(default)]
+    invocation_bases: HashMap<u32, usize>,
+    #[serde(default)]
+    dll_linked: bool,
+    #[serde(default)]
+    retired: bool,
+    #[serde(default)]
+    dynamic_calls: std::collections::HashSet<String>,
+    #[serde(default)]
+    static_calls: HashMap<String, usize>,
+    #[serde(default)]
+    bindings_ready: bool,
+    rerun_counts: Vec<u64>,
+    numeric_context: (i32, bool),
+    wide_temps: Vec<Option<crate::numeric::number::Number>>,
+    entry_pc: u32,
     code: Rc<ProgramCode>,
     /// Module the program came from (for nested program calls).
     module: Rc<Module>,
@@ -72,9 +97,20 @@ struct Instance {
     initialized: bool,
 }
 
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Frame {
     inst: usize,
     pc: u32,
+    result: Option<PendingResult>,
+}
+
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
+struct PendingResult {
+    dst: zir::Loc,
+    src: Option<zir::Loc>,
+    saved_rc: i32,
+    resolved: bool,
+    foreign_value: Option<Vec<u8>>,
 }
 
 /// A program's coverage counts: executions of each instruction, and the
@@ -93,6 +129,204 @@ impl Drop for Machine {
 }
 
 impl Machine {
+    fn program_ccsid(&self, instance: usize) -> u32 {
+        self.instances[instance]
+            .code
+            .ccsid
+            .unwrap_or(self.instances[instance].module.ccsid)
+    }
+    fn compilation_time(&self, instance: usize) -> Option<&str> {
+        self.instances[instance]
+            .code
+            .compiled_at
+            .as_deref()
+            .or(self.instances[instance].module.compiled_at.as_deref())
+    }
+    fn entry_binding(&self, callee: usize, name: &str) -> (u32, Vec<u32>, Vec<bool>) {
+        let code = &self.instances[callee].code;
+        match code.entries.iter().find(|e| e.name == name) {
+            Some(entry) => (entry.pc, entry.using.clone(), entry.using_by_value.clone()),
+            None => (0, code.using.clone(), code.using_by_value.clone()),
+        }
+    }
+
+    fn set_entry(
+        &mut self,
+        cur: usize,
+        targets: &[zir::Loc],
+        name: &zir::Src,
+        interface: Option<zir::CallInterface>,
+    ) -> RResult<()> {
+        let literal_name = matches!(name, zir::Src::Alnum(_));
+        let convention = interface.unwrap_or(zir::CallInterface::default_for(
+            self.instances[cur].code.dynam,
+            self.instances[cur].code.dll,
+        ));
+        let dll_binding = interface.unwrap_or(zir::CallInterface::default_for(
+            self.instances[cur].code.dynam,
+            self.instances[cur].code.dll,
+        )) == zir::CallInterface::Dll;
+        let static_binding = matches!(name, zir::Src::Alnum(_))
+            && interface.unwrap_or(zir::CallInterface::default_for(
+                self.instances[cur].code.dynam,
+                self.instances[cur].code.dll,
+            )) == zir::CallInterface::Static;
+        let value = self.eval_src(cur, name)?;
+        let bytes = self.alnum_bytes(cur, &value, 0)?;
+        let name = ebcdic::decode(&bytes).trim().to_ascii_uppercase();
+        if dll_binding {
+            let Some(callee) = self.resolve_dll(cur, &name, literal_name) else {
+                return err(format!("SET TO ENTRY: DLL export {name} not found"));
+            };
+            if self.instances[callee].code.lp64 != self.instances[cur].code.lp64 {
+                return err("DLL caller and target must have the same LP address mode");
+            }
+            if self.instances[callee].code.parent.is_some() {
+                return err("SET TO ENTRY cannot reference a nested program");
+            }
+            let caller = self.instances[cur].activation_of.unwrap_or(cur);
+            self.instances[caller]
+                .static_calls
+                .insert(name.clone(), callee);
+            self.instances[callee].dll_linked = true;
+        }
+        if static_binding {
+            let caller = self.instances[cur].activation_of.unwrap_or(cur);
+            if let Some(callee) = self.instances[caller]
+                .static_calls
+                .get(&name)
+                .copied()
+                .or_else(|| self.resolve_program(cur, &name))
+            {
+                self.instances[caller]
+                    .static_calls
+                    .insert(name.clone(), callee);
+            }
+        }
+        let address = if let Some((&address, _)) =
+            self.entry_pointers.iter().find(|(address, n)| {
+                **n == name
+                    && self
+                        .entry_interfaces
+                        .get(address)
+                        .is_none_or(|mode| *mode == convention)
+            }) {
+            address
+        } else {
+            let known = if let Some(callee) = self.resolve_program(cur, &name) {
+                if self.instances[callee].code.parent.is_some() {
+                    return err("SET TO ENTRY cannot reference a nested program");
+                }
+                true
+            } else {
+                le::parameter_count(&name).is_some()
+                    || self.natives.contains_key(&name)
+                    || self.natives_mach.contains_key(&name)
+                    || self.linker.as_ref().is_some_and(|l| l.load(&name))
+                    || self.load_hlasm(&name).map_err(RunError)?
+            };
+            if !known {
+                return err(format!("SET TO ENTRY: program {name} not found"));
+            }
+            // A run-unit address identifies an entry; it is not a host CPU address.
+            let address = self.alloc(&[0; 8]) as u64;
+            self.entry_pointers.insert(address, name);
+            self.entry_interfaces.insert(address, convention);
+            address
+        };
+        for target in targets {
+            self.set_value(cur, target, Dec::from_i64(address as i64))?;
+        }
+        Ok(())
+    }
+
+    fn rc_before_call(&mut self, cur: usize) -> RResult<i32> {
+        if let Some(loc) = self.rc_loc(cur) {
+            return Ok(self
+                .eval_ex(cur, &zir::Ex::Load(loc))?
+                .rescale(0, zeus_decimal::Rounding::Truncate)
+                .map_or(0, |d| d.coef as i32));
+        }
+        Ok(self.return_code)
+    }
+
+    fn bind_program_result(&mut self, callee: usize) -> RResult<Option<zir::Loc>> {
+        let Some(loc) = self.instances[callee].code.result.clone() else {
+            return Ok(None);
+        };
+        let desc = self.instances[callee].code.descs[loc.desc as usize].clone();
+        let zir::Base::Linkage(slot) = desc.base else {
+            return err("invalid RETURNING descriptor");
+        };
+        let base = self.alloc(&vec![0; (desc.offset + desc.len) as usize]);
+        self.instances[callee].linkage[slot as usize] = Some(base);
+        Ok(Some(loc))
+    }
+
+    fn pending_result(
+        &mut self,
+        cur: usize,
+        callee: Option<usize>,
+        dst: &zir::Loc,
+        saved_rc: i32,
+    ) -> RResult<PendingResult> {
+        let src = match callee {
+            Some(c) => self.bind_program_result(c)?,
+            None => None,
+        };
+        if callee.is_some() && src.is_none() {
+            return err(
+                "CALL RETURNING requires PROCEDURE DIVISION RETURNING in the called COBOL program",
+            );
+        }
+        if let (Some(c), Some(src)) = (callee, &src) {
+            let from = &self.instances[c].code.descs[src.desc as usize];
+            let to = &self.instances[cur].code.descs[dst.desc as usize];
+            if from.ty.abi_type() != to.ty.abi_type()
+                || from.len != to.len
+                || (!from.abi.is_empty() && !to.abi.is_empty() && from.abi != to.abi)
+            {
+                return err("CALL and PROCEDURE RETURNING attributes must match");
+            }
+        }
+        Ok(PendingResult {
+            dst: dst.clone(),
+            src,
+            saved_rc,
+            resolved: !self.call_exception,
+            foreign_value: self.call_value.take(),
+        })
+    }
+
+    fn finish_result(
+        &mut self,
+        cur: usize,
+        callee: Option<usize>,
+        result: PendingResult,
+    ) -> RResult<()> {
+        if result.resolved {
+            let value = match (callee, result.src) {
+                (Some(c), Some(src)) => self.eval_src(c, &zir::Src::Loc(src))?,
+                _ => {
+                    if let Some(bytes) = result.foreign_value {
+                        let ty = self.loc_type(cur, &result.dst);
+                        let (_, len) = self.addr(cur, &result.dst)?;
+                        if bytes.len() != len {
+                            return err("foreign CALL RETURNING representation length mismatch");
+                        }
+                        eval::Val::Item(ty, bytes)
+                    } else {
+                        eval::Val::Num(Dec::from_i64(self.return_code as i64))
+                    }
+                }
+            };
+            self.move_val(cur, &value, &result.dst)?;
+        }
+        self.return_code = result.saved_rc;
+        self.store_rc(cur);
+        self.call_exception = !result.resolved;
+        Ok(())
+    }
     /// The coverage counts so far go to the process's totals (counting
     /// goes on afresh).
     pub fn flush_coverage(&mut self) {
@@ -120,6 +354,7 @@ pub trait NativeCode {
 /// Where a run unit's interpreter is: the program instance, the next
 /// instruction, the instances that called it (in this module), and
 /// whether the first was called by another program.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct RunState {
     stack: Vec<Frame>,
     pub cur: usize,
@@ -128,6 +363,15 @@ pub struct RunState {
 }
 
 pub struct Machine {
+    tape_authorizer: Option<TapeAuthorizer>,
+    threaded_run_unit: bool,
+    recycled_file_states: Vec<usize>,
+    recycled_program_storage: Vec<(usize, usize)>,
+    range_checking: bool,
+    pending_checkpoints: Vec<PathBuf>,
+    procedure_depth: usize,
+    checkpoint_files: Vec<PathBuf>,
+    sort_checkpoint_pending: bool,
     mem: Vec<u8>,
     hlasm: HashMap<String, (Rc<crate::hlasm::Module>, usize, u32)>,
     hlasm_storage: crate::hlasm::DynamicStorage,
@@ -140,10 +384,14 @@ pub struct Machine {
     instances: Vec<Instance>,
     file_states: Vec<FileState>,
     /// EXTERNAL data areas by name.
-    externals: HashMap<String, usize>,
+    externals: HashMap<String, (usize, u32)>,
+    compatibility_error: Option<String>,
     /// EXTERNAL files by name (slot in `file_states`).
     ext_files: HashMap<String, usize>,
+    active_sort_areas: Vec<Vec<usize>>,
     by_name: HashMap<String, usize>,
+    entry_pointers: HashMap<u64, String>,
+    entry_interfaces: HashMap<u64, zir::CallInterface>,
     search_dirs: Vec<PathBuf>,
     switches: HashMap<String, bool>,
     size_error: bool,
@@ -168,11 +416,14 @@ pub struct Machine {
     /// Mode of the last OPEN attempted.
     last_open_mode: Option<zir::OpenMode>,
     call_exception: bool,
+    call_value: Option<Vec<u8>>,
     overflow: bool,
     stdout: Box<dyn Write>,
     stdin_lines: Option<Box<dyn Iterator<Item = std::io::Result<String>>>>,
+    stdin_buffer: Option<std::collections::VecDeque<String>>,
     /// Records released to the active SORT.
     sort_records: Vec<Vec<u8>>,
+    active_sort_controls: Option<sort::Controls>,
     sort_return: Option<(Vec<Vec<u8>>, usize)>,
     return_code: i32,
     /// Programs implemented by the host (see [`Machine::add_native`]).
@@ -183,6 +434,9 @@ pub struct Machine {
     exec_host: Option<Rc<dyn exec::ExecHost>>,
     /// Programs of other run times (PL/I).
     linker: Option<Rc<dyn crate::interlang::Linker>>,
+    /// A foreign runtime has received execution state; an unused loader alone
+    /// does not prevent a standalone COBOL checkpoint in a JCL step.
+    linker_used: bool,
     control_blocks: bool,
     /// Addresses of the main program's USING parameters, when the host
     /// passes them (IMS PCB masks) instead of the PARM.
@@ -310,7 +564,7 @@ pub type NativeMachFn = fn(&mut Machine, &[Option<usize>]) -> Result<i32, String
 pub type NativeRefFn = fn(&mut [u8], &[crate::interlang::XRef]) -> Result<i32, String>;
 
 /// The job step a program runs in (z/OS TIOT contents).
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct StepInfo {
     pub job: String,
     pub step: String,
@@ -349,7 +603,17 @@ impl Machine {
             switches.insert(format!("UPSI-{i}"), on);
         }
         Machine {
-            random: 0x2545_F491_4F6C_DD1D,
+            tape_authorizer: None,
+            threaded_run_unit: false,
+            recycled_file_states: Vec::new(),
+            recycled_program_storage: Vec::new(),
+            range_checking: true,
+            pending_checkpoints: vec![],
+            procedure_depth: 0,
+            checkpoint_files: vec![],
+            sort_checkpoint_pending: false,
+            stdin_buffer: None,
+            random: 0x0005_DEEC_E66D,
             mem: vec![0; PSA_SIZE],
             hlasm: HashMap::new(),
             hlasm_storage: crate::hlasm::DynamicStorage::default(),
@@ -360,8 +624,12 @@ impl Machine {
             instances: Vec::new(),
             file_states: Vec::new(),
             externals: HashMap::new(),
+            compatibility_error: None,
             ext_files: HashMap::new(),
+            active_sort_areas: vec![],
             by_name: HashMap::new(),
+            entry_pointers: HashMap::new(),
+            entry_interfaces: HashMap::new(),
             search_dirs,
             switches,
             size_error: false,
@@ -388,13 +656,16 @@ impl Machine {
             last_status: *b"00",
             last_open_mode: None,
             call_exception: false,
+            call_value: None,
             overflow: false,
             stdout: Box::new(std::io::BufWriter::new(std::io::stdout())),
             stdin_lines: None,
             sort_records: Vec::new(),
+            active_sort_controls: None,
             sort_return: None,
             return_code: 0,
             linker: None,
+            linker_used: false,
             control_blocks: false,
             main_args: None,
         }
@@ -572,17 +843,33 @@ impl Machine {
     /// Creates (or returns) the instance of program `index` of `module`.
     fn instantiate(&mut self, module: &Rc<Module>, index: u32) -> usize {
         let code = Rc::new(module.programs[index as usize].clone());
-        if let Some(&i) = self.by_name.get(&code.name) {
+        if let Some(i) = self.instances.iter().position(|i| {
+            !i.retired
+                && i.activation_of.is_none()
+                && Rc::ptr_eq(&i.module, module)
+                && i.module_index == index
+        }) {
             return i;
         }
-        let static_base = self.alloc(&code.static_init);
+        if code.parent.is_none()
+            && let Some(&i) = self.by_name.get(&code.name)
+        {
+            return i;
+        }
+        let static_base = self.program_storage(&code.static_init);
         let mut ext_bases = Vec::new();
         for e in &code.externals {
             let a = match self.externals.get(&e.name) {
-                Some(&a) => a,
+                Some(&(a, len)) => {
+                    if len != e.len {
+                        self.compatibility_error =
+                            Some(format!("EXTERNAL {} storage lengths must agree", e.name));
+                    }
+                    a
+                }
                 None => {
                     let a = self.alloc(&vec![0x40; e.len as usize]);
-                    self.externals.insert(e.name.clone(), a);
+                    self.externals.insert(e.name.clone(), (a, e.len));
                     a
                 }
             };
@@ -597,19 +884,28 @@ impl Machine {
                 match self.ext_files.get(&def.name) {
                     Some(&s) => s,
                     None => {
-                        self.file_states.push(FileState::default());
-                        let s = self.file_states.len() - 1;
+                        let s = self.program_file_slot();
                         self.ext_files.insert(def.name.clone(), s);
                         s
                     }
                 }
             } else {
-                self.file_states.push(FileState::default());
-                self.file_states.len() - 1
+                self.program_file_slot()
             };
             files.push(slot);
         }
+        let invocation_bases = self.allocate_invocation_storage(&code);
         let inst = Instance {
+            invocation_bases,
+            dll_linked: false,
+            retired: false,
+            dynamic_calls: Default::default(),
+            static_calls: HashMap::new(),
+            bindings_ready: false,
+            rerun_counts: vec![0; code.rerun.len()],
+            numeric_context: (0, false),
+            wide_temps: vec![None; code.temps as usize],
+            entry_pc: 0,
             linkage: vec![None; code.linkage_count as usize],
             perform: Vec::new(),
             temps: vec![Dec::ZERO; code.temps as usize],
@@ -628,14 +924,67 @@ impl Machine {
             activation_of: None,
             code,
         };
-        self.instances.push(inst);
-        let i = self.instances.len() - 1;
-        self.by_name.insert(self.instances[i].code.name.clone(), i);
+        let i = if let Some(i) = self.instances.iter().position(|i| i.retired) {
+            self.instances[i] = inst;
+            i
+        } else {
+            self.instances.push(inst);
+            self.instances.len() - 1
+        };
+        if self.instances[i].code.parent.is_none() {
+            self.by_name.insert(self.instances[i].code.name.clone(), i);
+            for entry in &self.instances[i].code.entries {
+                self.by_name.insert(entry.name.clone(), i);
+            }
+        }
+        if let Err(error) = self.initialize_dynamic(i, false) {
+            self.compatibility_error = Some(error.0);
+        }
+        if let Err(error) = self.validate_rerun_allocations(i) {
+            self.compatibility_error = Some(error.0);
+        }
         i
+    }
+
+    fn initialize_dynamic(&mut self, inst: usize, local_only: bool) -> RResult<()> {
+        let code = self.instances[inst].code.clone();
+        for (loc, bytes) in &code.dynamic_init {
+            let desc = &code.descs[loc.desc as usize];
+            if local_only
+                && !code
+                    .local_storage
+                    .is_some_and(|(start, len)| desc.offset >= start && desc.offset < start + len)
+            {
+                continue;
+            }
+            let mut locations = vec![loc.clone()];
+            for dim in &desc.dims {
+                let count = match &dim.count {
+                    Some(e) => self.eval_ex(inst, e)?.coef.max(0).min(dim.max as i128) as u32,
+                    None => dim.max,
+                };
+                let mut expanded = Vec::new();
+                for location in locations {
+                    for n in 1..=count {
+                        let mut next = location.clone();
+                        next.subs.push(zir::Ex::Lit(Dec::from_i64(n as i64)));
+                        expanded.push(next);
+                    }
+                }
+                locations = expanded;
+            }
+            for location in locations {
+                let (address, len) = self.addr(inst, &location)?;
+                let len = len.min(bytes.len());
+                self.mem[address..address + len].copy_from_slice(&bytes[..len]);
+            }
+        }
+        Ok(())
     }
 
     /// Resets a program to its initial state (INITIAL programs, CANCEL).
     fn reset(&mut self, i: usize) {
+        self.reset_invocation_storage(i);
         let base = self.instances[i].static_base;
         let init = self.instances[i].code.static_init.clone();
         self.mem[base..base + init.len()].copy_from_slice(&init);
@@ -643,6 +992,12 @@ impl Machine {
         inst.alter = inst.code.alter_init.clone();
         inst.segment = 0;
         inst.temps.iter_mut().for_each(|t| *t = Dec::ZERO);
+        inst.wide_temps.fill(None);
+        inst.numeric_context = (0, false);
+        inst.rerun_counts.fill(0);
+        if let Err(error) = self.initialize_dynamic(i, false) {
+            self.compatibility_error = Some(error.0);
+        }
     }
 
     /// Runs the first program of `module` as the main program.
@@ -670,9 +1025,21 @@ impl Machine {
         self.dd.set_io(name, attributes);
     }
 
+    /// Catalog used by DSN(...) allocation environment variables.
+    pub fn set_dynamic_catalog(&mut self, root: PathBuf) {
+        self.dd.set_dynamic_catalog(root);
+    }
+
+    /// Set a run-unit-local allocation environment value without changing the
+    /// process environment shared with other run units.
+    pub fn set_file_environment(&mut self, name: &str, value: String) {
+        self.dd.set_file_environment(name, value);
+    }
+
     /// Input of ACCEPT (the SYSIN data of the step).
     pub fn set_stdin(&mut self, lines: Vec<String>) {
-        self.stdin_lines = Some(Box::new(lines.into_iter().map(Ok)));
+        self.stdin_lines = None;
+        self.stdin_buffer = Some(lines.into());
     }
 
     /// Makes `name` callable as a host implemented program; programs
@@ -743,6 +1110,7 @@ impl Machine {
         let Some(l) = self.linker.clone() else {
             return Ok(None);
         };
+        self.linker_used = true;
         let _ = self.stdout.flush();
         let frame = self.enter_language_frame();
         let me = std::mem::replace(self, Machine::placeholder());
@@ -799,6 +1167,7 @@ impl Machine {
         let Some(callee) = self.find_program(&name) else {
             return Ok(None);
         };
+        self.bind_static_calls(callee);
         let callee = self.activation(callee).map_err(|e| e.0)?;
         let ci = &mut self.instances[callee];
         if ci.code.initial || !ci.initialized {
@@ -809,12 +1178,16 @@ impl Machine {
             }
         }
         self.reset_local_storage(callee);
+        let (entry_pc, using, _) = self.entry_binding(callee, &name);
         let ci = &mut self.instances[callee];
-        for (k, slot) in ci.code.using.clone().iter().enumerate() {
+        ci.entry_pc = entry_pc;
+        ci.linkage.fill(None);
+        for (k, slot) in using.iter().enumerate() {
             ci.linkage[*slot as usize] = args.get(k).and_then(|a| a.addr);
         }
         ci.active = true;
         ci.perform.clear();
+        let result = self.bind_program_result(callee).map_err(|e| e.0)?;
         self.return_code = 0;
         let r = self.run_from(callee, true);
         self.instances[callee].active = false;
@@ -827,7 +1200,13 @@ impl Machine {
         };
         Ok(Some(crate::interlang::XEnd {
             rc: self.return_code,
-            ret: None,
+            ret: result
+                .map(|loc| {
+                    let (addr, len) = self.addr(callee, &loc)?;
+                    Ok(self.mem[addr..addr + len].to_vec())
+                })
+                .transpose()
+                .map_err(|e: RunError| e.0)?,
             stop,
         }))
     }
@@ -872,15 +1251,29 @@ impl Machine {
 
     /// Closes the files of all programs (the end of the run unit).
     pub fn finish(&mut self) {
+        let _ = self.try_finish();
+    }
+
+    /// Finish a host-driven run unit and report CLOSE/deallocation failures.
+    pub fn try_finish(&mut self) -> RResult<()> {
         self.flush_coverage();
-        self.close_all();
-        let _ = self.finish_assembler_io();
-        let _ = self.stdout.flush();
+        let files = self.close_all();
+        let assembler = self.finish_assembler_io().map_err(RunError);
+        let output = self
+            .stdout
+            .flush()
+            .map_err(|error| RunError(error.to_string()));
+        files.and(assembler).and(output)
     }
 
     /// Sets the job step identification shown to programs (TIOT).
     pub fn set_step(&mut self, step: StepInfo) {
         self.step = step;
+    }
+
+    /// COBOL 4.2 CHECK(ON/OFF); only programs compiled with SSRANGE check.
+    pub fn set_range_checking(&mut self, enabled: bool) {
+        self.range_checking = enabled;
     }
 
     /// Builds the TCB and the TIOT of the step and anchors them in the
@@ -941,10 +1334,26 @@ impl Machine {
     }
 
     pub fn run_main(&mut self, module: Module) -> RResult<i32> {
+        let ccsid = crate::codepage::runtime_ccsid(
+            module
+                .programs
+                .first()
+                .and_then(|p| p.ccsid)
+                .unwrap_or(module.ccsid),
+        );
+        if crate::codepage::get(ccsid).is_none() {
+            return err("unsupported program CODEPAGE CCSID");
+        }
+        let _codepage = crate::codepage::scope(Some(ccsid));
+        if module.programs.first().is_some_and(|p| p.result.is_some()) {
+            return err("a program with PROCEDURE RETURNING must be called as a subprogram");
+        }
+        self.random = 0x0005_DEEC_E66D;
         self.build_control_blocks();
         self.control_blocks = true;
         let module = Rc::new(module);
         let main = self.instantiate(&module, 0);
+        self.bind_static_calls(main);
         if let Some(args) = self.main_args.take() {
             let using = self.instances[main].code.using.clone();
             for (k, slot) in using.iter().enumerate() {
@@ -960,8 +1369,8 @@ impl Machine {
             self.instances[main].linkage[slot as usize] = Some(a);
         }
         let r = self.run(main);
-        self.close_all();
-        let cleanup = self.finish_assembler_io().map_err(RunError);
+        let files = self.close_all();
+        let cleanup = files.and(self.finish_assembler_io().map_err(RunError));
         let _ = self.stdout.flush();
         let result = match r {
             Ok(Exit::StopRun(code)) => Ok(code),
@@ -972,12 +1381,27 @@ impl Machine {
         result.and_then(|rc| cleanup.map(|_| rc))
     }
 
-    fn close_all(&mut self) {
+    fn close_all(&mut self) -> RResult<()> {
+        let mut failure = None;
         for i in 0..self.instances.len() {
+            if self.instances[i].retired {
+                continue;
+            }
             for f in 0..self.instances[i].files.len() {
-                let _ = self.close_file(i, f as u32, false);
+                if self.state(i, f as u32).open_mode().is_some()
+                    && let Err(error) = self.close_file(i, f as u32, false)
+                    && failure.is_none()
+                {
+                    failure = Some(error);
+                }
             }
         }
+        if let Err(error) = self.dd.clear_dynamic()
+            && failure.is_none()
+        {
+            failure = Some(RunError(error.to_string()));
+        }
+        failure.map_or(Ok(()), Err)
     }
 
     fn return_code_value(&self) -> i32 {
@@ -1021,20 +1445,65 @@ impl Machine {
         cur: usize,
         program: &zir::Src,
         args: &[zir::CallArgMode],
+        interface: Option<zir::CallInterface>,
         handled: bool,
     ) -> RResult<Option<usize>> {
         let v = self.eval_src(cur, program)?;
-        let name_bytes = self.alnum_bytes(cur, &v, 0)?;
-        let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
-            .trim()
-            .to_ascii_uppercase();
+        let mut pointer_interface = None;
+        let name = if let eval::Val::Item(ty, bytes) = &v
+            && ty.is_entry_pointer()
+        {
+            let address = binary::read(bytes, false) as u64;
+            pointer_interface = self.entry_interfaces.get(&address).copied();
+            self.entry_pointers.get(&address).cloned().ok_or_else(|| {
+                RunError("CALL through a null or invalid procedure/function-pointer".into())
+            })?
+        } else {
+            let name_bytes = self.alnum_bytes(cur, &v, 0)?;
+            ebcdic::decode(&name_bytes).trim().to_ascii_uppercase()
+        };
+        let interface = pointer_interface.or(interface);
         self.call_exception = false;
+        self.call_value = None;
         if le::parameter_count(&name).is_some() {
             let addrs = self.call_args(cur, args)?;
             self.le_service(&name, &addrs)?;
             return Ok(None);
         }
-        let Some(callee) = self.resolve_program(cur, &name) else {
+        let static_call = matches!(program, zir::Src::Alnum(_))
+            && interface.unwrap_or(zir::CallInterface::default_for(
+                self.instances[cur].code.dynam,
+                self.instances[cur].code.dll,
+            )) == zir::CallInterface::Static;
+        let caller = self.instances[cur].activation_of.unwrap_or(cur);
+        let dll_call = interface.unwrap_or(zir::CallInterface::default_for(
+            self.instances[cur].code.dynam,
+            self.instances[cur].code.dll,
+        )) == zir::CallInterface::Dll;
+        let target = if static_call {
+            self.instances[caller].static_calls.get(&name).copied()
+        } else {
+            None
+        };
+        let resolved = target.or_else(|| {
+            if dll_call {
+                self.resolve_dll(
+                    cur,
+                    &name,
+                    matches!(program, zir::Src::Alnum(_)) || pointer_interface.is_some(),
+                )
+            } else {
+                self.resolve_program(cur, &name)
+            }
+        });
+        if dll_call && resolved.is_none() {
+            if handled {
+                self.call_exception = true;
+                return Ok(None);
+            }
+            return err(format!("DLL export {name} not found"));
+        }
+        let Some(callee) = resolved else {
             if self.load_hlasm(&name).map_err(RunError)? {
                 let addrs = self.call_args(cur, args)?;
                 let result = self.call_hlasm(&name, &addrs).expect("loaded HLASM module");
@@ -1062,6 +1531,7 @@ impl Machine {
                 return Ok(None);
             }
             if let Some(l) = self.linker.clone() {
+                self.linker_used = true;
                 let refs: Vec<crate::interlang::XRef> = self
                     .call_args_sized(cur, args)?
                     .iter()
@@ -1081,6 +1551,7 @@ impl Machine {
                 if let Some(r) = r {
                     let end = r.map_err(RunError)?;
                     self.return_code = end.rc;
+                    self.call_value = end.ret;
                     self.store_rc(cur);
                     if end.stop {
                         return err(STOP_RUN);
@@ -1094,7 +1565,25 @@ impl Machine {
             self.call_exception = true;
             return Ok(None);
         };
-        let addrs = self.call_args(cur, args)?;
+        if dll_call && self.instances[callee].code.lp64 != self.instances[cur].code.lp64 {
+            return err("DLL caller and target must have the same LP address mode");
+        }
+        if dll_call {
+            self.instances[callee].dll_linked = true;
+        }
+        if static_call || dll_call {
+            self.instances[caller]
+                .static_calls
+                .insert(name.clone(), callee);
+        } else {
+            self.instances[callee].dynamic_calls.insert(name.clone());
+        }
+        self.bind_static_calls(callee);
+        let sized = self.call_args_sized(cur, args)?;
+        let addrs: Vec<_> = sized
+            .iter()
+            .map(|a| a.map(|(address, _)| address))
+            .collect();
         let callee = self.activation(callee)?;
         let ci = &mut self.instances[callee];
         if ci.code.initial || !ci.initialized {
@@ -1105,8 +1594,40 @@ impl Machine {
             }
         }
         self.reset_local_storage(callee);
+        let (entry_pc, using, by_value) = self.entry_binding(callee, &name);
+        for (index, &value) in by_value.iter().enumerate() {
+            let Some(arg) = args.get(index) else {
+                continue;
+            };
+            if matches!(arg, zir::CallArgMode::Omitted) {
+                continue;
+            }
+            let actual_value = matches!(
+                arg,
+                zir::CallArgMode::Value(_) | zir::CallArgMode::ValueData(_)
+            );
+            if value != actual_value {
+                return err("CALL and formal USING BY VALUE/REFERENCE modes must agree");
+            }
+            if value {
+                let slot = using[index];
+                let code = &self.instances[callee].code;
+                let formal = code
+                    .descs
+                    .iter()
+                    .find(|d| d.base == zir::Base::Linkage(slot) && d.offset == 0)
+                    .unwrap();
+                if sized[index].is_some_and(|(_, len)| len != formal.len as usize) {
+                    return err(
+                        "CALL BY VALUE argument and formal parameter storage widths must agree",
+                    );
+                }
+            }
+        }
         let ci = &mut self.instances[callee];
-        for (k, slot) in ci.code.using.clone().iter().enumerate() {
+        ci.entry_pc = entry_pc;
+        ci.linkage.fill(None);
+        for (k, slot) in using.iter().enumerate() {
             ci.linkage[*slot as usize] = addrs.get(k).copied().flatten();
         }
         ci.active = true;
@@ -1117,6 +1638,7 @@ impl Machine {
     /// Nonrecursive invocations can reuse their LOCAL-STORAGE addresses,
     /// but must restore the initial values independently of WORKING-STORAGE.
     fn reset_local_storage(&mut self, inst: usize) {
+        self.reset_invocation_storage(inst);
         let ci = &self.instances[inst];
         if let Some((offset, len)) = ci.code.local_storage {
             let start = offset as usize;
@@ -1124,10 +1646,31 @@ impl Machine {
             let base = ci.local_base.unwrap_or(ci.static_base + start);
             self.mem[base..base + len as usize].copy_from_slice(&ci.code.static_init[start..end]);
         }
+        if let Err(error) = self.initialize_dynamic(inst, true) {
+            self.compatibility_error = Some(error.0);
+        }
+    }
+
+    fn reset_invocation_storage(&mut self, inst: usize) {
+        let code = self.instances[inst].code.clone();
+        for (&desc, &address) in &self.instances[inst].invocation_bases {
+            let d = &code.descs[desc as usize];
+            self.mem[address..address + d.len as usize]
+                .copy_from_slice(&code.static_init[d.offset as usize..(d.offset + d.len) as usize]);
+        }
     }
 
     /// Allocate or reuse an inactive invocation without copying shared WS.
     fn activation(&mut self, root: usize) -> RResult<usize> {
+        if self.threaded_run_unit && !self.instances[root].code.thread {
+            return err(format!(
+                "threaded run unit requires THREAD for {}",
+                self.instances[root].code.name
+            ));
+        }
+        if let Some(error) = self.compatibility_error.take() {
+            return err(error);
+        }
         if !self.instances[root].active {
             return Ok(root);
         }
@@ -1143,11 +1686,12 @@ impl Machine {
         if let Some(i) = self
             .instances
             .iter()
-            .position(|i| i.activation_of == Some(root) && !i.active)
+            .position(|i| !i.retired && i.activation_of == Some(root) && !i.active)
         {
             return Ok(i);
         }
         let mut instance = self.instances[root].clone();
+        instance.invocation_bases = self.allocate_invocation_storage(&instance.code);
         instance.active = false;
         instance.activation_of = Some(root);
         instance.local_base = instance.code.local_storage.map(|(offset, len)| {
@@ -1156,6 +1700,8 @@ impl Machine {
         instance.perform.clear();
         instance.linkage.fill(None);
         instance.temps.fill(Dec::ZERO);
+        instance.wide_temps.fill(None);
+        instance.numeric_context = (0, false);
         let index = self.instances.len();
         self.instances.push(instance);
         Ok(index)
@@ -1163,6 +1709,9 @@ impl Machine {
 
     /// Executes from the entry of instance `main` until STOP RUN.
     fn run(&mut self, main: usize) -> RResult<Exit> {
+        if let Some(error) = self.compatibility_error.take() {
+            return err(error);
+        }
         self.instances[main].active = true;
         self.instances[main].initialized = true;
         self.run_from(main, false)
@@ -1174,7 +1723,7 @@ impl Machine {
         let mut s = RunState {
             stack: Vec::new(),
             cur: start,
-            pc: 0,
+            pc: self.instances[start].entry_pc,
             called,
         };
         let frame = self.enter_language_frame();
@@ -1188,6 +1737,7 @@ impl Machine {
             // the program's machine code, when it has some
             if let Some(n) = self.native.clone()
                 && !self.instances[s.cur].code.recursive
+                && !self.dynamic_object(s.cur)
                 && let Some(r) = n.run(self, s)
             {
                 if let Some(e) = r? {
@@ -1204,13 +1754,23 @@ impl Machine {
     /// Runs the instruction at `s.pc` of program instance `s.cur`; the
     /// end of the run unit's main program or of a called one.
     pub fn exec_step(&mut self, s: &mut RunState) -> RResult<Option<Exit>> {
+        let ccsid = crate::codepage::runtime_ccsid(self.program_ccsid(s.cur));
+        if crate::codepage::get(ccsid).is_none() {
+            return err("unsupported program CODEPAGE CCSID");
+        }
+        let _codepage = crate::codepage::scope(Some(ccsid));
         if self.cov.is_none() {
-            return self.exec_instr(s);
+            let result = self.exec_instr(s)?;
+            self.write_pending_checkpoints(s)?;
+            return Ok(result);
         }
         let (cur, pc) = (s.cur, s.pc);
         let r = self.exec_instr(s);
         let jumped = s.cur == cur && s.pc != pc + 1;
         self.cov_count(cur, pc, jumped);
+        if r.is_ok() {
+            self.write_pending_checkpoints(s)?;
+        }
         r
     }
 
@@ -1267,6 +1827,13 @@ impl Machine {
             ));
         };
         s.pc += 1;
+        if matches!(
+            ins,
+            Instr::Release(..) | Instr::Return(..) | Instr::SortOrder { .. } | Instr::SortWrite(_)
+        ) && self.abort_sort_if_requested(s)?
+        {
+            return Ok(None);
+        }
         let pc = s.pc;
         self.count_tick();
         let ins = match ins {
@@ -1282,6 +1849,10 @@ impl Machine {
         };
         match ins {
             Instr::Nop => {}
+            Instr::MoreLabels => return err("MORE-LABELS outside an active label procedure"),
+            Instr::NumericContext { decimals, floating } => {
+                self.instances[cur].numeric_context = (*decimals, *floating)
+            }
             Instr::Move(src, dst) => {
                 let v = self.eval_src(cur, src)?;
                 self.move_val(cur, &v, dst)?;
@@ -1291,8 +1862,8 @@ impl Machine {
                 dst,
                 rounded,
                 check,
-            } => match self.eval_ex(cur, value) {
-                Ok(v) => self.store(cur, v, dst, *rounded, *check)?,
+            } => match self.numeric_store(cur, value, dst, *rounded, *check) {
+                Ok(()) => {}
                 Err(e) if e.0 == SIZE_ERROR => self.size_error = true,
                 Err(e) => return Err(e),
             },
@@ -1304,14 +1875,11 @@ impl Machine {
                 rem,
                 check,
             } => {
-                let a = self.eval_ex(cur, dividend)?;
-                let b = self.eval_ex(cur, divisor)?;
-                self.div_rem(cur, a, b, quot, *rounded, rem, *check)?;
+                self.numeric_div_rem(cur, dividend, divisor, quot, *rounded, rem, *check)?;
             }
             Instr::ClearSizeError => self.size_error = false,
             Instr::SetTemp(t, ex) => {
-                let v = self.eval_ex(cur, ex)?;
-                self.instances[cur].temps[*t as usize] = v;
+                self.numeric_temp(cur, *t, ex)?;
             }
             Instr::Jump(t) => s.pc = *t,
             Instr::JumpIf(c, t) => {
@@ -1357,6 +1925,10 @@ impl Machine {
             }
             Instr::Segment(seg) => self.enter_segment(cur, *seg),
             Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex)?,
+            Instr::SetEntry(targets, name) => self.set_entry(cur, targets, name, None)?,
+            Instr::SetEntryWithInterface(targets, name, mode) => {
+                self.set_entry(cur, targets, name, Some(*mode))?
+            }
             Instr::Initiate(r) => self.report_initiate(cur, *r)?,
             Instr::Generate { report, group } => self.report_generate(cur, *report, *group)?,
             Instr::Terminate(r) => self.report_terminate(cur, *r)?,
@@ -1378,7 +1950,11 @@ impl Machine {
                     if inst == cur {
                         self.instances[cur].perform.push((end, pc));
                     } else {
-                        s.stack.push(Frame { inst: cur, pc });
+                        s.stack.push(Frame {
+                            inst: cur,
+                            pc,
+                            result: None,
+                        });
                         s.cur = inst;
                         self.instances[cur].perform.push((end, USE_RETURN));
                     }
@@ -1421,7 +1997,8 @@ impl Machine {
                     self.instances[cur].active = false;
                     self.instances[cur].perform.clear();
                     if self.instances[cur].code.initial {
-                        self.close_program_files(cur);
+                        self.close_program_files(cur)?;
+                        self.reset_initial_children(cur)?;
                     }
                     return Ok(Some(Exit::Returned));
                 }
@@ -1435,13 +2012,18 @@ impl Machine {
                 self.instances[cur].active = false;
                 self.instances[cur].perform.clear();
                 if self.instances[cur].code.initial {
-                    self.close_program_files(cur);
+                    self.close_program_files(cur)?;
+                    self.reset_initial_children(cur)?;
                 }
                 self.le_conditions.frames.pop();
                 let f = s.stack.pop().unwrap();
                 s.cur = f.inst;
                 s.pc = f.pc;
-                self.store_rc(s.cur);
+                if let Some(result) = f.result {
+                    self.finish_result(s.cur, Some(cur), result)?;
+                } else {
+                    self.store_rc(s.cur);
+                }
             }
             Instr::Display {
                 items,
@@ -1478,7 +2060,10 @@ impl Machine {
                 record,
                 from,
                 advance,
-            } => self.write_file(cur, *file, *record, from.as_ref(), advance.as_ref())?,
+            } => {
+                self.write_file(cur, *file, *record, from.as_ref(), advance.as_ref())?;
+                self.rerun_record(cur, *file)?;
+            }
             Instr::Rewrite { file, record, from } => {
                 self.rewrite_file(cur, *file, *record, from.as_ref())?
             }
@@ -1487,40 +2072,51 @@ impl Machine {
                 next,
                 into,
                 key,
-            } => self.read_file(cur, *file, *next, into.as_ref(), *key)?,
+            } => {
+                self.read_file(cur, *file, *next, into.as_ref(), *key)?;
+                self.rerun_record(cur, *file)?;
+            }
             Instr::Delete(f) => self.delete_record(cur, *f)?,
             Instr::Start { file, rel, key } => self.start_file(cur, *file, *rel, key.as_ref())?,
             Instr::Call {
+                interface,
                 program,
                 args,
-                returning: _,
+                returning,
             } => {
                 // ON EXCEPTION / ON OVERFLOW handles a missing program.
                 let next = code.code.get(pc as usize);
                 let handled = matches!(next, Some(Instr::JumpUnless(zir::Cx::CallException, _)));
-                if let Some(callee) = self.prepare_call(cur, program, args, handled)? {
-                    s.stack.push(Frame { inst: cur, pc });
+                let saved_rc = self.rc_before_call(cur)?;
+                let callee = self.prepare_call(cur, program, args, *interface, handled)?;
+                let result = returning
+                    .as_ref()
+                    .map(|dst| self.pending_result(cur, callee, dst, saved_rc))
+                    .transpose()?;
+                if let Some(callee) = callee {
+                    if returning.is_none() && self.instances[callee].code.result.is_some() {
+                        self.bind_program_result(callee)?;
+                    }
+                    s.stack.push(Frame {
+                        inst: cur,
+                        pc,
+                        result,
+                    });
                     if s.stack.len() > 1000 {
                         return err("CALL nesting too deep");
                     }
                     self.enter_language_frame();
                     s.cur = callee;
-                    s.pc = 0;
+                    s.pc = self.instances[callee].entry_pc;
+                } else if let Some(result) = result {
+                    self.finish_result(cur, None, result)?;
                 }
             }
             Instr::Cancel(src) => {
                 let v = self.eval_src(cur, src)?;
                 let name_bytes = self.alnum_bytes(cur, &v, 0)?;
-                let name = String::from_utf8_lossy(&ebcdic::decode_latin1(&name_bytes))
-                    .trim()
-                    .to_ascii_uppercase();
-                if let Some(&i) = self.by_name.get(&name)
-                    && !self.instances[i].active
-                {
-                    self.close_program_files(i);
-                    self.reset(i);
-                    self.instances[i].initialized = false;
-                }
+                let name = ebcdic::decode(&name_bytes).trim().to_ascii_uppercase();
+                self.cancel_cobol(cur, &name)?;
                 if let Some((module, base, _)) = self.hlasm.get(&name) {
                     let storage = module.storage_at(*base).map_err(RunError)?;
                     self.mem[*base..*base + module.storage.len()].copy_from_slice(&storage);
@@ -1556,6 +2152,72 @@ impl Machine {
                 self.switches.insert(name, *on);
             }
             Instr::SearchStep { .. } => return err("SEARCH step not expected"),
+            Instr::SortBegin(file) => {
+                if !self.active_sort_areas.is_empty() {
+                    return err("nested SORT/MERGE is not permitted");
+                }
+                let peers = self.sort_area_peers(cur, *file)?;
+                self.active_sort_areas.push(peers);
+                self.sort_records.clear();
+                self.sort_return = None;
+                self.begin_sort_controls(cur, *file)?;
+                let end = code
+                    .code
+                    .iter()
+                    .enumerate()
+                    .skip(s.pc as usize)
+                    .find_map(|(i, ins)| matches!(ins, Instr::SortEnd).then_some(i as u32))
+                    .ok_or_else(|| RunError("SORT has no matching end instruction".into()))?;
+                self.active_sort_controls.as_mut().unwrap().continuation =
+                    Some(sort::Continuation {
+                        owner: cur,
+                        end,
+                        performs: self.instances[cur].perform.len(),
+                        stack: s.stack.len(),
+                        language_frames: self.le_conditions.frames.len(),
+                    });
+            }
+            Instr::SortRead(file) => {
+                self.sort_read_file(cur, *file)?;
+                if self.abort_sort_if_requested(s)? {
+                    return Ok(None);
+                }
+            }
+            Instr::SortOrder {
+                file,
+                keys,
+                collating,
+                merge,
+            } => {
+                let spec = files::SortSpec {
+                    file: *file,
+                    keys: keys.clone(),
+                    collating: collating.clone(),
+                    merge: *merge,
+                };
+                let records = std::mem::take(&mut self.sort_records);
+                self.active_sort_controls.as_mut().unwrap().input_phase = false;
+                let sorted = self.sort_sort(cur, &spec, records)?;
+                if self.abort_sort_if_requested(s)? {
+                    return Ok(None);
+                }
+                self.sort_return = Some((sorted, 0));
+            }
+            Instr::SortWrite(file) => {
+                let records = self
+                    .sort_return
+                    .as_ref()
+                    .ok_or_else(|| RunError("SORT output unavailable".into()))?
+                    .0
+                    .clone();
+                self.sort_write_file(cur, *file, &records)?;
+            }
+            Instr::SortCheckpoint => self.rerun_sort(cur)?,
+            Instr::SortEnd => {
+                self.sort_return = None;
+                self.active_sort_controls = None;
+                self.active_sort_areas.pop();
+            }
             Instr::Sort {
                 file,
                 keys,
@@ -1567,40 +2229,70 @@ impl Machine {
                 collating,
                 merge,
             } => {
-                let sort = files::SortSpec {
-                    file: *file,
-                    keys: keys.clone(),
-                    collating: collating.clone(),
-                    merge: *merge,
-                };
-                // Input phase
-                self.sort_records.clear();
-                for &u in using {
-                    self.sort_read_file(cur, u)?;
+                if !self.active_sort_areas.is_empty() {
+                    return err("nested SORT/MERGE is not permitted");
                 }
-                if let Some((start, end)) = input {
-                    self.sort_records.clear();
-                    self.instances[cur].debug_cause = (zir::debug_cause::SORT_INPUT, 0);
-                    self.run_procedure(cur, *start, *end, &mut s.stack)?;
-                }
-                let records = std::mem::take(&mut self.sort_records);
-                let sorted = self.sort_sort(cur, &sort, records)?;
-                if let Some((start, end)) = output {
-                    self.sort_return = Some((sorted, 0));
-                    self.instances[cur].debug_cause = if *merge {
-                        (zir::debug_cause::MERGE_OUTPUT, 0)
-                    } else {
-                        (zir::debug_cause::SORT_OUTPUT, 0)
+                let peers = self.sort_area_peers(cur, *file)?;
+                self.active_sort_areas.push(peers);
+                let result = (|| -> RResult<()> {
+                    let sort = files::SortSpec {
+                        file: *file,
+                        keys: keys.clone(),
+                        collating: collating.clone(),
+                        merge: *merge,
                     };
-                    self.run_procedure(cur, *start, *end, &mut s.stack)?;
-                    self.sort_return = None;
-                } else {
-                    for &g in giving {
-                        self.sort_write_file(cur, g, &sorted)?;
+                    // Input phase
+                    self.sort_records.clear();
+                    self.begin_sort_controls(cur, *file)?;
+                    for &u in using {
+                        self.sort_read_file(cur, u)?;
+                        if self.sort_cancelled(cur)? {
+                            return err(sort::CANCELLED);
+                        }
                     }
+                    if let Some((start, end)) = input {
+                        self.sort_records.clear();
+                        self.instances[cur].debug_cause = (zir::debug_cause::SORT_INPUT, 0);
+                        self.run_procedure(cur, *start, *end, &mut s.stack)?;
+                    }
+                    let records = std::mem::take(&mut self.sort_records);
+                    self.active_sort_controls.as_mut().unwrap().input_phase = false;
+                    if self.sort_cancelled(cur)? {
+                        return err(sort::CANCELLED);
+                    }
+                    let sorted = self.sort_sort(cur, &sort, records)?;
+                    if self.sort_cancelled(cur)? {
+                        return err(sort::CANCELLED);
+                    }
+                    if let Some((start, end)) = output {
+                        self.sort_return = Some((sorted, 0));
+                        self.instances[cur].debug_cause = if *merge {
+                            (zir::debug_cause::MERGE_OUTPUT, 0)
+                        } else {
+                            (zir::debug_cause::SORT_OUTPUT, 0)
+                        };
+                        self.run_procedure(cur, *start, *end, &mut s.stack)?;
+                        self.sort_return = None;
+                    } else {
+                        for &g in giving {
+                            self.sort_write_file(cur, g, &sorted)?;
+                        }
+                    }
+                    Ok(())
+                })();
+                self.active_sort_areas.pop();
+                self.active_sort_controls = None;
+                self.sort_return = None;
+                if let Err(error) = result
+                    && error.0 != sort::CANCELLED
+                {
+                    return Err(error);
                 }
             }
             Instr::Release(f, from) => {
+                if self.sort_cancelled(cur)? {
+                    return err(sort::CANCELLED);
+                }
                 let rec = self.sort_record_bytes(cur, *f, from.as_ref())?;
                 self.sort_records.push(rec);
             }
@@ -1620,6 +2312,23 @@ impl Machine {
     /// Runs an input/output procedure (paragraphs `start`..=`end`) to
     /// completion within the current program.
     fn run_procedure(
+        &mut self,
+        cur: usize,
+        start: u32,
+        end: u32,
+        stack: &mut Vec<Frame>,
+    ) -> RResult<()> {
+        self.procedure_depth += 1;
+        let performs = self.instances[cur].perform.len();
+        let result = self.run_procedure_inner(cur, start, end, stack);
+        if result.is_err() {
+            self.instances[cur].perform.truncate(performs);
+        }
+        self.procedure_depth -= 1;
+        result
+    }
+
+    fn run_procedure_inner(
         &mut self,
         cur: usize,
         start: u32,
@@ -1644,6 +2353,10 @@ impl Machine {
             // Only a subset of control is needed inside procedures; reuse
             // the main loop by single-stepping.
             match ins {
+                Instr::MoreLabels => {
+                    self.instances[cur].perform.truncate(depth - 1);
+                    return err("ZEUS_MORE_LABELS");
+                }
                 Instr::Perform { start, end, ret } => {
                     self.instances[cur].perform.push((*end, *ret));
                     pc = *start;
@@ -1734,7 +2447,16 @@ impl Machine {
 
     /// Executes one non-control instruction.
     fn step(&mut self, cur: usize, ins: &Instr) -> RResult<()> {
+        let ccsid = crate::codepage::runtime_ccsid(self.program_ccsid(cur));
+        if crate::codepage::get(ccsid).is_none() {
+            return err("unsupported program CODEPAGE CCSID");
+        }
+        let _codepage = crate::codepage::scope(Some(ccsid));
         match ins {
+            Instr::NumericContext { decimals, floating } => {
+                self.instances[cur].numeric_context = (*decimals, *floating);
+                Ok(())
+            }
             Instr::Move(src, dst) => {
                 let v = self.eval_src(cur, src)?;
                 self.move_val(cur, &v, dst)
@@ -1744,8 +2466,8 @@ impl Machine {
                 dst,
                 rounded,
                 check,
-            } => match self.eval_ex(cur, value) {
-                Ok(v) => self.store(cur, v, dst, *rounded, *check),
+            } => match self.numeric_store(cur, value, dst, *rounded, *check) {
+                Ok(()) => Ok(()),
                 Err(e) if e.0 == SIZE_ERROR => {
                     self.size_error = true;
                     Ok(())
@@ -1756,12 +2478,11 @@ impl Machine {
                 self.size_error = false;
                 Ok(())
             }
-            Instr::SetTemp(t, ex) => {
-                let v = self.eval_ex(cur, ex)?;
-                self.instances[cur].temps[*t as usize] = v;
-                Ok(())
-            }
+            Instr::SetTemp(t, ex) => self.numeric_temp(cur, *t, ex),
             Instr::Release(f, from) => {
+                if self.sort_cancelled(cur)? {
+                    return err(sort::CANCELLED);
+                }
                 let rec = self.sort_record_bytes(cur, *f, from.as_ref())?;
                 self.sort_records.push(rec);
                 Ok(())
@@ -1802,13 +2523,19 @@ impl Machine {
                 record,
                 from,
                 advance,
-            } => self.write_file(cur, *file, *record, from.as_ref(), advance.as_ref()),
+            } => {
+                self.write_file(cur, *file, *record, from.as_ref(), advance.as_ref())?;
+                self.rerun_record(cur, *file)
+            }
             Instr::Read {
                 file,
                 next,
                 into,
                 key,
-            } => self.read_file(cur, *file, *next, into.as_ref(), *key),
+            } => {
+                self.read_file(cur, *file, *next, into.as_ref(), *key)?;
+                self.rerun_record(cur, *file)
+            }
             Instr::Inspect(loc, steps) => self.inspect(cur, loc, steps),
             Instr::StringStmt {
                 sources,
@@ -1842,6 +2569,10 @@ impl Machine {
                 Ok(())
             }
             Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex),
+            Instr::SetEntry(targets, name) => self.set_entry(cur, targets, name, None),
+            Instr::SetEntryWithInterface(targets, name, mode) => {
+                self.set_entry(cur, targets, name, Some(*mode))
+            }
             Instr::Initiate(r) => self.report_initiate(cur, *r),
             Instr::Generate { report, group } => self.report_generate(cur, *report, *group),
             Instr::Terminate(r) => self.report_terminate(cur, *r),
@@ -1849,12 +2580,31 @@ impl Machine {
                 self.suppress_printing = true;
                 Ok(())
             }
-            Instr::Call { program, args, .. } => {
-                if let Some(callee) = self.prepare_call(cur, program, args, false)? {
+            Instr::Call {
+                interface,
+                program,
+                args,
+                returning,
+            } => {
+                let saved_rc = self.rc_before_call(cur)?;
+                let callee = self.prepare_call(cur, program, args, *interface, false)?;
+                let result = returning
+                    .as_ref()
+                    .map(|dst| self.pending_result(cur, callee, dst, saved_rc))
+                    .transpose()?;
+                if let Some(callee) = callee {
+                    if returning.is_none() && self.instances[callee].code.result.is_some() {
+                        self.bind_program_result(callee)?;
+                    }
                     match self.run_from(callee, true)? {
-                        Exit::Returned => self.store_rc(cur),
+                        Exit::Returned => {}
                         Exit::StopRun(_) => return err(STOP_RUN),
                     }
+                }
+                if let Some(result) = result {
+                    self.finish_result(cur, callee, result)?;
+                } else {
+                    self.store_rc(cur);
                 }
                 Ok(())
             }
@@ -1866,21 +2616,29 @@ impl Machine {
     }
 
     fn resolve_program(&mut self, cur: usize, name: &str) -> Option<usize> {
+        self.resolve_local_program(cur, name)
+            .or_else(|| self.find_program(name))
+    }
+
+    fn resolve_local_program(&mut self, cur: usize, name: &str) -> Option<usize> {
         // Programs contained in the caller's module.
         let module = self.instances[cur].module.clone();
         let me = self.instances[cur].module_index;
-        if let Some(idx) = module.programs.iter().position(|p| p.name == name) {
-            let p = &module.programs[idx];
-            // directly contained, or COMMON sibling, or any for simplicity
-            let visible = p.parent == Some(me)
-                || (p.common && p.parent == module.programs[me as usize].parent)
-                || p.parent.is_none()
-                || p.parent.is_some();
-            if visible {
+        for (idx, p) in module.programs.iter().enumerate() {
+            if p.name != name && !p.entries.iter().any(|e| e.name == name) {
+                continue;
+            }
+            let mut ancestor = Some(me);
+            let mut common_visible = false;
+            while let Some(a) = ancestor {
+                common_visible |= p.common && p.parent == Some(a);
+                ancestor = module.programs[a as usize].parent;
+            }
+            if p.parent == Some(me) || common_visible || p.parent.is_none() {
                 return Some(self.instantiate(&module, idx as u32));
             }
         }
-        self.find_program(name)
+        None
     }
 
     /// Whether program `name` can be called (it is loaded, if need be).
@@ -1904,7 +2662,34 @@ impl Machine {
                     && let Ok(m) = crate::load_module(&path)
                 {
                     let m = Rc::new(m);
-                    return Some(self.instantiate(&m, 0));
+                    let index = m
+                        .programs
+                        .iter()
+                        .position(|p| p.name == name || p.entries.iter().any(|e| e.name == name))
+                        .unwrap_or(0);
+                    return Some(self.instantiate(&m, index as u32));
+                }
+            }
+            // An ENTRY exported by an object need not have a separate host file.
+            let mut members: Vec<_> = std::fs::read_dir(&dir)
+                .ok()
+                .into_iter()
+                .flatten()
+                .filter_map(Result::ok)
+                .map(|e| e.path())
+                .filter(|p| {
+                    p.is_file() && p.extension().is_none_or(|x| x.eq_ignore_ascii_case("zo"))
+                })
+                .collect();
+            members.sort();
+            for path in members {
+                if let Ok(module) = crate::load_module(&path)
+                    && let Some(index) = module.programs.iter().position(|p| {
+                        p.parent.is_none()
+                            && (p.name == name || p.entries.iter().any(|e| e.name == name))
+                    })
+                {
+                    return Some(self.instantiate(&Rc::new(module), index as u32));
                 }
             }
         }
@@ -2089,14 +2874,15 @@ impl Machine {
         }
     }
 
-    fn close_program_files(&mut self, i: usize) {
+    fn close_program_files(&mut self, i: usize) -> RResult<()> {
         for f in 0..self.instances[i].files.len() {
             let def = &self.instances[i].code.files[f];
             if def.owner.is_some() || def.external {
                 continue;
             }
-            let _ = self.close_file(i, f as u32, false);
+            self.close_file_implicit(i, f as u32)?;
         }
+        Ok(())
     }
 }
 

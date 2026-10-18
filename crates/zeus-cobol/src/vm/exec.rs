@@ -211,6 +211,7 @@ impl Machine {
                 match def.kind {
                     ExecKind::Cics => "CICS",
                     ExecKind::Sql => "Db2",
+                    ExecKind::SqlIms => "IMS SQL",
                     ExecKind::Dli => "IMS",
                 }
             )));

@@ -7,6 +7,8 @@
 
 pub mod exec85;
 pub mod extract;
+pub mod jcl;
+pub mod manifest;
 pub mod population;
 pub mod report;
 pub mod runner;

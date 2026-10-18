@@ -204,7 +204,7 @@ fn run(name: &str, main: &[u8], args: &Args, libs: Vec<PathBuf>, image: &Image) 
             }
         };
         if !explicit_ccsid {
-            zeus_cobol::codepage::set_active(module.ccsid);
+            zeus_cobol::codepage::set_default(module.ccsid);
         }
         let env = RunEnv {
             dds,
@@ -235,7 +235,7 @@ fn run(name: &str, main: &[u8], args: &Args, libs: Vec<PathBuf>, image: &Image) 
             }
         };
         if !explicit_ccsid {
-            zeus_cobol::codepage::set_active(module.ccsid);
+            zeus_cobol::codepage::set_default(module.ccsid);
         }
         sys.set_step(zeus_cobol::vm::StepInfo {
             parm: args.parm.clone(),

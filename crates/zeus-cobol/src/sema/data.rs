@@ -12,7 +12,10 @@ use crate::ebcdic;
 use crate::front::ast::{self, DataEntry, DataRef, Usage, ValueClause};
 use crate::front::source::Pos;
 use crate::vm::data as vdata;
-use crate::zir::{Base, DataType, Desc, Dim, ExternalArea, Loc, NumType, NumUsage, Odo, SignPos};
+use crate::zir::{
+    Arg, Base, DataType, Desc, Dim, Ex, ExternalArea, Func, Loc, NumType, NumUsage, Odo, Op,
+    SignPos,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Area {
@@ -58,6 +61,9 @@ pub struct Item {
 
 #[derive(Debug, Default, Clone)]
 pub struct DataModel {
+    pub label_scope: bool,
+    pub label_roots: Vec<usize>,
+    pub dynamic_init: Vec<(Loc, Vec<u8>)>,
     pub items: Vec<Item>,
     pub descs: Vec<Desc>,
     pub static_init: Vec<u8>,
@@ -88,6 +94,294 @@ fn align(n: u32, a: u32) -> u32 {
 }
 
 impl DataModel {
+    /// Keep maximum storage allocation, but calculate complex ODO locations
+    /// from the current object values on every reference.
+    fn dynamic_layout(&mut self) -> Result<()> {
+        for (id, item) in self.items.iter().enumerate() {
+            if item.entry.justified
+                && (!item.children.is_empty()
+                    || item.level == 66
+                    || item.level == 88
+                    || !item.pic.as_ref().is_some_and(|p| {
+                        matches!(
+                            p.category,
+                            Category::Alphabetic | Category::Alphanumeric | Category::Dbcs
+                        )
+                    })
+                    || !matches!(
+                        item.usage,
+                        Usage::Display | Usage::Display1 | Usage::National
+                    ))
+            {
+                return Err(Diag::error(
+                    item.pos,
+                    "JUSTIFIED requires an elementary alphabetic, alphanumeric, DBCS or national item",
+                ));
+            }
+            if item.entry.blank_when_zero
+                && (!item.children.is_empty()
+                    || !matches!(item.usage, Usage::Display | Usage::National)
+                    || !item.pic.as_ref().is_some_and(|p| {
+                        matches!(p.category, Category::Numeric | Category::NumericEdited)
+                            && !p.signed
+                    })
+                    || item.entry.picture.as_ref().is_some_and(|p| p.contains('*')))
+            {
+                return Err(Diag::error(
+                    item.pos,
+                    "BLANK WHEN ZERO requires an unsigned DISPLAY/NATIONAL numeric or numeric-edited PICTURE without '*'",
+                ));
+            }
+            if item.entry.sign.is_some() {
+                fn signed(dm: &DataModel, id: usize) -> bool {
+                    let item = &dm.items[id];
+                    if item.children.is_empty() {
+                        item.pic
+                            .as_ref()
+                            .is_some_and(|p| p.category == Category::Numeric && p.signed)
+                            && matches!(item.usage, Usage::Display | Usage::National)
+                    } else {
+                        item.children.iter().any(|&i| signed(dm, i))
+                    }
+                }
+                if !signed(self, id)
+                    && !item
+                        .pic
+                        .as_ref()
+                        .is_some_and(|p| p.category == Category::ExternalFloat)
+                {
+                    return Err(Diag::error(
+                        item.pos,
+                        "SIGN requires a signed DISPLAY/NATIONAL numeric item or a group containing one",
+                    ));
+                }
+            }
+        }
+        fn lit(n: u32) -> Ex {
+            Ex::Lit(Dec::from_i64(n as i64))
+        }
+        fn bin(op: Op, a: Ex, b: Ex) -> Ex {
+            if let (Ex::Lit(x), Ex::Lit(y)) = (&a, &b) {
+                let x = x.coef as u32;
+                let y = y.coef as u32;
+                return lit(match op {
+                    Op::Add => x + y,
+                    Op::Sub => x - y,
+                    Op::Mul => x * y,
+                    _ => unreachable!(),
+                });
+            }
+            match (&a, &b, op) {
+                (_, Ex::Lit(v), Op::Add | Op::Sub) if *v == Dec::ZERO => a,
+                (Ex::Lit(v), _, Op::Add) if *v == Dec::ZERO => b,
+                (_, Ex::Lit(v), Op::Mul) if *v == Dec::from_i64(1) => a,
+                _ => Ex::Bin(op, Box::new(a), Box::new(b)),
+            }
+        }
+        fn variable(e: &Ex) -> Option<Box<Ex>> {
+            if matches!(e, Ex::Lit(_)) {
+                None
+            } else {
+                Some(Box::new(e.clone()))
+            }
+        }
+        fn walk(dm: &mut DataModel, id: usize, start: Ex, lengths: &mut [Ex]) -> Result<Ex> {
+            let item = dm.items[id].clone();
+            let mut size = lit(item.len);
+            if !item.children.is_empty() {
+                let mut cursor = lit(0);
+                let mut end = lit(0);
+                let overlays = item
+                    .children
+                    .iter()
+                    .any(|&child| dm.items[child].entry.redefines.is_some());
+                let mut offsets = HashMap::new();
+                for child in &item.children {
+                    let ci = dm.items[*child].clone();
+                    let mut relative = if let Some(target) = &ci.entry.redefines {
+                        offsets
+                            .get(target)
+                            .cloned()
+                            .unwrap_or_else(|| cursor.clone())
+                    } else {
+                        cursor.clone()
+                    };
+                    if ci.entry.sync {
+                        let alignment = match ci.usage {
+                            Usage::Binary
+                            | Usage::NativeBinary
+                            | Usage::Index
+                            | Usage::Pointer
+                            | Usage::Pointer32
+                            | Usage::ProcedurePointer
+                            | Usage::FunctionPointer
+                            | Usage::Float
+                            | Usage::Double => dm.elementary_len(*child)?.max(1),
+                            _ => 1,
+                        };
+                        if alignment > 1 {
+                            let absolute = bin(Op::Add, start.clone(), relative.clone());
+                            if let Ex::Lit(n) = absolute {
+                                relative = bin(
+                                    Op::Sub,
+                                    lit(align(n.coef as u32, alignment)),
+                                    start.clone(),
+                                );
+                            } else {
+                                let rounded = Ex::Func(
+                                    Func::IntegerPart,
+                                    vec![Arg::Num(Ex::Bin(
+                                        Op::Div,
+                                        Box::new(bin(Op::Add, absolute, lit(alignment - 1))),
+                                        Box::new(lit(alignment)),
+                                    ))],
+                                );
+                                relative = bin(
+                                    Op::Sub,
+                                    bin(Op::Mul, rounded, lit(alignment)),
+                                    start.clone(),
+                                );
+                            }
+                        }
+                    }
+                    if let Some(name) = &ci.name {
+                        offsets.insert(name.clone(), relative.clone());
+                    }
+                    let total = walk(
+                        dm,
+                        *child,
+                        bin(Op::Add, start.clone(), relative.clone()),
+                        lengths,
+                    )?;
+                    let next = bin(Op::Add, relative, total);
+                    if ci.entry.redefines.is_none() {
+                        cursor = next.clone();
+                    }
+                    end = match (&end, &next) {
+                        (Ex::Lit(a), Ex::Lit(b)) => Ex::Lit((*a).max(*b)),
+                        _ if !overlays => next,
+                        _ => Ex::Func(Func::Max, vec![Arg::Num(end), Arg::Num(next)]),
+                    };
+                }
+                size = end;
+            }
+            lengths[id] = size.clone();
+            let desc = &mut dm.descs[item.desc as usize];
+            desc.dynamic_offset = variable(&start);
+            desc.dynamic_len = variable(&size);
+            let count = if let Some(o) = &item.occurs {
+                if let Some(dep) = &o.depending {
+                    let target = dm.resolve(dep)?;
+                    let ty = &dm.descs[dm.items[target].desc as usize].ty;
+                    if !matches!(ty, DataType::Numeric(n) if n.scale == 0) {
+                        return Err(Diag::error(
+                            dep.pos,
+                            "ODO object must be an integer data item",
+                        ));
+                    }
+                    Ex::Load(Loc {
+                        desc: dm.items[target].desc,
+                        subs: vec![],
+                        refmod: None,
+                    })
+                } else {
+                    lit(o.max.max(1))
+                }
+            } else {
+                lit(1)
+            };
+            Ok(bin(Op::Mul, size, count))
+        }
+        let roots: Vec<_> = self
+            .items
+            .iter()
+            .enumerate()
+            .filter(|(_, i)| i.parent.is_none() && i.cond_of.is_none() && i.index_of.is_none())
+            .map(|(i, _)| i)
+            .collect();
+        let mut lengths = vec![lit(0); self.items.len()];
+        for id in roots {
+            walk(self, id, lit(self.items[id].offset), &mut lengths)?;
+        }
+        for id in 0..self.items.len() {
+            let item = self.items[id].clone();
+            if item.cond_of.is_some() {
+                continue;
+            }
+            let mut parents = vec![];
+            let mut p = Some(id);
+            while let Some(i) = p {
+                if self.items[i].occurs.is_some() {
+                    parents.push(i);
+                }
+                p = self.items[i].parent;
+            }
+            parents.reverse();
+            if let Some(&first) = parents.first() {
+                let root = &self.descs[self.items[first].desc as usize];
+                self.descs[item.desc as usize].table_bounds = Some(crate::zir::TableBounds {
+                    offset: root.offset,
+                    dynamic_offset: root.dynamic_offset.clone(),
+                    len: self.items[first].len * self.items[first].occurs.as_ref().unwrap().max,
+                });
+            }
+            for (k, p) in parents.into_iter().enumerate() {
+                self.descs[item.desc as usize].dims[k].dynamic_stride = variable(&lengths[p]);
+                if let Some(dep) = self.items[p]
+                    .occurs
+                    .as_ref()
+                    .and_then(|o| o.depending.as_ref())
+                {
+                    let target = self.resolve(dep)?;
+                    self.descs[item.desc as usize].dims[k].count = Some(Box::new(Ex::Load(Loc {
+                        desc: self.items[target].desc,
+                        subs: vec![],
+                        refmod: None,
+                    })));
+                }
+            }
+            if let Some(dep) = item.occurs.as_ref().and_then(|o| o.depending.as_ref()) {
+                let target = self.resolve(dep)?;
+                let desc = &self.descs[self.items[target].desc as usize];
+                if desc.dynamic_offset.is_some() || !desc.dims.is_empty() {
+                    return Err(Diag::error(
+                        dep.pos,
+                        "ODO object cannot be variably located or subordinate to OCCURS",
+                    ));
+                }
+            }
+            let desc = &self.descs[item.desc as usize];
+            if desc.dynamic_offset.is_none() && desc.dims.iter().all(|d| d.dynamic_stride.is_none())
+            {
+                continue;
+            }
+            if !matches!(item.area, Area::Working) || item.level == 66 {
+                continue;
+            }
+            let mut p = Some(id);
+            let mut excluded = false;
+            while let Some(i) = p {
+                if self.items[i].entry.redefines.is_some()
+                    || (i != id && self.items[i].entry.value.is_some())
+                {
+                    excluded = true;
+                }
+                p = self.items[i].parent;
+            }
+            if !excluded && (item.children.is_empty() || item.entry.value.is_some()) {
+                self.dynamic_init.push((
+                    Loc {
+                        desc: item.desc,
+                        subs: vec![],
+                        refmod: None,
+                    },
+                    self.static_init[item.offset as usize..(item.offset + item.len) as usize]
+                        .to_vec(),
+                ));
+            }
+        }
+        Ok(())
+    }
     fn add(&mut self, item: Item) -> usize {
         let id = self.items.len();
         if let Some(n) = &item.name {
@@ -196,6 +490,26 @@ impl DataModel {
                     picture::analyze(p, settings.decimal_comma, settings.currency)
                         .map_err(|m| Diag::error(it.pos, m))?,
                 );
+                let pic = it.pic.as_ref().unwrap();
+                if pic.category == Category::ExternalFloat
+                    && (!matches!(it.usage, Usage::Display | Usage::National)
+                        || it.entry.blank_when_zero
+                        || it.entry.justified
+                        || it.entry.value.is_some())
+                {
+                    return Err(Diag::error(
+                        it.pos,
+                        "external floating item requires DISPLAY/NATIONAL and forbids VALUE, JUSTIFIED and BLANK WHEN ZERO",
+                    ));
+                }
+                if matches!(pic.category, Category::Numeric | Category::NumericEdited)
+                    && pic.digits > crate::front::numeric().operand_digits()
+                {
+                    return Err(Diag::error(
+                        it.pos,
+                        "PICTURE exceeds ARITH(COMPAT/EXTEND) digit limit",
+                    ));
+                }
             }
         }
         Ok(())
@@ -204,8 +518,53 @@ impl DataModel {
     /// Storage length of an elementary item.
     fn elementary_len(&self, id: usize) -> Result<u32> {
         let it = &self.items[id];
+        if matches!(
+            it.usage,
+            Usage::Index | Usage::Pointer | Usage::Pointer32 | Usage::Float | Usage::Double
+        ) && (it.pic.is_some()
+            || it.entry.sign.is_some()
+            || it.entry.justified
+            || it.entry.blank_when_zero)
+        {
+            return Err(Diag::error(
+                it.pos,
+                "INDEX, POINTER and internal floating items forbid PICTURE, SIGN, JUSTIFIED and BLANK WHEN ZERO",
+            ));
+        }
+        if matches!(
+            it.usage,
+            Usage::Binary | Usage::NativeBinary | Usage::Packed
+        ) && !it
+            .pic
+            .as_ref()
+            .is_some_and(|p| p.category == Category::Numeric)
+        {
+            return Err(Diag::error(
+                it.pos,
+                "binary and packed-decimal items require a numeric PICTURE",
+            ));
+        }
+        if matches!(it.usage, Usage::ProcedurePointer | Usage::FunctionPointer)
+            && (it.pic.is_some()
+                || it.entry.sign.is_some()
+                || it.entry.justified
+                || it.entry.blank_when_zero)
+        {
+            return Err(Diag::error(
+                it.pos,
+                "procedure/function-pointer cannot have PICTURE, SIGN, JUSTIFIED or BLANK WHEN ZERO",
+            ));
+        }
         Ok(match it.usage {
-            Usage::Index | Usage::Pointer | Usage::Float => 4,
+            Usage::Index | Usage::Pointer | Usage::FunctionPointer => {
+                if crate::front::lp64() {
+                    8
+                } else {
+                    4
+                }
+            }
+            Usage::Pointer32 | Usage::Float => 4,
+            Usage::ProcedurePointer => 8,
             Usage::Double => 8,
             Usage::Binary | Usage::NativeBinary => {
                 let p = it
@@ -231,10 +590,36 @@ impl DataModel {
                         ),
                     )
                 })?;
+                if it.usage == Usage::National
+                    && (matches!(p.category, Category::Alphabetic | Category::Alphanumeric)
+                        || (p.category == Category::AlphanumericEdited
+                            && !it.entry.picture.as_ref().is_some_and(|s| s.contains('N')))
+                        || it.entry.picture.as_ref().is_some_and(|s| s.contains('G')))
+                {
+                    return Err(Diag::error(
+                        it.pos,
+                        "USAGE NATIONAL requires a national or numeric PICTURE",
+                    ));
+                }
                 let sign = it.entry.sign.or_else(|| self.inherited_sign(id));
                 let sep =
                     matches!(sign, Some((_, true))) && p.category == Category::Numeric && p.signed;
-                p.size + u32::from(sep)
+                if it.usage == Usage::National && p.category != Category::Dbcs {
+                    if p.category == Category::Numeric && p.signed && !sep {
+                        return Err(Diag::error(
+                            it.pos,
+                            "signed NATIONAL numeric items require SIGN SEPARATE",
+                        ));
+                    }
+                    let national_edit = it.entry.picture.as_ref().is_some_and(|s| s.contains('N'));
+                    if national_edit {
+                        p.size
+                    } else {
+                        2 * (p.size + u32::from(sep))
+                    }
+                } else {
+                    p.size + u32::from(sep)
+                }
             }
         })
     }
@@ -242,9 +627,63 @@ impl DataModel {
     /// Computes lengths and offsets of `id` and its subordinates, placed at
     /// `offset`. Returns the item's total size (all occurrences).
     fn layout(&mut self, id: usize, offset: u32) -> Result<u32> {
+        if !self.items[id].children.is_empty()
+            && matches!(
+                self.items[id].usage,
+                Usage::ProcedurePointer | Usage::FunctionPointer
+            )
+        {
+            return Err(Diag::error(
+                self.items[id].pos,
+                "procedure/function-pointer must be elementary",
+            ));
+        }
+        let inherited_national = self.items[id]
+            .parent
+            .is_some_and(|p| self.items[p].entry.group_national);
+        if inherited_national || self.items[id].entry.group_national {
+            let item = &mut self.items[id];
+            if item.entry.usage.is_some_and(|u| u != Usage::National)
+                || (!item.children.is_empty()
+                    && (item.entry.usage.is_some() || item.entry.justified))
+                || (item.children.is_empty() && item.entry.group_national)
+            {
+                return Err(Diag::error(
+                    item.pos,
+                    "invalid USAGE/JUSTIFIED or elementary GROUP-USAGE NATIONAL",
+                ));
+            }
+            if !item.children.is_empty() {
+                item.entry.group_national = true;
+            }
+            item.usage = Usage::National;
+        }
+        if self.items[id]
+            .pic
+            .as_ref()
+            .is_some_and(|p| p.category == Category::AlphanumericEdited)
+            && self.items[id]
+                .entry
+                .picture
+                .as_ref()
+                .is_some_and(|s| s.contains('N'))
+        {
+            if self.items[id]
+                .entry
+                .usage
+                .is_some_and(|u| u != Usage::National)
+            {
+                return Err(Diag::error(
+                    self.items[id].pos,
+                    "national-edited items require USAGE NATIONAL",
+                ));
+            }
+            self.items[id].usage = Usage::National;
+        }
         // Inherit USAGE from groups.
         if let Some(parent) = self.items[id].parent
             && self.items[id].entry.usage.is_none()
+            && self.items[id].usage != Usage::National
             && self.items[id].cond_of.is_none()
         {
             let pu = self.items[parent].usage;
@@ -259,6 +698,9 @@ impl DataModel {
                 | Usage::NativeBinary
                 | Usage::Index
                 | Usage::Pointer
+                | Usage::Pointer32
+                | Usage::ProcedurePointer
+                | Usage::FunctionPointer
                 | Usage::Float => self.elementary_len(id)?,
                 Usage::Double => 8,
                 _ => 1,
@@ -307,6 +749,8 @@ impl DataModel {
         while let Some(c) = cur {
             if let Some(o) = &self.items[c].occurs {
                 dims.push(Dim {
+                    count: None,
+                    dynamic_stride: None,
                     stride: self.items[c].len,
                     max: o.max,
                 });
@@ -320,11 +764,17 @@ impl DataModel {
     fn data_type(&self, id: usize) -> DataType {
         let it = &self.items[id];
         if !it.children.is_empty() || it.renames.is_some() {
-            return DataType::Group;
+            return if it.entry.group_national {
+                DataType::National
+            } else {
+                DataType::Group
+            };
         }
         match it.usage {
             Usage::Index => return DataType::Index,
-            Usage::Pointer => return DataType::Pointer,
+            Usage::Pointer | Usage::Pointer32 => return DataType::Pointer,
+            Usage::ProcedurePointer => return DataType::ProcedurePointer,
+            Usage::FunctionPointer => return DataType::FunctionPointer,
             Usage::Float => return DataType::Float { long: false },
             Usage::Double => return DataType::Float { long: true },
             _ => {}
@@ -334,6 +784,11 @@ impl DataModel {
         };
         let just = it.entry.justified;
         match p.category {
+            Category::ExternalFloat => DataType::ExternalFloat {
+                picture: picture::expand(it.entry.picture.as_ref().unwrap()).unwrap(),
+                national: it.usage == Usage::National,
+                comma: self.decimal_comma,
+            },
             Category::Alphabetic => DataType::Alphabetic { just },
             Category::Alphanumeric => DataType::Alphanumeric { just },
             // PICTURE N: national with USAGE NATIONAL or NSYMBOL(NATIONAL)
@@ -354,9 +809,11 @@ impl DataModel {
                 }
             }
             Category::AlphanumericEdited => DataType::AlphanumericEdited {
+                national: it.usage == Usage::National,
                 edit: p.edit.clone(),
             },
             Category::NumericEdited => DataType::NumericEdited {
+                national: it.usage == Usage::National,
                 edit: p.edit.clone(),
                 digits: p.digits,
                 scale: p.scale,
@@ -365,6 +822,7 @@ impl DataModel {
                 point: ebcdic::from_latin1(if self.decimal_comma { b',' } else { b'.' }),
             },
             Category::Numeric if it.entry.blank_when_zero => DataType::NumericEdited {
+                national: it.usage == Usage::National,
                 edit: (0..p.digits)
                     .map(|_| super::picture::EditSym::Digit)
                     .collect(),
@@ -377,6 +835,10 @@ impl DataModel {
             Category::Numeric => {
                 let usage = match it.usage {
                     Usage::Packed => NumUsage::Packed,
+                    Usage::National => NumUsage::National,
+                    Usage::Binary if crate::front::trunc() == crate::front::Trunc::Bin => {
+                        NumUsage::Native
+                    }
                     Usage::Binary => NumUsage::Binary,
                     Usage::NativeBinary => NumUsage::Native,
                     _ => NumUsage::Display,
@@ -530,15 +992,56 @@ impl DataModel {
             let n = map[&i];
             if self.items[n].cond_of.is_none() {
                 self.make_desc(n);
+                let source = &outer.descs[outer.items[i].desc as usize];
+                let target = &mut self.descs[self.items[n].desc as usize];
+                target.dynamic_offset = source.dynamic_offset.clone();
+                target.dynamic_len = source.dynamic_len.clone();
+                target.dims = source.dims.clone();
+                target.table_bounds = source.table_bounds.clone();
             }
         }
     }
 
     /// Creates the descriptor of an item.
     fn make_desc(&mut self, id: usize) {
+        fn abi(
+            dm: &DataModel,
+            id: usize,
+            base: u32,
+            mut occurs: Vec<u32>,
+            out: &mut Vec<crate::zir::AbiField>,
+        ) {
+            let item = &dm.items[id];
+            if let Some(o) = &item.occurs {
+                occurs.push(o.max);
+            }
+            if item.children.is_empty() {
+                out.push(crate::zir::AbiField {
+                    offset: item.offset - base,
+                    len: item.len,
+                    ty: dm.data_type(id).abi_type(),
+                    synchronized: item.entry.sync,
+                    occurs,
+                });
+            } else {
+                for &child in &item.children {
+                    if dm.items[child].level != 66 {
+                        abi(dm, child, base, occurs.clone(), out);
+                    }
+                }
+            }
+        }
+        let mut fields = Vec::new();
+        abi(self, id, self.items[id].offset, vec![], &mut fields);
         let it = &self.items[id];
         let desc = Desc {
+            table_bounds: None,
+            right_justify: it.entry.justified,
+            dynamic_offset: None,
+            dynamic_len: None,
+            abi: fields,
             name: it.name.clone().unwrap_or_else(|| "FILLER".into()),
+            definition: (it.pos.file, it.pos.line),
             base: self.base(id),
             offset: it.offset,
             len: it.len,
@@ -603,7 +1106,56 @@ impl DataModel {
         v: &ast::Operand,
         pos: Pos,
     ) -> Result<()> {
+        if let ast::Operand::Lit(ast::Literal::Num(text)) = v {
+            if text.contains('E') {
+                let value =
+                    crate::numeric::floating_literal(text).map_err(|m| Diag::error(pos, m))?;
+                if value
+                    .store(ty, field, false)
+                    .map_err(|m| Diag::error(pos, m))?
+                {
+                    return Err(Diag::error(
+                        pos,
+                        "VALUE exceeds the receiving item's capacity",
+                    ));
+                }
+                return Ok(());
+            }
+            if matches!(ty, DataType::Numeric(t) if t.usage == NumUsage::Native) {
+                let value =
+                    crate::numeric::number::Number::parse(text).map_err(|m| Diag::error(pos, m))?;
+                if value
+                    .store(ty, field, false)
+                    .map_err(|m| Diag::error(pos, m))?
+                {
+                    return Err(Diag::error(
+                        pos,
+                        "VALUE exceeds the native binary storage range",
+                    ));
+                }
+                return Ok(());
+            }
+        }
         let value = lit::constant(v, self.decimal_comma).map_err(|m| Diag::error(pos, m))?;
+        if ty.is_entry_pointer() && !matches!(value, lit::Const::Null) {
+            return Err(Diag::error(
+                pos,
+                "procedure/function-pointer VALUE must be NULL",
+            ));
+        }
+        if ty.is_national() && *ty != DataType::National {
+            match &value {
+                lit::Const::Num(d, _) => {
+                    crate::vm::eval::move_into(&crate::vm::eval::Val::Num(*d), ty, field)
+                }
+                lit::Const::National(b) => vdata::move_national(b, field),
+                lit::Const::Bytes(b) => vdata::move_national(&vdata::national_of(b), field),
+                lit::Const::Fig(f) => vdata::fill_pattern(field, &vdata::national_fig(f.byte())),
+                lit::Const::All(b) => vdata::fill_pattern(field, &vdata::national_of(b)),
+                lit::Const::Null => field.fill(0),
+            }
+            return Ok(());
+        }
         match (&value, ty) {
             // national items: national literals as they are, other
             // literals and figurative constants converted (national spaces)
@@ -630,6 +1182,7 @@ impl DataModel {
                     blank_zero,
                     currency,
                     point,
+                    ..
                 },
             ) => {
                 vdata::edit_num(
@@ -643,7 +1196,15 @@ impl DataModel {
                     field,
                 );
             }
-            (lit::Const::Num(d, _), DataType::Float { .. }) => vdata::store_float(field, *d),
+            (lit::Const::Num(d, _), DataType::Float { .. }) => {
+                crate::numeric::number::Number::decimal(
+                    *d,
+                    d.integer_digits() as i32,
+                    d.scale as i32,
+                )
+                .store(ty, field, false)
+                .map_err(|m| Diag::error(pos, m))?;
+            }
             (lit::Const::Fig(_), DataType::Float { .. }) => field.fill(0),
             (lit::Const::Num(_, text), _) => vdata::move_alnum(text, field, false),
             (lit::Const::Fig(f), DataType::Numeric(t)) if *f == lit::FigByte::Zero => {
@@ -667,13 +1228,147 @@ fn default_value(ty: &DataType, field: &mut [u8]) {
         DataType::Numeric(t) => {
             vdata::store_num(t, field, Dec::ZERO, false);
         }
-        DataType::Index | DataType::Pointer | DataType::Float { .. } => field.fill(0),
+        ty if ty.is_national() => vdata::fill_pattern(field, &vdata::national_fig(ebcdic::SPACE)),
+        DataType::Index
+        | DataType::Pointer
+        | DataType::ProcedurePointer
+        | DataType::FunctionPointer
+        | DataType::Float { .. } => field.fill(0),
         _ => field.fill(ebcdic::SPACE),
     }
 }
 
 /// Builds the data model of a program.
 pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
+    for (name, pos) in &prog.env.multiple_file_tape {
+        if !prog
+            .env
+            .files
+            .iter()
+            .any(|f| &f.name == name && matches!(f.organization, ast::Organization::Sequential))
+            || !prog.data.files.iter().any(|f| &f.name == name && !f.sort)
+        {
+            return Err(Diag::error(
+                *pos,
+                "MULTIPLE FILE requires a locally declared QSAM file",
+            ));
+        }
+    }
+    for (groups, kind) in [
+        (&prog.env.same_area, "AREA"),
+        (&prog.env.same_record_area, "RECORD"),
+        (&prog.env.same_sort_area, "SORT"),
+    ] {
+        let mut seen = std::collections::HashSet::new();
+        for group in groups {
+            let mut local = std::collections::HashSet::new();
+            let mut has_sort = false;
+            for name in group {
+                let fd = prog
+                    .data
+                    .files
+                    .iter()
+                    .find(|f| &f.name == name)
+                    .ok_or_else(|| {
+                        Diag::error(prog.pos, format!("SAME {kind} file {name} is not declared"))
+                    })?;
+                if !prog.env.files.iter().any(|f| &f.name == name)
+                    || !local.insert(name)
+                    || fd.external
+                    || (kind != "SORT" && (!seen.insert(name) || fd.sort))
+                    || (kind == "SORT" && fd.sort && !seen.insert(name))
+                {
+                    return Err(Diag::error(
+                        fd.pos,
+                        "invalid, duplicate, external or sort file in SAME group",
+                    ));
+                }
+                has_sort |= fd.sort;
+                if kind == "RECORD"
+                    && (fd.global
+                        || fd.records.iter().any(|r| r.global)
+                        || fd.record_min == Some(0))
+                {
+                    return Err(Diag::error(
+                        fd.pos,
+                        "SAME RECORD forbids GLOBAL and RECORD CONTAINS 0",
+                    ));
+                }
+            }
+            if kind == "SORT" && !has_sort {
+                return Err(Diag::error(prog.pos, "SAME SORT requires a sort file"));
+            }
+        }
+    }
+    for area in &prog.env.same_area {
+        for group in prog
+            .env
+            .same_record_area
+            .iter()
+            .chain(&prog.env.same_sort_area)
+        {
+            if area.iter().any(|f| group.contains(f)) && !area.iter().all(|f| group.contains(f)) {
+                return Err(Diag::error(
+                    prog.pos,
+                    "overlapping SAME groups must include the complete SAME AREA group",
+                ));
+            }
+        }
+    }
+    let mut external_names = std::collections::HashSet::new();
+    for entry in &prog.data.working {
+        if entry.external
+            && (entry.level != 1
+                || entry.name.is_none()
+                || !external_names.insert(entry.name.clone()))
+        {
+            return Err(Diag::error(
+                entry.pos,
+                "EXTERNAL requires a unique named level 01 WORKING-STORAGE record",
+            ));
+        }
+    }
+    for entry in &prog.data.local {
+        if entry.external {
+            return Err(Diag::error(
+                entry.pos,
+                "LOCAL-STORAGE cannot specify EXTERNAL",
+            ));
+        }
+    }
+    for entry in prog
+        .data
+        .linkage
+        .iter()
+        .chain(prog.data.files.iter().flat_map(|f| &f.records))
+    {
+        if entry.external {
+            return Err(Diag::error(
+                entry.pos,
+                "data EXTERNAL is permitted only in WORKING-STORAGE",
+            ));
+        }
+    }
+    let all_entries: Vec<_> = prog
+        .data
+        .working
+        .iter()
+        .chain(&prog.data.local)
+        .chain(&prog.data.linkage)
+        .chain(prog.data.files.iter().flat_map(|f| &f.records))
+        .collect();
+    for entry in &all_entries {
+        if entry.global
+            && (entry.level != 1
+                || entry.name.is_none()
+                || all_entries.iter().filter(|e| e.name == entry.name).count() > 1)
+        {
+            return Err(Diag::error(
+                entry.pos,
+                "GLOBAL requires a unique named level 01 item",
+            ));
+        }
+    }
     let mut dm = DataModel {
         decimal_comma: settings.decimal_comma,
         currency: settings.currency,
@@ -681,6 +1376,7 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     };
     // File section: records of each FD share an area.
     let mut file_records = Vec::new();
+    let mut label_records = Vec::new();
     for (fi, fd) in prog.data.files.iter().enumerate() {
         let recs = dm.build_tree(&fd.records, &mut |_| Area::File(fi))?;
         if fd.global {
@@ -689,7 +1385,31 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             }
             dm.global_files.push(fd.name.clone());
         }
-        file_records.push(recs);
+        let (labels, data): (Vec<_>, Vec<_>) = recs.into_iter().partition(|&r| {
+            dm.items[r]
+                .name
+                .as_ref()
+                .is_some_and(|n| fd.label_records.contains(n))
+        });
+        if data.is_empty() && fd.reports.is_empty() {
+            return Err(Diag::error(
+                fd.pos,
+                "FD requires a data record distinct from its labels",
+            ));
+        }
+        for name in &fd.label_records {
+            if !labels
+                .iter()
+                .any(|&r| dm.items[r].name.as_ref() == Some(name))
+            {
+                return Err(Diag::error(
+                    fd.pos,
+                    format!("label record {name} must be level 01 under its FD"),
+                ));
+            }
+        }
+        label_records.push(labels);
+        file_records.push(data);
     }
     let mut working = prog.data.working.clone();
     working.extend(debug_item_entries());
@@ -768,6 +1488,21 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         dm.local_storage = Some((local_start, cursor - local_start));
     }
     // SAME RECORD AREA: the files of a group share one record area.
+    cursor = align(cursor, 8);
+    for labels in &label_records {
+        for &r in labels {
+            if dm.layout(r, cursor)? != 80 {
+                return Err(Diag::error(
+                    dm.items[r].pos,
+                    "user label record must contain 80 bytes",
+                ));
+            }
+        }
+    }
+    dm.label_roots = label_records.iter().flatten().copied().collect();
+    if !dm.label_roots.is_empty() {
+        cursor += 80;
+    }
     let mut same_start: HashMap<usize, u32> = HashMap::new();
     let mut shared_groups = prog.env.same_record_area.clone();
     // Plain SAME AREA is documentation for QSAM, record sharing for VSAM.
@@ -850,7 +1585,8 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     for &r in &lk {
         dm.layout(r, 0)?;
     }
-    // Index-names: one fullword each.
+    // Index-names use the LP address width.
+    let index_width = if crate::front::lp64() { 8 } else { 4 };
     let tables: Vec<usize> = (0..dm.items.len())
         .filter(|&i| {
             dm.items[i]
@@ -862,7 +1598,7 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
     for t in tables {
         let names = dm.items[t].occurs.as_ref().unwrap().indexed_by.clone();
         for name in names {
-            cursor = align(cursor, 4);
+            cursor = align(cursor, index_width);
             let mut e = DataEntry {
                 level: 1,
                 name: Some(name.clone()),
@@ -872,11 +1608,11 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             e.pos = dm.items[t].pos;
             let mut it = DataModel::new_item(&e, Area::Special);
             it.offset = cursor;
-            it.len = 4;
+            it.len = index_width;
             it.usage = Usage::Index;
             it.index_of = Some(t);
             dm.add(it);
-            cursor += 4;
+            cursor += index_width;
         }
     }
     // LINE-COUNTER and PAGE-COUNTER of each report.
@@ -930,6 +1666,11 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         ("RETURN-CODE", "S9(4)", Usage::Binary),
         ("TALLY", "9(5)", Usage::Binary),
         ("SORT-RETURN", "S9(4)", Usage::Binary),
+        ("SORT-CORE-SIZE", "S9(8)", Usage::Binary),
+        ("SORT-FILE-SIZE", "S9(8)", Usage::Binary),
+        ("SORT-MODE-SIZE", "S9(5)", Usage::Binary),
+        ("SORT-MESSAGE", "X(8)", Usage::Display),
+        ("SORT-CONTROL", "X(8)", Usage::Display),
     ] {
         cursor = align(cursor, 4);
         let e = DataEntry {
@@ -937,14 +1678,19 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             name: Some(name.to_string()),
             picture: Some(pic.to_string()),
             usage: Some(usage),
+            global: name.starts_with("SORT-"),
             ..DataEntry::default()
         };
         let mut it = DataModel::new_item(&e, Area::Special);
         it.pic = Some(picture::analyze(pic, false, '$').unwrap());
         it.offset = cursor;
         it.len = 2;
-        if name == "TALLY" {
+        if name == "TALLY" || matches!(name, "SORT-CORE-SIZE" | "SORT-FILE-SIZE" | "SORT-MODE-SIZE")
+        {
             it.len = 4;
+        }
+        if usage == Usage::Display {
+            it.len = 8;
         }
         cursor += it.len;
         dm.add(it);
@@ -1022,7 +1768,7 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
             dm.init_values(r, 0, &mut image)?;
         }
     }
-    for recs in &file_records {
+    for recs in file_records.iter().chain(&label_records) {
         for &r in recs {
             if dm.items[r].entry.redefines.is_none() {
                 // record areas start as spaces
@@ -1036,13 +1782,28 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         }
     }
     for i in 0..dm.items.len() {
+        if matches!(
+            dm.items[i].name.as_deref(),
+            Some("SORT-MESSAGE" | "SORT-CONTROL")
+        ) {
+            let it = &dm.items[i];
+            let value = if it.name.as_deref() == Some("SORT-MESSAGE") {
+                "SYSOUT  "
+            } else {
+                "IGZSRTCD"
+            };
+            image[it.offset as usize..(it.offset + it.len) as usize]
+                .copy_from_slice(&crate::codepage::active().encode(value));
+        }
         if dm.items[i].area == Area::Special && dm.items[i].usage == Usage::Index {
             let off = dm.items[i].offset as usize;
-            image[off..off + 4].copy_from_slice(&1i32.to_be_bytes());
+            let len = dm.items[i].len as usize;
+            binary::write(&mut image[off..off + len], 1);
         }
     }
     image.resize(align(cursor.max(image.len() as u32), 8) as usize, 0);
     dm.static_init = image;
+    dm.dynamic_layout()?;
     // Named report items (sum counters) can be referenced by their names.
     for (r, rd) in prog.data.reports.iter().enumerate() {
         for (i, e) in rd.entries.iter().enumerate() {
@@ -1112,10 +1873,9 @@ impl DataModel {
                     let rec = self.record_of(id);
                     if let Area::File(_) = self.items[rec].area
                         && q + 1 == quals.len()
-                        && self
-                            .files
-                            .get(&quals[q])
-                            .is_some_and(|(_, recs)| recs.contains(&rec))
+                        && self.files.get(&quals[q]).is_some_and(|(area, recs)| {
+                            recs.contains(&rec) || self.items[*area].area == self.items[rec].area
+                        })
                     {
                         return true;
                     }
@@ -1166,6 +1926,30 @@ impl DataModel {
         } else {
             own
         };
+        if self.label_scope && r.qualifiers.is_empty() && cands.len() > 1 {
+            let root = |mut id: usize| {
+                while let Some(parent) = self.items[id].parent {
+                    id = parent;
+                }
+                id
+            };
+            let first = &self.descs[self.items[cands[0]].desc as usize];
+            if cands.len() == self.label_roots.len()
+                && cands.iter().all(|&id| {
+                    let item = &self.items[id];
+                    let desc = &self.descs[item.desc as usize];
+                    item.children.is_empty()
+                        && item.cond_of.is_none()
+                        && self.label_roots.contains(&root(id))
+                        && desc.offset == first.offset
+                        && desc.len == first.len
+                        && desc.ty == first.ty
+                        && desc.abi == first.abi
+                })
+            {
+                return Ok(cands[0]);
+            }
+        }
         match cands.len() {
             0 => Err(Diag::error(
                 r.pos,

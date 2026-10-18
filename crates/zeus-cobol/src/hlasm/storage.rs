@@ -1,7 +1,7 @@
 //! Run-unit allocation ownership, separate from HLASM invocation lifetime.
 use std::collections::BTreeMap;
 
-#[derive(Clone)]
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 struct Block {
     length: usize,
     subpool: u8,
@@ -10,6 +10,7 @@ struct Block {
 
 /// Use one manager for all assembler calls in a run unit. Dropping the run
 /// unit releases the backing Vec and this metadata together.
+#[derive(Clone, serde::Serialize, serde::Deserialize)]
 pub struct DynamicStorage {
     active: BTreeMap<usize, Block>,
     free: BTreeMap<usize, usize>,

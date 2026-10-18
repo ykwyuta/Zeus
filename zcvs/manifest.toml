@@ -1,0 +1,126 @@
+[suite]
+name = "ZCVS"
+required_modules = ["ZD", "ZA", "ZN", "ZP", "ZF", "ZS", "ZE"]
+optional_modules = ["ZX"]
+
+[programs.ZN101A]
+ccsid = 939
+
+[programs.ZN102B]
+ccsid = 939
+
+[programs.ZN103A]
+ccsid = 939
+
+[programs.ZN104A]
+ccsid = 939
+
+[programs.ZN106M]
+ccsid = 939
+
+[programs.ZF201M]
+jcl = "ZF201M.JCL"
+
+[programs.ZS103M]
+parm = "NIGHTLY,20261016"
+expect_exit_code = 4
+
+[programs.ZE101N]
+expect = "compile-error"
+diagnostic_contains = "does not match"
+
+[programs.ZE102N]
+expect = "compile-error"
+diagnostic_contains = "END PROGRAM required"
+
+[programs.ZE103N]
+expect = "compile-error"
+diagnostic_contains = "WHEN SET TO FALSE"
+
+[programs.ZE104N]
+expect = "compile-error"
+diagnostic_contains = "literal"
+
+[programs.ZE105N]
+expect = "compile-error"
+diagnostic_contains = "UNTIL EXIT"
+
+[programs.ZE106N]
+expect = "compile-error"
+diagnostic_contains = "duplicate"
+
+[programs.ZE107N]
+expect = "compile-error"
+diagnostic_contains = "RENAMES"
+
+[programs.ZE108N]
+expect = "compile-error"
+diagnostic_contains = "INITIALIZE receiver"
+
+[programs.ZE109N]
+expect = "compile-error"
+diagnostic_contains = "LOCAL-STORAGE"
+
+[programs.ZE110N]
+expect = "compile-error"
+diagnostic_contains = "RECURSIVE"
+
+[programs.ZE111N]
+expect = "compile-error"
+diagnostic_contains = "RECURSIVE"
+
+[programs.ZE112N]
+expect = "compile-error"
+diagnostic_contains = "LINKAGE"
+
+[programs.ZE113N]
+expect = "compile-error"
+diagnostic_contains = "ENTRY"
+
+[programs.ZE114N]
+expect = "compile-error"
+diagnostic_contains = "SIGN SEPARATE"
+
+[programs.ZE115N]
+expect = "compile-error"
+diagnostic_contains = "GROUP-USAGE NATIONAL"
+
+[programs.ZE116N]
+expect = "compile-error"
+diagnostic_contains = "NULL"
+
+[programs.ZE117N]
+expect = "compile-error"
+diagnostic_contains = "requires BLOCK CONTAINS"
+
+[programs.ZE118N]
+expect = "compile-error"
+diagnostic_contains = "cannot specify BLOCK"
+
+[programs.ZE119N]
+expect = "compile-error"
+diagnostic_contains = "CODE-SET requires"
+
+[programs.ZE120N]
+expect = "compile-error"
+diagnostic_contains = "second FILE STATUS"
+
+[programs.ZE121N]
+expect = "compile-error"
+diagnostic_contains = "PADDING CHARACTER"
+
+[programs.ZE122N]
+expect = "compile-error"
+diagnostic_contains = "name expected"
+
+[programs.ZE123N]
+expect = "compile-error"
+diagnostic_contains = "label record"
+
+[programs.ZE124N]
+expect = "compile-error"
+diagnostic_contains = "SCREEN SECTION"
+
+[programs.ZE125N]
+expect = "compile-error"
+diagnostic_contains = "CBL/PROCESS option"

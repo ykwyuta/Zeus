@@ -20,6 +20,7 @@ pub struct Program {
 
 #[derive(Debug, Clone, Default)]
 pub struct Environment {
+    pub rerun: Vec<Rerun>,
     pub decimal_point_comma: bool,
     pub currency_sign: Option<String>,
     /// SPECIAL-NAMES mnemonic names: (implementor-name, mnemonic-name).
@@ -34,10 +35,22 @@ pub struct Environment {
     /// I-O-CONTROL SAME RECORD AREA groups.
     pub same_record_area: Vec<Vec<String>>,
     pub same_area: Vec<Vec<String>>,
-    pub multiple_file_tape: bool,
+    pub same_sort_area: Vec<Vec<String>>,
+    /// Syntax-checked QSAM names; DD LABEL controls physical placement.
+    pub multiple_file_tape: Vec<(String, Pos)>,
     pub apply_write_only: Vec<String>,
     /// WITH DEBUGGING MODE: debugging sections are active.
     pub debugging_mode: bool,
+    pub segment_limit: Option<u32>,
+}
+
+#[derive(Debug, Clone)]
+pub struct Rerun {
+    pub checkpoint: String,
+    pub file: Option<String>,
+    /// None denotes END OF REEL/UNIT, or a sort checkpoint when file is None.
+    pub records: Option<u32>,
+    pub pos: Pos,
 }
 
 #[derive(Debug, Clone)]
@@ -106,6 +119,7 @@ pub struct FileControl {
     pub record_key: Option<DataRef>,
     pub alternate_keys: Vec<(DataRef, bool)>,
     pub file_status: Option<DataRef>,
+    pub vsam_status: Option<DataRef>,
     pub reserve: Option<u32>,
     pub padding: Option<Operand>,
     pub record_delimiter: bool,
@@ -129,6 +143,7 @@ pub struct DataDivision {
 /// Kind of an embedded EXEC block.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum ExecKind {
+    SqlIms,
     Cics,
     Sql,
     Dli,
@@ -223,6 +238,9 @@ pub enum Usage {
     NativeBinary,
     Index,
     Pointer,
+    Pointer32,
+    ProcedurePointer,
+    FunctionPointer,
     /// COMP-1 / COMP-2 (hexadecimal floating point)
     Float,
     Double,
@@ -255,6 +273,7 @@ pub struct DataEntry {
     pub global: bool,
     pub picture: Option<String>,
     pub usage: Option<Usage>,
+    pub group_national: bool,
     /// SIGN clause: (leading, separate)
     pub sign: Option<(bool, bool)>,
     pub occurs: Option<Occurs>,
@@ -338,6 +357,7 @@ pub struct Procedure {
     pub pos: Pos,
     /// USING parameters (BY REFERENCE).
     pub using: Vec<DataRef>,
+    pub using_by_value: Vec<bool>,
     pub giving: Option<DataRef>,
     pub declaratives: Vec<Section>,
     pub sections: Vec<Section>,
@@ -366,6 +386,12 @@ pub struct Paragraph {
 
 #[derive(Debug, Clone)]
 pub enum UseStmt {
+    Label {
+        target: UseTarget,
+        global: bool,
+        beginning: Option<bool>,
+        reel: Option<bool>,
+    },
     /// USE AFTER STANDARD EXCEPTION/ERROR PROCEDURE ON files | INPUT ...
     /// (target, GLOBAL)
     Error(UseTarget, bool),
@@ -670,6 +696,7 @@ pub enum ReplaceMode {
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum SetStmt {
+    Entry(Vec<DataRef>, Operand, Option<crate::zir::CallInterface>),
     /// SET targets TO value
     To(Vec<DataRef>, Operand),
     /// SET targets UP/DOWN BY value
@@ -725,6 +752,7 @@ pub enum Stmt {
     },
     Alter(Vec<(ProcName, ProcName)>),
     Call {
+        interface: Option<crate::zir::CallInterface>,
         program: Operand,
         using: Vec<CallArg>,
         returning: Option<DataRef>,
@@ -910,6 +938,7 @@ pub enum Stmt {
     Entry {
         name: String,
         using: Vec<DataRef>,
+        using_by_value: Vec<bool>,
         pos: Pos,
     },
 }

@@ -16,7 +16,7 @@ use crate::ebcdic;
 use crate::zir::{FieldValue, GroupKind, LinePos, Loc, ReportDef, SumOperand};
 
 /// Run-time state of one report.
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub(super) struct ReportState {
     active: bool,
     /// A GENERATE was executed since INITIATE.

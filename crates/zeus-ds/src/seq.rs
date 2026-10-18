@@ -7,7 +7,7 @@ use crate::format::{self, RecordFormat};
 
 /// Open-file I/O staging buffers. Decoded logical records remain in the
 /// existing in-memory dataset model independently of this pool.
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, serde::Serialize, serde::Deserialize)]
 pub struct BufferPool {
     pub buffers: Vec<Vec<u8>>,
 }
@@ -80,7 +80,7 @@ impl BufferPool {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
 pub struct SequentialDataset {
     pub format: RecordFormat,
     /// Pad byte of fixed-length records.

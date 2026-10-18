@@ -30,7 +30,13 @@ fn fig(f: &Figurative) -> Option<Fig> {
         Figurative::Space => Fig::Space,
         Figurative::HighValue => Fig::High,
         Figurative::LowValue => Fig::Low,
-        Figurative::Quote => Fig::Quote,
+        Figurative::Quote => {
+            if crate::front::apost() {
+                Fig::Apostrophe
+            } else {
+                Fig::Quote
+            }
+        }
         Figurative::Symbolic(_) => return None,
     })
 }
@@ -46,6 +52,7 @@ fn alnum_function(f: Func) -> bool {
             | Func::Reverse
             | Func::Trim
             | Func::WhenCompiled
+            | Func::WhenCompiledRegister
             | Func::NationalOf
             | Func::DisplayOf
     )
@@ -99,6 +106,7 @@ pub fn function(name: &str) -> Option<Func> {
         "UPPER-CASE" => Func::UpperCase,
         "VARIANCE" => Func::Variance,
         "WHEN-COMPILED" => Func::WhenCompiled,
+        "__WHEN-COMPILED-REGISTER" => Func::WhenCompiledRegister,
         "DATE-TO-YYYYMMDD" => Func::DateToYyyymmdd,
         "DAY-TO-YYYYDDD" => Func::DayToYyyyddd,
         "YEAR-TO-YYYY" => Func::YearToYyyy,
@@ -168,12 +176,14 @@ impl Gen<'_> {
     /// Whether an operand has a numeric value (for comparisons).
     pub fn is_numeric_operand(&self, op: &Operand) -> bool {
         match op {
-            Operand::Lit(Literal::Num(_)) => true,
+            Operand::Lit(Literal::Num(_)) | Operand::Null => true,
             Operand::Ref(r) => self.dm.resolve(r).ok().is_some_and(|id| {
                 let it = &self.dm.items[id];
                 it.cond_of.is_none()
                     && r.refmod.is_none()
-                    && self.dm.descs[it.desc as usize].ty.is_numeric()
+                    && (self.dm.descs[it.desc as usize].ty.is_numeric()
+                        || self.dm.descs[it.desc as usize].ty.is_entry_pointer()
+                        || self.dm.descs[it.desc as usize].ty == DataType::Pointer)
             }),
             Operand::Func(f) => {
                 function(&f.name).is_some_and(|f| !alnum_function(f))
@@ -191,6 +201,123 @@ impl Gen<'_> {
             Expr::Operand(op) => self.is_numeric_operand(op),
             _ => true,
         }
+    }
+
+    fn national_expr(&self, expression: &Expr) -> bool {
+        match expression {
+            Expr::Operand(Operand::Lit(Literal::National(_))) => true,
+            Expr::Operand(Operand::Ref(reference)) => {
+                self.dm.resolve(reference).ok().is_some_and(|id| {
+                    self.dm.descs[self.dm.items[id].desc as usize]
+                        .ty
+                        .is_national()
+                })
+            }
+            Expr::Operand(Operand::Func(call)) => function(&call.name).is_some_and(|func| {
+                func == Func::NationalOf
+                    || matches!(
+                        func,
+                        Func::UpperCase
+                            | Func::LowerCase
+                            | Func::Reverse
+                            | Func::Trim
+                            | Func::Max
+                            | Func::Min
+                    ) && call.args.first().is_some_and(|arg| self.national_expr(arg))
+            }),
+            _ => false,
+        }
+    }
+
+    fn validate_function(&self, func: Func, call: &ast::FuncCall) -> Result<()> {
+        let series = matches!(
+            func,
+            Func::Max
+                | Func::Min
+                | Func::OrdMax
+                | Func::OrdMin
+                | Func::Sum
+                | Func::Mean
+                | Func::Median
+                | Func::Midrange
+                | Func::Range
+                | Func::Variance
+                | Func::StandardDeviation
+                | Func::PresentValue
+        );
+        let (min, max) = match func {
+            Func::CurrentDate | Func::WhenCompiled | Func::WhenCompiledRegister => (0, 0),
+            Func::Random => (0, 1),
+            Func::Annuity | Func::Mod | Func::Rem => (2, 2),
+            Func::PresentValue => (2, usize::MAX),
+            Func::Trim
+            | Func::NumValC
+            | Func::TestNumValC
+            | Func::NationalOf
+            | Func::DisplayOf
+            | Func::DateToYyyymmdd
+            | Func::DayToYyyyddd
+            | Func::YearToYyyy => (1, 2),
+            _ if series => (1, usize::MAX),
+            _ => (1, 1),
+        };
+        if !(min..=max).contains(&call.args.len()) {
+            return Err(Diag::error(
+                call.pos,
+                format!("invalid number of arguments for FUNCTION {}", call.name),
+            ));
+        }
+        let polymorphic = matches!(func, Func::Max | Func::Min | Func::OrdMax | Func::OrdMin);
+        let numeric = !matches!(
+            func,
+            Func::CurrentDate
+                | Func::WhenCompiled
+                | Func::WhenCompiledRegister
+                | Func::Length
+                | Func::ByteLength
+                | Func::LowerCase
+                | Func::UpperCase
+                | Func::Reverse
+                | Func::Trim
+                | Func::NationalOf
+                | Func::DisplayOf
+                | Func::NumVal
+                | Func::NumValC
+                | Func::TestNumVal
+                | Func::TestNumValC
+                | Func::Ord
+        ) && !polymorphic;
+        let first_numeric = call.args.first().is_some_and(|a| self.is_numeric_expr(a));
+        for arg in &call.args {
+            if (numeric && !self.is_numeric_expr(arg))
+                || (polymorphic && first_numeric != self.is_numeric_expr(arg))
+                || (polymorphic
+                    && !first_numeric
+                    && self.national_expr(arg) != self.national_expr(&call.args[0]))
+            {
+                return Err(Diag::error(
+                    call.pos,
+                    format!("invalid argument category for FUNCTION {}", call.name),
+                ));
+            }
+            if !series
+                && matches!(arg, Expr::Operand(Operand::Ref(r)) if r.subscripts.iter().any(|s| matches!(s, Subscript::All)))
+            {
+                return Err(Diag::error(
+                    call.pos,
+                    "ALL subscript requires a function with a series of arguments",
+                ));
+            }
+        }
+        if call.refmod.is_some()
+            && ((!polymorphic && !alnum_function(func)) || (polymorphic && first_numeric))
+        {
+            return Err(Diag::error(
+                call.pos,
+                "numeric function cannot have reference modification",
+            ));
+        }
+        Ok(())
     }
 
     /// Numeric expression.
@@ -214,6 +341,10 @@ impl Gen<'_> {
     pub fn ex_operand(&mut self, op: &Operand) -> Result<Ex> {
         Ok(match op {
             Operand::Lit(Literal::Num(n)) => {
+                if n.contains('E') {
+                    crate::numeric::floating_literal(n).map_err(|m| Diag::error(self.pos, m))?;
+                    return Ok(Ex::Float(n.clone()));
+                }
                 let (d, _) = lit::numeric(n).map_err(|m| Diag::error(self.pos, m))?;
                 Ex::Lit(d)
             }
@@ -225,6 +356,7 @@ impl Gen<'_> {
             Operand::Func(f) => {
                 let func = function(&f.name)
                     .ok_or_else(|| Diag::error(f.pos, format!("unknown function {}", f.name)))?;
+                self.validate_function(func, f)?;
                 let args = self.func_args(&f.args)?;
                 Ex::Func(func, args)
             }
@@ -263,7 +395,21 @@ impl Gen<'_> {
                 let mut rr = r.clone();
                 rr.subscripts.clear();
                 let loc = self.loc_of(id, &rr)?;
-                out.push(Arg::All(loc));
+                if r.subscripts.len() != self.dm.descs[loc.desc as usize].dims.len() {
+                    return Err(Diag::error(
+                        r.pos,
+                        "wrong number of function table subscripts",
+                    ));
+                }
+                let subs = r
+                    .subscripts
+                    .iter()
+                    .map(|sub| match sub {
+                        Subscript::All => Ok(None),
+                        Subscript::Expr(ex) => self.ex(ex).map(Some),
+                    })
+                    .collect::<Result<Vec<_>>>()?;
+                out.push(Arg::Table { loc, subs });
                 continue;
             }
             if self.is_numeric_expr(a) {
@@ -285,6 +431,10 @@ impl Gen<'_> {
                 Src::Loc(self.loc(r)?)
             }
             Operand::Lit(Literal::Num(n)) => {
+                if n.contains('E') {
+                    crate::numeric::floating_literal(n).map_err(|m| Diag::error(self.pos, m))?;
+                    return Ok(Src::Float(n.clone()));
+                }
                 let (d, digits) = lit::numeric(n).map_err(|m| Diag::error(self.pos, m))?;
                 Src::NumLit(d, digits)
             }
@@ -310,6 +460,7 @@ impl Gen<'_> {
             Operand::Func(f) => {
                 let func = function(&f.name)
                     .ok_or_else(|| Diag::error(f.pos, format!("unknown function {}", f.name)))?;
+                self.validate_function(func, f)?;
                 let numeric = self.is_numeric_operand(op);
                 let args = self.func_args(&f.args)?;
                 if numeric {
