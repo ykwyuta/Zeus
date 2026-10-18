@@ -19,7 +19,7 @@ Zeus は、z/OS 向けアプリケーションのソースを Linux／Windows �
 | バッチユーティリティ | IEFBR14、IEBGENER、IDCAMS、SORT、IKJEFT01、DSN RUN PROGRAM などのアプリケーション向け機能 | `zjob` / [実装と残件](docs/proposal/0007-remaining-work.md) |
 | データセット・テープ | ホストファイルによる順次／相対／キー付きデータ、代替索引、カタログ。COBOL の物理ブロック、RESERVE、AWSTAPE 仮想テープ | `zjob catalog` / [媒体の形式と制約](docs/proposal/0016-cobol-physical-tape-recursion.md) |
 | CICS・3270 | EXEC CICS、BMS、COMMAREA、チャネル／コンテナー、ファイル更新・回復、スクリプト駆動、TN3270/TN3270E、TLS、プリンター | `zcics`、`zbms` / [ガイド](docs/help/zcics.txt) |
-| SQL | EXEC SQL、ホスト変数・標識変数、カーソル、SQLCA、コミット／ロールバック。Db2 または PostgreSQL を使用 | [外部サービス](#外部サービス) |
+| SQL | EXEC SQL、ホスト変数・標識変数、カーソル、SQLCA、WHENEVERによるエラー・警告・検索終了の分岐、コミット／ロールバック。Db2 または PostgreSQL を使用 | [外部サービス](#外部サービス) |
 | IBM MQ | MQI 呼び出し、メッセージ送受信、コミット／バックアウト、CICS のトリガー監視 | `zmq` / [対応範囲](docs/proposal/0005-ibm-mq.md) |
 | IMS | DBD/PSB、階層データベース、DL/I、GSAM、WAL、バッチ／メッセージ処理リージョン、TM キュー | `zims`、`zjob ims` / [対応範囲](docs/proposal/0006-ims-db.md) |
 | REST API | z/OS Connect プロジェクトの OpenAPI と要求・応答マッピングを読み、CICS のプログラム／IMS トランザクションを呼び出す | `zconn` / [対応範囲](docs/proposal/0008-zconnect.md) |

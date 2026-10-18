@@ -328,7 +328,13 @@ fn store(m: &mut Machine, area: &Area, varchar: bool, ind: Option<&Area>, v: &Va
     match &area.ty {
         DataType::Numeric(t) => {
             let d = Dec::parse(text.trim()).unwrap_or(Dec::ZERO);
-            data::store_num(t, mem, d, false);
+            let mut t = *t;
+            // Db2 uses the complete binary host-variable storage width,
+            // independently of the COBOL PICTURE and TRUNC option.
+            if t.usage == NumUsage::Binary {
+                t.usage = NumUsage::Native;
+            }
+            data::store_num(&t, mem, d, false);
         }
         DataType::Float { .. } => {
             let f: f64 = text.trim().parse().unwrap_or(0.0);
@@ -360,6 +366,32 @@ fn store_int(m: &mut Machine, a: &Area, v: i64) {
             mem[l - n..].copy_from_slice(&b[8 - n..]);
         }
     }
+}
+
+/// Original string length when retrieval truncates a character/binary
+/// host variable. Graphic indicators count two-byte code units.
+fn truncated_length(area: &Area, varchar: bool, value: &Value) -> Option<usize> {
+    let capacity = area.len.saturating_sub(if varchar { 2 } else { 0 });
+    let (bytes, units) = match value {
+        Value::Bytes(b) => (b.len(), b.len()),
+        Value::Str(text) => match area.ty {
+            DataType::Numeric(_) | DataType::Float { .. } => return None,
+            DataType::National => {
+                let n = text.encode_utf16().count();
+                (n * 2, n)
+            }
+            DataType::Dbcs => {
+                let n = zeus_cobol::codepage::active().encode_dbcs(text).len();
+                (n, n / 2)
+            }
+            _ => {
+                let n = ebcdic_of(text).len();
+                (n, n)
+            }
+        },
+        _ => return None,
+    };
+    (bytes > capacity).then_some(units)
 }
 
 /// Replaces the `?` markers outside literals by `values` in order.
@@ -790,6 +822,12 @@ impl Db2Host {
         range: std::ops::Range<usize>,
         row: &[Value],
     ) -> SqlCa {
+        let mut ca = SqlCa::ok();
+        let mut warn = [b' '; 11];
+        if row.len() > range.len() {
+            warn[0] = b'W';
+            warn[3] = b'W';
+        }
         for (j, k) in range.enumerate() {
             let (Some((a, i)), Some(v)) = (call.host.get(k), row.get(j)) else {
                 continue;
@@ -802,8 +840,17 @@ impl Db2Host {
                     ..SqlCa::default()
                 };
             }
+            if let Some(length) = truncated_length(a, vc, v) {
+                warn[0] = b'W';
+                warn[1] = b'W';
+                ca.sqlstate = "01004".into();
+                if let Some(indicator) = i {
+                    store_int(m, indicator, length as i64);
+                }
+            }
         }
-        SqlCa::ok()
+        ca.warn = String::from_utf8(warn.to_vec()).unwrap();
+        ca
     }
 
     fn query(&self, sql: &str) -> Result<Rows, SqlCa> {
@@ -834,7 +881,22 @@ impl Db2Host {
             },
             1 => {
                 let ca = Self::assign(m, call, out, &r.rows[0]);
-                if ca.sqlcode == 0 { r.sqlca } else { ca }
+                if ca.sqlcode != 0 {
+                    return ca;
+                }
+                let mut result = r.sqlca;
+                let mut warn = result.warn.into_bytes();
+                warn.resize(11, b' ');
+                for (i, c) in ca.warn.bytes().enumerate() {
+                    if c != b' ' {
+                        warn[i] = c;
+                    }
+                }
+                result.warn = String::from_utf8(warn).unwrap();
+                if ca.sqlstate != "00000" {
+                    result.sqlstate = ca.sqlstate;
+                }
+                result
             }
             _ => SqlCa {
                 sqlcode: -811,
@@ -1046,18 +1108,152 @@ impl ExecHost for Db2Host {
                 ca.tokens.join(" ")
             );
         }
+        let outcome = ca
+            .as_ref()
+            .map_or(ExecOutcome::Continue, |ca| whenever_outcome(call, ca));
         if let Some(ca) = ca
             && let Some(ExecArg::Area(a)) = call.arg("SQLCA")
         {
             set_sqlca(m, a, &ca);
         }
-        Ok(ExecOutcome::Continue)
+        Ok(outcome)
+    }
+}
+
+fn whenever_outcome(call: &ExecCall, ca: &SqlCa) -> ExecOutcome {
+    let condition = if ca.sqlcode < 0 {
+        "SQLERROR"
+    } else if ca.sqlcode == 100 {
+        "NOTFOUND"
+    } else if ca.sqlcode > 0 || ca.warn.starts_with('W') {
+        "SQLWARNING"
+    } else {
+        return ExecOutcome::Continue;
+    };
+    match call.arg(condition) {
+        Some(ExecArg::Label(label)) => ExecOutcome::Goto(*label),
+        _ => ExecOutcome::Continue,
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn binary_retrieval_uses_storage_width_instead_of_picture_digits() {
+        let mut machine = Machine::new(vec![]);
+        let addr = machine.getmain(2, 0);
+        let area = Area {
+            addr,
+            len: 2,
+            ty: num(NumUsage::Binary, 4, 0),
+        };
+        for value in [12345, -12345, 32767, -32768] {
+            assert!(store(&mut machine, &area, false, None, &Value::Int(value)));
+            assert_eq!(
+                i16::from_be_bytes(machine.storage()[addr..addr + 2].try_into().unwrap()),
+                value as i16
+            );
+        }
+    }
+
+    #[test]
+    fn retrieval_truncation_sets_warning_and_original_length() {
+        let mut machine = Machine::new(vec![]);
+        let addr = machine.getmain(8, ebcdic::SPACE);
+        let indicator = Area {
+            addr: addr + 6,
+            len: 2,
+            ty: DataType::Group,
+        };
+        let mut call = ExecCall {
+            kind: ExecKind::Sql,
+            command: "FETCH".into(),
+            line: 1,
+            program: "T".into(),
+            instance: 0,
+            sql: None,
+            options: vec![],
+            host: vec![(
+                Area {
+                    addr,
+                    len: 4,
+                    ty: DataType::Group,
+                },
+                Some(indicator.clone()),
+            )],
+            host_varchar: vec![true],
+        };
+        let ca = Db2Host::assign(&mut machine, &call, 0..1, &[Value::Str("ABCDE".into())]);
+        assert_eq!(ca.sqlcode, 0);
+        assert_eq!(ca.sqlstate, "01004");
+        assert!(ca.warn.starts_with("WW"));
+        assert_eq!(
+            &machine.storage()[addr..addr + 4],
+            &[0, 2, ebcdic::from_latin1(b'A'), ebcdic::from_latin1(b'B')]
+        );
+        assert_eq!(&machine.storage()[addr + 6..addr + 8], &[0, 5]);
+        call.host_varchar[0] = false;
+        call.host[0].0.len = 2;
+        let ca = Db2Host::assign(&mut machine, &call, 0..1, &[Value::Str("Z".into())]);
+        assert_eq!(ca.sqlstate, "00000");
+        assert!(!ca.warn.contains('W'));
+        assert_eq!(&machine.storage()[addr + 6..addr + 8], &[0, 0]);
+        let original = machine.storage()[addr..addr + 2].to_vec();
+        let ca = Db2Host::assign(&mut machine, &call, 0..1, &[Value::Null]);
+        assert_eq!(ca.sqlcode, 0);
+        assert_eq!(&machine.storage()[addr + 6..addr + 8], &[255, 255]);
+        assert_eq!(&machine.storage()[addr..addr + 2], original);
+        call.host[0].1 = None;
+        let ca = Db2Host::assign(&mut machine, &call, 0..1, &[Value::Null]);
+        assert_eq!(ca.sqlcode, -305);
+    }
+
+    #[test]
+    fn whenever_uses_sqlcode_and_warning_flag() {
+        let mut call = ExecCall {
+            kind: ExecKind::Sql,
+            command: "SELECT".into(),
+            line: 1,
+            program: "T".into(),
+            instance: 0,
+            sql: None,
+            host: vec![],
+            host_varchar: vec![],
+            options: vec![
+                ("SQLERROR".into(), Some(ExecArg::Label(10))),
+                ("NOTFOUND".into(), Some(ExecArg::Label(20))),
+                ("SQLWARNING".into(), Some(ExecArg::Label(30))),
+            ],
+        };
+        for (code, warn, expected) in [
+            (0, "", ExecOutcome::Continue),
+            (0, " W", ExecOutcome::Continue),
+            (0, "W", ExecOutcome::Goto(30)),
+            (1, "", ExecOutcome::Goto(30)),
+            (100, "W", ExecOutcome::Goto(20)),
+            (-811, "W", ExecOutcome::Goto(10)),
+        ] {
+            let ca = SqlCa {
+                sqlcode: code,
+                warn: warn.into(),
+                ..SqlCa::ok()
+            };
+            assert_eq!(whenever_outcome(&call, &ca), expected);
+        }
+        call.options.clear();
+        assert_eq!(
+            whenever_outcome(
+                &call,
+                &SqlCa {
+                    sqlcode: -501,
+                    ..SqlCa::ok()
+                }
+            ),
+            ExecOutcome::Continue
+        );
+    }
 
     #[test]
     fn binding_and_into() {

@@ -38,6 +38,102 @@ fn run(host: &Rc<Db2Host>, body: &str) -> String {
 }
 
 #[test]
+fn whenever_is_lexical_and_updates_sqlca_before_branching() {
+    // An unopened cursor reports -501 without requiring a database server.
+    let host = Rc::new(Db2Host::new(None, None));
+    let out = run(
+        &host,
+        "ID DIVISION.
+PROGRAM-ID. WHENTEST.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+EXEC SQL INCLUDE SQLCA END-EXEC.
+01 V PIC S9(9) COMP.
+EXEC SQL WHENEVER SQLERROR GOTO BAD END-EXEC.
+PROCEDURE DIVISION.
+    GO TO CHECK-SQL.
+UNREACHED.
+    EXEC SQL WHENEVER SQLERROR GO TO :HANDLE-ERROR END-EXEC.
+CHECK-SQL.
+    EXEC SQL FETCH MISSING INTO :V END-EXEC.
+    DISPLAY 'FAILED TO BRANCH'.
+    STOP RUN.
+HANDLE-ERROR.
+    IF SQLCODE = -501 DISPLAY 'ERROR' END-IF.
+    EXEC SQL WHENEVER SQLERROR CONTINUE END-EXEC.
+    EXEC SQL FETCH MISSING INTO :V END-EXEC.
+    DISPLAY 'CONTINUE'.
+    STOP RUN.
+BAD.
+    DISPLAY 'WRONG SCOPE'.
+    STOP RUN.",
+    );
+    assert_eq!(out, "ERROR\nCONTINUE\n");
+}
+
+#[test]
+fn whenever_in_declaratives_precedes_the_main_body() {
+    let host = Rc::new(Db2Host::new(None, None));
+    let out = run(
+        &host,
+        "ID DIVISION.
+PROGRAM-ID. DECLWHEN.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+EXEC SQL INCLUDE SQLCA END-EXEC.
+01 V PIC S9(9) COMP.
+PROCEDURE DIVISION.
+DECLARATIVES.
+IO-HANDLER SECTION.
+    USE AFTER STANDARD ERROR PROCEDURE ON INPUT.
+    EXEC SQL WHENEVER SQLERROR GO TO HANDLE-SQL END-EXEC.
+END DECLARATIVES.
+MAIN SECTION.
+    EXEC SQL FETCH MISSING INTO :V END-EXEC.
+    DISPLAY 'WRONG SCOPE'.
+    STOP RUN.
+HANDLE-SQL.
+    DISPLAY 'DECLARATIVE SCOPE'.
+    STOP RUN.",
+    );
+    assert_eq!(out, "DECLARATIVE SCOPE\n");
+}
+
+#[test]
+fn whenever_database_warning_and_not_found() {
+    let Some(host) = Db2Host::from_env() else {
+        return;
+    };
+    let out = run(
+        &Rc::new(host),
+        "ID DIVISION.
+PROGRAM-ID. DBWHEN.
+DATA DIVISION.
+WORKING-STORAGE SECTION.
+EXEC SQL INCLUDE SQLCA END-EXEC.
+01 V PIC X(2).
+01 IND PIC S9(4) COMP.
+PROCEDURE DIVISION.
+    EXEC SQL WHENEVER SQLWARNING GO TO WARN-HANDLER END-EXEC.
+    EXEC SQL VALUES 'ABCDE' INTO :V:IND END-EXEC.
+    DISPLAY 'NO WARNING'.
+    STOP RUN.
+WARN-HANDLER.
+    IF SQLCODE = 0 AND SQLWARN1 = 'W' AND IND = 5
+        AND V = 'AB' DISPLAY 'TRUNCATED' END-IF.
+    EXEC SQL WHENEVER NOT FOUND GOTO NO-ROWS END-EXEC.
+    EXEC SQL SELECT IBMREQD INTO :V FROM SYSIBM.SYSDUMMY1
+        WHERE 1 = 0 END-EXEC.
+    DISPLAY 'NO NOTFOUND'.
+    STOP RUN.
+NO-ROWS.
+    IF SQLCODE = 100 DISPLAY 'NOTFOUND' END-IF.
+    STOP RUN.",
+    );
+    assert_eq!(out, "TRUNCATED\nNOTFOUND\n");
+}
+
+#[test]
 fn embedded_sql() {
     let Some(host) = Db2Host::from_env() else {
         eprintln!("ZEUS_DB2 not set; skipped");
