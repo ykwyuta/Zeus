@@ -479,3 +479,17 @@ DSNのNEW／MOD、SPACE／UNIT／VOL／SMSクラス等の割当属性、割当�
 現行CLIを構築後、`cargo test -p zeus-ccvs`は **24 passed / 0 failed**。ZCVSの66プログラムを実行する統合試験、ソース桁数、JCL出力の検証を含む。全workspaceのCI完了を示すものではない。
 
 根拠: [動的CALLとCANCEL](https://www.ibm.com/docs/en/SS6SG3_6.5/pdf/pgmvs.pdf)、[CALLのBY VALUE対応](https://www.ibm.com/docs/en/cobol-zos/6.3.0?topic=statements-call-statement)、[NUMVAL系の戻り値と精度](https://www.ibm.com/docs/en/cobol-zos/6.4.0?topic=functions-converting-numbers-numval-numval-c-numval-f)。
+
+### 動的DSNの作成・追記・解除と終了処理（2026-10-18追加）
+
+動的DSNのNEW／MODを順次データセットへ接続した。NEWは既存データを置換せず、新規ファイルを排他的に作成する。MODは存在しなければ作成し、OUTPUTで既存レコードへ追記する。JCLのDISP=MODにも同じOUTPUT追記処理を適用した。既存PDSのメンバーは`DSN(データセット(メンバー))`と従来の外側括弧形式で割り当てられる。PDS自体の新規作成とVSAMのNEW／MODは許可しない。
+
+KEEP／DELETE／CATALOG／UNCATALOGは、環境値の変更による再割当または実行単位の終了時に実行する。CATALOGはFD由来のレコード属性を保存し、UNCATALOGはデータを保持してカタログ項目だけを外す。PDSメンバーのDELETEでは親PDSを削除しない。同じ環境値の再OPENは既存割当を再利用する。使用中の割当では、解除や削除を行う前に変更を拒否する。Zeus側で省略時に選ぶ割当状態はOLD、解除時の処理はKEEPであり、IBM側のすべてのOS既定値との一致を示すものではない。
+
+RERUNのチェックポイント名も環境変数のPATH／既存DSNで解決できるようにした。保存・再開後の終了処理でも開いた出力と動的割当を確定する。通常終了時のCLOSE／カタログ操作のエラーは実行結果へ返し、ホスト駆動の実行単位では`Machine::try_finish`で確認できる。ThreadedRunUnitのfinishとSTOP RUNも終了時のエラーを返す。従来の戻り値を持たないMachine::finishは互換APIとして維持する。
+
+重点回帰ではCOBOL単体78件、媒体34件、RERUN13件、THREAD6件、データセット26件、JCL単体15件、JCLジョブ18件が成功した。SPACE／UNIT／VOL／SMSクラス等の動的割当属性とRERUN ON file-nameの既定先は引き続き残件で、無条件に対応済みとはしない。
+
+根拠: [QSAMの環境変数割当とPDS作成の制約](https://www.ibm.com/docs/en/SS6SG3_6.5/pdf/pgmvs.pdf)、[OUTPUTとDISP=MODによる拡張](https://www.ibm.com/docs/en/zos/3.1.0?topic=volumes-multiple-volume-considerations-sequential-data-sets)。
+
+この追加実装後の関連3パッケージ回帰（`cargo test -p zeus-cobol -p zeus-ds -p zeus-jcl`）は **948 passed / 0 failed / 1 ignored**。全workspace CIは残件実装後に行う。

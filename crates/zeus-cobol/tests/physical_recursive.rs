@@ -38,6 +38,69 @@ fn run(src: &str) -> String {
 }
 
 #[test]
+fn normal_termination_reports_dynamic_catalog_release_errors() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut vm = Machine::new(vec![]);
+    vm.set_dynamic_catalog(dir.path().to_path_buf());
+    vm.set_file_environment("OUTFILE", "DSN(APP.OUTPUT),NEW,CATALOG".into());
+    vm.add_native_machine("BREAKCAT", |machine, args| {
+        let address = args[0].unwrap();
+        let text = zeus_cobol::ebcdic::decode_latin1(&machine.storage()[address..address + 512]);
+        let text = String::from_utf8(text).unwrap();
+        std::fs::create_dir(std::path::Path::new(text.trim_end()).join("catalog.json"))
+            .map_err(|e| e.to_string())?;
+        Ok(0)
+    });
+    vm.set_stdin(vec![dir.path().display().to_string()]);
+    let program = source(
+        "",
+        "",
+        "OPEN OUTPUT F\nWRITE R FROM 'ABCDEFGHIJ'\nCALL 'BREAKCAT' USING CATALOG-ROOT",
+    )
+    .replace(
+        "PROCEDURE DIVISION.",
+        "01 CATALOG-ROOT PIC X(512).\nPROCEDURE DIVISION.\nACCEPT CATALOG-ROOT",
+    );
+    assert!(
+        vm.run_main(compile(&program).unwrap())
+            .unwrap_err()
+            .0
+            .contains("catalog.json")
+    );
+}
+
+#[test]
+fn dynamic_new_and_mod_create_catalog_append_and_release_datasets() {
+    use zeus_ds::catalog::Catalog;
+    for end in ["KEEP", "CATALOG", "DELETE", "UNCATALOG"] {
+        let dir = tempfile::tempdir().unwrap();
+        let mut vm = Machine::new(vec![]);
+        vm.set_dynamic_catalog(dir.path().to_path_buf());
+        vm.set_file_environment("OUTFILE", format!("DSN(APP.OUTPUT),NEW,{end}"));
+        let program = source(
+            "",
+            "",
+            "OPEN OUTPUT F\nWRITE R FROM 'ABCDEFGHIJ'\nCLOSE F\nOPEN INPUT F\nREAD F\nIF R NOT = 'ABCDEFGHIJ' MOVE 1 TO RETURN-CODE END-IF\nCLOSE F",
+        );
+        assert_eq!(vm.run_main(compile(&program).unwrap()).unwrap(), 0);
+        let catalog = Catalog::open(dir.path()).unwrap();
+        assert_eq!(catalog.get("APP.OUTPUT").is_some(), end == "CATALOG");
+        assert_eq!(catalog.path("APP.OUTPUT").exists(), end != "DELETE");
+        if end == "CATALOG" {
+            let mut vm = Machine::new(vec![]);
+            vm.set_dynamic_catalog(dir.path().to_path_buf());
+            vm.set_file_environment("OUTFILE", "DSN(APP.OUTPUT),MOD,KEEP".into());
+            let program = source("", "", "OPEN OUTPUT F\nWRITE R FROM 'KLMNOPQRST'");
+            assert_eq!(vm.run_main(compile(&program).unwrap()).unwrap(), 0);
+            assert_eq!(
+                std::fs::read(catalog.path("APP.OUTPUT")).unwrap(),
+                zeus_cobol::ebcdic::encode("ABCDEFGHIJKLMNOPQRST")
+            );
+        }
+    }
+}
+
+#[test]
 fn cataloged_dataset_environment_uses_catalog_record_attributes() {
     use zeus_ds::catalog::{Catalog, Entry as CatalogEntry, EntryKind, Recfm};
     let dir = tempfile::tempdir().unwrap();

@@ -258,6 +258,27 @@ fn cobol_parm_options_and_source_overrides_produce_a_real_listing() {
 }
 
 #[test]
+fn cobol_output_with_mod_appends_instead_of_replacing_prior_step_records() {
+    let dir = tempfile::tempdir().unwrap();
+    let mut env = env(dir.path());
+    let program = "       ID DIVISION.\n       PROGRAM-ID. APPENDER.\n       ENVIRONMENT DIVISION.\n       INPUT-OUTPUT SECTION.\n       FILE-CONTROL.\n       SELECT F ASSIGN TO OUTFILE.\n       DATA DIVISION.\n       FILE SECTION.\n       FD F.\n       01 R PIC X(3).\n       PROCEDURE DIVISION.\n       OPEN OUTPUT F\n       WRITE R FROM 'ABC'\n       GOBACK.\n";
+    let job = format!(
+        "//APPEND JOB\n//COMP EXEC PGM=IGYCRCTL\n//SYSPRINT DD SYSOUT=*\n//SYSLIN DD DSN=&&OBJ,DISP=(MOD,PASS)\n//SYSIN DD *\n{program}/*\n//LINK EXEC PGM=IEWL\n//SYSLIN DD DSN=&&OBJ,DISP=(OLD,DELETE)\n//SYSLMOD DD DSN=ZEUS.LOADLIB(APPENDER),DISP=SHR\n//FIRST EXEC PGM=APPENDER\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//OUTFILE DD DSN=APP.DATA,DISP=(NEW,CATLG),\n// DCB=(RECFM=F,LRECL=3)\n//SECOND EXEC PGM=APPENDER\n//STEPLIB DD DSN=ZEUS.LOADLIB,DISP=SHR\n//OUTFILE DD DSN=APP.DATA,DISP=MOD\n"
+    );
+    let mut log = Vec::new();
+    let result = run_job(&mut env, &job, &mut log).unwrap();
+    assert!(
+        result.iter().all(|s| s.outcome == Outcome::Rc(0)),
+        "{result:?}\n{}",
+        String::from_utf8_lossy(&log)
+    );
+    assert_eq!(
+        std::fs::read(env.catalog.path("APP.DATA")).unwrap(),
+        zeus_cobol::ebcdic::encode("ABCABC")
+    );
+}
+
+#[test]
 fn rerun_dd_disposition_selects_single_or_multiple_checkpoint_images() {
     for (disposition, ids) in [("NEW", vec![1]), ("MOD", vec![1, 2, 3])] {
         let dir = tempfile::tempdir().unwrap();

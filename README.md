@@ -124,7 +124,7 @@ COBOL では `RECORDING MODE F/V/S/U`、`BLOCK CONTAINS`、`APPLY WRITE-ONLY`、
 
 テープでは32760バイトを超えるLBIブロックと拡張BDW、JCLの`BLKSZLIM`に対応しています。`BLOCK CONTAINS 0`の自動選択は仮想テープ上限256 KiBの範囲で行います。HDR2のないVSE形式の入力もFDの形式で読み取ります。`EXPDT`／`RETPD`は標準ラベルへ保存され、期限内媒体の上書きや保護付きデータへのアクセスにはホスト側の認可が必要です。組込み利用時は`Machine::set_tape_authorizer`で接続します。詳細は[追加互換性一覧](docs/proposal/0018-cobol-compatibility-completion.md)を参照してください。
 
-ASSIGNの`label-S-DD名`等はDD名部分で割当を解決します。DDが未割当なら、同名の環境変数の`PATH(絶対パス)`、または既存カタログの`DSN(完全名),SHR`／`OLD`をOPEN時に評価します。単独実行のカタログは`$ZEUS_HOME/catalog`（既定`./zeus/catalog`）です。動的DSNの新規作成やSPACE等の追加割当属性は未対応で、状態98になります。
+ASSIGNの`label-S-DD名`等はDD名部分で割当を解決します。DDが未割当なら、同名の環境変数の`PATH(絶対パス)`、または`DSN(完全名)`をOPEN時に評価します。動的DSNはOLD／SHR、順次データセットのNEW／MOD、既存PDS内のメンバーを扱い、KEEP／DELETE／CATALOG／UNCATALOGを割当解除時に実行します。単独実行のカタログは`$ZEUS_HOME/catalog`（既定`./zeus/catalog`）です。SPACE等の追加割当属性は未対応で、状態98になります。環境変数によるRERUNのチェックポイント割当にも対応します。
 
 仮想テープは複数巻に対応します。`IoAttributes.volume_capacity` で巻容量、`volumes` で巻のパスを指定できます。省略時の継続巻名は `名前.vol002.aws` などです。標準ラベルはEOV/HDRで接続し、Zeusで保存した巻集合は `名前.aws.volumes.json` も保持します。この情報でファイル終端と継続巻を区別し、複数ファイルで容量を共有します。`CLOSE REEL/UNIT` はファイルを開いたまま巻を切り替え、REEL/UNITのユーザーラベルを物理巻へ保存します。ラージブロック、全ラベル属性の照合などには残件があります。物理イメージはCOBOL VMと対応APIが対象です。詳細は [媒体の利用範囲](docs/proposal/0016-cobol-physical-tape-recursion.md) と [追加対応状況](docs/proposal/0018-cobol-compatibility-completion.md) を参照してください。
 

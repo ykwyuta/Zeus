@@ -14,6 +14,33 @@ fn compile(dir: &std::path::Path, name: &str, text: &str) {
 }
 
 #[test]
+fn finish_and_stop_run_report_output_close_failures() {
+    for termination in ["GOBACK", "STOP RUN"] {
+        let dir = tempfile::tempdir().unwrap();
+        compile(
+            dir.path(),
+            "BADOUT",
+            &format!(
+                "CBL THREAD\nID DIVISION.\nPROGRAM-ID. BADOUT RECURSIVE.\nENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\nSELECT F ASSIGN TO OUTFILE.\nDATA DIVISION.\nFILE SECTION.\nFD F.\n01 R PIC X.\nPROCEDURE DIVISION.\nOPEN OUTPUT F\nWRITE R FROM 'A'\n{termination}."
+            ),
+        );
+        let directory = dir.path().join("not-a-file");
+        std::fs::create_dir(&directory).unwrap();
+        let unit = ThreadedRunUnit::spawn(vec![dir.path().to_path_buf()], move |machine| {
+            machine.set_dd("OUTFILE", directory);
+        })
+        .unwrap();
+        let result = unit.call("BADOUT", vec![]);
+        if termination == "STOP RUN" {
+            assert!(result.is_err());
+        } else {
+            result.unwrap();
+            assert!(unit.finish().is_err());
+        }
+    }
+}
+
+#[test]
 fn host_threads_share_ws_and_receive_separate_locals_and_reference_results() {
     let dir = tempfile::tempdir().unwrap();
     compile(

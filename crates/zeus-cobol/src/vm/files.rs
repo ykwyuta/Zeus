@@ -1686,7 +1686,11 @@ impl Machine {
                 .iter()
                 .any(|s| s.open.is_some() && s.path.as_ref() == Some(path))
         });
-        if let Err(error) = self.dd.refresh_dynamic(&[&def.assign, &def.name]) {
+        let model = (def.org == Org::Sequential).then_some((seq_format(&def), def.max_len));
+        if let Err(error) = self
+            .dd
+            .prepare_dynamic(&[&def.assign, &def.name], model, active)
+        {
             if active {
                 self.dd = before;
             }
@@ -1706,6 +1710,12 @@ impl Machine {
         }
         let path = self.file_path(&def);
         let attributes = self.dd.io_attributes(&[&def.assign, &def.name]);
+        let media_mode =
+            if mode == OpenMode::Output && attributes.append && def.org == Org::Sequential {
+                OpenMode::Extend
+            } else {
+                mode
+            };
         if !matches!(attributes.tape_security, 0 | 1 | 3)
             || attributes.retention_days.is_some() && attributes.expiration.is_some()
         {
@@ -1785,7 +1795,7 @@ impl Machine {
             // JCL allocates a new data set as an empty host file. It has
             // no tape marks/labels until the first OPEN OUTPUT writes it.
             // Do not relax validation of INPUT or of continuation volumes.
-            if mode == OpenMode::Output
+            if media_mode == OpenMode::Output
                 && volumes.volumes.len() == 1
                 && volumes.volumes[0].is_empty()
                 && attributes.file_sequence.is_none_or(|n| n <= 1)
@@ -1844,13 +1854,13 @@ impl Machine {
                     &volumes,
                     &path,
                     position,
-                    mode,
+                    media_mode,
                     &def,
                 ) {
                     return self.io_error(cur, &def, "37", &format!("OPEN {}", error.0));
                 }
             }
-            if mode != OpenMode::Output
+            if media_mode != OpenMode::Output
                 && position < st.tape_entries.len()
                 && let Some(initial) = layout
             {
@@ -1870,7 +1880,7 @@ impl Machine {
                 }
                 st.buffers = BufferPool::new(count, layout.unwrap().block_size).map_err(ds_err)?;
             }
-            if matches!(mode, OpenMode::Output | OpenMode::Extend) {
+            if matches!(media_mode, OpenMode::Output | OpenMode::Extend) {
                 st.prefix_volume_events =
                     Self::mounted_volume_events(&volumes, def.label_standard)?;
                 let mut prefix_files = 0;
@@ -1929,7 +1939,10 @@ impl Machine {
                     return err("OPEN REVERSED requires a single-reel tape file");
                 }
             }
-            if mode != OpenMode::Output && position < st.tape_entries.len() && def.label_standard {
+            if media_mode != OpenMode::Output
+                && position < st.tape_entries.len()
+                && def.label_standard
+            {
                 let Ok(file) = tape::file_with_labels(&st.tape_entries, position, true) else {
                     return self.io_error(cur, &def, "39", "OPEN tape label mismatch");
                 };
@@ -1954,7 +1967,7 @@ impl Machine {
                     }
                 }
             }
-            st.tape_next = if position < st.tape_entries.len() && mode != OpenMode::Output {
+            st.tape_next = if position < st.tape_entries.len() && media_mode != OpenMode::Output {
                 tape::file_with_labels(&st.tape_entries, position, def.label_standard)
                     .map_err(ds_err)?
                     .next
@@ -1963,7 +1976,7 @@ impl Machine {
             };
             self.tape_positions.insert(path.clone(), position);
         }
-        if mode == OpenMode::Output {
+        if media_mode == OpenMode::Output {
             st.modified = true;
             st.data = self.empty_data(cur, &def)?;
         } else {
@@ -1990,7 +2003,7 @@ impl Machine {
             self.opened
                 .push((def.assign.to_ascii_uppercase(), fmt, def.max_len));
         }
-        if def.print && mode == OpenMode::Extend {
+        if def.print && media_mode == OpenMode::Extend {
             st.text = zeus_ds::format::read_file(&path)
                 .map_err(ds_err)?
                 .unwrap_or_default();

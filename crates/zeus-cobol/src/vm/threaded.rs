@@ -27,7 +27,7 @@ struct Invocation {
 }
 enum Request {
     Call(Invocation),
-    Finish(mpsc::Sender<()>),
+    Finish(mpsc::Sender<Result<(), String>>),
 }
 /// Clone this handle into host threads. A completed call observes all writes
 /// of earlier calls in this run unit; separate handles created with spawn
@@ -75,9 +75,9 @@ impl ThreadedRunUnit {
                     let request = match request {
                         Request::Call(request) => request,
                         Request::Finish(reply) => {
-                            machine.finish();
+                            let result = machine.try_finish().map_err(|error| error.0);
                             worker_finished.store(true, Ordering::Release);
-                            let _ = reply.send(());
+                            let _ = reply.send(result);
                             return;
                         }
                     };
@@ -126,9 +126,11 @@ impl ThreadedRunUnit {
                     // STOP RUN or an unhandled runtime error ends the shared run
                     // unit; pending callers receive a disconnected reply channel.
                     if stop || failed {
-                        machine.finish();
+                        let cleanup = machine.try_finish().map_err(|error| error.0);
                         worker_finished.store(true, Ordering::Release);
-                        let _ = request.reply.send(result);
+                        let _ = request
+                            .reply
+                            .send(result.and_then(|result| cleanup.map(|_| result)));
                         return;
                     }
                     let _ = request.reply.send(result);
@@ -166,7 +168,7 @@ impl ThreadedRunUnit {
             return Ok(());
         }
         match finished.recv() {
-            Ok(()) => Ok(()),
+            Ok(result) => result,
             Err(_) if self.finished.load(Ordering::Acquire) => Ok(()),
             Err(_) => Err("threaded run unit ended before shutdown completed".into()),
         }

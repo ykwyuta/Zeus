@@ -367,6 +367,7 @@ fn io_attributes(dd: &Stmt, earlier: &[Dd]) -> Result<zeus_ds::dd::IoAttributes,
         io = d.io.clone();
     }
     io.checkpoint_multiple = disp_of(dd).0 == Status::Mod;
+    io.append = disp_of(dd).0 == Status::Mod;
     io.dataset_name = dd
         .get_str("DSN")
         .or_else(|| dd.get_str("DSNAME"))

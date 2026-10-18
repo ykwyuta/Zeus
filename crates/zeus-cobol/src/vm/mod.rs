@@ -1251,10 +1251,19 @@ impl Machine {
 
     /// Closes the files of all programs (the end of the run unit).
     pub fn finish(&mut self) {
+        let _ = self.try_finish();
+    }
+
+    /// Finish a host-driven run unit and report CLOSE/deallocation failures.
+    pub fn try_finish(&mut self) -> RResult<()> {
         self.flush_coverage();
-        self.close_all();
-        let _ = self.finish_assembler_io();
-        let _ = self.stdout.flush();
+        let files = self.close_all();
+        let assembler = self.finish_assembler_io().map_err(RunError);
+        let output = self
+            .stdout
+            .flush()
+            .map_err(|error| RunError(error.to_string()));
+        files.and(assembler).and(output)
     }
 
     /// Sets the job step identification shown to programs (TIOT).
@@ -1360,8 +1369,8 @@ impl Machine {
             self.instances[main].linkage[slot as usize] = Some(a);
         }
         let r = self.run(main);
-        self.close_all();
-        let cleanup = self.finish_assembler_io().map_err(RunError);
+        let files = self.close_all();
+        let cleanup = files.and(self.finish_assembler_io().map_err(RunError));
         let _ = self.stdout.flush();
         let result = match r {
             Ok(Exit::StopRun(code)) => Ok(code),
@@ -1372,16 +1381,27 @@ impl Machine {
         result.and_then(|rc| cleanup.map(|_| rc))
     }
 
-    fn close_all(&mut self) {
+    fn close_all(&mut self) -> RResult<()> {
+        let mut failure = None;
         for i in 0..self.instances.len() {
             if self.instances[i].retired {
                 continue;
             }
             for f in 0..self.instances[i].files.len() {
-                let _ = self.close_file(i, f as u32, false);
+                if self.state(i, f as u32).open_mode().is_some()
+                    && let Err(error) = self.close_file(i, f as u32, false)
+                    && failure.is_none()
+                {
+                    failure = Some(error);
+                }
             }
         }
-        self.dd.clear_dynamic();
+        if let Err(error) = self.dd.clear_dynamic()
+            && failure.is_none()
+        {
+            failure = Some(RunError(error.to_string()));
+        }
+        failure.map_or(Ok(()), Err)
     }
 
     fn return_code_value(&self) -> i32 {

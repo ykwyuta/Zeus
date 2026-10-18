@@ -78,6 +78,9 @@ pub struct DdTable {
 
 #[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize)]
 pub struct IoAttributes {
+    /// DISP=MOD: OUTPUT extends an existing sequential dataset.
+    #[serde(default)]
+    pub append: bool,
     /// External dataset name used for standard tape label identification.
     #[serde(default)]
     pub dataset_name: Option<String>,
@@ -122,6 +125,15 @@ impl DdTable {
 
     /// Evaluate the unprefixed ASSIGN environment variable at each OPEN.
     pub fn refresh_dynamic(&mut self, names: &[&str]) -> crate::Result<()> {
+        self.prepare_dynamic(names, None, false)
+    }
+
+    pub fn prepare_dynamic(
+        &mut self,
+        names: &[&str],
+        model: Option<(RecordFormat, u32)>,
+        active: bool,
+    ) -> crate::Result<()> {
         if self.static_allocation(names).is_some() {
             return Ok(());
         }
@@ -133,16 +145,45 @@ impl DdTable {
             .get(&name)
             .cloned()
             .or_else(|| std::env::var(&name).ok());
+        if self.dynamic.get(&name).is_some_and(|allocation| {
+            value
+                .as_deref()
+                .is_some_and(|s| allocation.source == s.trim())
+        }) {
+            return Ok(());
+        }
+        if active && self.dynamic.contains_key(&name) {
+            return Err(crate::DsError::Io(
+                "cannot reallocate an active dataset".into(),
+            ));
+        }
+        if let Some(previous) = self.dynamic.get(&name) {
+            previous.release()?;
+        }
         self.dynamic.remove(&name);
         if let Some(value) = value {
-            let allocation = crate::dynamic::allocate(&value, self.dynamic_catalog.as_deref())?;
+            let allocation =
+                crate::dynamic::allocate(&value, self.dynamic_catalog.as_deref(), model)?;
             self.dynamic.insert(name, allocation);
         }
         Ok(())
     }
 
-    pub fn clear_dynamic(&mut self) {
-        self.dynamic.clear();
+    pub fn clear_dynamic(&mut self) -> crate::Result<()> {
+        let mut failure = None;
+        for name in self.dynamic.keys().cloned().collect::<Vec<_>>() {
+            match self.dynamic[&name].release() {
+                Ok(()) => {
+                    self.dynamic.remove(&name);
+                }
+                Err(error) => {
+                    if failure.is_none() {
+                        failure = Some(error);
+                    }
+                }
+            }
+        }
+        failure.map_or(Ok(()), Err)
     }
 
     /// Freeze allocations (including environment/config fallbacks) and resolve
@@ -174,9 +215,7 @@ impl DdTable {
             }
         }
         for allocation in self.dynamic.values_mut() {
-            if allocation.allocation.path.is_relative() {
-                allocation.allocation.path = base.join(&allocation.allocation.path);
-            }
+            allocation.anchor(base);
         }
         if let Some(root) = &mut self.dynamic_catalog
             && root.is_relative()
@@ -189,16 +228,22 @@ impl DdTable {
     }
 
     pub fn io_attributes(&self, names: &[&str]) -> IoAttributes {
-        allocation_names(names)
+        let names = allocation_names(names);
+        let mut attributes = names
             .iter()
             .find_map(|n| self.io.get(n))
             .cloned()
-            .unwrap_or_else(|| IoAttributes {
-                dataset_name: allocation_names(names)
-                    .iter()
-                    .find_map(|n| self.dynamic.get(n).and_then(|a| a.dataset.clone())),
-                ..IoAttributes::default()
-            })
+            .unwrap_or_default();
+        if self
+            .static_allocation(&names.iter().map(String::as_str).collect::<Vec<_>>())
+            .is_none()
+            && let Some(allocation) = names.iter().find_map(|name| self.dynamic.get(name))
+        {
+            attributes.dataset_name = allocation.dataset.clone().or(attributes.dataset_name);
+            attributes.append |= allocation.append;
+            attributes.checkpoint_multiple |= allocation.append;
+        }
+        attributes
     }
     /// A table with the allocation file named by `ZEUS_DD_CONFIG`, if any.
     pub fn from_env() -> std::io::Result<DdTable> {
@@ -302,6 +347,28 @@ impl DdTable {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reallocation_releases_old_data_only_after_it_is_no_longer_active() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut dd = DdTable::default();
+        dd.set_dynamic_catalog(dir.path().to_path_buf());
+        dd.set_file_environment("OUTPUT", "DSN(APP.FIRST),NEW,DELETE".into());
+        let model = Some((RecordFormat::Fixed(10), 10));
+        dd.prepare_dynamic(&["OUTPUT"], model, false).unwrap();
+        let first = dd.resolve(&["OUTPUT"]).unwrap();
+        std::fs::write(&first, b"ABCDEFGHIJ").unwrap();
+        dd.set_file_environment("OUTPUT", "DSN(APP.SECOND),NEW,KEEP".into());
+        assert!(dd.prepare_dynamic(&["OUTPUT"], model, true).is_err());
+        assert_eq!(std::fs::read(&first).unwrap(), b"ABCDEFGHIJ");
+        assert_eq!(dd.resolve(&["OUTPUT"]), Some(first.clone()));
+        dd.prepare_dynamic(&["OUTPUT"], model, false).unwrap();
+        assert!(!first.exists());
+        let second = dd.resolve(&["OUTPUT"]).unwrap();
+        dd.clear_dynamic().unwrap();
+        assert!(second.exists());
+        assert!(dd.resolve(&["OUTPUT"]).is_none());
+    }
 
     #[test]
     fn assignment_labels_resolve_to_ddnames_without_changing_explicit_host_aliases() {

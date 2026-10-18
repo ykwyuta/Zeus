@@ -111,8 +111,8 @@ fn default_range_checking() -> bool {
 }
 
 impl Machine {
-    pub(super) fn validate_rerun_allocations(&self, instance: usize) -> RResult<()> {
-        for rule in &self.instances[instance].code.rerun {
+    pub(super) fn validate_rerun_allocations(&mut self, instance: usize) -> RResult<()> {
+        for rule in self.instances[instance].code.rerun.clone() {
             self.checkpoint_path(&rule.checkpoint)?;
         }
         Ok(())
@@ -170,7 +170,7 @@ impl Machine {
         Ok(entries.into_iter().map(|(id, _)| id).collect())
     }
 
-    fn checkpoint_path(&self, name: &str) -> RResult<PathBuf> {
+    fn checkpoint_path(&mut self, name: &str) -> RResult<PathBuf> {
         fn identity(path: &std::path::Path) -> RResult<PathBuf> {
             if let Ok(path) = path.canonicalize() {
                 return Ok(path);
@@ -199,6 +199,9 @@ impl Machine {
             }
             Ok(normalized)
         }
+        self.dd
+            .refresh_dynamic(&[name])
+            .map_err(|error| RunError(error.to_string()))?;
         let path = self
             .dd
             .resolve(&[name])
@@ -540,9 +543,12 @@ impl Machine {
         }
         let result = self.run_loop(&mut image.state);
         self.leave_language_frame(0);
-        match result? {
-            Exit::StopRun(rc) => Ok(rc),
-            Exit::Returned => Ok(self.return_code),
-        }
+        let cleanup = self.try_finish();
+        result.and_then(|exit| {
+            cleanup.map(|_| match exit {
+                Exit::StopRun(rc) => rc,
+                Exit::Returned => self.return_code,
+            })
+        })
     }
 }

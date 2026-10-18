@@ -14,6 +14,32 @@ impl Write for Capture {
 }
 
 #[test]
+fn allocation_environment_supplies_data_and_checkpoint_paths_across_restart() {
+    let source = "ID DIVISION.\nPROGRAM-ID. T.\nENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\nSELECT F ASSIGN TO INPUTDD.\nI-O-CONTROL.\nRERUN ON STATE EVERY 1 RECORDS OF F.\nDATA DIVISION.\nFILE SECTION.\nFD F.\n01 R PIC XX.\nPROCEDURE DIVISION.\nOPEN INPUT F\nREAD F\nCALL 'CRASH'\nREAD F\nDISPLAY R\nCLOSE F\nSTOP RUN.";
+    let dir = tempfile::tempdir().unwrap();
+    let input = dir.path().join("input.dat");
+    let checkpoint = dir.path().join("run.ckpt");
+    std::fs::write(&input, zeus_cobol::ebcdic::encode("AABB")).unwrap();
+    let mut vm = Machine::new(vec![]);
+    vm.set_file_environment("INPUTDD", format!("PATH({})", input.display()));
+    vm.set_file_environment("STATE", format!("PATH({})", checkpoint.display()));
+    vm.add_native("CRASH", |_, _| Err("interrupted".into()));
+    assert!(
+        vm.run_main(compile(source).unwrap())
+            .unwrap_err()
+            .0
+            .contains("interrupted")
+    );
+    assert!(checkpoint.is_file());
+    let capture = Capture::default();
+    let mut resumed = Machine::new(vec![]);
+    resumed.set_stdout(Box::new(capture.clone()));
+    resumed.add_native("CRASH", |_, _| Ok(0));
+    assert_eq!(resumed.restart_checkpoint(&checkpoint).unwrap(), 0);
+    assert_eq!(&*capture.0.borrow(), b"BB\n");
+}
+
+#[test]
 fn assignment_prefixes_resolve_for_data_checkpoint_and_restart() {
     let source = "ID DIVISION.\nPROGRAM-ID. T.\nENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\nSELECT F ASSIGN TO DISK-S-OUTFILE.\nI-O-CONTROL.\nRERUN ON DISK-S-CKPT EVERY 1 RECORDS OF F.\nDATA DIVISION.\nFILE SECTION.\nFD F.\n01 R PIC X.\nPROCEDURE DIVISION.\nOPEN OUTPUT F\nWRITE R FROM 'A'\nCALL 'CRASH'\nWRITE R FROM 'B'\nCLOSE F\nSTOP RUN.";
     assert!(compile(&source.replace("DISK-S-CKPT", "OTHER-S-OUTFILE")).is_err());
