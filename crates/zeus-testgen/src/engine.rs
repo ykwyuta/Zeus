@@ -276,6 +276,70 @@ fn delimiter_decision(d: &Dir) -> bool {
 const SOLVE_TIME: Duration = Duration::from_millis(150);
 const RETRY_TIME: Duration = Duration::from_millis(50);
 
+/// Inputs waiting to run: in turn the nearest to the directions not
+/// covered and the oldest (the search goes deep without leaving the
+/// rest behind).
+#[derive(Default)]
+struct Queue {
+    items: Vec<(u32, u64, Inputs)>,
+    seq: u64,
+    pops: u64,
+}
+
+impl Queue {
+    fn push(&mut self, i: Inputs, prio: u32) {
+        self.seq += 1;
+        self.items.push((prio, self.seq, i));
+    }
+
+    fn pop(&mut self) -> Option<Inputs> {
+        self.pops += 1;
+        let k = if self.pops.is_multiple_of(2) {
+            (0..self.items.len()).min_by_key(|&k| (self.items[k].0, self.items[k].1))?
+        } else {
+            (0..self.items.len()).min_by_key(|&k| self.items[k].1)?
+        };
+        Some(self.items.swap_remove(k).2)
+    }
+}
+
+/// A distance for what does not lead to an open direction.
+const FAR: u32 = u32::MAX / 2;
+
+/// For each instruction of the program, the instructions to go to reach
+/// a conditional jump with a direction not covered (nor impossible).
+fn distances(
+    preds: &[Vec<u32>],
+    code: &ProgramCode,
+    all: &[Dir],
+    covered: &HashSet<Dir>,
+    impossible: &HashSet<Dir>,
+) -> Vec<u32> {
+    let mut dist = vec![FAR; preds.len()];
+    let mut todo = VecDeque::new();
+    for d in all {
+        if d.0 == code.name
+            && !covered.contains(d)
+            && !impossible.contains(d)
+            && let Some(x) = dist.get_mut(d.1 as usize)
+            && *x != 0
+        {
+            *x = 0;
+            todo.push_back(d.1);
+        }
+    }
+    while let Some(pc) = todo.pop_front() {
+        let next = dist[pc as usize] + 1;
+        for &q in &preds[pc as usize] {
+            if next < dist[q as usize] {
+                dist[q as usize] = next;
+                todo.push_back(q);
+            }
+        }
+    }
+    dist
+}
+
 /// Conditions to solve for a run's inputs.
 struct Job {
     cons: Vec<Pred>,
@@ -285,6 +349,9 @@ struct Job {
     text: bool,
     /// The direction aimed at (an attempt counted for it).
     target: Option<Dir>,
+    /// How far the inputs are expected to get from directions not covered
+    /// (instructions; smaller runs first).
+    prio: u32,
 }
 
 /// Solves the jobs, on as many threads as there are solvers.
@@ -1518,6 +1585,19 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             .collect()
     };
     let kept_dir = |d: &Dir| counted.contains(d) || d.0.ends_with("#EXEC");
+    // the program's control flow, backwards, for the distances to the
+    // directions not covered
+    let preds: Vec<Vec<u32>> = crate::infeasible::successors(code).map_or_else(Vec::new, |succ| {
+        let mut p = vec![Vec::new(); succ.len()];
+        for (pc, ss) in succ.iter().enumerate() {
+            for &t in ss {
+                p[t as usize].push(pc as u32);
+            }
+        }
+        p
+    });
+    let mut dist: Vec<u32> = Vec::new();
+    let mut dist_of = 0usize; // covered.len() when computed
     let start = Instant::now();
     // a solver per thread (each with its own Z3 context)
     let threads = opts.threads.max(1);
@@ -1562,7 +1642,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         .filter(|f| f.input)
         .map(|f| vec![default_record(f)])
         .collect();
-    let mut queue: VecDeque<Inputs> = VecDeque::new();
+    let mut queue = Queue::default();
     let mut seeds: Vec<Inputs> = Vec::new();
     for (k, c) in opts.seeds.iter().enumerate() {
         match crate::case::seed_inputs(c, &fields, &lens, &specs) {
@@ -1599,6 +1679,10 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     let dict = Dictionary::of(module);
     // mutated inputs tried in a row without new coverage
     let mut fruitless = 0;
+    // rounds of the search (each from the cases of the ones before), and
+    // the directions covered when the last one started
+    let mut rounds = 0u32;
+    let mut round_start = 0usize;
     let mut stubbed = BTreeSet::new();
     // the seeds run first without solving, so that the search knows what
     // they cover before it picks directions; then they run again with it
@@ -1624,7 +1708,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 }
             }
         }
-        queue.push_back(inp.clone());
+        queue.push(inp.clone(), 0);
         if !new.is_empty() {
             cases.push(Case {
                 inputs: inp,
@@ -1638,16 +1722,16 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     if uses_clock(module) {
         let mut late = first.clone();
         late.clock = Some(CLOCKS[6]);
-        queue.push_back(first);
-        queue.push_back(late);
+        queue.push(first, 0);
+        queue.push(late, 0);
     } else {
-        queue.push_back(first);
+        queue.push(first, 0);
     }
     loop {
         if runs >= opts.max_runs || start.elapsed() > opts.time {
             break;
         }
-        let (inp, fuzz) = match queue.pop_front().or_else(|| text_queue.pop_front()) {
+        let (inp, fuzz) = match queue.pop().or_else(|| text_queue.pop_front()) {
             Some(i) => (i, false),
             None => {
                 // the solver has nothing more: mutate the inputs of a case
@@ -1655,6 +1739,33 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 let open = all
                     .iter()
                     .any(|d| !covered.contains(d) && reached.contains(&(d.0.clone(), d.1)));
+                let branches = covered.iter().filter(|d| counted.contains(*d)).count();
+                if open && fruitless >= opts.fuzz && branches > round_start {
+                    // a new round: the attempts and contexts start again,
+                    // from the cases so far (they run again)
+                    rounds += 1;
+                    if std::env::var_os("ZTESTGEN_PROFILE").is_some() {
+                        eprintln!("round {rounds}: {runs} runs, {} covered", covered.len());
+                    }
+                    attempts.clear();
+                    contexts.clear();
+                    deepened.clear();
+                    enabled.clear();
+                    // the decisions outside the branches (EXEC responses,
+                    // delimiters) are taken again
+                    covered.retain(|d| !d.0.contains('#'));
+                    text_tried.clear();
+                    extended.clear();
+                    // the inputs run before may run again (with other
+                    // decisions to take from them now)
+                    seen.clear();
+                    for c in &cases {
+                        queue.push(c.inputs.clone(), 0);
+                    }
+                    fruitless = 0;
+                    round_start = branches;
+                    continue;
+                }
                 if !open || fruitless >= opts.fuzz || cases.is_empty() {
                     break;
                 }
@@ -1726,6 +1837,22 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             reached.insert((p.clone(), *pc));
         }
         let t_flip = Instant::now();
+        // the distances to the directions still open (when coverage grew)
+        if dist.is_empty() || covered.len() != dist_of {
+            dist = distances(&preds, code, &all, &covered, &impossible);
+            dist_of = covered.len();
+        }
+        // how far taking a direction gets from the open ones
+        let away = |d: &Dir| -> u32 {
+            if d.0 != code.name {
+                return FAR;
+            }
+            let next = match code.code.get(d.1 as usize) {
+                Some(Instr::JumpIf(_, t) | Instr::JumpUnless(_, t)) if d.2 => *t,
+                _ => d.1 + 1,
+            };
+            dist.get(next as usize).copied().unwrap_or(FAR)
+        };
         // the other way of each branch, where not covered yet
         let mut before: BTreeSet<Dir> = BTreeSet::new();
         let mut slicer = Slicer::new(&out.path, out.vars.len());
@@ -1814,6 +1941,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                     time: SOLVE_TIME,
                     text: true,
                     target: None,
+                    prio: 0,
                 });
                 continue;
             }
@@ -1844,6 +1972,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                     time: RETRY_TIME,
                     text: false,
                     target: None,
+                    prio: 1,
                 });
             }
             if covered.contains(&target) {
@@ -1879,6 +2008,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                         time: RETRY_TIME,
                         text: false,
                         target: None,
+                        prio: away(&target),
                     });
                 }
                 continue;
@@ -1901,6 +2031,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 time: if a.0 > 1 { RETRY_TIME } else { SOLVE_TIME },
                 text: false,
                 target: Some(target),
+                prio: 0,
             });
         }
         prof[1] += t_flip.elapsed();
@@ -1943,6 +2074,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                     time: SOLVE_TIME,
                     text: true,
                     target: None,
+                    prio: 0,
                 });
             }
         }
@@ -1965,7 +2097,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                         if job.text {
                             text_queue.push_back(next);
                         } else {
-                            queue.push_back(next);
+                            queue.push(next, job.prio);
                         }
                     }
                 }

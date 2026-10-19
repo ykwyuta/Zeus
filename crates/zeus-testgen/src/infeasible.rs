@@ -27,6 +27,9 @@ use zeus_cobol::zir::{
     Base, CmpMode, Cx, DataType, ExecVal, Fig, Instr, Loc, ProgramCode, Rel, Src,
 };
 
+/// Instructions gone back over to find the jumps leading to a MOVE.
+const GUARD_STEPS: usize = 400;
+
 /// The flags' values at most (more: the flag is not analyzed).
 const MAX_VALUES: usize = 64;
 
@@ -97,6 +100,61 @@ fn literal(s: &Src, len: usize) -> Option<Vec<u8>> {
 
 fn is_flag_loc(l: &Loc, flag: u32) -> bool {
     l.desc == flag && l.subs.is_empty() && l.refmod.is_none()
+}
+
+/// What an instruction stores in a flag: Some(Some(value)) a constant
+/// (a MOVE of a literal to it, or to a group containing it, an INITIALIZE
+/// of such a group), Some(None) nothing, None something not followed.
+fn flag_write(code: &ProgramCode, ins: &Instr, flag: u32, len: usize) -> Option<Option<Vec<u8>>> {
+    let (_, fo, fe) = extent(code, flag)?;
+    let base = code.descs.get(flag as usize)?.base;
+    let overlaps =
+        |desc: u32| extent(code, desc).is_some_and(|(b, s, e)| b == base && s < fe && fo < e);
+    // a whole group (no table) containing the flag: the flag's offset in it
+    let within = |l: &Loc| -> Option<usize> {
+        if !l.subs.is_empty() || l.refmod.is_some() {
+            return None;
+        }
+        let d = code.descs.get(l.desc as usize)?;
+        let (b, s, e) = extent(code, l.desc)?;
+        (b == base && d.dims.is_empty() && s <= fo && fe <= e).then(|| fo - s)
+    };
+    match ins {
+        Instr::Move(src, dst) if is_flag_loc(dst, flag) => literal(src, len).map(Some),
+        Instr::Move(src, dst) if overlaps(dst.desc) => {
+            let at = within(dst)?;
+            let dl = code.descs.get(dst.desc as usize)?.len as usize;
+            let v = literal(src, dl)?;
+            Some(Some(v.get(at..at + len)?.to_vec()))
+        }
+        Instr::Initialize { dst, replacing } if overlaps(dst.desc) => {
+            // INITIALIZE without REPLACING: alphanumeric items to spaces
+            (replacing.is_empty() && within(dst).is_some()).then(|| Some(vec![0x40; len]))
+        }
+        Instr::Store { dst, .. } if overlaps(dst.desc) => None,
+        Instr::Move(..)
+        | Instr::Store { .. }
+        | Instr::JumpIf(..)
+        | Instr::JumpUnless(..)
+        | Instr::Display { .. }
+        | Instr::SetTemp(..)
+        | Instr::GoDepending(..)
+        | Instr::Jump(_)
+        | Instr::Perform { .. }
+        | Instr::ParaEnd(_) => Some(None),
+        Instr::Exec(k) => {
+            let mut ls = Vec::new();
+            if let Some(e) = code.execs.get(*k as usize) {
+                locs_in(e, &mut ls);
+            }
+            (!ls.iter().any(|&x| overlaps(x))).then_some(None)
+        }
+        other => {
+            let mut ls = Vec::new();
+            locs_in(other, &mut ls);
+            (!ls.iter().any(|&x| overlaps(x))).then_some(None)
+        }
+    }
 }
 
 /// Whether a condition holds for a value of the flag (None: it depends on
@@ -284,47 +342,13 @@ fn values(code: &ProgramCode, flag: u32) -> Option<Vec<Vec<u8>>> {
     }
     let mut vals: Vec<Vec<u8>> = vec![code.static_init.get(o..o + l)?.to_vec()];
     for i in &code.code {
-        match i {
-            Instr::Move(src, dst) if is_flag_loc(dst, flag) => {
-                let v = literal(src, l)?;
-                if !vals.contains(&v) {
-                    vals.push(v);
-                }
-                // the source may be an item too: then it is a read only
+        if let Some(v) = flag_write(code, i, flag, l)? {
+            if !vals.contains(&v) {
+                vals.push(v);
             }
-            Instr::Move(_, dst) | Instr::Store { dst, .. } => {
-                if overlaps(dst.desc) {
-                    return None;
-                }
+            if vals.len() > MAX_VALUES {
+                return None;
             }
-            // reads only
-            Instr::JumpIf(..)
-            | Instr::JumpUnless(..)
-            | Instr::Display { .. }
-            | Instr::SetTemp(..)
-            | Instr::GoDepending(..)
-            | Instr::Jump(_)
-            | Instr::Perform { .. }
-            | Instr::ParaEnd(_) => {}
-            Instr::Exec(k) => {
-                let mut ls = Vec::new();
-                if let Some(e) = code.execs.get(*k as usize) {
-                    locs_in(e, &mut ls);
-                }
-                if ls.iter().any(|&x| overlaps(x)) {
-                    return None;
-                }
-            }
-            other => {
-                let mut ls = Vec::new();
-                locs_in(other, &mut ls);
-                if ls.iter().any(|&x| overlaps(x)) {
-                    return None;
-                }
-            }
-        }
-        if vals.len() > MAX_VALUES {
-            return None;
         }
     }
     Some(vals)
@@ -388,12 +412,6 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
             let ins = &code.code[pc as usize];
             // the state after the instruction, by successor
             let outs: Vec<(u32, u64)> = match ins {
-                Instr::Move(src, dst) if is_flag_loc(dst, flag) => {
-                    let v = literal(src, len);
-                    let k = vals.iter().position(|x| Some(x) == v.as_ref());
-                    let after = k.map_or(all, |k| 1 << k);
-                    succ[pc as usize].iter().map(|&t| (t, after)).collect()
-                }
                 Instr::JumpIf(c, t) | Instr::JumpUnless(c, t) => {
                     let (yes, no) = split(c, s);
                     let (taken, fall) = if matches!(ins, Instr::JumpIf(..)) {
@@ -403,7 +421,14 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
                     };
                     vec![(*t, taken), (pc + 1, fall)]
                 }
-                _ => succ[pc as usize].iter().map(|&t| (t, s)).collect(),
+                _ => {
+                    let after = match flag_write(code, ins, flag, len) {
+                        Some(Some(v)) => vals.iter().position(|x| *x == v).map_or(all, |k| 1 << k),
+                        Some(None) => s,
+                        None => all,
+                    };
+                    succ[pc as usize].iter().map(|&t| (t, after)).collect()
+                }
             };
             for (t, v) in outs {
                 let Some(slot) = state.get_mut(t as usize) else {
@@ -445,9 +470,9 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
 }
 
 /// For the directions of conditional jumps on flags, the directions that
-/// lead to a MOVE of a value they need: the conditional jump just before
-/// the MOVE (going back over instructions with a single predecessor),
-/// taken the way that reaches it. Taking an enabler the other way in a
+/// lead to a MOVE of a value they need: going back from the MOVE over the
+/// control flow (into the PERFORMs of its paragraph), the first
+/// conditional jump of each path, taken the way that reaches it. Taking an enabler the other way in a
 /// run that reaches the direction may give the flag the value it needs
 /// (a flag set to a constant does not follow the inputs).
 pub fn enablers(code: &ProgramCode) -> HashMap<(u32, bool), BTreeSet<(u32, bool)>> {
@@ -466,27 +491,42 @@ pub fn enablers(code: &ProgramCode) -> HashMap<(u32, bool), BTreeSet<(u32, bool)
             p.push(u32::MAX); // entered from outside
         }
     }
-    // the conditional jump direction reaching an instruction
-    let guard = |w: u32| -> Option<(u32, bool)> {
-        let mut p = w;
-        for _ in 0..200 {
-            let [q] = preds[p as usize][..] else {
-                return None;
-            };
-            if q == u32::MAX {
-                return None;
+    // the conditional jump directions reaching an instruction: going back
+    // over the control flow (through PERFORMs too), the first conditional
+    // jump on each path; a jump found both ways does not decide it
+    let guards = |w: u32| -> BTreeSet<(u32, bool)> {
+        let mut found = BTreeSet::new();
+        let mut seen = vec![false; preds.len()];
+        let mut todo = vec![w];
+        let mut steps = 0;
+        while let Some(p) = todo.pop() {
+            steps += 1;
+            if steps > GUARD_STEPS {
+                break;
             }
-            match &code.code[q as usize] {
-                Instr::JumpIf(_, t) | Instr::JumpUnless(_, t) => {
-                    if *t == q + 1 {
-                        return None;
-                    }
-                    return Some((q, *t == p));
+            for &q in &preds[p as usize] {
+                if q == u32::MAX {
+                    continue;
                 }
-                _ => p = q,
+                match &code.code[q as usize] {
+                    Instr::JumpIf(_, t) | Instr::JumpUnless(_, t) if *t != q + 1 => {
+                        found.insert((q, *t == p));
+                    }
+                    _ => {
+                        if !std::mem::replace(&mut seen[q as usize], true) {
+                            todo.push(q);
+                        }
+                    }
+                }
             }
         }
-        None
+        let both: Vec<u32> = found
+            .iter()
+            .filter(|(q, j)| found.contains(&(*q, !*j)))
+            .map(|(q, _)| *q)
+            .collect();
+        found.retain(|(q, _)| !both.contains(q));
+        found
     };
     let mut flags = BTreeSet::new();
     for i in &code.code {
@@ -502,13 +542,10 @@ pub fn enablers(code: &ProgramCode) -> HashMap<(u32, bool), BTreeSet<(u32, bool)
         // the guards of the MOVEs of each value
         let mut by_value: Vec<BTreeSet<(u32, bool)>> = vec![BTreeSet::new(); vals.len()];
         for (pc, i) in code.code.iter().enumerate() {
-            if let Instr::Move(src, dst) = i
-                && is_flag_loc(dst, flag)
-                && let Some(v) = literal(src, len)
+            if let Some(Some(v)) = flag_write(code, i, flag, len)
                 && let Some(k) = vals.iter().position(|x| *x == v)
-                && let Some(g) = guard(pc as u32)
             {
-                by_value[k].insert(g);
+                by_value[k].extend(guards(pc as u32));
             }
         }
         for (pc, ins) in code.code.iter().enumerate() {
