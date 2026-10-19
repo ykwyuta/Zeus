@@ -7,6 +7,8 @@
        01  WS-STATE              PIC X VALUE SPACE.
            88  ST-ERROR          VALUE 'E'.
            88  ST-OK             VALUE 'O'.
+       01  WS-MAX                PIC 9(2) VALUE 3.
+       01  WS-I                  PIC 9(2).
        LINKAGE SECTION.
        01  LK-REC.
            05  LK-CODE           PIC X(2).
@@ -19,6 +21,11 @@
                    IF WS-COUNT > LK-LIMIT
                        MOVE 'Y' TO WS-EOF
                    END-IF
+               END-IF
+           END-PERFORM
+           PERFORM VARYING WS-I FROM 1 BY 1 UNTIL WS-I > WS-MAX
+               IF WS-I = 5
+                   DISPLAY 'FIVE'
                END-IF
            END-PERFORM
            PERFORM CHECK-PARA THRU CHECK-EXIT

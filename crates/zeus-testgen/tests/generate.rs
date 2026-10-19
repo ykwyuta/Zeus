@@ -476,19 +476,26 @@ fn seeds_start_the_search() {
 }
 
 /// A flag's values along the control flow: `IF WS-EOF = 'N'` inside
-/// `PERFORM UNTIL WS-EOF = 'Y'` is never false (proved, not counted), and
-/// the directions on a flag set under input conditions are covered.
+/// `PERFORM UNTIL WS-EOF = 'Y'` is never false, and a number's range:
+/// `IF WS-I = 5` in `PERFORM VARYING WS-I FROM 1 BY 1 UNTIL WS-I >
+/// WS-MAX` (VALUE 3) is never true (proved, not counted); the directions
+/// on a flag set under input conditions are covered.
 #[test]
 fn proves_impossible_directions() {
     let (text, all) = generate_and_replay("FLAGPGM");
     assert!(
-        text.contains("C1: 11 of 12 branch directions")
-            && text.contains("100.0% of the feasible (1 infeasible)"),
+        text.contains("C1: 14 of 16 branch directions")
+            && text.contains("100.0% of the feasible (2 infeasible)"),
         "{text}"
     );
     assert!(
-        text.contains("FLAGPGM line 17 (instruction ")
+        text.contains("FLAGPGM line 19 (instruction ")
             && text.contains("jump: impossible (static analysis"),
+        "{text}"
+    );
+    // WS-I is 1 to 3 in the loop: IF WS-I = 5 is never true
+    assert!(
+        text.contains("FLAGPGM line 27 (instruction ") && text.contains("next: impossible"),
         "{text}"
     );
     assert!(all.contains("\"ERROR XX\""), "{all}");

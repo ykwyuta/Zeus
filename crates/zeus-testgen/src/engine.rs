@@ -1513,6 +1513,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     } else {
         crate::infeasible::impossible(code)
             .into_iter()
+            .chain(crate::ranges::impossible(code))
             .map(|(pc, j)| (code.name.clone(), pc, j))
             .collect()
     };

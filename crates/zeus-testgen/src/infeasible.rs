@@ -31,7 +31,7 @@ use zeus_cobol::zir::{
 const MAX_VALUES: usize = 64;
 
 /// The byte range of an item, with its tables' occurrences.
-fn extent(code: &ProgramCode, desc: u32) -> Option<(Base, usize, usize)> {
+pub(crate) fn extent(code: &ProgramCode, desc: u32) -> Option<(Base, usize, usize)> {
     let d = code.descs.get(desc as usize)?;
     let mut end = d.offset as usize + d.len as usize;
     for dim in &d.dims {
@@ -41,8 +41,9 @@ fn extent(code: &ProgramCode, desc: u32) -> Option<(Base, usize, usize)> {
 }
 
 /// The items (descriptors) an instruction refers to, found in its
-/// serialized form (every `Loc`).
-fn locs_in<T: serde::Serialize>(x: &T, out: &mut Vec<u32>) {
+/// serialized form (every `Loc`, not the items its subscripts and
+/// reference modifications read).
+pub(crate) fn locs_in<T: serde::Serialize>(x: &T, out: &mut Vec<u32>) {
     fn walk(v: &serde_json::Value, out: &mut Vec<u32>) {
         match v {
             serde_json::Value::Object(m) => {
@@ -51,7 +52,9 @@ fn locs_in<T: serde::Serialize>(x: &T, out: &mut Vec<u32>) {
                     m.contains_key("subs"),
                     m.contains_key("refmod"),
                 ) {
+                    // its subscripts and reference modification are read
                     out.push(d as u32);
+                    return;
                 }
                 for x in m.values() {
                     walk(x, out);
@@ -175,7 +178,7 @@ fn flags_in(cx: &Cx, out: &mut BTreeSet<u32>) {
 
 /// The successors of each instruction (None: control flow not modelled,
 /// such as ALTER).
-fn successors(code: &ProgramCode) -> Option<Vec<Vec<u32>>> {
+pub(crate) fn successors(code: &ProgramCode) -> Option<Vec<Vec<u32>>> {
     let n = code.code.len() as u32;
     // paragraph -> the instructions a PERFORM of it returns to
     let mut returns: HashMap<u32, Vec<u32>> = HashMap::new();

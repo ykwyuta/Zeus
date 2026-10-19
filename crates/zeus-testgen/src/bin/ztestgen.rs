@@ -166,7 +166,7 @@ fn main() -> ExitCode {
                 Gap::NotSymbolic => "condition does not depend on the inputs followed",
                 Gap::Infeasible => "infeasible (no inputs on the paths tried)",
                 Gap::NotFound => "no inputs found",
-                Gap::Impossible => "impossible (static analysis: the values of the flags)",
+                Gap::Impossible => "impossible (static analysis: the values of flags and numbers)",
             };
             let line = line_of(&module, p, *pc).map_or("?".into(), |l| l.to_string());
             text.push_str(&format!(
