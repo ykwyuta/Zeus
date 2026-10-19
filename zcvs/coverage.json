@@ -1,0 +1,1141 @@
+{
+  "ZA101A": {
+    "expect": "run",
+    "tests": [
+      "TSTD-U2-MOVE",
+      "TSTD-S2-MOVE",
+      "TSTD-S4-MOVE",
+      "TSTD-S4-ADD",
+      "TSTD-S2-SZERR",
+      "TSTD-S9-MOVE",
+      "TSTD-COMP5-EXEMPT"
+    ]
+  },
+  "ZA102A": {
+    "expect": "run",
+    "tests": [
+      "TOPT-HW-ADD",
+      "TOPT-HW-SUB",
+      "TOPT-FW-MUL",
+      "TOPT-FW-DIV",
+      "TOPT-DW-COMP"
+    ]
+  },
+  "ZA103A": {
+    "expect": "run",
+    "tests": [
+      "TBIN-HW-32767",
+      "TBIN-HW-N32768",
+      "TBIN-HW-U-65535",
+      "TBIN-S2-12345",
+      "TBIN-FW-MAX",
+      "TBIN-HW-ARITH"
+    ]
+  },
+  "ZA104A": {
+    "expect": "run",
+    "tests": [
+      "DEC18-ADD-MAX",
+      "DEC18-SUB-NEG",
+      "DEC-INTERM-PREC",
+      "DEC-DIV-REM",
+      "DEC-CHAIN-COMP"
+    ]
+  },
+  "ZA105A": {
+    "expect": "run",
+    "tests": [
+      "RND-POS-HALFUP",
+      "RND-NEG-HALFUP",
+      "SZERR-ADD-OVF",
+      "NOSZERR-ADD-OK",
+      "SZERR-DIV-ZERO",
+      "SZERR-RND-CARRY"
+    ]
+  },
+  "ZA106A": {
+    "expect": "run",
+    "tests": [
+      "NUM-SP5-VALID",
+      "NUM-SP5-INVALID",
+      "NUM-UP5-SIGN",
+      "NUM-SZ4-CHECK",
+      "NUM-UZ4-CHECK",
+      "NUM-SEP-CHECK",
+      "SIGN-COND-CHECK"
+    ]
+  },
+  "ZA107A": {
+    "expect": "run",
+    "tests": [
+      "HFP-C1-ZERO",
+      "HFP-C1-ONE",
+      "HFP-C1-NEG-ONE",
+      "HFP-C1-100",
+      "HFP-C1-NEG-HALF",
+      "HFP-C2-ONE",
+      "HFP-C2-FRAC",
+      "HFP-C2-ARITH"
+    ]
+  },
+  "ZA108A": {
+    "expect": "run",
+    "tests": [
+      "FN-SQRT-C2",
+      "FN-SIN-COS-0",
+      "FN-LOG10-FACT",
+      "FN-INT-MOD-REM",
+      "FN-NUMVAL-C",
+      "FN-STATS"
+    ]
+  },
+  "ZA109A": {
+    "expect": "run",
+    "tests": [
+      "ADD-UPPER",
+      "ADD-OVER",
+      "SUB-LOWER",
+      "SUB-OVER",
+      "MUL-EXACT",
+      "MUL-OVER",
+      "DIV-EXACT",
+      "DIV-ZERO",
+      "COMP-OVER",
+      "COMP-ZERO",
+      "ROUND-0",
+      "ROUND-1",
+      "ROUND-2",
+      "ROUND-3",
+      "ROUND-4",
+      "ROUND-5",
+      "REM-POS",
+      "REM-NEG",
+      "REM-NEG-DIV"
+    ]
+  },
+  "ZA110A": {
+    "expect": "run",
+    "tests": [
+      "EXTEND-PACKED-MAX",
+      "EXTEND-DISPLAY-RT",
+      "EXTEND-OVERFLOW",
+      "EXTEND-CANCEL",
+      "EXTEND-NEGATIVE",
+      "EXTEND-INTERMEDIATE"
+    ]
+  },
+  "ZA111A": {
+    "expect": "run",
+    "tests": [
+      "SP-SIGN-0",
+      "SP-SIGN-9",
+      "SP-SIGN-A",
+      "SP-SIGN-B",
+      "SP-SIGN-C",
+      "SP-SIGN-D",
+      "SP-SIGN-E",
+      "SP-SIGN-F",
+      "UP-SIGN-0",
+      "UP-SIGN-9",
+      "UP-SIGN-A",
+      "UP-SIGN-B",
+      "UP-SIGN-C",
+      "UP-SIGN-D",
+      "UP-SIGN-E",
+      "UP-SIGN-F",
+      "SZ-SIGN-0",
+      "SZ-SIGN-9",
+      "SZ-SIGN-A",
+      "SZ-SIGN-B",
+      "SZ-SIGN-C",
+      "SZ-SIGN-D",
+      "SZ-SIGN-E",
+      "SZ-SIGN-F",
+      "UZ-SIGN-0",
+      "UZ-SIGN-9",
+      "UZ-SIGN-A",
+      "UZ-SIGN-B",
+      "UZ-SIGN-C",
+      "UZ-SIGN-D",
+      "UZ-SIGN-E",
+      "UZ-SIGN-F",
+      "SP-BAD-DIGIT",
+      "UP-BAD-DIGIT",
+      "SZ-BAD-DIGIT",
+      "UZ-BAD-DIGIT",
+      "SP-UNSIGNED-ZERO",
+      "SZ-UNSIGNED-ZERO",
+      "SP-NEGATIVE-ZERO",
+      "SZ-NEGATIVE-ZERO",
+      "SP-MOVE-A",
+      "SP-ADD-A",
+      "SZ-MOVE-A",
+      "SZ-ADD-A",
+      "SP-MOVE-B",
+      "SP-ADD-B",
+      "SZ-MOVE-B",
+      "SZ-ADD-B",
+      "SP-MOVE-C",
+      "SP-ADD-C",
+      "SZ-MOVE-C",
+      "SZ-ADD-C",
+      "SP-MOVE-D",
+      "SP-ADD-D",
+      "SZ-MOVE-D",
+      "SZ-ADD-D",
+      "SP-MOVE-E",
+      "SP-ADD-E",
+      "SZ-MOVE-E",
+      "SZ-ADD-E",
+      "SP-MOVE-F",
+      "SP-ADD-F",
+      "SZ-MOVE-F",
+      "SZ-ADD-F"
+    ]
+  },
+  "ZA112A": {
+    "expect": "run",
+    "tests": [
+      "SP-SIGN-0",
+      "SP-SIGN-9",
+      "SP-SIGN-A",
+      "SP-SIGN-B",
+      "SP-SIGN-C",
+      "SP-SIGN-D",
+      "SP-SIGN-E",
+      "SP-SIGN-F",
+      "UP-SIGN-0",
+      "UP-SIGN-9",
+      "UP-SIGN-A",
+      "UP-SIGN-B",
+      "UP-SIGN-C",
+      "UP-SIGN-D",
+      "UP-SIGN-E",
+      "UP-SIGN-F",
+      "SZ-SIGN-0",
+      "SZ-SIGN-9",
+      "SZ-SIGN-A",
+      "SZ-SIGN-B",
+      "SZ-SIGN-C",
+      "SZ-SIGN-D",
+      "SZ-SIGN-E",
+      "SZ-SIGN-F",
+      "UZ-SIGN-0",
+      "UZ-SIGN-9",
+      "UZ-SIGN-A",
+      "UZ-SIGN-B",
+      "UZ-SIGN-C",
+      "UZ-SIGN-D",
+      "UZ-SIGN-E",
+      "UZ-SIGN-F",
+      "SP-BAD-DIGIT",
+      "UP-BAD-DIGIT",
+      "SZ-BAD-DIGIT",
+      "UZ-BAD-DIGIT",
+      "SP-UNSIGNED-ZERO",
+      "SZ-UNSIGNED-ZERO",
+      "SP-NEGATIVE-ZERO",
+      "SZ-NEGATIVE-ZERO",
+      "SP-MOVE-A",
+      "SP-ADD-A",
+      "SZ-MOVE-A",
+      "SZ-ADD-A",
+      "SP-MOVE-B",
+      "SP-ADD-B",
+      "SZ-MOVE-B",
+      "SZ-ADD-B",
+      "SP-MOVE-C",
+      "SP-ADD-C",
+      "SZ-MOVE-C",
+      "SZ-ADD-C",
+      "SP-MOVE-D",
+      "SP-ADD-D",
+      "SZ-MOVE-D",
+      "SZ-ADD-D",
+      "SP-MOVE-E",
+      "SP-ADD-E",
+      "SZ-MOVE-E",
+      "SZ-ADD-E",
+      "SP-MOVE-F",
+      "SP-ADD-F",
+      "SZ-MOVE-F",
+      "SZ-ADD-F"
+    ]
+  },
+  "ZA113A": {
+    "expect": "run",
+    "tests": [
+      "SP-SIGN-0",
+      "SP-SIGN-9",
+      "SP-SIGN-A",
+      "SP-SIGN-B",
+      "SP-SIGN-C",
+      "SP-SIGN-D",
+      "SP-SIGN-E",
+      "SP-SIGN-F",
+      "UP-SIGN-0",
+      "UP-SIGN-9",
+      "UP-SIGN-A",
+      "UP-SIGN-B",
+      "UP-SIGN-C",
+      "UP-SIGN-D",
+      "UP-SIGN-E",
+      "UP-SIGN-F",
+      "SZ-SIGN-0",
+      "SZ-SIGN-9",
+      "SZ-SIGN-A",
+      "SZ-SIGN-B",
+      "SZ-SIGN-C",
+      "SZ-SIGN-D",
+      "SZ-SIGN-E",
+      "SZ-SIGN-F",
+      "UZ-SIGN-0",
+      "UZ-SIGN-9",
+      "UZ-SIGN-A",
+      "UZ-SIGN-B",
+      "UZ-SIGN-C",
+      "UZ-SIGN-D",
+      "UZ-SIGN-E",
+      "UZ-SIGN-F",
+      "SP-BAD-DIGIT",
+      "UP-BAD-DIGIT",
+      "SZ-BAD-DIGIT",
+      "UZ-BAD-DIGIT",
+      "SP-UNSIGNED-ZERO",
+      "SZ-UNSIGNED-ZERO",
+      "SP-NEGATIVE-ZERO",
+      "SZ-NEGATIVE-ZERO",
+      "SP-MOVE-C",
+      "SP-ADD-C",
+      "SZ-MOVE-C",
+      "SZ-ADD-C",
+      "SP-MOVE-D",
+      "SP-ADD-D",
+      "SZ-MOVE-D",
+      "SZ-ADD-D"
+    ]
+  },
+  "ZA114A": {
+    "expect": "run",
+    "tests": [
+      "SP-SIGN-0",
+      "SP-SIGN-9",
+      "SP-SIGN-A",
+      "SP-SIGN-B",
+      "SP-SIGN-C",
+      "SP-SIGN-D",
+      "SP-SIGN-E",
+      "SP-SIGN-F",
+      "UP-SIGN-0",
+      "UP-SIGN-9",
+      "UP-SIGN-A",
+      "UP-SIGN-B",
+      "UP-SIGN-C",
+      "UP-SIGN-D",
+      "UP-SIGN-E",
+      "UP-SIGN-F",
+      "SZ-SIGN-0",
+      "SZ-SIGN-9",
+      "SZ-SIGN-A",
+      "SZ-SIGN-B",
+      "SZ-SIGN-C",
+      "SZ-SIGN-D",
+      "SZ-SIGN-E",
+      "SZ-SIGN-F",
+      "UZ-SIGN-0",
+      "UZ-SIGN-9",
+      "UZ-SIGN-A",
+      "UZ-SIGN-B",
+      "UZ-SIGN-C",
+      "UZ-SIGN-D",
+      "UZ-SIGN-E",
+      "UZ-SIGN-F",
+      "SP-BAD-DIGIT",
+      "UP-BAD-DIGIT",
+      "SZ-BAD-DIGIT",
+      "UZ-BAD-DIGIT",
+      "SP-UNSIGNED-ZERO",
+      "SZ-UNSIGNED-ZERO",
+      "SP-NEGATIVE-ZERO",
+      "SZ-NEGATIVE-ZERO",
+      "SP-MOVE-C",
+      "SP-ADD-C",
+      "SZ-MOVE-C",
+      "SZ-ADD-C",
+      "SP-MOVE-D",
+      "SP-ADD-D",
+      "SZ-MOVE-D",
+      "SZ-ADD-D"
+    ]
+  },
+  "ZA115A": {
+    "expect": "run",
+    "tests": [
+      "SP-MIG-POS",
+      "SP-MIG-NEG",
+      "SZ-MIG-POS",
+      "SZ-MIG-NEG"
+    ]
+  },
+  "ZD101A": {
+    "expect": "run",
+    "tests": [
+      "UP5-12345-HEX",
+      "UP5-ZERO-HEX",
+      "UP5-MAX-HEX",
+      "SP5-POS-HEX",
+      "SP5-NEG-HEX",
+      "SP5-ZERO-HEX",
+      "SP5-MAX-HEX",
+      "SP5-MIN-HEX",
+      "SP4-EVEN-POS",
+      "SP4-EVEN-NEG",
+      "DEC-POS-HEX",
+      "DEC-NEG-HEX",
+      "SP18-POS-HEX",
+      "NORM-SIGN-A",
+      "NORM-SIGN-E",
+      "NORM-SIGN-F",
+      "NORM-SIGN-B",
+      "NORM-NEG-ZERO"
+    ]
+  },
+  "ZD102A": {
+    "expect": "run",
+    "tests": [
+      "UZ4-1234-HEX",
+      "SZ4-TR-POS",
+      "SZ4-TR-NEG",
+      "SZ4-TR-POS0",
+      "SZ4-TR-NEG0",
+      "SZ1-POS-1-9",
+      "SZ1-NEG-1-9",
+      "SZ4-LD-POS",
+      "SZ4-LD-NEG",
+      "SZ4-TRS-POS",
+      "SZ4-TRS-NEG",
+      "SZ4-LDS-POS",
+      "SZ4-LDS-NEG",
+      "RT-TR-TO-COMP3",
+      "RT-LD-TO-COMP3",
+      "RT-SEP-TO-COMP3"
+    ]
+  },
+  "ZD103A": {
+    "expect": "run",
+    "tests": [
+      "HW-POS-1",
+      "HW-NEG-1",
+      "HW-POS-256",
+      "HW-NEG-256",
+      "HW-U-9999",
+      "FW-POS-1",
+      "FW-NEG-1",
+      "FW-POS-123456789",
+      "FW-NEG-123456789",
+      "FW-U-999999999",
+      "DW-POS-1",
+      "DW-NEG-1",
+      "DW-POS-1E12",
+      "C5-HW-S-32767",
+      "C5-HW-S-N32768",
+      "C5-HW-U-65535"
+    ]
+  },
+  "ZD104A": {
+    "expect": "run",
+    "tests": [
+      "SYNC-REC-LEN",
+      "NOSYNC-REC-LEN",
+      "SYNC-HW-OFFSET",
+      "SYNC-FW-OFFSET",
+      "SYNC-DW-OFFSET",
+      "REDEF-BASE-LEN",
+      "REDEF-OVERLAY",
+      "RENAMES-THRU",
+      "REDEF-MUTATE"
+    ]
+  },
+  "ZD105A": {
+    "expect": "run",
+    "tests": [
+      "ODO-LEN-5",
+      "ODO-LEN-2",
+      "ODO-GROUP-MOVE",
+      "INDEX-ARITH",
+      "SEARCH-HIT",
+      "SEARCH-MISS",
+      "SEARCH-ALL-ASC",
+      "SEARCH-ALL-MISS",
+      "SEARCH-ALL-DSC"
+    ]
+  },
+  "ZD106A": {
+    "expect": "run",
+    "tests": [
+      "ED-Z-SUPPRESS",
+      "ED-Z-COMMA",
+      "ED-AST-PROT",
+      "ED-FLOAT-CUR",
+      "ED-FLOAT-PLUS",
+      "ED-FLOAT-MINUS",
+      "ED-CR-SIGN",
+      "ED-DB-SIGN",
+      "ED-BWZ",
+      "ED-ALPHANUM",
+      "ED-SCALE-P"
+    ]
+  },
+  "ZD107A": {
+    "expect": "run",
+    "tests": [
+      "FIG-SPACES-HEX",
+      "FIG-ZEROS-HEX",
+      "FIG-HIGH-HEX",
+      "FIG-LOW-HEX",
+      "FIG-QUOTES-HEX",
+      "FIG-ALL-AB-HEX",
+      "INIT-DEFAULT",
+      "INIT-REPLACING"
+    ]
+  },
+  "ZD108A": {
+    "expect": "run",
+    "tests": [
+      "B2S-BOUND-0",
+      "B2S-BOUND-1",
+      "B2S-BOUND-2",
+      "B2S-BOUND-3",
+      "B2S-BOUND-4",
+      "B2S-BOUND-5",
+      "B2S-BOUND-6",
+      "B2S-BOUND-7",
+      "B2U-BOUND-0",
+      "B2U-BOUND-1",
+      "B2U-BOUND-2",
+      "B2U-BOUND-3",
+      "B2U-BOUND-4",
+      "B4S-BOUND-0",
+      "B4S-BOUND-1",
+      "B4S-BOUND-2",
+      "B4S-BOUND-3",
+      "B4S-BOUND-4",
+      "B4S-BOUND-5",
+      "B4S-BOUND-6",
+      "B4S-BOUND-7",
+      "B4U-BOUND-0",
+      "B4U-BOUND-1",
+      "B4U-BOUND-2",
+      "B4U-BOUND-3",
+      "B4U-BOUND-4",
+      "B8S-BOUND-0",
+      "B8S-BOUND-1",
+      "B8S-BOUND-2",
+      "B8S-BOUND-3",
+      "B8S-BOUND-4",
+      "B8S-BOUND-5",
+      "B8S-BOUND-6",
+      "B8S-BOUND-7",
+      "B8U-BOUND-0",
+      "B8U-BOUND-1",
+      "B8U-BOUND-2",
+      "B8U-BOUND-3",
+      "B8U-BOUND-4"
+    ]
+  },
+  "ZD109A": {
+    "expect": "run",
+    "tests": [
+      "COLL-LOWER-UPPER",
+      "COLL-UPPER-DIGIT",
+      "COLL-SPACE",
+      "COLL-LOW-HIGH",
+      "COLL-PAD-GROUP",
+      "COLL-RAW-BYTES"
+    ]
+  },
+  "ZD110A": {
+    "expect": "run",
+    "tests": [
+      "CUSTOM-FIRST-SECOND",
+      "CUSTOM-SECOND-THIRD",
+      "CUSTOM-LITERAL",
+      "CUSTOM-BYTES-SAME"
+    ]
+  },
+  "ZE101N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE102N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE103N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE104N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE105N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE106N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE107N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE108N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE109N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE110N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE111N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE112N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE113N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE114N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE115N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE116N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE117N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE118N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE119N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE120N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE121N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE122N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE123N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE124N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE125N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE126N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE126P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE127N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE127P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE128N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE128P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE129N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE129P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE130N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE130P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE131N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE131P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE132N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE132P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE133N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE133P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZF101A": {
+    "expect": "run",
+    "tests": [
+      "QSAM-MODE-F",
+      "QSAM-MODE-V-LEN",
+      "QSAM-MODE-V-EOF"
+    ]
+  },
+  "ZF102A": {
+    "expect": "run",
+    "tests": [
+      "QSAM-MODE-S-SPAN",
+      "QSAM-MODE-U-FS39"
+    ]
+  },
+  "ZF103A": {
+    "expect": "run",
+    "tests": [
+      "CODESET-ASCII-HEX",
+      "CODESET-EBCDIC-RT"
+    ]
+  },
+  "ZF104A": {
+    "expect": "run",
+    "tests": [
+      "VSAM-KSDS-DUP-22",
+      "VSAM-KSDS-NF-23",
+      "VSAM-KSDS-CL-47",
+      "VSAM-RRDS-DUP-22"
+    ]
+  },
+  "ZF105A": {
+    "expect": "run",
+    "tests": [
+      "IOCTL-SAME-REC",
+      "IOCTL-COPY-THRU"
+    ]
+  },
+  "ZF106A": {
+    "expect": "run",
+    "tests": [
+      "VAR-OPEN-OUT",
+      "VAR-WRITE-4",
+      "VAR-WRITE-20",
+      "VAR-WRITE-5",
+      "VAR-CLOSE-OUT",
+      "VAR-OPEN-IN",
+      "VAR-READ-4",
+      "VAR-READ-20",
+      "VAR-READ-5",
+      "VAR-EOF",
+      "VAR-CLOSE-IN",
+      "VAR-REOPEN"
+    ]
+  },
+  "ZF107A": {
+    "expect": "run",
+    "tests": [
+      "KS-OPEN-OUT",
+      "KS-CREATE-CLOSE",
+      "KS-OPEN-IO",
+      "KS-INSERT-10",
+      "KS-INSERT-20",
+      "KS-INSERT-30",
+      "KS-DUP-PRIMARY",
+      "KS-AFTER-DUP",
+      "AK-DUP-UNIQUE",
+      "AK-AFTER-DUP",
+      "KS-NOT-FOUND",
+      "AK-READ-EXACT",
+      "AK-START-EXACT",
+      "AK-NEXT-FIRST",
+      "AK-NEXT-SECOND",
+      "AK-NEXT-THIRD",
+      "AK-END",
+      "AK-RECOVER-AFTER-EOF",
+      "AK-REWRITE-MOVE",
+      "AK-OLD-REMOVED",
+      "AK-NEW-FOUND",
+      "AK-REWRITE-CONFLICT",
+      "AK-REWRITE-ATOMIC",
+      "KS-DELETE",
+      "AK-DELETE-REMOVED",
+      "KS-DELETE-REMOVED",
+      "KS-DELETE-RECOVER",
+      "KS-CLOSE-IO",
+      "AK-REOPEN-PERSIST"
+    ]
+  },
+  "ZF108A": {
+    "expect": "run",
+    "tests": [
+      "DUP-OPEN",
+      "DUP-INSERT-30",
+      "DUP-INSERT-10",
+      "DUP-INSERT-20",
+      "DUP-PRIMARY-REJECT",
+      "DUP-RANDOM-FIRST",
+      "DUP-START",
+      "DUP-NEXT-FIRST",
+      "DUP-NEXT-SECOND",
+      "DUP-NEXT-THIRD",
+      "DUP-READ-PRIMARY",
+      "DUP-REWRITE-SAME",
+      "DUP-ORDER-UNCHANGED",
+      "DUP-DELETE-FIRST",
+      "DUP-REMAINING-FIRST",
+      "DUP-REWRITE-INTO",
+      "DUP-OLD-KEY-GONE",
+      "DUP-NEW-ORDER",
+      "DUP-REOPEN-ORDER"
+    ]
+  },
+  "ZF109A": {
+    "expect": "run",
+    "tests": [
+      "HDR-CREATE",
+      "HDR-CONTROL",
+      "HDR-LRECL-MISMATCH",
+      "HDR-LRECL-RECOVER",
+      "HDR-RECFM-MISMATCH",
+      "HDR-RECFM-RECOVER"
+    ]
+  },
+  "ZF201M": {
+    "expect": "run",
+    "tests": [
+      "TAPE-OPEN-REVERSED",
+      "TAPE-MODE-U-RW"
+    ]
+  },
+  "ZN101A": {
+    "expect": "run",
+    "tests": [
+      "NAT-UTF16-PAD",
+      "NAT-NX-LITERAL",
+      "NAT-SPACES-HEX",
+      "NAT-LEN-BYTELEN",
+      "NAT-REFMOD-CHAR",
+      "NAT-GROUP-USAGE",
+      "NAT-FROM-ALNUM"
+    ]
+  },
+  "ZN102A": {
+    "expect": "run",
+    "tests": [
+      "NDEC-BYTE-LEN",
+      "NDEC-UTF16-HEX",
+      "NDEC-ARITH-NUM",
+      "NED-NUM-EDIT",
+      "NED-CHAR-EDIT"
+    ]
+  },
+  "ZN102B": {
+    "expect": "run",
+    "tests": [
+      "NSDBCS-LIT-HEX",
+      "NSDBCS-PAD-4040",
+      "NSDBCS-INIT-DBCS"
+    ]
+  },
+  "ZN103A": {
+    "expect": "run",
+    "tests": [
+      "DBCS-G-NO-SOSI",
+      "MIXED-SOSI-HEX",
+      "DBCS-TO-NAT",
+      "DBCS-EGCS-INIT"
+    ]
+  },
+  "ZN104A": {
+    "expect": "run",
+    "tests": [
+      "NATOF-MIXED-939",
+      "NATOF-DBCS-G",
+      "DISPOF-939-SOSI",
+      "DISPOF-CCSID-37",
+      "RT-CCSID-1399"
+    ]
+  },
+  "ZN105A": {
+    "expect": "run",
+    "tests": [
+      "UTF16-SURROGATE",
+      "UTF16-CMP-PAD",
+      "UTF16-INIT-REPL",
+      "UTF16-INIT-DEF"
+    ]
+  },
+  "ZN106M": {
+    "expect": "run",
+    "tests": [
+      "JP939-DBCS-IDENT",
+      "JP939-LATIN-LOW",
+      "JP939-MIXED-HEX"
+    ]
+  },
+  "ZN107A": {
+    "expect": "run",
+    "tests": [
+      "NAT-PAD",
+      "NAT-TRUNC",
+      "NAT-LOW",
+      "NAT-FIRST",
+      "NAT-LAST",
+      "NAT-TAIL",
+      "NAT-REPLACE",
+      "NAT-INIT",
+      "NAT-SURR-UNITS",
+      "NAT-CHAR-BYTE-LEN"
+    ]
+  },
+  "ZP101A": {
+    "expect": "run",
+    "tests": [
+      "LS-FIRST-CALL",
+      "LS-SECOND-CALL",
+      "LS-AFTER-CANCEL"
+    ]
+  },
+  "ZP102A": {
+    "expect": "run",
+    "tests": [
+      "REC-FACT-5",
+      "REC-FACT-6",
+      "REC-FIB-7"
+    ]
+  },
+  "ZP103A": {
+    "expect": "run",
+    "tests": [
+      "RET-NUM-RC-PRES",
+      "RET-ON-EXCEPTION",
+      "RET-CHAR-ITEM"
+    ]
+  },
+  "ZP104A": {
+    "expect": "run",
+    "tests": [
+      "CALL-MODES-PRES",
+      "CALL-OMITTED",
+      "CALL-ENTRY-BIND"
+    ]
+  },
+  "ZP105A": {
+    "expect": "run",
+    "tests": [
+      "PTR-SIZES-NULL",
+      "PTR-ADDR-LINKAGE",
+      "PROCPTR-CALL",
+      "FUNCPTR-CALL"
+    ]
+  },
+  "ZP106A": {
+    "expect": "run",
+    "tests": [
+      "NEST-GLOBAL-COMMON",
+      "EXTERNAL-SHARED"
+    ]
+  },
+  "ZP107A": {
+    "expect": "run",
+    "tests": [
+      "CALL-ZEROS",
+      "CALL-NEGATIVE",
+      "CALL-OMITTED-AGAIN",
+      "CALL-PRESENT-AGAIN"
+    ]
+  },
+  "ZP108A": {
+    "expect": "run",
+    "tests": [
+      "DATA-PTR-COPY",
+      "DATA-PTR-REBIND",
+      "PROC-ALIAS-DYNAMIC",
+      "PROC-COPY-AFTER-NULL",
+      "PROC-REBIND-OTHER",
+      "PROC-COPY-INDEP",
+      "PROC-NULL-TRANSITION"
+    ]
+  },
+  "ZS101A": {
+    "expect": "run",
+    "tests": [
+      "SR-TALLY-RC",
+      "SR-WHEN-COMPILED",
+      "FN-INT-DATE-DAY",
+      "FN-Y2K-WINDOW"
+    ]
+  },
+  "ZS102A": {
+    "expect": "run",
+    "tests": [
+      "LE-CEEDAYS-EPOCH",
+      "LE-CEEDATE-FMT",
+      "LE-CEESECS-DATM",
+      "LE-CEEDAYS-BAD",
+      "LE-CEENCOD-DCOD"
+    ]
+  },
+  "ZS103M": {
+    "expect": "run",
+    "tests": [
+      "PARM-HALFWORD-LEN",
+      "PARM-TEXT-VALUE"
+    ]
+  },
+  "ZS104A": {
+    "expect": "run",
+    "tests": [
+      "DATE-16010101",
+      "DATE-16010102",
+      "DATE-19000301",
+      "DATE-20000228",
+      "DATE-20000229",
+      "DATE-20000301",
+      "DATE-21000301",
+      "DATE-99991231"
+    ]
+  },
+  "ZS105A": {
+    "expect": "run",
+    "tests": [
+      "REPLACE-EXACT-WORD",
+      "REPLACE-LITERAL-SAFE",
+      "REPLACE-OFF",
+      "REPLACE-NEW-SCOPE",
+      "REPLACE-EMPTY-PART",
+      "REPLACE-NEST-INHERIT",
+      "REPLACE-PROGRAM-END"
+    ]
+  },
+  "ZX101A": {
+    "expect": "run",
+    "tests": [
+      "FLOW-EXIT-PERFORM",
+      "FLOW-EXIT-CYCLE",
+      "FLOW-UNTIL-EXIT",
+      "FLOW-EXIT-PAR-SEC"
+    ]
+  },
+  "ZX102A": {
+    "expect": "run",
+    "tests": [
+      "COND-SET-TRUE-FALSE",
+      "COND-SUBSCRIPT-SET",
+      "INIT-VALUE-PRECED"
+    ]
+  },
+  "ZX103A": {
+    "expect": "run",
+    "tests": [
+      "COPY-PRI-NESTED",
+      "COPY-OF-COPYALT",
+      "REPLACE-LEAD-TRAIL"
+    ]
+  },
+  "ZX104A": {
+    "expect": "run",
+    "tests": [
+      "DIR-SCOPE-CHECK"
+    ]
+  },
+  "ZX105A": {
+    "expect": "run",
+    "tests": [
+      "CYCLE-NEST-INNER",
+      "EXIT-NEST-INNER",
+      "CYCLE-TEST-AFTER",
+      "EXIT-FIRST-ITER"
+    ]
+  },
+  "ZX106A": {
+    "expect": "run",
+    "tests": [
+      "INIT-PLAIN",
+      "INIT-FILLER",
+      "INIT-VALUE-ONLY",
+      "INIT-VALUE-DEFAULT",
+      "INIT-ALNUM-VALUE",
+      "INIT-REPLACE",
+      "INIT-VALUE-REPLACE",
+      "INIT-FULL",
+      "INIT-JUST-VALUE",
+      "INIT-JUST-REPLACE",
+      "INIT-2D-ALL",
+      "INIT-2D-ONE",
+      "INIT-2D-NO-FILLER"
+    ]
+  },
+  "ZX107A": {
+    "expect": "run",
+    "tests": [
+      "TRIM-BOTH",
+      "TRIM-LEADING",
+      "TRIM-TRAILING",
+      "TRIM-INTERNAL",
+      "TRIM-LEAD-LENGTH",
+      "TRIM-BOTH-LENGTH",
+      "TRIM-EMPTY-LENGTH",
+      "NUMVAL-VALID",
+      "NUMVAL-BAD-CHAR",
+      "NUMVAL-TWO-DOTS",
+      "NUMVAL-EMPTY",
+      "NUMVAL-C-VALID",
+      "NUMVAL-C-BAD",
+      "ABS-0",
+      "ABS-1",
+      "ABS-2"
+    ]
+  }
+}

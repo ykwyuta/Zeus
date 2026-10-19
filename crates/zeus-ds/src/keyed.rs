@@ -160,6 +160,21 @@ impl KeyedDataset {
         self.primary.values().map(|(r, _)| r.as_slice())
     }
 
+    /// Whether writing this record creates or retains an allowed duplicate
+    /// alternate key. Ignore its own primary key when checking a REWRITE.
+    pub fn duplicates_alternate(&self, rec: &[u8]) -> bool {
+        let primary = self.key_of(rec, 0);
+        self.alternates.iter().enumerate().any(|(i, index)| {
+            if !self.keys[i + 1].duplicates {
+                return false;
+            }
+            let key = self.key_of(rec, i + 1);
+            index
+                .range((key.clone(), 0)..=(key, u64::MAX))
+                .any(|(_, other)| *other != primary)
+        })
+    }
+
     fn check_unique(&self, rec: &[u8], except: Option<&[u8]>) -> Result<()> {
         for (i, idx) in self.alternates.iter().enumerate() {
             if self.keys[i + 1].duplicates {
@@ -365,6 +380,36 @@ mod tests {
         );
         assert_eq!(d.get(b"01"), Some(&b"01Ay"[..]));
         assert_eq!(d.last_primary(), Some(&b"02"[..]));
+    }
+
+    #[test]
+    fn duplicate_warning_distinguishes_other_records_from_self_and_unique_keys() {
+        let mut d = ds();
+        assert!(!d.duplicates_alternate(b"02Ax"));
+        d.insert(b"02Ax".to_vec()).unwrap();
+        assert!(!d.duplicates_alternate(b"02Ax"));
+        assert!(d.duplicates_alternate(b"01Ay"));
+        // A collision on a unique alternate is an error, not a warning.
+        assert!(!d.duplicates_alternate(b"03Bx"));
+        d.insert(b"01Ay".to_vec()).unwrap();
+        assert!(d.duplicates_alternate(b"02Ax"));
+        assert!(d.duplicates_alternate(b"01Ay"));
+        d.replace(b"02Bx".to_vec()).unwrap();
+        assert!(!d.duplicates_alternate(b"01Ay"));
+        assert!(!d.duplicates_alternate(b"02Bx"));
+        assert!(d.duplicates_alternate(b"04Bz"));
+        d.delete(b"02").unwrap();
+        assert!(!d.duplicates_alternate(b"04Bz"));
+
+        // Check all alternate indexes, including a duplicate key following
+        // a unique key rather than always the first alternate index.
+        let mut keys = ds().keys().to_vec();
+        keys[1].duplicates = false;
+        keys[2].duplicates = true;
+        let mut d = KeyedDataset::new(keys, b' ');
+        d.insert(b"02Ax".to_vec()).unwrap();
+        assert!(d.duplicates_alternate(b"03Bx"));
+        assert!(!d.duplicates_alternate(b"03Ay"));
     }
 
     #[test]

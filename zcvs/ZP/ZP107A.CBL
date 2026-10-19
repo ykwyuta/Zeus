@@ -1,0 +1,105 @@
+      * ZP107A: CALL sign/zero and omitted/present transitions
+      * SPEC: CALL USING REFERENCE/CONTENT/VALUE/OMITTED; AUDIT P05.
+      * ZPS04A MODIFIES CONTENT/VALUE; CALLER COPIES MUST NOT CHANGE.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZP107A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  WS-REF PIC S9(4) COMP.
+       01  WS-CONT PIC S9(4) COMP.
+       01  WS-VAL PIC S9(9) COMP-5.
+       01  WS-OPT PIC X(4) VALUE 'SAFE'.
+       01  WS-STAT PIC X.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZP107A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'CALL-ZEROS' TO ZCVS-TEST-NAME.
+           MOVE 0 TO WS-REF.
+           MOVE 0 TO WS-CONT.
+           MOVE 0 TO WS-VAL.
+           MOVE SPACE TO WS-STAT.
+           CALL 'ZPS04A' USING BY REFERENCE WS-REF
+             BY CONTENT WS-CONT BY VALUE WS-VAL
+             BY REFERENCE WS-OPT BY REFERENCE WS-STAT.
+           IF WS-REF = 0 AND WS-CONT = 0
+             AND WS-VAL = 0 AND WS-STAT = 'P'
+             AND WS-OPT = 'SAFE'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0/P/ISOLATED' TO ZCVS-EXPECTED
+               MOVE WS-STAT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'CALL-NEGATIVE' TO ZCVS-TEST-NAME.
+           MOVE -10 TO WS-REF.
+           MOVE -20 TO WS-CONT.
+           MOVE -30 TO WS-VAL.
+           MOVE SPACE TO WS-STAT.
+           CALL 'ZPS04A' USING BY REFERENCE WS-REF
+             BY CONTENT WS-CONT BY VALUE WS-VAL
+             BY REFERENCE WS-OPT BY REFERENCE WS-STAT.
+           IF WS-REF = -60 AND WS-CONT = -20
+             AND WS-VAL = -30 AND WS-STAT = 'P'
+             AND WS-OPT = 'SAFE'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '-60/P/ISOLATED' TO ZCVS-EXPECTED
+               MOVE WS-STAT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'CALL-OMITTED-AGAIN' TO ZCVS-TEST-NAME.
+           MOVE 10 TO WS-REF.
+           MOVE 20 TO WS-CONT.
+           MOVE 30 TO WS-VAL.
+           MOVE SPACE TO WS-STAT.
+           CALL 'ZPS04A' USING BY REFERENCE WS-REF
+             BY CONTENT WS-CONT BY VALUE WS-VAL
+             OMITTED BY REFERENCE WS-STAT.
+           IF WS-REF = 60 AND WS-CONT = 20
+             AND WS-VAL = 30 AND WS-STAT = 'O'
+             AND WS-OPT = 'SAFE'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '60/O/ISOLATED' TO ZCVS-EXPECTED
+               MOVE WS-STAT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'CALL-PRESENT-AGAIN' TO ZCVS-TEST-NAME.
+           MOVE 1 TO WS-REF.
+           MOVE 2 TO WS-CONT.
+           MOVE 3 TO WS-VAL.
+           MOVE SPACE TO WS-STAT.
+           CALL 'ZPS04A' USING BY REFERENCE WS-REF
+             BY CONTENT WS-CONT BY VALUE WS-VAL
+             BY REFERENCE WS-OPT BY REFERENCE WS-STAT.
+           IF WS-REF = 6 AND WS-CONT = 2
+             AND WS-VAL = 3 AND WS-STAT = 'P'
+             AND WS-OPT = 'SAFE'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '6/P/ISOLATED' TO ZCVS-EXPECTED
+               MOVE WS-STAT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.

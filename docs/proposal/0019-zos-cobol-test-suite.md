@@ -2,6 +2,8 @@
 
 - 状態: 提案 (Draft)
 - 作成日: 2026-10-16
+- シナリオ再監査: [実装との対応・不足シナリオ・完了判定](../../zcvs/SCENARIOS.md)
+  （プログラム番号は計画時のもの。実装との対応は再監査表を参照）
 - 関連:
   - [0003 Rust 製 COBOL コンパイラ (zeus-cobol)](0003-cobol-compiler.md)
   - [0014 IBM Enterprise COBOL 構文適合性の監査](0014-cobol-ibm-conformance.md)
@@ -67,6 +69,7 @@ FAIL  ZD101A-T003  R42-P236       SYNC SLACK BYTES IN NESTED GROUP
 - **PDS メンバー名互換の 8 文字以内の命名**: プログラム名・コピーブック名・サブプログラム名はすべて英大文字・数字 8 文字以内 (`ZD101A`, `ZCVSRPT` 等) とし、z/OS の区分データセット (PDS/PDSE) へそのまま格納・コンパイル (`PGM=IGYCRCTL`) できるようにする。
 - **バイト列検証の COBOL 内完結**: 記憶域のバイト配置 (`COMP-3` の符号ニブル、`COMP-1` の HFP ビット列、`SYNC` の詰めバイト、`NATIONAL` の UTF-16BE バイト列など) は、Rust 側のメモリ覗き見に頼らず、COBOL 内の `REDEFINES` と共通の 16 進展開ルーチン (`ZCVSHEX` コピーブック) によって 16 進文字列へ変換し、COBOL プログラム自身が期待値と比較して PASS/FAIL を判定する。
 - **ソース先頭 `CBL` による自己記述**: `TRUNC(BIN)`、`ARITH(EXTEND)`、`NUMPROC(PFD)`、`NSYMBOL(DBCS)` などコンパイラーオプションに依存するテストは、コマンドライン引数ではなくソース先頭の `CBL` 文で指定する。これにより z/OS の `IGYCRCTL` でも `zcobc` でも同じオプションでコンパイルされる。
+- **導入設定・版依存オプションの区別**: `NUMCLS` は実機 z/OS では導入設定である。Zeus の `CBL NUMCLS` で設定を選択するケースはその差を台帳に明記し、実機では該当指定を除いて同じ導入設定で検証する。`NUMPROC(MIG)` のケースは 4.2 対象とし、6.x へ無修正で持ち込めるとは扱わない。
 
 ### 2.3 クリーンルーム原則とライセンス
 
@@ -119,7 +122,7 @@ CCVS85 の `NC` モジュールは表示上の値 (`DISPLAY` や文字比較) �
 | `ZA102A` | `TRUNC(BIN)` と `COMP-5` | `CBL TRUNC(BIN)` 下での 2/4/8 バイト全幅保持 (-32768〜32767 等)、`ON SIZE ERROR` の 2 進幅判定、5/10/20 桁の `DISPLAY` 出力、`TRUNC(STD)` 下の `COMP-5` との一致 | R42 p.248, [0017 R03](0017-cobol-remaining-compatibility.md) |
 | `ZA103A` | `TRUNC(OPT)` | PICTURE 範囲内の有効値に対する演算・移送の整合確認 | PG TRUNC |
 | `ZA104A` | `ARITH(COMPAT)` 中間結果規則 | `CBL ARITH(COMPAT)` 下での最大 18 桁数値項目、30 桁中間結果、`COMPUTE` での乗除算の小数桁保持・切り捨て、`ROUNDED` と `ON SIZE ERROR` | R42, PG Intermediate Results |
-| `ZA105A` | `ARITH(EXTEND)` 31 桁演算 | `CBL ARITH(EXTEND)` 下での 19〜31 桁の `DISPLAY`/`COMP-3`/`BINARY`/`COMP-5`、31 桁中間結果、境界値演算 | R42, PG ARITH(EXTEND) |
+| `ZA105A` | `ARITH(EXTEND)` 31 桁演算 | `CBL ARITH(EXTEND)` 下での 19〜31 桁の `DISPLAY`/`COMP-3`、31 桁中間結果、境界値演算。`BINARY`/`COMP-5` の PICTURE は 1〜18 桁・格納幅は 2/4/8 バイトとして別に検査する | R42, PG ARITH(EXTEND) |
 | `ZA106A` | `NUMPROC(NOPFD / PFD / MIG)` と `NUMCLS` | 非優先符号 (`A`–`F`) の入力データに対する `IF NUMERIC`、`IF POSITIVE/NEGATIVE/ZERO` (`-0` を含む)、算術・`MOVE` 後の符号修復有無 | PG NUMPROC / NUMCLS |
 | `ZA107A` | 内部浮動小数点 (`COMP-1` / `COMP-2`) | IBM HFP 形式 (基数 16 指数・仮数) のバイト表現 (`REDEFINES` で検証)、指数リテラル (`1.5E+02`, `-3.125E-01`)、10 進⇔HFP 変換、`ARITH(EXTEND)` 時の高2倍精度 | R42 pp.37, 247 |
 | `ZA108A` | 外部浮動小数点と数学・統計組込み関数 | `PIC +9(2).9(4)E+99` (`DISPLAY` および `NATIONAL`)、`SQRT`/`LOG`/`LOG10`/`SIN`/`COS`/`TAN`/`ASIN`/`ACOS`/`ATAN`/`ANNUITY`/`PRESENT-VALUE`/べき乗 (`**`) の精度検証 | R42 pp.214, Ch.22 |
@@ -398,3 +401,40 @@ zeus-ccvs report --results work/ccvs85-zeus.json --results work/zcvs-zeus.json
 | **Z2: 国別・プログラム構造 (`ZN`, `ZP`)** | `PIC G`/`PIC N`、`NSYMBOL`、`GROUP-USAGE NATIONAL`、CCSID 変換、`LOCAL-STORAGE`、`RECURSIVE`、`RETURNING`、`ENTRY`、各種ポインター、入れ子可視性 | 12 プログラム (+ サブプログラム 8 本) / 180+ テスト項目 | `ZN`, `ZP` が FAIL 0。既存 `ibm_conformance` / `remaining_compatibility` の該当ケースをすべて包含 |
 | **Z3: ファイル・環境・拡張・負系 (`ZF`, `ZS`, `ZX`, `ZE`)** | QSAM 物理ブロック (`F/V/S/U`, `AWO`, `RESERVE`, `CODE-SET`)、VSAM 第 2 `FILE STATUS`・`STATUS 39`、AWSTAPE、`WHEN-COMPILED`、世紀窓、5.x/6.x 拡張 (`ZX`)、コンパイル診断 (`ZE`) | 35+ プログラム / 300+ テスト項目 | [0018](0018-cobol-compatibility-completion.md) の残件実装と合わせて全必須モジュール (`ZD`, `ZA`, `ZN`, `ZP`, `ZF`, `ZS`, `ZE`) および `ZX` が全件合格 |
 | **Z4: 実機 z/OS 実行用 JCL パッケージとオラクル台帳** | 実機 z/OS (`IGYCRCTL` + `IEWL`) へ一括転送・実行できる JCL 生成コマンド (`zeus-ccvs export-jcl`)、および GnuCOBOL `-std=ibm` との差異台帳更新 | 全モジュール一括 JCL + `docs/oracle/` 更新 | 生成した JCL と PDS メンバーが標準の z/OS JCL 構文に準拠し、比較結果が `docs/oracle/` に記録される |
+
+## 9. シナリオ網羅性の受入基準
+
+§4の機能名ごとに代表プログラムが存在するだけでは完了としない。
+[シナリオ再監査表](../../zcvs/SCENARIOS.md)で、要求群ごとの入力分割・
+境界・異常系・状態遷移・オプション間の相互作用を管理する。
+CCVS85に委ねるケースには既存の検査IDを、ZCVSで検査するケースには
+COBOLプログラムと検査IDを対応付ける。未対応のものは明示的な残件とする。
+
+### 9.1 各シナリオに必要な情報
+
+1. 対象の仕様版・節と、正常系/診断系/処理系依存/未定義入力の区分。
+2. CBL/PROCESS、CCSID、ABI、呼出し先、DD/DCB/VSAM/テープ属性の前提。
+3. 初期状態、入力、実行する操作、期待値とその独立した導出根拠。
+4. 値・バイト列・長さ・STATUS/feedback・終了RC・非対象領域保持の観測点。
+5. 実行済み処理系と結果。ソースの存在、コンパイル成功、ZeusでのPASS、
+   実機比較済みは区別し、代替可能とはしない。
+
+### 9.2 分割と組合せの選び方
+
+- 数値は符号有無、0/正/負、桁数と物理幅の各境界、丸め直前/一致/直後。
+- 文字は空白/LOW/HIGH、短い/等長/長い、先頭/末尾、文字単位/バイト単位。
+- 配列・ODOは最小/最大/要素1つ、カウント変更後、送受両側の長さと隣接領域。
+- CALLとI/Oは初回/再使用、成功→失敗→成功、再OPEN/CANCEL、共有/分離領域。
+- 負系は違反1件と正常対照。タイムアウト、内部エラー、別規則の診断を合格にしない。
+- TRUNC×USAGE×受信先、ARITH×中間精度、NUMPROC×有効なNUMCLS×符号、
+  NSYMBOL×CCSID、再帰×LS/LINKAGE、REPLACE×プログラム境界、
+  RECFM×BLOCK×AWO、VSAM操作×アクセスモードなど、意味が変わる交互作用は必須。
+  全直積を省略するときも、採用する組合せと除外の理由を記録する。
+
+### 9.3 退行防止
+
+レビュー済みの実装済み検査IDを `zcvs/coverage.json` に保持し、Cargo連携で
+ソース・manifest・実レポートの対応と正確な件数を照合する。
+インタプリタ/ネイティブの双方で全プログラム・全検査の実行を確認し、
+空モジュール、検査の削除、目視扱いへの変更をPASSにしない。
+この台帳の一致はシナリオの十分性を証明しないため、再監査表の残件も併せて評価する。

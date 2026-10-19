@@ -124,3 +124,62 @@ diagnostic_contains = "SCREEN SECTION"
 [programs.ZE125N]
 expect = "compile-error"
 diagnostic_contains = "CBL/PROCESS option"
+
+[programs.ZE126N]
+expect = "compile-error"
+diagnostic_contains = "condition-name VALUE requires a value"
+
+[programs.ZE126P]
+expect = "compile-only"
+
+[programs.ZE127N]
+expect = "compile-error"
+diagnostic_contains = "empty replacement search operand"
+
+[programs.ZE127P]
+expect = "compile-only"
+
+[programs.ZE128N]
+expect = "compile-error"
+diagnostic_contains = "pseudo-text delimiters"
+
+[programs.ZE128P]
+expect = "compile-only"
+
+[programs.ZE129N]
+expect = "compile-error"
+diagnostic_contains = "RECURSIVE"
+
+[programs.ZE129P]
+expect = "compile-only"
+
+[programs.ZE130N]
+expect = "compile-error"
+diagnostic_contains = "ARITH"
+
+[programs.ZE130P]
+expect = "compile-only"
+
+[programs.ZE131N]
+expect = "compile-error"
+diagnostic_contains = "ARITH"
+
+[programs.ZE131P]
+expect = "compile-only"
+
+[programs.ZE132N]
+expect = "compile-error"
+diagnostic_contains = "EXIT is not defined"
+
+[programs.ZE132P]
+expect = "compile-only"
+
+[programs.ZE133N]
+expect = "compile-error"
+diagnostic_contains = "pseudo-text delimiters"
+
+[programs.ZE133P]
+expect = "compile-only"
+
+[programs.ZF109A]
+jcl = "ZF109A.JCL"
