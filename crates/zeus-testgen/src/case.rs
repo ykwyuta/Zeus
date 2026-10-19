@@ -5,7 +5,8 @@
 //!   "params": [ { "hex": "C1C2...", "fields": { "NAME": "value", ... } } ],
 //!   "accept": [ "line", ... ],
 //!   "files": [ { "name": "IN-FILE", "records": [ { "hex": "...", "fields": { ... } } ] } ],
-//!   "faults": [ { "file": "IN-FILE", "statement": "OPEN", "occurrence": 1 } ],
+//!   "faults": [ { "file": "IN-FILE", "statement": "OPEN", "occurrence": 1 },
+//!               { "file": "IN-FILE", "statement": "READ", "occurrence": 2, "status": "F910" } ],
 //!   "stubs": [ { "program": "SUBPGM", "call": 1, "argument": 1, "hex": "..." } ],
 //!   "exec": { "PGM.120.1.RESP": { "num": 13 }, "PGM.120.1.INTO.ACCT-ID": { "hex": "F0F1" } },
 //!   "expect": { "return_code": 0, "display": [ "..." ], "params": [ "C1C2..." ],
@@ -18,7 +19,8 @@
 //! shows the input items' values for reading. `files` are the records of
 //! the files the program reads; `expect.files` those of the files it
 //! writes. `faults` are I/O statements made to fail (the n-th OPEN, READ,
-//! ... of a file: status 35 or 30); `stubs` what the stubs of the
+//! ... of a file: status 35 or 30, or with `status` F910, '9' and a binary
+//! byte as VSAM logical errors give it); `stubs` what the stubs of the
 //! programs called that are not there set in their arguments (leading
 //! bytes); `expect.stubbed` names those programs. `exec` is what EXEC
 //! CICS / SQL statements give the program (the n-th execution of the
@@ -32,6 +34,7 @@ use std::path::Path;
 use std::rc::Rc;
 
 use serde::{Deserialize, Serialize};
+use zeus_cobol::vm::testenv;
 use zeus_cobol::zir::Module;
 
 use crate::engine::{Case, Field, FileSpec, Inputs, Options, field_text, file_specs, run};
@@ -63,6 +66,9 @@ pub struct Fault {
     pub file: String,
     pub statement: String,
     pub occurrence: u32,
+    /// The status when not 35 / 30 (hexadecimal).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub status: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -214,10 +220,11 @@ pub fn case_file(
             .inputs
             .faults
             .iter()
-            .map(|(f, k, n)| Fault {
+            .map(|((f, k, n), how)| Fault {
                 file: f.clone(),
                 statement: k.clone(),
                 occurrence: *n,
+                status: (*how == testenv::FAULT_VSAM).then(|| hex(&testenv::VSAM_STATUS)),
             })
             .collect(),
         stubs: c
@@ -279,7 +286,14 @@ pub fn replay(module: &Rc<Module>, case: &CaseFile, opts: &Options) -> Result<Ve
         faults: case
             .faults
             .iter()
-            .map(|f| (f.file.clone(), f.statement.clone(), f.occurrence))
+            .map(|f| {
+                let how = if f.status.is_some() {
+                    testenv::FAULT_VSAM
+                } else {
+                    testenv::FAULT
+                };
+                ((f.file.clone(), f.statement.clone(), f.occurrence), how)
+            })
             .collect(),
         stubs: case
             .stubs

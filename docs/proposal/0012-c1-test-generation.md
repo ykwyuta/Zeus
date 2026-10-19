@@ -236,9 +236,19 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 - `Machine::exec_step` は記号の状態があるときだけ `sym_step` を通る。ないときの実行は従来と同じ。
 - 数値は「桁の整数」の項 (位取り `s` の値は `項 / 10^s`)、英数字はバイトごとの項。シャドウにはバインド時の
   バイトを持たせ、追跡していない命令がその場所を書き換えたら (バイトが変わったら) 捨てる。
-- 追跡する命令: MOVE (数値・英数字・グループ)、算術 (`Store` の加減乗、定数での除算、桁あふれの条件で
+- 追跡する命令: MOVE (数値・英数字・グループ、JUSTIFIED RIGHT)、算術 (`Store` の加減乗、定数での除算、桁あふれの条件で
   SIZE ERROR)、一時変数、条件ジャンプ (比較・88 レベル・符号・クラス・NOT/AND/OR)、GO TO DEPENDING (値を
-  固定する仮定)、ACCEPT (行のバイトが変数)、順次ファイルの READ。
+  固定する仮定)、ACCEPT (行のバイトが変数)、順次ファイルの READ、INSPECT (`vm/sym_text.rs`: BEFORE/AFTER のない
+  1 句で、1 文字を対象とする TALLYING・REPLACING の ALL/LEADING/FIRST/CHARACTERS と CONVERTING。各バイトは
+  `If(バイト = 対象, 置換, バイト)` の項、計数は `Σ If(…, 1, 0)`)。
+- 読み出し: 入力のバイトから、DISPLAY の数字 (各バイトが数字という仮定付き) に加えて 2 進 (COMP・COMP-5: ビッグ
+  エンディアン、符号付きは 2 の補数) とパック 10 進 (半バイトごとの数字、最後の半バイトが符号) の数値を項として
+  組み立てる。英数字の比較とクラス条件では、符号なし DISPLAY 整数を数値としてではなくバイトとして読む
+  (`IF ACCTSIDI = '*'`、`IF WS-OPTION IS NOT NUMERIC`)。
+- 記号の添字: 1 次元の表の要素を、入力に従う添字で読むと「添字 = j なら j 番目の要素」の `If` の連鎖 (64 個まで)
+  になり、添字が範囲内という仮定を付ける。定数の部分参照 (`PGMNAME(WS-OPTION)(1:5)`) も扱う。書き込みの添字は具体値。
+- 1 回の実行の変数は 20000 個まで (`concolic::MAX_VARS`)。超えたらスタブなど外からのデータは追わない (状態コードが
+  変わらないスタブでループするプログラムが、解けないほど大きな実行にならないように)。
 - 分岐は ZIR の `JumpIf`/`JumpUnless` 単位で記録する (複合条件は一つの判定なので C1 = 判定網羅で `zcov` と一致)。
 
 ### 入力
@@ -266,8 +276,9 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
   - WRITE・REWRITE・DELETE の後はデータセットが入力と違うので、それ以降のキーの条件と AT END は具体値。
     主キーや一意の副キーが重なるレコードは入力から除く (データセットに置けない)。
 - 入出力エラー: FILE STATUS を持つファイルの OPEN・READ・WRITE・REWRITE・DELETE・START・CLOSE の、ファイルと
-  種類ごとの n 回目を失敗させられる (変数 `F<ファイル>.<文><n>`、1 で失敗)。失敗した文は何もせず、状態は
-  OPEN INPUT / I-O なら 35、それ以外は 30。FILE STATUS は `If(失敗, 状態, 本来の状態)` の項、入出力条件は
+  種類ごとの n 回目を失敗させられる (変数 `F<ファイル>.<文><n>`、1 か 2 で失敗)。失敗した文は何もせず、状態は
+  1 なら OPEN INPUT / I-O で 35、それ以外は 30、2 なら `'9'` と 2 進の X'10' (VSAM の論理エラーの形で、数字でない。
+  ケースの `faults` に `"status": "F910"`)。FILE STATUS は `If(失敗, 状態, 本来の状態)` の項、入出力条件は
   「失敗 または 本来の条件」。ソルバはまず失敗させない (失敗の変数を 0 に固定した) 解を探し、なければ失敗を
   使う (通常の入力で通る経路は通常の入力で作る)。ケースの `faults` に記録し、`ztest` も同じ文を失敗させる。
 - CALL のスタブ: 呼び出した名前のプログラムがモジュールにも `-L` にもないとき、試験の実行ではエラーにせず
@@ -292,6 +303,13 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
   - EIB を持つプログラムは EIBCALEN を COMMAREA の長さ (最大 1024) で始める (`MOVE DFHCOMMAREA(1:EIBCALEN)` の
     長さは記号として追わないため、短いと COMMAREA の内容が入力にならない)。要素が 1 バイトの OCCURS (COMMAREA の
     `OCCURS 1 TO 32767 DEPENDING ON EIBCALEN` など) は 100 個ではなく 1024 バイトまで項目に展開する。
+- LE の日付・時刻のサービス (CEEDAYS・CEESECS・CEEDATE・CEEDATM・CEELOCT・CEEGMT): サービスは実際に動かし、
+  その後で出力の引数 (結果とフィードバック・コード) を n 回目の呼び出しのスタブの出力 (`stubs` の
+  `"program": "CEEDAYS"`) として入力にする。値がなければ実際の結果のまま。ソルバは実際には起こらない組合せも
+  選び得る (特性テストとしての割り切り)。
+- DL/I: EXEC DLI は INTO (項目ごと) と DIBSTAT が入力 (既定は空白、GN・GHN の 2 回目からは GB、GNP・GHNP は GE)。
+  `CALL 'CBLTDLI'` (AIBTDLI・CEETDLI も) は DL/I 用のスタブで、PCB の状態コード (11〜12 バイト目) と get 呼び出しの
+  入出力領域が、関数ごとの n 回目の出力 (`"program": "CBLTDLI.GN"`) になる。既定は同じく空白・GB・GE。
 - 時刻: 生成と再実行の時刻は 2025-01-01 09:00:00 UTC に固定する (`zeus_cobol::clock`)。CURRENT-DATE、
   ACCEPT FROM DATE/TIME、LE の日時、データセットの日付がこれを返すので、日時を書くプログラムでもケースが再現する。
 - すべてのファイルは実行ごとの一時ディレクトリーにデータセットを割り当てる。主プログラムが書いた順次ファイル、
@@ -310,6 +328,8 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 
 - 世代探索: 実行の経路の各分岐について、未網羅の向きなら、それまでの条件のうち同じ変数につながるものだけを残して
   (スライス) 逆向きを解き、解を次の入力にする。向きごとの試行は 4 回まで。全試行が充足不能なら「到達不能」と報告。
+- HANDLE CONDITION と WHENEVER: 飛び先へ行く応答の判定 (プログラム `P#EXEC`) は網羅率には数えないが、最小化では
+  網羅する向きとして扱うので、飛び先を通るケースが残る。
 - 文脈を変えた解き直し: 網羅済みの向きでも、到達したのに条件が一度も入力に従わなかった向きが残る間は、
   その前に通った判定の組 (文脈) が新しければ逆向きを解く (向きごとに 4 文脈まで)。CICS のプログラムでは、
   初回の経路 (画面の入力が定数) で網羅した判定を、RECEIVE した経路でも逆にしないと、その後の画面の項目による
@@ -329,21 +349,23 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 | `tests/programs/ENVPGM.cbl` | OPEN・READ の失敗 (FILE STATUS 35 / 30) と、ないサブプログラムの CALL (出力で分岐) | 8/8 (100%) |
 | `tests/programs/CICSPGM.cbl` | RECEIVE INTO、READ の RESP (NOTFND) と INTO の COMP-3 項目、HANDLE CONDITION ENDFILE で抜ける READNEXT のループ | 18/18 (100%) |
 | `tests/programs/SQLPGM.cbl` | SELECT INTO のホスト変数と SQLCODE、SQLCODE 100 まで FETCH するカーソル、WHENEVER SQLERROR | 12/12 (100%) |
+| `tests/programs/TEXTPGM.cbl` | INSPECT、JUSTIFIED RIGHT、記号の添字、CEEDAYS のフィードバック、数字でない FILE STATUS、GB まで読む CBLTDLI | 20/20 (100%) |
+| `tests/programs/DLIPGM.cbl` | EXEC DLI の GU (INTO の COMP-3 項目、DIBSTAT)、GE まで読む GNP | 14/14 (100%) |
 
 CardDemo のバッチ (`-I app/cpy`、CBSTM03A は呼び出し先 CBSTM03B を `zcobc compile` した .zo を `-L` で与えた)。
 どれも `ztest` で全ケースが再現する。所要時間はリリースビルドで 1 本あたり 0〜14 秒。
 
 | プログラム | 内容 | C1 |
 |---|---|---|
-| `CBACT01C` | KSDS を読み、複数の出力ファイルへ書く (COBDATFT はスタブ) | 44/46 (96%) |
-| `CBACT02C`・`CBACT03C`・`CBCUS01C` | KSDS を順に読んで表示 | 22/24 (92%) |
-| `CBACT04C` | 取引区分残高から利息を計算し、口座を更新、取引を書く | 84/94 (89%) |
-| `CBTRN01C` | 日次取引を検証 | 70/72 (97%) |
-| `CBTRN02C` | 日次取引を記帳 | 102/106 (96%) |
-| `CBTRN03C` | 取引報告書 | 90/92 (98%) |
+| `CBACT01C` | KSDS を読み、複数の出力ファイルへ書く (COBDATFT はスタブ) | 45/46 (98%) |
+| `CBACT02C`・`CBACT03C`・`CBCUS01C` | KSDS を順に読んで表示 | 23/24 (96%) |
+| `CBACT04C` | 取引区分残高から利息を計算し、口座を更新、取引を書く | 85/94 (90%) |
+| `CBTRN01C` | 日次取引を検証 | 71/72 (99%) |
+| `CBTRN02C` | 日次取引を記帳 | 103/106 (97%) |
+| `CBTRN03C` | 取引報告書 | 91/92 (99%) |
 | `CBSTM03A` | 明細書 (ファイル入出力は CBSTM03B、TIOT の走査、ALTER) | 45/60 (75%) |
 | `CBEXPORT`・`CBIMPORT` | データの書出し・取込み | 42/42・40/40 (100%) |
-| `CSUTLDTC` | LE の CEEDAYS の結果で分岐 | 7/18 (39%)。CEEDAYS の出力を追わないため (下記) |
+| `CSUTLDTC` | LE の CEEDAYS の結果で分岐 | 18/18 (100%) |
 
 CardDemo のオンライン (`-I app/cpy -I app/cpy-bms`、COBSWAIT を除く 17 本)。どれも `ztest` で全ケースが再現する。
 所要時間は 1 本あたり 0〜23 秒。
@@ -356,31 +378,40 @@ CardDemo のオンライン (`-I app/cpy -I app/cpy-bms`、COBSWAIT を除く 17
 | `COUSR01C`・`COUSR02C` | 27/28・54/56 (96%) | `COUSR00C` | 136/142 (96%) |
 | `COACTVWC` | 116/132 (88%) | `COCRDLIC` | 194/228 (85%) |
 | `COCRDSLC` | 120/142 (85%) | `COCRDUPC` | 209/274 (76%) |
-| `COMEN01C` | 38/50 (76%) | `COADM01C` | 27/40 (68%) |
+| `COMEN01C` | 45/50 (90%) | `COADM01C` | 30/40 (75%) |
 | `COACTUPC` | 462/750 (62%) | `CORPT00C` | 43/70 (61%) |
 
-オンラインで残る向きは、メニューの選択番号を `PERFORM VARYING` と部分参照 (記号の添字) で切り出して INSPECT で
-直す処理 (COMEN01C・COADM01C)、固定した時刻による判定 (CORPT00C の月の繰上げ)、COACTUPC の入力検査の
-深い入れ子 (到達しない向き 200 余り) など。
+オンラインで残る向きは、表の件数を超える選択肢 (COMEN01C・COADM01C の `WHEN 12`、'DUMMY')、固定した時刻による
+判定 (CORPT00C の月の繰上げ)、COACTUPC の入力検査の深い入れ子 (到達しない向き 140 余り) など。
 
-バッチで残る方向の多くは、ループの先頭の `IF END-OF-FILE = 'N'` の偽 (ループの条件から起こり得ない) と、状態が 00・10
-以外の分岐での `IO-STATUS NOT NUMERIC` (注入する状態が数字なので通らない) の類。
+IMS・Db2・MQ の拡張 (`app/app-authorization-ims-db2-mq`、`-I` にその `cpy`・`cpy-bms`・`dcl` と本体の `cpy`・`cpy-bms`)。
+
+| プログラム | C1 | プログラム | C1 |
+|---|---|---|---|
+| `CBPAUP0C` | 46/46 (100%) | `COPAUS2C` | 6/6 (100%) |
+| `COPAUS1C` | 61/62 (98%) | `COPAUS0C` | 115/118 (97%) |
+| `PAUDBUNL` | 25/26 (96%) | `DBUNLDGS` | 21/22 (95%) |
+| `PAUDBLOD` | 35/38 (92%) | `COPAUA0C` | 17/82 (21%) |
+
+COPAUA0C は MQGET で受けたメッセージを UNSTRING で分けて NUMVAL にかける。UNSTRING を追わないので、
+メッセージの内容を作れず、NUMVAL のエラーで実行が終わる。
+
+バッチで残る方向の多くは、ループの先頭の `IF END-OF-FILE = 'N'` の偽 (ループの条件から起こり得ない) の類。
 
 到達不能と報告した SAMPLE の 1 方向は、`LK-AMOUNT > 1000.50` を満たしたあとの `ON SIZE ERROR` の
 「起きない」向きで、区間の証明で示される。
 
 ### 未実装と制限
 
-- 段階 B の残り: 相対ファイル、LINE SEQUENTIAL の入力、OCCURS の記号の添字 (添字は具体値のまま)、REDEFINES の
-  バイト層での再解釈 (別の型で読むと具体化)。索引ファイルのキーのうち符号付き・パック 10 進の項目はバイトの
+- 段階 B の残り: 相対ファイル、LINE SEQUENTIAL の入力、多次元の表と書き込みの記号の添字、REDEFINES の
+  バイト層での再解釈 (DISPLAY・2 進・パック 10 進の数値はバイトから読めるが、ゾーン 10 進の符号付き・浮動小数点は具体化)。索引ファイルのキーのうち符号付き・パック 10 進の項目はバイトの
   定数として扱う (そのキーの条件はそのレコードの値を変えられない)。
-- 入出力エラーは 35 と 30 だけ (VSAM の詳細状態、数字でない状態などは作らない)。FILE STATUS のないファイルは
-  失敗させない。
+- 入出力エラーは 35・30 と `'9'` + X'10' だけ (VSAM の拡張状態は 0)。FILE STATUS のないファイルは失敗させない。
 - 呼び出し先: `-L` の .zo のプログラムも記号付きで実行するが、網羅を数える分岐は対象のモジュールのものだけ。
-  スタブの出力はバイト単位 (2 進・パック 10 進の数値として解くことはしない)、RETURN-CODE は 0 のまま。
-- 段階 C〜E の残り: INSPECT/STRING/UNSTRING、DL/I のスタブ、段落の要約、C2・MC/DC、PL/I。
+  スタブの出力はバイト単位 (2 進・パック 10 進の項目として読むと数値の項になる)、RETURN-CODE は 0 のまま。
+- 段階 C〜E の残り: STRING/UNSTRING、BEFORE/AFTER や複数句の INSPECT、段落の要約、C2・MC/DC、PL/I。
 - EXEC CICS/SQL のスタブ: 下記「既知の課題」。
-- LE の呼び出し (CEEDAYS など) や組み込み関数の結果は具体値で、それに依存する分岐は「入力に依存しない」と報告される。
+- 日付・時刻以外の LE の呼び出しや組み込み関数 (NUMVAL など) の結果は具体値で、それに依存する分岐は「入力に依存しない」と報告される。
 - 非線形の算術 (変数どうしの除算、べき乗、浮動小数点) は具体化する。
 - Z3 などの外部ソルバは未接続。
 
@@ -391,9 +422,9 @@ CardDemo のオンライン (`-I app/cpy -I app/cpy-bms`、COBSWAIT を除く 17
 | 段階 | 状態 |
 |---|---|
 | A (LINKAGE・ACCEPT、算術・条件・88 レベル) | 完了 |
-| B (ファイル) | 順次・索引ファイルの入力と入出力エラーの注入は完了。相対ファイル、LINE SEQUENTIAL の入力、記号の添字、REDEFINES のバイト層は未実装 |
-| C (サブプログラム) | ないプログラムの CALL のスタブと、`-L` の呼び出し先のファイルは完了。呼び出し先の分岐の網羅、INSPECT/STRING/UNSTRING は未実装 |
-| D (EXEC CICS/SQL/DLI のスタブ) | CICS・SQL は完了 (上記「入力」)。DL/I は記録するだけで応答を入力にしない |
+| B (ファイル) | 順次・索引ファイルの入力と入出力エラーの注入 (VSAM の `9x` を含む)、1 次元の表の読み出しの記号の添字は完了。相対ファイル、LINE SEQUENTIAL の入力、多次元・書き込みの添字は未実装 |
+| C (サブプログラム) | ないプログラムの CALL のスタブ、`-L` の呼び出し先のファイル、LE の日付・時刻サービスの出力、INSPECT (1 句) は完了。呼び出し先の分岐の網羅、STRING/UNSTRING は未実装 |
+| D (EXEC CICS/SQL/DLI のスタブ) | 完了 (上記「入力」)。CBLTDLI の DL/I の CALL も |
 | E (要約、C2・MC/DC、PL/I) | 未着手 |
 
 ### 既知の課題
@@ -405,13 +436,12 @@ CardDemo のオンライン (`-I app/cpy -I app/cpy-bms`、COBSWAIT を除く 17
 - **CICS の出力の判定**: 出力のオプションを名前の一覧 (`CICS_OUT`) で決めているため、コマンドによっては
   送る側の LENGTH・COMMAREA などを入力と誤る、またはその逆がある。RESP のないコマンドの応答は、HANDLE された
   条件の値だけを解く (ERROR の飛び先、HANDLE ABEND は試さない)。
-- **HANDLE / WHENEVER の飛び先の網羅**: 飛越しは ZIR の分岐ではないので C1 に数えず、最小化で飛び先だけを通す
-  ケースが残らないことがある。
-- **CSUTLDTC など LE の呼び出し**: CEEDAYS などの結果は具体値のままで、それに依存する分岐 (CSUTLDTC は 7/18) は
-  通らない。LE の呼び出しをスタブにする (出力を入力にする) ことが考えられる。
-- **網羅できない向きの扱い**: CardDemo のバッチで残る向きの多くはループの条件から起こり得ない判定や、
-  注入する状態が数字だけなので通らない `NOT NUMERIC` の判定。前者は区間で証明できず「入力に依存しない」と
-  報告される (到達不能としては数えない)。
+- **UNSTRING / STRING**: 追わないので、区切りで分けたデータ (COPAUA0C の MQ のメッセージ) による判定は通らない。
+  実行時の区切りの位置を固定して、各受け取り側を元のバイトの項にする (区切りの位置を仮定にする) 方法が考えられる。
+- **LE の出力**: 実際の結果ではなくソルバが選んだ値にもなるので、CEEDAYS が返さない組合せ (有効な日付で
+  フィードバック・コードが誤り) のケースもできる。
+- **網羅できない向きの扱い**: CardDemo で残る向きの多くはループの条件や表の件数から起こり得ない判定。
+  区間で証明できず「入力に依存しない」と報告される (到達不能としては数えない)。
 - **性能**: 記号の条件が大きくなる (索引ファイルの件数 × キーのバイト、FILE STATUS の `If` の入れ子) と解くのが
   遅くなる。1 回 300 ms の上限で打ち切るので、時間内に解けない向きは「入力が見つからない」と報告される。
 - **ソルバ**: 自前の局所探索のみ。Z3 などは未接続。

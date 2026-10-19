@@ -306,9 +306,11 @@ fn covers_cics_commands() {
     assert!(all.contains("\"num\": 13"), "{all}");
     assert!(all.contains("\"CICSPGM.43.1.INTO.AC-BAL\""), "{all}");
     assert!(all.contains("\"RICH"), "{all}");
-    // READNEXT without RESP: six records without ENDFILE
+    // READNEXT without RESP: six records without ENDFILE, and ENDFILE to
+    // the HANDLE CONDITION label
     assert!(all.contains("\"CICSPGM.66.6.RESP\""), "{all}");
     assert!(all.contains("\"LIST FULL\""), "{all}");
+    assert!(all.contains("\"LISTED 00"), "{all}");
     // what the program sends
     assert!(
         all.contains("CICS RETURN TRANSID('ACCT') COMMAREA="),
@@ -317,7 +319,8 @@ fn covers_cics_commands() {
 }
 
 /// EXEC SQL: SELECT INTO host variables and SQLCODE, a cursor FETCHed
-/// until SQLCODE 100: every branch direction.
+/// until SQLCODE 100, WHENEVER SQLERROR: every branch direction and the
+/// WHENEVER label.
 #[test]
 fn covers_sql_statements() {
     let (text, all) = generate_and_replay("SQLPGM");
@@ -329,8 +332,61 @@ fn covers_sql_statements() {
     assert!(all.contains("\"GOLD"), "{all}");
     assert!(all.contains("\"NO CUSTOMER\""), "{all}");
     assert!(all.contains("\"MANY 002\""), "{all}");
+    // WHENEVER SQLERROR
+    assert!(all.contains("\"CURSOR FAILED\""), "{all}");
     assert!(
         all.contains("SQL SELECT NAME, CREDIT_LIMIT INTO ?, ? FROM CUST WHERE ID = ?"),
         "{all}"
     );
+}
+
+/// INSPECT (TALLYING, REPLACING), a JUSTIFIED RIGHT move, a subscript
+/// that follows the inputs, an LE service's feedback (CEEDAYS), a FILE
+/// STATUS that is not numeric (VSAM) and a DL/I call (CBLTDLI) read
+/// until GB: every branch direction.
+#[test]
+fn covers_text_le_vsam_and_dli_calls() {
+    let (text, all) = generate_and_replay("TEXTPGM");
+    assert!(
+        text.contains("C1: 20 of 20 branch directions (100.0%)"),
+        "{text}"
+    );
+    for out in [
+        "\"BAD OPTION\"",
+        "\"ADMIN ONLY\"",
+        "\"OPTION ",
+        "\"NO OPTION\"",
+        "\"DATE OK\"",
+        "\"BAD DATE\"",
+        "\"DATE ERROR ",
+        "\"VSAM ERROR\"",
+        "\"CREDIT",
+        "\"SEGMENTS 00",
+    ] {
+        assert!(all.contains(out), "{out}: {all}");
+    }
+    assert!(all.contains("\"status\": \"F910\""), "{all}");
+    assert!(all.contains("\"program\": \"CEEDAYS\""), "{all}");
+    assert!(all.contains("\"program\": \"CBLTDLI.GN\""), "{all}");
+}
+
+/// EXEC DLI: INTO and DIBSTAT of GU and GNP are inputs; GNP ends with GE
+/// from its second execution on.
+#[test]
+fn covers_dli_commands() {
+    let (text, all) = generate_and_replay("DLIPGM");
+    assert!(
+        text.contains("C1: 14 of 14 branch directions (100.0%)"),
+        "{text}"
+    );
+    for out in [
+        "\"HIGH LIMIT\"",
+        "\"NO SUMMARY\"",
+        "\"DLI ERROR",
+        "\"DECLINED\"",
+        "\"DETAILS 00",
+    ] {
+        assert!(all.contains(out), "{out}: {all}");
+    }
+    assert!(all.contains("\"DLIPGM.15.1.INTO.SUM-LIMIT\""), "{all}");
 }

@@ -167,10 +167,11 @@ impl Machine {
     }
 
     /// After an I/O statement that could be made to fail (see
-    /// `testenv`): the variable `F<file>.<KIND><n>` (1: it fails) decides
-    /// the I/O condition and FILE STATUS.
+    /// `testenv`): the variable `F<file>.<KIND><n>` (1: it fails with 35 or
+    /// 30, 2: with '9' and a binary byte) decides the I/O condition and
+    /// FILE STATUS.
     fn sym_fault(&mut self, cur: usize) {
-        let Some((file, kind, n, failed)) = self.take_fault_point() else {
+        let Some((file, kind, n, how)) = self.take_fault_point() else {
             return;
         };
         let Some(f) = self.instances[cur]
@@ -189,9 +190,14 @@ impl Machine {
                 digits: 1,
                 signed: false,
             },
-            i128::from(failed),
+            i128::from(how),
         );
-        let fault = Pred::Cmp(Term::Var(v), Rel::Eq, Term::Const(1));
+        let failed = how != 0;
+        let fault = Pred::And(vec![
+            Pred::Cmp(Term::Var(v), Rel::Ge, Term::Const(1)),
+            Pred::Cmp(Term::Var(v), Rel::Le, Term::Const(2)),
+        ]);
+        let vsam = Pred::Cmp(Term::Var(v), Rel::Eq, Term::Const(2));
         let prev = st.io_cond.take();
         st.io_cond = match (failed, prev) {
             (true, _) => Some(fault.clone()),
@@ -207,13 +213,12 @@ impl Machine {
             return;
         }
         let (open, _, _) = self.read_position(cur, f as u32);
-        let code: [u8; 2] = if failed {
-            [self.mem[a], self.mem[a + 1]]
-        } else if kind == "OPEN" && matches!(open, Some(OpenMode::Input | OpenMode::InputOutput)) {
-            [0xF3, 0xF5]
-        } else {
-            [0xF3, 0xF0]
-        };
+        let code: [u8; 2] =
+            if kind == "OPEN" && matches!(open, Some(OpenMode::Input | OpenMode::InputOutput)) {
+                [0xF3, 0xF5]
+            } else {
+                [0xF3, 0xF0]
+            };
         let now = self.sym_terms(a, 2);
         self.sym_forget(a, 2);
         for i in 0..2 {
@@ -222,14 +227,40 @@ impl Machine {
             } else {
                 now[i].clone()
             };
-            let t = Term::ite(fault.clone(), Term::Const(i128::from(code[i])), other);
+            let t = Term::ite(
+                vsam.clone(),
+                Term::Const(i128::from(super::testenv::VSAM_STATUS[i])),
+                Term::ite(fault.clone(), Term::Const(i128::from(code[i])), other),
+            );
             self.sym_bind_byte_term(a + i, t);
+        }
+    }
+
+    /// The status code of a PCB set by a DL/I stub (bytes 11-12) follows
+    /// the variables `C<program>.<n>.A2#11` and `#12`.
+    pub(super) fn sym_dli_status(&mut self, prog: &str, n: u32, pcb: usize) {
+        self.sym_forget(pcb + 10, 2);
+        for i in 10..12 {
+            let b = self.mem[pcb + i];
+            let st = self.sym.as_mut().unwrap();
+            let v = st.var_named(
+                format!("C{prog}.{n}.A2#{}", i + 1),
+                VarKind::Byte,
+                i128::from(b),
+            );
+            self.sym_bind_byte(pcb + i, v);
         }
     }
 
     /// The output arguments of a stubbed call follow the variables
     /// `C<program>.<n>.A<k>#<i>`.
     pub(super) fn sym_stub(&mut self, name: &str, n: u32, args: &[Option<(usize, usize)>]) {
+        if self.sym.as_ref().is_some_and(|st| st.full()) {
+            for (addr, len) in args.iter().flatten() {
+                self.sym_forget(*addr, (*len).min(super::testenv::STUB_BYTES));
+            }
+            return;
+        }
         for (k, a) in args.iter().enumerate() {
             let Some((addr, len)) = *a else { continue };
             let l = len.min(super::testenv::STUB_BYTES);

@@ -46,8 +46,9 @@ pub struct Inputs {
     pub accept: Vec<String>,
     /// The records of each input file (`FileSpec::input`, in order).
     pub files: Vec<Vec<Vec<u8>>>,
-    /// I/O statements made to fail: (file, statement, occurrence).
-    pub faults: BTreeSet<(String, String, u32)>,
+    /// I/O statements made to fail: (file, statement, occurrence) -> how
+    /// (`testenv::FAULT`, `FAULT_VSAM`).
+    pub faults: BTreeMap<(String, String, u32), u8>,
     /// What the stubs of the programs not there set: (program, call,
     /// argument) -> leading bytes.
     pub stubs: BTreeMap<StubArg, Vec<u8>>,
@@ -851,13 +852,14 @@ fn apply(
             }
         }
     }
-    // I/O statements made to fail: F<file>.<KIND><n> is 1
+    // I/O statements made to fail: F<file>.<KIND><n> is 1 or 2 (other
+    // values: it does not fail)
     // stubbed calls: C<program>.<n>.A<k>#<i> is byte i of argument k
     let mut outs: BTreeMap<StubArg, Vec<(usize, u8, bool)>> = BTreeMap::new();
     for (v, &x) in vars.iter().zip(values) {
         if let Some(f) = fault_of(&v.name) {
-            if x == 1 {
-                new.faults.insert(f);
+            if x == 1 || x == 2 {
+                new.faults.insert(f, x as u8);
             } else {
                 new.faults.remove(&f);
             }
@@ -1151,8 +1153,9 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     let specs = file_specs(module, &opts.search);
     let all = directions(module);
     // decisions recorded outside the module's branches (EXEC responses)
-    // are solved for but not counted
+    // are solved for, and kept by cases, but not counted
     let counted: HashSet<Dir> = all.iter().cloned().collect();
+    let kept_dir = |d: &Dir| counted.contains(d) || d.0.ends_with("#EXEC");
     let start = Instant::now();
     let mut solver = Builtin::default();
     let mut first = default_inputs(&fields, &lens);
@@ -1243,7 +1246,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         let new: Vec<Dir> = out
             .branches
             .iter()
-            .filter(|d| !covered.contains(*d) && counted.contains(*d))
+            .filter(|d| !covered.contains(*d) && kept_dir(d))
             .cloned()
             .collect();
         let mut new_dedup = Vec::new();
@@ -1371,7 +1374,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         }
     }
     // the fewest cases covering the same directions (greedy set cover)
-    let mut left: HashSet<Dir> = covered.intersection(&counted).cloned().collect();
+    let mut left: HashSet<Dir> = covered.iter().filter(|d| kept_dir(d)).cloned().collect();
     let mut kept: Vec<Case> = Vec::new();
     let mut pool: Vec<(Case, HashSet<Dir>)> = cases
         .into_iter()

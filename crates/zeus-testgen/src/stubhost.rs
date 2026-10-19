@@ -432,6 +432,48 @@ impl StubHost {
         }
     }
 
+    /// The SQLCODE of a statement with WHENEVER labels in concolic runs:
+    /// a decision for each label (SQLERROR, NOT FOUND, SQLWARNING, in
+    /// that order), so that the solver can take the program there.
+    fn whenever(&self, m: &mut Machine, call: &ExecCall, key: &str, sqlcode: i128) {
+        use zeus_cobol::concolic::{Branch, Pred, Step, Term};
+        type Cond = (&'static str, fn(Term) -> Pred);
+        let conds: Vec<Cond> = vec![
+            ("SQLERROR", |t| Pred::Cmp(t, Rel::Lt, Term::Const(0))),
+            ("NOTFOUND", |t| Pred::Cmp(t, Rel::Eq, Term::Const(100))),
+            ("SQLWARNING", |t| Pred::Cmp(t, Rel::Gt, Term::Const(0))),
+        ];
+        let conds: Vec<_> = conds
+            .into_iter()
+            .filter(|(c, _)| matches!(call.arg(c), Some(ExecArg::Label(_))))
+            .collect();
+        if conds.is_empty() {
+            return;
+        }
+        let Some(st) = m.symbolic() else { return };
+        let v = st.var_named(
+            format!("X{key}"),
+            VarKind::Num {
+                digits: 9,
+                signed: true,
+            },
+            sqlcode,
+        );
+        for (i, (_, cond)) in conds.into_iter().enumerate() {
+            let p = cond(Term::Var(v));
+            let hit = p.eval(&|x| st.value(x)).unwrap_or(false);
+            st.path.push(Step::Branch(Branch {
+                program: format!("{}#EXEC", call.program),
+                pc: call.line * 64 + 32 + i as u32,
+                jumped: hit,
+                pred: Some(p),
+            }));
+            if hit {
+                break;
+            }
+        }
+    }
+
     fn cics(&self, m: &mut Machine, call: &ExecCall, key: &str, n: u32) -> RResult<ExecOutcome> {
         let cmd = call.command.as_str();
         if matches!(cmd, "HANDLE" | "IGNORE") && call.has("CONDITION") {
@@ -508,8 +550,22 @@ impl StubHost {
             Some(Out::Num(x)) => *x,
             _ => default_resp,
         });
-        if !handled && !call.has("NOHANDLE") && !matches!(cmd, "RETURN" | "XCTL" | "ABEND") {
-            self.decide(m, call, &rkey, resp);
+        if !handled && !matches!(cmd, "RETURN" | "XCTL" | "ABEND") {
+            if call.has("NOHANDLE") {
+                // the program can only look at EIBRESP
+                if let Some(st) = m.symbolic() {
+                    st.var_named(
+                        format!("X{rkey}"),
+                        VarKind::Num {
+                            digits: 8,
+                            signed: true,
+                        },
+                        resp,
+                    );
+                }
+            } else {
+                self.decide(m, call, &rkey, resp);
+            }
         }
         self.set_eibresp(m, &rkey, resp);
         match cmd {
@@ -539,6 +595,63 @@ impl StubHost {
                 call.line
             ))),
         }
+    }
+
+    /// EXEC DLI: INTO (item by item) and DIBSTAT are inputs (DIBSTAT
+    /// spaces, from the second execution of a GN / GNP on GB / GE); what
+    /// the command sends (FROM, WHERE values, ...) is logged.
+    fn dli(&self, m: &mut Machine, call: &ExecCall, key: &str, n: u32) -> RResult<ExecOutcome> {
+        let cmd = call.command.as_str();
+        let mut sent = Vec::new();
+        for (k, (name, arg)) in call.options.iter().enumerate() {
+            match (name.as_str(), arg) {
+                ("DIB", _) => {}
+                ("INTO", Some(ExecArg::Area(a))) => {
+                    let layout = self.layout(call, Operand::Option(k), a);
+                    self.output(m, &format!("{key}.INTO"), a, &layout, None);
+                }
+                (_, Some(ExecArg::Area(a))) => sent.push(format!(
+                    "{name}={}",
+                    hex(&m.storage()[a.addr..a.addr + a.len.min(AREA_BYTES)])
+                )),
+                (_, Some(ExecArg::Alnum(b))) => sent.push(format!(
+                    "{name}('{}')",
+                    zeus_cobol::ebcdic::decode(b).trim_end()
+                )),
+                (_, Some(ExecArg::Num(d))) => sent.push(format!("{name}({d})")),
+                (_, Some(ExecArg::Name(x))) => sent.push(format!("{name}({x})")),
+                _ => sent.push(name.clone()),
+            }
+        }
+        for (v, _) in &call.host {
+            sent.push(hex(&m.storage()[v.addr..v.addr + v.len.min(AREA_BYTES)]));
+        }
+        if let Some(ExecArg::Area(dib)) = call.arg("DIB")
+            && dib.len >= 4
+        {
+            let status = Area {
+                addr: dib.addr + 2,
+                len: 2,
+                ty: DataType::Alphanumeric { just: false },
+            };
+            let skey = format!("{key}.DIBSTAT");
+            let end = match cmd {
+                "GN" | "GHN" if n > 1 => Some("GB"),
+                "GNP" | "GHNP" if n > 1 => Some("GE"),
+                _ => None,
+            };
+            if !self.outputs.contains_key(&skey) {
+                let s = zeus_cobol::ebcdic::encode(end.unwrap_or("  "));
+                m.storage_mut()[status.addr..status.addr + 2].copy_from_slice(&s);
+            }
+            self.output(m, &skey, &status, &[(String::new(), 0, 2, None)], None);
+        }
+        self.log.borrow_mut().push(
+            format!("DLI {cmd} {}", sent.join(" "))
+                .trim_end()
+                .to_string(),
+        );
+        Ok(ExecOutcome::Continue)
     }
 
     fn sql(&self, m: &mut Machine, call: &ExecCall, key: &str, n: u32) -> RResult<ExecOutcome> {
@@ -616,6 +729,7 @@ impl StubHost {
             .trim_end()
             .to_string(),
         );
+        self.whenever(m, call, &ckey, sqlcode);
         let whenever = if sqlcode < 0 {
             "SQLERROR"
         } else if sqlcode == 100 {
@@ -651,10 +765,7 @@ impl ExecHost for StubHost {
         match call.kind {
             ExecKind::Cics => self.cics(m, call, &key, n),
             ExecKind::Sql | ExecKind::SqlIms => self.sql(m, call, &key, n),
-            ExecKind::Dli => {
-                self.log.borrow_mut().push(format!("DLI {}", call.command));
-                Ok(ExecOutcome::Continue)
-            }
+            ExecKind::Dli => self.dli(m, call, &key, n),
         }
     }
 }

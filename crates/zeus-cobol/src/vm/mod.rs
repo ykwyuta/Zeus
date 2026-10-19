@@ -15,6 +15,7 @@ mod report;
 mod sort;
 mod sym;
 mod sym_io;
+mod sym_text;
 pub mod testenv;
 mod text;
 pub mod threaded;
@@ -1491,6 +1492,7 @@ impl Machine {
         if le::parameter_count(&name).is_some() {
             let addrs = self.call_args(cur, args)?;
             self.le_service(&name, &addrs)?;
+            self.le_test_outputs(&name, &addrs);
             return Ok(None);
         }
         let static_call = matches!(program, zir::Src::Alnum(_))

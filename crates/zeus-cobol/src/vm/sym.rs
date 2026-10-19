@@ -34,6 +34,7 @@ enum Pre {
     Arith,
     /// An I/O statement (sets the I/O condition).
     File(super::sym_io::FilePre),
+    Inspect(Option<super::sym_text::InspectPre>),
 }
 
 const SPACE: u8 = 0x40;
@@ -110,7 +111,7 @@ impl Machine {
         }
     }
 
-    fn sym_read_num(&mut self, a: usize, l: usize, t: &NumType) -> Option<Term> {
+    pub(super) fn sym_read_num(&mut self, a: usize, l: usize, t: &NumType) -> Option<Term> {
         let mem = &self.mem;
         let st = self.sym.as_mut()?;
         st.nums
@@ -122,10 +123,64 @@ impl Machine {
         {
             return Some(n.term.clone());
         }
+        if !(a..a + l).any(|i| st.bytes.get(&i).is_some_and(|(_, b)| *b == mem[i])) {
+            return None;
+        }
+        // the bytes as terms (input bytes, else their values)
+        let byte = |i: usize| match st.bytes.get(&i) {
+            Some((t, b)) if *b == mem[i] => t.clone(),
+            _ => Term::Const(i128::from(mem[i])),
+        };
+        match t.usage {
+            // binary: big-endian, two's complement when signed
+            NumUsage::Binary | NumUsage::Native if matches!(l, 2 | 4 | 8) => {
+                let mut raw = Term::Const(0);
+                for i in a..a + l {
+                    raw = Term::add(Term::mul(raw, Term::Const(256)), byte(i));
+                }
+                if !t.signed {
+                    return Some(raw);
+                }
+                let top = Pred::Cmp(byte(a), Rel::Ge, Term::Const(128));
+                let wrapped = Term::sub(raw.clone(), Term::Const(1i128 << (8 * l)));
+                return Some(Term::ite(top, wrapped, raw));
+            }
+            // packed decimal: a digit per half byte, the sign last
+            NumUsage::Packed => {
+                let mut term = Term::Const(0);
+                let mut assume = Vec::new();
+                for i in a..a + l {
+                    let b = byte(i);
+                    let hi = Term::div(b.clone(), 16);
+                    let lo = Term::rem(b, 16);
+                    let mut digits = vec![hi];
+                    if i + 1 < a + l {
+                        digits.push(lo);
+                    }
+                    for d in digits {
+                        if d.konst().is_none() {
+                            assume.push(Pred::Cmp(d.clone(), Rel::Le, Term::Const(9)));
+                        }
+                        term = Term::add(Term::mul(term, Term::Const(10)), d);
+                    }
+                }
+                let sign = Term::rem(byte(a + l - 1), 16);
+                for p in assume {
+                    st.path.push(Step::Assume(p));
+                }
+                if !t.signed {
+                    return Some(term);
+                }
+                let negative = Pred::Or(vec![
+                    Pred::Cmp(sign.clone(), Rel::Eq, Term::Const(0x0D)),
+                    Pred::Cmp(sign, Rel::Eq, Term::Const(0x0B)),
+                ]);
+                return Some(Term::ite(negative, Term::neg(term.clone()), term));
+            }
+            _ => {}
+        }
         // digits that are input bytes
-        if !plain_display(t)
-            || !(a..a + l).any(|i| st.bytes.get(&i).is_some_and(|(_, b)| *b == mem[i]))
-        {
+        if !plain_display(t) {
             return None;
         }
         let mut term = Term::Const(0);
@@ -193,6 +248,9 @@ impl Machine {
         }
         match s {
             Src::Loc(loc) => {
+                if let Some(v) = self.sym_indexed(cur, loc, false) {
+                    return Some(v);
+                }
                 let (a, l) = self.addr(cur, loc).ok()?;
                 match self.loc_type(cur, loc) {
                     DataType::Numeric(t) => {
@@ -215,6 +273,11 @@ impl Machine {
     /// would assume its digits valid).
     fn sym_alnum_src(&mut self, cur: usize, s: &Src) -> Option<SymVal> {
         if let Src::Loc(loc) = s
+            && let Some(v) = self.sym_indexed(cur, loc, true)
+        {
+            return Some(v);
+        }
+        if let Src::Loc(loc) = s
             && let DataType::Numeric(t) = self.loc_type(cur, loc)
             && plain_display(&t)
             && t.scale == 0
@@ -225,9 +288,121 @@ impl Machine {
         self.sym_src(cur, s)
     }
 
+    /// An element of a one-dimension table with a subscript that follows
+    /// the inputs: for each occurrence, its value when the subscript is
+    /// that occurrence (the subscript is assumed in range). `bytes`: an
+    /// unsigned DISPLAY integer element as its bytes.
+    fn sym_indexed(&mut self, cur: usize, loc: &crate::zir::Loc, bytes: bool) -> Option<SymVal> {
+        let [sub] = &loc.subs[..] else { return None };
+        // a reference modification that does not follow the inputs
+        if let Some((start, len)) = &loc.refmod
+            && (self
+                .sym_ex(cur, start)
+                .is_some_and(|t| t.0.konst().is_none())
+                || len
+                    .as_ref()
+                    .is_some_and(|l| self.sym_ex(cur, l).is_some_and(|t| t.0.konst().is_none())))
+        {
+            return None;
+        }
+        let code = self.instances[cur].code.clone();
+        let desc = &code.descs[loc.desc as usize];
+        let [dim] = &desc.dims[..] else { return None };
+        if dim.dynamic_stride.is_some() || desc.dynamic_offset.is_some() {
+            return None;
+        }
+        let (st, sc) = self.sym_ex(cur, sub)?;
+        if sc != 0 || st.konst().is_some() {
+            return None;
+        }
+        let k = self.sym_value(&st)?;
+        let (ar, l) = self.addr(cur, loc).ok()?;
+        let ty = self.loc_type(cur, loc);
+        // the element's start (a reference modification is an offset in it)
+        let whole = crate::zir::Loc {
+            refmod: None,
+            ..loc.clone()
+        };
+        let (a, _) = self.addr(cur, &whole).ok()?;
+        let off = ar.checked_sub(a)?;
+        let max = i128::from(dim.max.min(64));
+        if !(1..=max).contains(&k) {
+            return None;
+        }
+        let stride = dim.stride as usize;
+        let first = a.checked_sub((k as usize - 1) * stride)?;
+        if first + (max as usize - 1) * stride + off + l > self.mem.len() {
+            return None;
+        }
+        let num = match &ty {
+            DataType::Numeric(t) if !(bytes && plain_display(t) && t.scale == 0) => Some(*t),
+            DataType::Numeric(t) if !plain_display(t) => return None,
+            DataType::Numeric(_)
+            | DataType::Alphanumeric { .. }
+            | DataType::Alphabetic { .. }
+            | DataType::Group => None,
+            _ => return None,
+        };
+        let at = |j: i128| first + (j as usize - 1) * stride + off;
+        let is = |j: i128| Pred::Cmp(st.clone(), Rel::Eq, Term::Const(j));
+        let out = match num {
+            Some(t) => {
+                let mut v: Option<Term> = None;
+                for j in (1..=max).rev() {
+                    let x = match self.sym_read_num(at(j), l, &t) {
+                        Some(x) => x,
+                        None => {
+                            let d = super::data::num_value(&t, &self.mem[at(j)..at(j) + l]);
+                            Term::Const(
+                                d.rescale(t.scale.max(0) as u32, zeus_decimal::Rounding::Truncate)?
+                                    .coef,
+                            )
+                        }
+                    };
+                    v = Some(match v {
+                        None => x,
+                        Some(rest) => Term::ite(is(j), x, rest),
+                    });
+                }
+                SymVal::Num(v?, t.scale)
+            }
+            None => {
+                let mut v: Vec<Term> = Vec::new();
+                for j in (1..=max).rev() {
+                    let x = match self.sym_read_bytes(at(j), l) {
+                        Some(x) => x,
+                        None => self.mem[at(j)..at(j) + l]
+                            .iter()
+                            .map(|b| Term::Const(i128::from(*b)))
+                            .collect(),
+                    };
+                    v = if v.is_empty() {
+                        x
+                    } else {
+                        x.into_iter()
+                            .zip(v)
+                            .map(|(x, rest)| Term::ite(is(j), x, rest))
+                            .collect()
+                    };
+                }
+                SymVal::Str(v)
+            }
+        };
+        if let Some(s) = self.sym.as_mut() {
+            s.path.push(Step::Assume(Pred::And(vec![
+                Pred::Cmp(st.clone(), Rel::Ge, Term::Const(1)),
+                Pred::Cmp(st, Rel::Le, Term::Const(max)),
+            ])));
+        }
+        Some(out)
+    }
+
     fn sym_ex(&mut self, cur: usize, e: &Ex) -> Option<(Term, i32)> {
         match e {
             Ex::Load(loc) => {
+                if let Some(SymVal::Num(t, s)) = self.sym_indexed(cur, loc, false) {
+                    return Some((t, s));
+                }
                 let (a, l) = self.addr(cur, loc).ok()?;
                 match self.loc_type(cur, loc) {
                     DataType::Numeric(t) => self.sym_read_num(a, l, &t).map(|tm| (tm, t.scale)),
@@ -313,7 +488,7 @@ impl Machine {
                 Some(Pred::Cmp(t, r, Term::Const(0)))
             }
             Cx::Class(s, k) => {
-                let Some(SymVal::Str(bytes)) = self.sym_src(cur, s) else {
+                let Some(SymVal::Str(bytes)) = self.sym_alnum_src(cur, s) else {
                     return None;
                 };
                 let ranges: Vec<(i128, i128)> = match k {
@@ -420,7 +595,7 @@ impl Machine {
     }
 
     /// The term a numeric item of type `t` gets from a number.
-    fn sym_store_term(t: &NumType, term: Term, scale: i32) -> Option<(Term, Term)> {
+    pub(super) fn sym_store_term(t: &NumType, term: Term, scale: i32) -> Option<(Term, Term)> {
         let raw = term.rescale(scale, t.scale)?;
         let mut v = raw.clone();
         if t.usage != NumUsage::Native {
@@ -480,6 +655,9 @@ impl Machine {
                 dst,
                 from: AcceptFrom::Stdin,
             }) => Pre::Accept(self.addr(cur, dst).ok()),
+            Some(Instr::Inspect(target, steps)) => {
+                Pre::Inspect(self.sym_inspect_pre(cur, target, steps))
+            }
             _ => Pre::None,
         };
         let size_before = self.size_error;
@@ -503,6 +681,22 @@ impl Machine {
                     ) => {
                         for i in 0..l {
                             let t = b.get(i).cloned().unwrap_or(Term::Const(i128::from(SPACE)));
+                            if t.konst().is_none() {
+                                self.sym_bind_byte_term(a + i, t);
+                            }
+                        }
+                    }
+                    (
+                        Some(SymVal::Str(b)),
+                        DataType::Alphanumeric { just: true } | DataType::Alphabetic { just: true },
+                    ) => {
+                        // JUSTIFIED RIGHT: the rightmost bytes, spaces on the left
+                        let n = b.len();
+                        for i in 0..l {
+                            let t = (i + n)
+                                .checked_sub(l)
+                                .and_then(|k| b.get(k).cloned())
+                                .unwrap_or(Term::Const(i128::from(SPACE)));
                             if t.konst().is_none() {
                                 self.sym_bind_byte_term(a + i, t);
                             }
@@ -609,6 +803,13 @@ impl Machine {
                 }
             }
             Pre::File(p) => self.sym_io_post(cur, p),
+            Pre::Inspect(pre) => {
+                if r.is_ok()
+                    && let Some(pre) = pre
+                {
+                    self.sym_inspect_post(pre);
+                }
+            }
             Pre::Accept(dst) => {
                 if let Some((a, l)) = dst
                     && let Some(st) = self.sym.as_mut()

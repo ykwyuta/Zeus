@@ -217,7 +217,7 @@ ztest -I copybooks --coverage coverage src/report.cbl cases
 - **`zdeps`** は COPY/INCLUDE、呼び出し、JCL、CICS、IMS などの関係を追い、CSV を出力します。既定ではコンパイルも行い、未対応構文、位置、一般のコンパイル診断を分けて報告します。移植調査の入口であり、実行互換性の合格判定ではありません。
 - **`zlayout`** はファイル、引数、COMMAREA、MQ、BMS、SQL などの固定長レイアウトを COPY 句として出力し、コンパイルして配置を検査します。
 - **`zcov`** は実行時の文・分岐・段落／手続きの通過情報から、集計、LCOV、HTML を生成します。`ZEUS_COVERAGE` で `zjob`、`zcics` や単独実行ファイルからも記録できます。
-- **`ztestgen`** は生成 AI を使わず、concolic 実行と自前のソルバで、分岐の両方向 (C1) を通る入力 (USING の引数、ACCEPT の行、順次・索引ファイルのレコード) を求め、現在の出力を期待値とするテストケース (JSON) と、通せなかった分岐の理由を出力します。**`ztest`** はそれを再実行して比べます。入出力エラーの注入 (OPEN・READ などの失敗) と、ないサブプログラムの CALL のスタブにも対応します。EXEC CICS・EXEC SQL はスタブで実行し、応答 (RESP、INTO、SQLCODE、ホスト変数) を入力に、送った内容を期待値にします。
+- **`ztestgen`** は生成 AI を使わず、concolic 実行と自前のソルバで、分岐の両方向 (C1) を通る入力 (USING の引数、ACCEPT の行、順次・索引ファイルのレコード) を求め、現在の出力を期待値とするテストケース (JSON) と、通せなかった分岐の理由を出力します。**`ztest`** はそれを再実行して比べます。入出力エラーの注入 (OPEN・READ などの失敗) と、ないサブプログラムの CALL のスタブにも対応します。EXEC CICS・EXEC SQL・EXEC DLI と DL/I の CALL はスタブで実行し、応答 (RESP、INTO、SQLCODE、ホスト変数、DL/I の状態コード) を入力に、送った内容を期待値にします。
 
 詳細: [依存関係](docs/proposal/0011-dependency-analysis.md) / [レイアウト](docs/proposal/0013-fixed-length-layouts.md) / [カバレッジ](docs/proposal/0010-coverage.md) / [テスト生成](docs/proposal/0012-c1-test-generation.md)。
 

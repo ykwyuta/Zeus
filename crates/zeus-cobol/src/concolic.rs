@@ -408,6 +408,9 @@ pub struct SymState {
     pub(crate) io_cond: Option<Pred>,
 }
 
+/// The variables a run has at most (see `SymState::full`).
+pub const MAX_VARS: usize = 20_000;
+
 impl SymState {
     pub fn new(limit: u64) -> Self {
         SymState {
@@ -420,6 +423,13 @@ impl SymState {
     pub fn var(&mut self, name: String, kind: VarKind, value: i128) -> u32 {
         self.vars.push(Var { name, kind, value });
         (self.vars.len() - 1) as u32
+    }
+
+    /// Whether a run has as many variables as it can have: data from
+    /// outside (stubs) is no longer followed, so that a program that loops
+    /// on it does not make the run too large to solve.
+    pub fn full(&self) -> bool {
+        self.vars.len() >= MAX_VARS
     }
 
     /// The variable named `name`, created with `value` if there is none.
