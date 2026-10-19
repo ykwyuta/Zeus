@@ -432,6 +432,9 @@ pub struct SymState {
     pub steps: u64,
     pub limit: u64,
     pub(crate) nums: Vec<NumShadow>,
+    /// COMP-1 / COMP-2 items holding a number that follows inputs:
+    /// (address, length, term, scale, bytes when stored).
+    pub(crate) floats: Vec<(usize, usize, Term, i32, Vec<u8>)>,
     /// Bytes following inputs: address -> (term, byte when bound).
     pub(crate) bytes: std::collections::HashMap<usize, (Term, u8)>,
     /// Temporaries holding input terms: (instance, temp) -> (term, scale).

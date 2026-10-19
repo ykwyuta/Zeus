@@ -2,11 +2,12 @@
 //! or database but takes what the statements give the program as
 //! inputs. The `n`-th execution of the statement at line `l` of program
 //! `P` sets its output options from `outputs["P.l.n.OPTION"]` (RESP,
-//! INTO, SQLCODE, host variables `H<k>` and their indicators `I<k>`, ...); a group area has a key per
-//! elementary item (`P.l.n.INTO.ITEM`). Unset: RESP and SQLCODE are 0
-//! (100, ENDFILE, ITEMERR / QZERO and ENDDATA from the second execution of
-//! a FETCH, READNEXT, READQ and RETRIEVE on, so that loops end), the areas
-//! stay as they are. In concolic runs the
+//! INTO, SQLCODE, host variables `H<k>` and their indicators `I<k>`,
+//! ...); a group area has a key per elementary item
+//! (`P.l.n.INTO.ITEM`). Unset: RESP and SQLCODE are 0 (100, ENDFILE,
+//! ITEMERR / QZERO, ENDDATA and NOTFND from the second execution of a SQL
+//! FETCH, READNEXT, READQ, RETRIEVE and FETCH ANY on, so that loops end),
+//! the areas stay as they are. In concolic runs the
 //! outputs follow the variables `X<key>` (numeric) or `X<key>#<i>`
 //! (bytes). What the statements send out is logged (the expected
 //! results).
@@ -14,7 +15,9 @@
 //! Conditions of CICS commands without RESP go to the HANDLE CONDITION
 //! label (or are ignored with IGNORE CONDITION or NOHANDLE); otherwise the
 //! run ends with the condition. EIBRESP is set when the program has an
-//! EIB. SQL statements go to their WHENEVER labels.
+//! EIB. SQL statements go to their WHENEVER labels. With a HANDLE ABEND
+//! LABEL, EXEC CICS ABEND and the abends a command may have
+//! (`outputs["P.l.n.ABEND"]`) go to the label once.
 
 use std::cell::RefCell;
 use std::collections::{BTreeMap, HashMap};
@@ -44,9 +47,35 @@ pub const AREA_BYTES: usize = 1024;
 
 /// CICS options whose areas the command sets.
 const CICS_OUT: &[&str] = &[
-    "INTO", "RESP", "RESP2", "ABSTIME", "YYYYMMDD", "YYMMDD", "MMDDYYYY", "DDMMYYYY", "DATE",
-    "TIME", "USERID", "APPLID", "SYSID", "NETNAME", "OPID", "ITEM", "NUMITEMS", "TOKEN",
-    "COMMAREA", "LENGTH", "CURSOR", "PROGRAM", "TERMID",
+    "INTO",
+    "RESP",
+    "RESP2",
+    "ABSTIME",
+    "YYYYMMDD",
+    "YYMMDD",
+    "MMDDYYYY",
+    "DDMMYYYY",
+    "DATE",
+    "TIME",
+    "USERID",
+    "APPLID",
+    "SYSID",
+    "NETNAME",
+    "OPID",
+    "ITEM",
+    "NUMITEMS",
+    "TOKEN",
+    "COMMAREA",
+    "LENGTH",
+    "CURSOR",
+    "PROGRAM",
+    "TERMID",
+    "COMPSTATUS",
+    "ABCODE",
+    "ANY",
+    "CHILD",
+    "CHANNEL",
+    "FLENGTH",
 ];
 
 /// Commands for which an option in `CICS_OUT` is only sent.
@@ -58,6 +87,12 @@ fn sends(command: &str, option: &str) -> bool {
             "READ" | "READNEXT" | "READPREV" | "READQ" | "RECEIVE"
         ),
         "PROGRAM" | "TERMID" | "USERID" => command != "ASSIGN",
+        // the child a RUN starts, what FETCH ANY gets back, the length
+        // GET CONTAINER gives
+        "CHILD" => command != "RUN",
+        "CHANNEL" => command != "FETCH",
+        "ABCODE" => !matches!(command, "FETCH" | "ASSIGN"),
+        "FLENGTH" => command != "GET",
         _ => false,
     }
 }
@@ -126,6 +161,11 @@ pub struct StubHost {
     /// HANDLE CONDITION: (program instance, condition) -> label (None:
     /// IGNORE CONDITION).
     handlers: RefCell<HashMap<(usize, String), Option<u32>>>,
+    /// HANDLE ABEND LABEL: program instance -> label (taken once: CICS
+    /// cancels the exit when it gets control).
+    abend_exits: RefCell<HashMap<usize, u32>>,
+    /// The code of the abend that went to an exit (ASSIGN ABCODE).
+    abcode: RefCell<Option<String>>,
 }
 
 fn hex(b: &[u8]) -> String {
@@ -478,6 +518,63 @@ impl StubHost {
         }
     }
 
+    /// With a HANDLE ABEND exit, a command may abend (a deadlock, a
+    /// file...): a decision (`P#EXEC`, from `outputs["P.l.n.ABEND"]`), the
+    /// exit's label when it is taken.
+    fn abend_here(&self, m: &mut Machine, call: &ExecCall, key: &str) -> Option<u32> {
+        use zeus_cobol::concolic::{Branch, Pred, Step, Term};
+        let l = *self.abend_exits.borrow().get(&call.instance)?;
+        let first = |s: &str| {
+            s.split_whitespace()
+                .next()
+                .unwrap_or("")
+                .to_ascii_uppercase()
+        };
+        let can = match call.kind {
+            ExecKind::Cics => !matches!(
+                call.command.as_str(),
+                "HANDLE" | "IGNORE" | "ASSIGN" | "ABEND" | "RETURN" | "XCTL" | "PUSH" | "POP"
+            ),
+            ExecKind::Sql | ExecKind::SqlIms => !matches!(
+                first(call.sql.as_deref().unwrap_or("")).as_str(),
+                "DECLARE" | "INCLUDE" | "WHENEVER" | "BEGIN" | "END"
+            ),
+            ExecKind::Dli => false,
+        };
+        if !can {
+            return None;
+        }
+        let akey = format!("{key}.ABEND");
+        let hit = matches!(self.outputs.get(&akey), Some(Out::Num(x)) if *x != 0);
+        if let Some(st) = m.symbolic()
+            && !st.full()
+        {
+            let v = st.var_named(
+                format!("X{akey}"),
+                VarKind::Num {
+                    digits: 1,
+                    signed: false,
+                },
+                i128::from(hit),
+            );
+            st.path.push(Step::Branch(Branch {
+                program: format!("{}#EXEC", call.program),
+                pc: call.line * 64 + 63,
+                jumped: hit,
+                pred: Some(Pred::Cmp(Term::Var(v), Rel::Ne, Term::Const(0))),
+            }));
+        }
+        if !hit {
+            return None;
+        }
+        self.abend_exits.borrow_mut().remove(&call.instance);
+        *self.abcode.borrow_mut() = None;
+        self.log
+            .borrow_mut()
+            .push(format!("ABEND at line {}", call.line));
+        Some(l)
+    }
+
     fn cics(&self, m: &mut Machine, call: &ExecCall, key: &str, n: u32) -> RResult<ExecOutcome> {
         let cmd = call.command.as_str();
         if matches!(cmd, "HANDLE" | "IGNORE") && call.has("CONDITION") {
@@ -502,15 +599,30 @@ impl StubHost {
             self.log.borrow_mut().push(format!("CICS {cmd} CONDITION"));
             return Ok(ExecOutcome::Continue);
         }
-        // a browse or queue read ends from the second time on
+        if cmd == "HANDLE" && call.has("ABEND") {
+            let mut x = self.abend_exits.borrow_mut();
+            match call.arg("LABEL") {
+                Some(ExecArg::Label(l)) => {
+                    x.insert(call.instance, *l);
+                }
+                _ => {
+                    x.remove(&call.instance);
+                }
+            }
+            self.log.borrow_mut().push(format!("CICS {cmd} ABEND"));
+            return Ok(ExecOutcome::Continue);
+        }
         // browses and queue reads end from the second time on
         let end = match cmd {
             "READNEXT" | "READPREV" if n > 1 => Some("ENDFILE"),
             "READQ" if n > 1 && call.has("TD") => Some("QZERO"),
             "READQ" if n > 1 => Some("ITEMERR"),
             "RETRIEVE" if n > 1 => Some("ENDDATA"),
+            // no child left to fetch (RESP2 1)
+            "FETCH" if n > 1 && call.has("ANY") => Some("NOTFND"),
             _ => None,
         };
+        let default_resp2 = i128::from(end == Some("NOTFND"));
         let default_resp = end
             .and_then(zeus_cobol::front::cics::resp_value)
             .map_or(0, i128::from);
@@ -523,9 +635,18 @@ impl StubHost {
                     if (cmd == "ASSIGN" || CICS_OUT.contains(&name.as_str()))
                         && !sends(cmd, name) =>
                 {
+                    // the code of the abend the exit was given
+                    if cmd == "ASSIGN"
+                        && name == "ABCODE"
+                        && let Some(c) = self.abcode.borrow().as_ref()
+                    {
+                        let mut b = zeus_cobol::ebcdic::encode(c);
+                        b.resize(a.len, 0x40);
+                        m.storage_mut()[a.addr..a.addr + a.len].copy_from_slice(&b);
+                    }
                     let default = match name.as_str() {
                         "RESP" => Some(default_resp),
-                        "RESP2" => Some(0),
+                        "RESP2" => Some(default_resp2),
                         _ => None,
                     };
                     let layout = self.layout(call, Operand::Option(k), a);
@@ -586,6 +707,10 @@ impl StubHost {
                     Some(ExecArg::Alnum(b)) => zeus_cobol::ebcdic::decode(b),
                     _ => String::new(),
                 };
+                if let Some(l) = self.abend_exits.borrow_mut().remove(&call.instance) {
+                    *self.abcode.borrow_mut() = Some(code);
+                    return Ok(ExecOutcome::Goto(l));
+                }
                 return Err(RunError(format!("CICS abend {}", code.trim())));
             }
             _ => {}
@@ -776,6 +901,9 @@ impl ExecHost for StubHost {
             *n
         };
         let key = format!("{}.{}.{n}", call.program, call.line);
+        if let Some(l) = self.abend_here(m, call, &key) {
+            return Ok(ExecOutcome::Goto(l));
+        }
         match call.kind {
             ExecKind::Cics => self.cics(m, call, &key, n),
             ExecKind::Sql | ExecKind::SqlIms => self.sql(m, call, &key, n),

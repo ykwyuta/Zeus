@@ -311,6 +311,9 @@ ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
     入れる。RESP のないコマンドの応答は HANDLE CONDITION の飛び先 (IGNORE CONDITION・NOHANDLE なら無視、どちらも
     なければ実行の終わり) に従い、HANDLE された条件ごとに「応答 = その条件の値」の判定を記録する (プログラム
     `P#EXEC` の判定で、網羅率には数えない)。RETURN・XCTL はプログラムの終わり、ABEND はエラー。
+    HANDLE ABEND LABEL があると、ABEND と「このコマンドで異常終了する」判定 (キー `P.l.n.ABEND`) はラベルへ一度だけ
+    進み (CICS は出口を呼ぶと取り消す)、ASSIGN ABCODE はその ABEND のコード (コマンドの異常終了ならソルバが選ぶ)。
+    FETCH ANY の ANY・CHANNEL・COMPSTATUS・ABCODE、RUN の CHILD、GET CONTAINER の FLENGTH も出力。
   - SQL: SQLCODE (プログラムの SQLCA の項目の型で) と、INTO の後のホスト変数 (Db2 ホストと同じ規則: SELECT・VALUES・
     WITH の最上位の INTO から FROM まで、FETCH は全部、`SET :hv =` は先頭) が入力。SQLCODE が負・100・正なら
     WHENEVER SQLERROR・NOT FOUND・SQLWARNING の飛び先へ進む。
@@ -502,6 +505,53 @@ GenApp (`tools/fetch-genapp.sh` で取得する `.cache/genapp/base/src` の 31 
 残る向きは、LGAPDB01 の 2 つ目の `EVALUATE CA-REQUEST-ID` の `WHEN OTHER` (1 つ目の EVALUATE が同じ項目の
 ほかの値で RETURN 済み。英数字の入力項目の値の集合を条件で絞る解析がないので証明できない) と、誤りの経路での
 `EIBCALEN < 91` の偽、LGIPDB01 の 1 方向。
+
+Bank of Z (`tools/fetch-bankofz.sh` で取得する `.cache/bankofz/src/base` の CICS 32 本と IMS 11 本。CICS は
+`-I cics/copy` と BMS から `zbms` で作った記号マップ、IMS は `-I ims/copy -I cics/copy`、`--time 60`)。
+オブジェクト指向 COBOL の IBTRAN (Java を呼ぶ) を除く 42 本のケースが `ztest` で再現する。1 本あたり 0〜17 秒。
+20 本は到達可能な向きをすべて通る。
+
+| プログラム | C1 | プログラム | C1 |
+|---|---|---|---|
+| `INQTRAND`・`INQTRANL`・`UPDCUST`・`DELCUS`・`UPDACC`・`CRDTAGY1`〜`5` | 100% | `IBGCUDAT`・`IBLOGIN1`・`IBLOGOUT`・`IBSCUDAT` | 100% |
+| `DBCRFUN` | 39/40 (98%) | `INQACCCU` | 35/36 (97%) |
+| `INQACC` | 25/26 (96%) | `INQACCS` | 19/20 (95%) |
+| `DELACC`・`CREACC` | 13/14・37/40 (93%) | `LOADACCT`・`LOADCUSA`・`LOADCUST`・`LOADTSTA`・`LOADHIST` | 11/12〜13/14 (92〜93%) |
+| `IBACSUM` | 22/24 (到達可能な向きの 100%) | `CRECUST` | 102/114 (89%) |
+| `BNK1CCA`・`BNK1DAC` | 46/52・58/66 (到達可能な向きの 100%) | `BNK1CAC` | 112/128 (88%、同 94%) |
+| `BNK1DCS`・`BNK1CCS` | 109/124・180/208 (88%・87%、同 92%・93%) | `BANKDATA` | 66/78 (85%) |
+| `XFRFUN` | 67/84 (80%) | `BNK1UAC`・`BNK1TFN`・`BNK1CRA` | 71/94・60/80・55/74 (74〜76%) |
+| `INQCUST` | 26/38 (68%、同 90%) | `BNKMENU` | 43/66 (65%、同 98%) |
+
+検証で見つけて直したもの (検証前は IMS の 11 本が 0〜8%、BANKDATA が 3%、CRECUST・BNK1TFN・BNK1CRA・INQ* が 45〜70%)。
+
+- **IMS の PCB**: `ENTRY 'DLITCBL' USING IOPCBA` の引数は POINTER の項目 (4 バイト) で、`SET ADDRESS OF LTERMPCB TO
+  ADDRESS OF IOPCBA` で PCB を重ねる。引数の領域を、そこに重ねるレコードが入る長さにした (記憶域の外の参照で
+  実行が止まっていた)。IMS のメッセージ処理プログラム 4 本が 100%、IBACSUM が到達可能な向きの 100%。
+- **UNSTRING の数字の受け取り側**: 符号なし DISPLAY の整数 (`PIC 9(10)`) にも、欄のバイトを右詰め (左は 0) で
+  記号のまま渡す (MOVE が F ゾーンの数字にしたバイトは、下位 4 ビットに F0 を足した項)。BANKDATA の
+  `UNSTRING PARM(1:PARM-LENGTH) INTO START-KEY END-KEY STEP-KEY` が通るようになった (3% から 85%)。
+- **コンマ区切りのレコード**: 入力に従うバイトの UNSTRING には、各欄を受け取り側の長さ (9 桁まで) の '1' で埋め、
+  間を 1 バイトの区切り (',' を優先) にしたデータを一度だけ初期入力に足す。欄の数だけ区切りを一つずつ足していく
+  探索では、NUMVAL の順が欄の順と違うと (2 つ目の欄を先に NUMVAL)、どの順でも最初の NUMVAL が空の欄で失敗して
+  先へ進めなかった。LOAD* の 5 本が 33% から 92%。欄を埋める長さは、NUMVAL の値が欄の桁数で決まる (この実行の
+  空白の位置を仮定する) ため、1 桁だと `> 100` の向きが解けない。
+- **参照修飾の長さ**: 開始位置か長さが入力に従う参照修飾 (`AMTI(1:AMTL)`) を条件 (クラス条件・比較) で使うと、
+  「項目の中にある」(1 ≤ 開始、1 ≤ 長さ、終わり ≤ 項目の長さ) を判定にする (`P#TEXT` の位置 4093)。ソルバが
+  範囲外の長さ (-9999) を選ぶと、そこから戻れなかった。「長さがこの実行の値」も判定にすると BNK1TFN などが
+  下がった (75% から 45%) ので入れていない。
+- **COMP-1・COMP-2**: 入力に従う数を浮動小数点の項目に入れると、その項を覚え、項目の値がその数に一致する (丸めて
+  いない) 間は読み出しで使う。BNK1TFN の `COMPUTE WS-AMOUNT-AS-FLOAT = FUNCTION NUMVAL(...)` の後の比較が
+  通る (45% から 75%)。
+- **HANDLE ABEND LABEL**: 上記「入力」。INQACC・INQACCS の異常終了の段落 (AD2Z・AFCR などの EVALUATE) が通る
+  (69%・65% から 96%・95%)。
+- **非同期の要求 (RUN TRANSID・FETCH ANY)**: FETCH ANY の COMPSTATUS などを出力にし、2 回目からの既定を NOTFND
+  (RESP2 1、「もう子がない」) にした (FETCH が毎回 NORMAL を返すとループが終わらない)。CRECUST が 48% から 90%。
+
+残る向きは、ループの回数 (LOAD* の `MOD(INPUT-RECORDS 1000) = 0`、INQACCS の 20 件)、BNK1TFN・BNK1UAC の金額の
+手書きの検査 (INSPECT の TALLYING の数で小数点・桁を数える)、XFRFUN・BNK1CRA の Db2 の結果の組合せなど。
+ループの変数の範囲 (1〜5) から起こり得ない WHEN (CRECUST の `EVALUATE WS-CC-CNT` の WHEN 6〜9) は、区間の拡大
+(widening) で上限が外れて証明できない。
 
 バッチで残っていたループの先頭の `IF END-OF-FILE = 'N'` の偽 (ループの条件から起こり得ない) は、静的な解析で
 不可能と証明して分母から外した。CBACT04C・CBSTM03A は Z3 と TRIM・TEST-NUMVAL の記号化で上がった。
@@ -699,7 +749,7 @@ CardDemo で残った向きに当てはめると、生成 AI が直接効くの�
   FETCH の件数は実行ごとの SQLCODE の変数で表す (件数の変数ではない)。標識変数は出力 (既定は 0)。
 - **CICS の出力の判定**: 出力のオプションを名前の一覧 (`CICS_OUT`) で決めているため、コマンドによっては
   送る側の LENGTH・COMMAREA などを入力と誤る、またはその逆がある。RESP のないコマンドの応答は、HANDLE された
-  条件の値だけを解く (ERROR の飛び先、HANDLE ABEND は試さない)。
+  条件の値だけを解く (ERROR の飛び先は試さない)。
 - **UNSTRING の探索の費用**: 区切りの判定は受け取り側ごとに 32 位置まで、解き直しは 400 回までに抑えているが、
   長いメッセージを多くの項目に分けるプログラム (COPAUA0C) では実行回数がかさみ、時間制限で止まる。区切りの
   判定は前のデータごとに解き直すので、同じ形のメッセージの細かな違いで実行が増えることがある。

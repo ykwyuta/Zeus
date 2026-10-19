@@ -221,7 +221,24 @@ pub fn fields(code: &ProgramCode) -> (Vec<Field>, Vec<usize>) {
             }
             e
         };
-        let len = descs.iter().map(|d| extent(d)).max().unwrap_or(0);
+        let mut len = descs.iter().map(|d| extent(d)).max().unwrap_or(0);
+        // a record put on the parameter (SET ADDRESS OF R TO ADDRESS OF
+        // P: an IMS PCB passed as a POINTER item) fits in its area
+        for i in &code.code {
+            if let Instr::SetAddress(n, zeus_cobol::zir::Ex::AddressOf(l)) = i
+                && let Some(d) = code.descs.get(l.desc as usize)
+                && d.base == Base::Linkage(*slot)
+            {
+                let r = code
+                    .descs
+                    .iter()
+                    .filter(|x| x.base == Base::Linkage(*n))
+                    .map(extent)
+                    .max()
+                    .unwrap_or(0);
+                len = len.max(d.offset as usize + r);
+            }
+        }
         lens.push(len);
         for (name, offset, len, num) in items(&descs, 0, len) {
             fields.push(Field {
@@ -268,7 +285,7 @@ pub const CLOCK: u64 = 1_735_722_000;
 /// Whether a direction is of a text statement's "is a delimiter here"
 /// decision (not its length or NUMVAL ones).
 fn delimiter_decision(d: &Dir) -> bool {
-    d.0.ends_with("#TEXT") && d.1 % 4096 < 4094
+    d.0.ends_with("#TEXT") && d.1 % 4096 < 4093
 }
 
 /// The solver's time for the first attempt at a direction, and for the
@@ -338,6 +355,41 @@ fn distances(
         }
     }
     dist
+}
+
+/// The UNSTRING statements of `program` that ran on followed bytes: for
+/// each, the positions decided ("is a delimiter here") with the variable
+/// of the byte there and the one-byte delimiters.
+fn unstring_bytes(path: &[Step], program: &str) -> BTreeMap<u32, BTreeMap<u32, (u32, Vec<u8>)>> {
+    let text = format!("{program}#TEXT");
+    let mut out: BTreeMap<u32, BTreeMap<u32, (u32, Vec<u8>)>> = BTreeMap::new();
+    for st in path {
+        let Step::Branch(x) = st else { continue };
+        if x.program != text || x.pc % 4096 >= 4093 {
+            continue;
+        }
+        let Some(p) = &x.pred else { continue };
+        let single = |p: &Pred| match p {
+            Pred::Cmp(
+                zeus_cobol::concolic::Term::Var(v),
+                zeus_cobol::zir::Rel::Eq,
+                zeus_cobol::concolic::Term::Const(c),
+            ) => u8::try_from(*c).ok().map(|c| (*v, c)),
+            _ => None,
+        };
+        let found: Vec<(u32, u8)> = match p {
+            Pred::Or(ps) => ps.iter().filter_map(single).collect(),
+            p => single(p).into_iter().collect(),
+        };
+        let Some(&(v, _)) = found.first() else {
+            continue;
+        };
+        out.entry(x.pc / 4096)
+            .or_default()
+            .entry(x.pc % 4096)
+            .or_insert_with(|| (v, found.iter().map(|f| f.1).collect()));
+    }
+    out
 }
 
 /// Conditions to solve for a run's inputs.
@@ -1674,6 +1726,8 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     // runs extended with one more delimiter: (program, statement,
     // delimiters found) -> how many
     let mut extended: HashMap<(String, u32, usize), u32> = HashMap::new();
+    // the UNSTRING statements given data shaped like their fields
+    let mut shaped: HashSet<u32> = HashSet::new();
     let mut cases: Vec<Case> = Vec::new();
     let mut runs = 0;
     let mut rng = 0x2545_F491_4F6C_DD1Du64;
@@ -2046,6 +2100,61 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             });
         }
         prof[1] += t_flip.elapsed();
+        // an UNSTRING of the program on bytes that follow the inputs: once,
+        // data with each field digits '1' (as many as its receiver takes,
+        // at most 9, else one), a one-byte delimiter between them (records
+        // of comma separated numbers)
+        let mut shapes: Vec<Vec<i128>> = Vec::new();
+        for (ins, pos) in unstring_bytes(&out.path, &code.name) {
+            let Some(Instr::Unstring { into, .. }) = code.code.get(ins as usize) else {
+                continue;
+            };
+            if !shaped.insert(ins) || into.len() < 2 {
+                continue;
+            }
+            let Some(&d) = pos
+                .values()
+                .flat_map(|(_, ds)| ds.iter())
+                .min_by_key(|&&c| (c != 0x6B, c))
+            else {
+                continue;
+            };
+            let wide: Vec<usize> = into
+                .iter()
+                .map(|(l, ..)| {
+                    code.descs
+                        .get(l.desc as usize)
+                        .map_or(1, |x| (x.len as usize).clamp(1, 9))
+                })
+                .collect();
+            for widths in [wide, vec![1; into.len()]] {
+                let mut values: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
+                let mut k = 0u32;
+                let mut ok = true;
+                for (f, w) in widths.iter().enumerate() {
+                    let delim = f + 1 < widths.len();
+                    for j in 0..w + usize::from(delim) {
+                        match pos.get(&k) {
+                            Some((v, _)) => {
+                                values[*v as usize] = if j < *w { 0xF1 } else { i128::from(d) }
+                            }
+                            None => ok = false,
+                        }
+                        k += 1;
+                    }
+                }
+                if ok {
+                    shapes.push(values);
+                    break;
+                }
+            }
+        }
+        for values in shapes {
+            let next = apply(&inp, &fields, &specs, &out.vars, &values);
+            if !seen.contains(&next) {
+                queue.push(next, 0);
+            }
+        }
         // text statements with fewer delimiters than they may take: one
         // more delimiter in the last field (a few runs per number of
         // delimiters), so that later receivers get the data
@@ -2054,7 +2163,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             for (i, st) in out.path.iter().enumerate() {
                 if let Step::Branch(x) = st
                     && x.program.ends_with("#TEXT")
-                    && x.pc % 4096 < 4094
+                    && x.pc % 4096 < 4093
                 {
                     groups
                         .entry((x.program.clone(), x.pc / 4096))

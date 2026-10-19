@@ -412,6 +412,39 @@ fn covers_unstring_string_and_numval() {
     assert!(all.contains("\"NO CODE\""), "{all}");
 }
 
+/// A parameter read through its length (`PARM(1:PARM-LEN)`) into numeric
+/// items, and records of comma separated numbers: data shaped like the
+/// fields (each a number, a comma between them) starts the search.
+#[test]
+fn covers_a_parameter_and_comma_separated_records() {
+    let (text, all) = generate_and_replay("LOADPGM");
+    assert!(
+        text.contains("C1: 10 of 10 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"NO START\""), "{all}");
+    assert!(all.contains("\"BAD RANGE\""), "{all}");
+    assert!(all.contains("\"BULK "), "{all}");
+    assert!(all.contains("\"SMALL "), "{all}");
+}
+
+/// HANDLE ABEND LABEL: EXEC CICS ABEND and an abend of a command go to
+/// the label, ASSIGN ABCODE gives the code; a reference modification
+/// with a length received in the COMMAREA, a COMP-2 item from NUMVAL.
+#[test]
+fn covers_abend_exits_and_received_lengths() {
+    let (text, all) = generate_and_replay("ABNDPGM");
+    assert!(
+        text.contains("C1: 10 of 10 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"READ FAILED\""), "{all}");
+    assert!(all.contains("\"DEADLOCK\""), "{all}");
+    assert!(all.contains("\"OTHER ABEND\""), "{all}");
+    assert!(all.contains("\"BIG AMOUNT\""), "{all}");
+    assert!(all.contains(".ABEND\""), "{all}");
+}
+
 /// A seed written by hand (items by name only) is the first run; the
 /// cases of a generation given back as seeds cover at once what they
 /// covered.

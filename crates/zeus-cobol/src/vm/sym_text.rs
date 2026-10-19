@@ -17,7 +17,7 @@
 use super::Machine;
 use super::sym::plain_display;
 use crate::concolic::{Branch, Pred, Step, Term};
-use crate::zir::{DataType, Ex, InspectKind, InspectStep, Loc, NumType, Rel, Src};
+use crate::zir::{DataType, Ex, InspectKind, InspectStep, Loc, NumType, NumUsage, Rel, Src};
 
 /// What an INSPECT looks for: one character (or every character).
 #[derive(Debug, Clone, Copy)]
@@ -256,6 +256,9 @@ impl Machine {
 /// with a delimiter) whose "is a delimiter" is a decision.
 const SCAN: usize = 32;
 
+/// The decision "a reference modification is in its item" (`text_id`).
+const REFMOD: usize = 4093;
+
 /// The decisions of a text statement are not the module's branches:
 /// program `P#TEXT`, instruction `pc * 4096 + position`.
 fn text_id(pc: u32, pos: usize) -> u32 {
@@ -334,6 +337,61 @@ impl Machine {
             jumped: hit,
             pred: Some(p),
         }));
+    }
+
+    /// A reference modification whose start or length follows the inputs
+    /// (`item(:len)` with a length received with the data): whether it is
+    /// in the item is a decision (`P#TEXT`, position 4093).
+    pub(super) fn sym_refmod_decide(&mut self, cur: usize, s: &Src) {
+        let Src::Loc(loc) = s else { return };
+        let Some((start, len)) = &loc.refmod else {
+            return;
+        };
+        // an integer that follows the inputs, else its value
+        let int = |m: &mut Machine, e: &Ex| -> Option<Term> {
+            match m.sym_ex(cur, e) {
+                Some((t, 0)) => Some(t),
+                Some(_) => None,
+                None => {
+                    let v = m.eval_ex(cur, e).ok()?;
+                    Some(Term::Const(super::data::to_raw(v, 0, false)))
+                }
+            }
+        };
+        let Some(ts) = int(self, start) else {
+            return;
+        };
+        let tl = match len {
+            Some(l) => match int(self, l) {
+                Some(t) => Some(t),
+                None => return,
+            },
+            None => None,
+        };
+        if ts.konst().is_some() && tl.as_ref().is_none_or(|t| t.konst().is_some()) {
+            return;
+        }
+        let whole = Loc {
+            refmod: None,
+            ..loc.clone()
+        };
+        let Ok((_, size)) = self.addr(cur, &whole) else {
+            return;
+        };
+        let Some((prog, pc)) = self.sym.as_ref().and_then(|st| st.at.clone()) else {
+            return;
+        };
+        let size = Term::Const(size as i128);
+        let one = Term::Const(1);
+        let mut ok = vec![Pred::Cmp(ts.clone(), Rel::Ge, one.clone())];
+        match tl {
+            Some(tl) => {
+                ok.push(Pred::Cmp(tl.clone(), Rel::Ge, one.clone()));
+                ok.push(Pred::Cmp(Term::sub(Term::add(ts, tl), one), Rel::Le, size));
+            }
+            None => ok.push(Pred::Cmp(ts, Rel::Le, size)),
+        }
+        self.sym_decide(&prog, text_id(pc, REFMOD), Pred::And(ok));
     }
 
     /// An operand's bytes as terms (constants where not followed).
@@ -485,6 +543,33 @@ impl Machine {
                         .unwrap_or(Term::Const(0x40));
                     if t.konst().is_none() {
                         self.sym_bind_byte_term(ta + j, t);
+                    }
+                }
+            } else if let DataType::Numeric(n) = &ty
+                && n.usage == NumUsage::Display
+                && !n.signed
+                && n.scale == 0
+                && tl == n.digits as usize
+            {
+                // an integer: the field's bytes right-aligned, zeros on
+                // the left; a byte as it is, or its low half byte with the
+                // F zone (as the move stored it)
+                let field = &bytes[first..end];
+                let k = field.len().min(tl);
+                for (j, t) in field[field.len() - k..].iter().enumerate() {
+                    let at = ta + tl - k + j;
+                    let Some(v) = self.sym.as_ref().and_then(|st| t.eval(&|v| st.value(v))) else {
+                        continue;
+                    };
+                    let m = i128::from(self.mem[at]);
+                    if t.konst().is_some() {
+                        continue;
+                    }
+                    if m == v {
+                        self.sym_bind_byte_term(at, t.clone());
+                    } else if m == 0xF0 | (v & 0x0F) {
+                        let z = Term::add(Term::Const(0xF0), Term::rem(t.clone(), 16));
+                        self.sym_bind_byte_term(at, z);
                     }
                 }
             }

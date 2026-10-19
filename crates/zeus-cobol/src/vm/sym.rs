@@ -89,6 +89,14 @@ impl Machine {
         }
     }
 
+    /// A floating-point item now holds the number of `term`.
+    fn sym_bind_float(&mut self, a: usize, l: usize, term: Term, scale: i32) {
+        let bytes = self.mem[a..a + l].to_vec();
+        if let Some(st) = self.sym.as_mut() {
+            st.floats.push((a, l, term, scale, bytes));
+        }
+    }
+
     /// Binds a byte to input variable `var`.
     pub fn sym_bind_byte(&mut self, addr: usize, var: u32) {
         let b = self.mem[addr];
@@ -106,6 +114,7 @@ impl Machine {
     pub(super) fn sym_forget(&mut self, a: usize, l: usize) {
         let Some(st) = self.sym.as_mut() else { return };
         st.nums.retain(|n| n.addr + n.len <= a || n.addr >= a + l);
+        st.floats.retain(|f| f.0 + f.1 <= a || f.0 >= a + l);
         if !st.bytes.is_empty() {
             for i in a..a + l {
                 st.bytes.remove(&i);
@@ -248,11 +257,9 @@ impl Machine {
     }
 
     fn sym_src(&mut self, cur: usize, s: &Src) -> Option<SymVal> {
-        if self
-            .sym
-            .as_ref()
-            .is_some_and(|st| st.nums.is_empty() && st.bytes.is_empty() && st.temps.is_empty())
-        {
+        if self.sym.as_ref().is_some_and(|st| {
+            st.nums.is_empty() && st.bytes.is_empty() && st.temps.is_empty() && st.floats.is_empty()
+        }) {
             return None;
         }
         match s {
@@ -266,6 +273,9 @@ impl Machine {
                         let tm = self.sym_read_num(a, l, &t)?;
                         Some(SymVal::Num(tm, t.scale))
                     }
+                    DataType::Float { .. } => self
+                        .sym_read_float(cur, loc, a, l)
+                        .map(|(t, s)| SymVal::Num(t, s)),
                     DataType::Alphanumeric { .. }
                     | DataType::Alphabetic { .. }
                     | DataType::Group => self.sym_read_bytes(a, l).map(SymVal::Str),
@@ -439,6 +449,7 @@ impl Machine {
                 let (a, l) = self.addr(cur, loc).ok()?;
                 match self.loc_type(cur, loc) {
                     DataType::Numeric(t) => self.sym_read_num(a, l, &t).map(|tm| (tm, t.scale)),
+                    DataType::Float { .. } => self.sym_read_float(cur, loc, a, l),
                     _ => None,
                 }
             }
@@ -544,6 +555,7 @@ impl Machine {
                 Some(Pred::Cmp(t, r, Term::Const(0)))
             }
             Cx::Class(s, k) => {
+                self.sym_refmod_decide(cur, s);
                 let Some(SymVal::Str(bytes)) = self.sym_alnum_src(cur, s) else {
                     return None;
                 };
@@ -577,6 +589,8 @@ impl Machine {
                 ))
             }
             Cx::Cmp(a, r, b, mode) => {
+                self.sym_refmod_decide(cur, a);
+                self.sym_refmod_decide(cur, b);
                 let (sa, sb) = if *mode == CmpMode::Alnum {
                     (self.sym_alnum_src(cur, a), self.sym_alnum_src(cur, b))
                 } else {
@@ -661,6 +675,34 @@ impl Machine {
             v = Term::Abs(Box::new(v));
         }
         Some((raw, v))
+    }
+
+    /// A floating-point item holding a number stored from terms: the term,
+    /// while the item has that value exactly (no rounding in it).
+    fn sym_read_float(
+        &mut self,
+        cur: usize,
+        loc: &crate::zir::Loc,
+        a: usize,
+        l: usize,
+    ) -> Option<(Term, i32)> {
+        let mem = &self.mem;
+        let st = self.sym.as_mut()?;
+        st.floats.retain(|f| mem[f.0..f.0 + f.1] == f.4[..]);
+        let (t, sc) = st
+            .floats
+            .iter()
+            .find(|f| f.0 == a && f.1 == l)
+            .map(|f| (f.2.clone(), f.3))?;
+        let v = self.sym_value(&t)?;
+        let now = self.eval_src(cur, &Src::Loc(loc.clone())).ok()?;
+        let (Term::Const(x), xs) = dec_term(self.val_num(&now)) else {
+            return None;
+        };
+        // the same number at the larger scale
+        let up = |v: i128, from: i32, to: i32| v.checked_mul(pow10((to - from) as u32)?);
+        let to = sc.max(xs);
+        (up(v, sc, to)? == up(x, xs, to)?).then_some((t, sc))
     }
 
     fn sym_dst(&mut self, cur: usize, loc: &crate::zir::Loc) -> Option<(usize, usize, DataType)> {
@@ -752,6 +794,9 @@ impl Machine {
                             self.sym_bind_term(a, l, nt, v);
                         }
                     }
+                    (Some(SymVal::Num(t, sc)), DataType::Float { .. }) => {
+                        self.sym_bind_float(a, l, t, sc)
+                    }
                     (
                         Some(SymVal::Str(b)),
                         DataType::Alphanumeric { just: false }
@@ -800,6 +845,9 @@ impl Machine {
                 let mut overflow = None;
                 if let Some((a, l, ty)) = dst {
                     self.sym_forget(a, l);
+                    if let (Some((t, sc)), DataType::Float { .. }) = (&v, &ty) {
+                        self.sym_bind_float(a, l, t.clone(), *sc);
+                    }
                     if let (Some((t, sc)), DataType::Numeric(nt)) = (v, ty)
                         && let Some((raw, stored)) = Self::sym_store_term(&nt, t, sc)
                     {
