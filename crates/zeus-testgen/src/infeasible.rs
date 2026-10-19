@@ -23,6 +23,8 @@
 
 use std::collections::{BTreeSet, HashMap};
 
+use crate::flow::{Out, fixpoint};
+
 use zeus_cobol::zir::{
     Base, CmpMode, Cx, DataType, ExecVal, Fig, Instr, Loc, ProgramCode, Rel, Src,
 };
@@ -289,8 +291,14 @@ pub(crate) fn successors(code: &ProgramCode) -> Option<Vec<Vec<u32>>> {
                 v
             }
             Instr::SearchStep { at_end, .. } => vec![*at_end, next],
-            Instr::Exec(_) => {
-                let mut v = vec![next];
+            Instr::Exec(k) => {
+                // CICS RETURN and XCTL do not come back; ABEND only to a
+                // HANDLE ABEND label
+                let ends = code.execs.get(*k as usize).is_some_and(|e| {
+                    e.kind == zeus_cobol::zir::ExecKind::Cics
+                        && matches!(e.command.as_str(), "RETURN" | "XCTL" | "ABEND")
+                });
+                let mut v = if ends { Vec::new() } else { vec![next] };
                 v.extend(labels.iter().copied());
                 v
             }
@@ -359,18 +367,12 @@ fn values(code: &ProgramCode, flag: u32) -> Option<Vec<Vec<u8>>> {
 /// flag no possible value of it takes that way.
 pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
     let mut out = BTreeSet::new();
-    let Some(succ) = successors(code) else {
-        return out;
-    };
     let mut flags = BTreeSet::new();
     for i in &code.code {
         if let Instr::JumpIf(c, _) | Instr::JumpUnless(c, _) = i {
             flags_in(c, &mut flags);
         }
     }
-    let entries: Vec<u32> = std::iter::once(0)
-        .chain(code.entries.iter().map(|e| e.pc))
-        .collect();
     for flag in flags {
         let Some(vals) = values(code, flag) else {
             continue;
@@ -381,14 +383,6 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
         } else {
             (1u64 << vals.len()) - 1
         };
-        let mut state = vec![0u64; code.code.len()];
-        let mut work: Vec<u32> = Vec::new();
-        for &e in &entries {
-            if (e as usize) < state.len() {
-                state[e as usize] |= 1; // the VALUE
-                work.push(e);
-            }
-        }
         // the values for which a condition goes each way
         let split = |cx: &Cx, s: u64| -> (u64, u64) {
             let (mut t, mut f) = (0u64, 0u64);
@@ -407,39 +401,37 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
             }
             (t, f)
         };
-        while let Some(pc) = work.pop() {
-            let s = state[pc as usize];
+        let transfer = |pc: u32, s: &u64| -> Vec<Out<u64>> {
             let ins = &code.code[pc as usize];
-            // the state after the instruction, by successor
-            let outs: Vec<(u32, u64)> = match ins {
+            match ins {
                 Instr::JumpIf(c, t) | Instr::JumpUnless(c, t) => {
-                    let (yes, no) = split(c, s);
+                    let (yes, no) = split(c, *s);
                     let (taken, fall) = if matches!(ins, Instr::JumpIf(..)) {
                         (yes, no)
                     } else {
                         (no, yes)
                     };
-                    vec![(*t, taken), (pc + 1, fall)]
+                    [(*t, taken), (pc + 1, fall)]
+                        .into_iter()
+                        .filter(|(_, v)| *v != 0)
+                        .map(|(t, v)| Out::To(t, v))
+                        .collect()
                 }
                 _ => {
                     let after = match flag_write(code, ins, flag, len) {
                         Some(Some(v)) => vals.iter().position(|x| *x == v).map_or(all, |k| 1 << k),
-                        Some(None) => s,
+                        Some(None) => *s,
                         None => all,
                     };
-                    succ[pc as usize].iter().map(|&t| (t, after)).collect()
-                }
-            };
-            for (t, v) in outs {
-                let Some(slot) = state.get_mut(t as usize) else {
-                    continue;
-                };
-                if v & !*slot != 0 {
-                    *slot |= v;
-                    work.push(t);
+                    vec![Out::Next(after)]
                 }
             }
-        }
+        };
+        // the VALUE at the entries
+        let Some(states) = fixpoint(code, 1u64, &transfer, &|a, b, _| a | b, u32::MAX) else {
+            return out;
+        };
+        let state: Vec<u64> = states.into_iter().map(|s| s.unwrap_or(0)).collect();
         for (pc, ins) in code.code.iter().enumerate() {
             let (c, is_if) = match ins {
                 Instr::JumpIf(c, _) => (c, true),

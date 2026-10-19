@@ -28,12 +28,11 @@ use zeus_cobol::zir::{
 };
 use zeus_decimal::Dec;
 
-use crate::infeasible::{extent, locs_in, successors};
+use crate::flow::{Out, fixpoint};
+use crate::infeasible::{extent, locs_in};
 
 /// Joins at a loop head before its interval is widened.
 const WIDEN_AFTER: u32 = 4;
-/// Joins elsewhere before the interval is widened.
-const WIDEN_LATE: u32 = 64;
 
 /// A closed interval of integers (the integer of the digits at `scale`).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,17 +177,27 @@ fn item(code: &ProgramCode, desc: u32) -> Option<Item> {
     let DataType::Numeric(t) = d.ty else {
         return None;
     };
-    if d.base != Base::Static
-        || !d.dims.is_empty()
-        || t.usage == NumUsage::National
-        || code
-            .local_storage
-            .is_some_and(|(o, l)| d.offset >= o && d.offset < o + l)
-        || implicit(code, desc)
-    {
+    if !d.dims.is_empty() || t.usage == NumUsage::National || implicit(code, desc) {
         return None;
     }
     let (o, l) = (d.offset as usize, d.len as usize);
+    match d.base {
+        Base::Static
+            if !code
+                .local_storage
+                .is_some_and(|(lo, ll)| d.offset >= lo && d.offset < lo + ll) => {}
+        // a parameter: an input (any value of its picture), when its
+        // record is not addressed again and CICS does not set it
+        Base::Linkage(slot) if linkage_fixed(code, slot, &d.name) => {
+            return Some(Item {
+                desc,
+                ty: t,
+                len: l,
+                init: full(&t, l),
+            });
+        }
+        _ => return None,
+    }
     let v = vdata::num_value(&t, code.static_init.get(o..o + l)?);
     let raw = v
         .rescale(t.scale.max(0) as u32, zeus_decimal::Rounding::Truncate)?
@@ -199,6 +208,30 @@ fn item(code: &ProgramCode, desc: u32) -> Option<Item> {
         len: l,
         init: Iv::one(raw),
     })
+}
+
+/// Whether a LINKAGE record keeps its storage (no SET ADDRESS, no SET
+/// option of an EXEC statement), and the item is not one of the EIB that
+/// CICS sets (EIBCALEN is the COMMAREA's length for the whole task).
+fn linkage_fixed(code: &ProgramCode, slot: u32, name: &str) -> bool {
+    let eib = code
+        .descs
+        .iter()
+        .any(|d| d.base == Base::Linkage(slot) && d.offset == 0 && d.name == "DFHEIBLK");
+    if eib && name != "EIBCALEN" {
+        return false;
+    }
+    let readdressed = code
+        .code
+        .iter()
+        .any(|i| matches!(i, Instr::SetAddress(s, _) if *s == slot));
+    let set_by_exec = code.execs.iter().any(|e| {
+        e.options.iter().any(|o| {
+            matches!(&o.arg, Some(zeus_cobol::zir::ExecVal::Address(l))
+                if code.descs.get(l.desc as usize).is_some_and(|d| d.base == Base::Linkage(slot)))
+        })
+    });
+    !readdressed && !set_by_exec
 }
 
 fn is_loc(l: &Loc, desc: u32) -> bool {
@@ -572,9 +605,6 @@ fn touches(code: &ProgramCode, ins: &Instr, desc: u32) -> bool {
 /// The directions (instruction, jumped) no value of a numeric item takes.
 pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
     let mut out = BTreeSet::new();
-    let Some(succ) = successors(code) else {
-        return out;
-    };
     let consts = constants(code);
     // the items compared in conditions
     let mut compared = BTreeSet::new();
@@ -583,13 +613,11 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
             cmp_items(c, &mut compared);
         }
     }
-    let entries: Vec<u32> = std::iter::once(0)
-        .chain(code.entries.iter().map(|e| e.pc))
-        .collect();
     for desc in compared {
         let Some(it) = item(code, desc) else {
             continue;
         };
+
         if consts.get(desc as usize).copied().flatten().is_some() {
             continue; // a constant: the conditions on it are constant too
         }
@@ -597,23 +625,11 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
             item: &it,
             consts: &consts,
         };
-        let n = code.code.len();
-        let mut state: Vec<Option<Iv>> = vec![None; n];
-        let mut joins = vec![0u32; n];
-        let mut work: Vec<u32> = Vec::new();
-        for &e in &entries {
-            if (e as usize) < n {
-                state[e as usize] = Some(it.init);
-                work.push(e);
-            }
-        }
         let all = full(&it.ty, it.len);
-        while let Some(pc) = work.pop() {
-            let Some(x) = state[pc as usize] else {
-                continue;
-            };
+        let transfer = |pc: u32, x: &Iv| -> Vec<Out<Iv>> {
+            let x = *x;
             let ins = &code.code[pc as usize];
-            let outs: Vec<(u32, Option<Iv>)> = match ins {
+            match ins {
                 Instr::JumpIf(c, t) | Instr::JumpUnless(c, t) => {
                     let yes = cx.narrow(c, x, true);
                     let no = cx.narrow(c, x, false);
@@ -622,7 +638,10 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
                     } else {
                         (no, yes)
                     };
-                    vec![(*t, taken), (pc + 1, fall)]
+                    [(*t, taken), (pc + 1, fall)]
+                        .into_iter()
+                        .filter_map(|(t, v)| v.map(|v| Out::To(t, v)))
+                        .collect()
                 }
                 _ => {
                     let after = match ins {
@@ -645,43 +664,26 @@ pub fn impossible(code: &ProgramCode) -> BTreeSet<(u32, bool)> {
                         other if touches(code, other, desc) => all,
                         _ => x,
                     };
-                    succ[pc as usize]
-                        .iter()
-                        .map(|&t| (t, Some(after)))
-                        .collect()
+                    vec![Out::Next(after)]
                 }
-            };
-            for (t, v) in outs {
-                let (Some(v), Some(slot)) = (v, state.get_mut(t as usize)) else {
-                    continue;
-                };
-                let new = match *slot {
-                    None => v,
-                    Some(old) => {
-                        let mut j = old.join(v);
-                        if j == old {
-                            continue;
-                        }
-                        joins[t as usize] += 1;
-                        // at loop heads (backward jumps), else much later
-                        // (termination)
-                        let limit = if t <= pc { WIDEN_AFTER } else { WIDEN_LATE };
-                        if joins[t as usize] > limit {
-                            // widen the bound that grows
-                            if j.lo < old.lo {
-                                j.lo = all.lo.min(j.lo);
-                            }
-                            if j.hi > old.hi {
-                                j.hi = all.hi.max(j.hi);
-                            }
-                        }
-                        j
-                    }
-                };
-                *slot = Some(new);
-                work.push(t);
             }
-        }
+        };
+        // at loop heads, widen the bound that grows
+        let join = |old: &Iv, new: &Iv, widen: bool| -> Iv {
+            let mut j = old.join(*new);
+            if widen {
+                if j.lo < old.lo {
+                    j.lo = all.lo.min(j.lo);
+                }
+                if j.hi > old.hi {
+                    j.hi = all.hi.max(j.hi);
+                }
+            }
+            j
+        };
+        let Some(state) = fixpoint(code, it.init, &transfer, &join, WIDEN_AFTER) else {
+            return out;
+        };
         for (pc, ins) in code.code.iter().enumerate() {
             let (c, is_if) = match ins {
                 Instr::JumpIf(c, _) => (c, true),

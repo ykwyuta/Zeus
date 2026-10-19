@@ -754,6 +754,7 @@ pub fn run(
                 ..Default::default()
             });
         }
+        st.inputs_bound();
     }
     let args: Vec<Option<usize>> = addrs.iter().map(|a| Some(*a)).collect();
     let r = m.run_program(program, &args);
@@ -1880,6 +1881,14 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 && reached.contains(&(d.0.clone(), d.1))
                 && !symbolic.contains(&(d.0.clone(), d.1))
         });
+        // some direction this run reaches was solved for and not found:
+        // the decisions before it may have to change too
+        let stuck = all.iter().any(|d| {
+            !covered.contains(d)
+                && !impossible.contains(d)
+                && reached.contains(&(d.0.clone(), d.1))
+                && attempts.get(d).is_some_and(|a| a.0 > 0)
+        });
         for i in 0..out.path.len() {
             if start.elapsed() > opts.time {
                 break;
@@ -1988,8 +1997,10 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 // the other way after other decisions (a new context): the
                 // directions not followed may depend on the inputs there
                 // (input that a screen sends, where the first way came from
-                // a path with constants)
-                let context = !deepen && implicit && first && {
+                // a path with constants), or a direction not found may be
+                // found after it (when the other way gets nearer to one)
+                let nearer = || stuck && away(&target) < away(&(b.program.clone(), b.pc, b.jumped));
+                let context = !deepen && first && (implicit || nearer()) && {
                     use std::hash::{Hash, Hasher};
                     let mut h = std::collections::hash_map::DefaultHasher::new();
                     before.hash(&mut h);

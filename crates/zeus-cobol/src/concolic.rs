@@ -423,6 +423,8 @@ pub struct SymState {
     pub vars: Vec<Var>,
     /// The variables by name.
     names: std::collections::HashMap<String, u32>,
+    /// Variables at most (see `full`).
+    vars_cap: usize,
     /// Directions recorded after the path became long (each once).
     pub(crate) late: std::collections::HashSet<(String, u32, bool)>,
     pub path: Vec<Step>,
@@ -452,6 +454,8 @@ pub struct SymState {
 
 /// The variables a run has at most (see `SymState::full`).
 pub const MAX_VARS: usize = 20_000;
+/// Variables made after the inputs at least (see `inputs_bound`).
+pub const LATE_VARS: usize = 4_000;
 
 /// The nodes a term bound to data has at most: a larger one (a value
 /// computed again and again in a loop) is left concrete.
@@ -479,7 +483,14 @@ impl SymState {
     /// outside (stubs) is no longer followed, so that a program that loops
     /// on it does not make the run too large to solve.
     pub fn full(&self) -> bool {
-        self.vars.len() >= MAX_VARS
+        self.vars.len() >= self.vars_cap.max(MAX_VARS)
+    }
+
+    /// The variables made so far are the inputs of the run: past
+    /// `MAX_VARS`, the limit (`full`) leaves room for `LATE_VARS` more (a
+    /// large COMMAREA does not stop the stubs' outputs from being followed).
+    pub fn inputs_bound(&mut self) {
+        self.vars_cap = self.vars.len() + LATE_VARS;
     }
 
     /// Records a condition the run relies on (not when the path is long:

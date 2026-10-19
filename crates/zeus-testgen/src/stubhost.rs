@@ -2,10 +2,11 @@
 //! or database but takes what the statements give the program as
 //! inputs. The `n`-th execution of the statement at line `l` of program
 //! `P` sets its output options from `outputs["P.l.n.OPTION"]` (RESP,
-//! INTO, SQLCODE, host variables `H<k>`, ...); a group area has a key per
+//! INTO, SQLCODE, host variables `H<k>` and their indicators `I<k>`, ...); a group area has a key per
 //! elementary item (`P.l.n.INTO.ITEM`). Unset: RESP and SQLCODE are 0
-//! (100 and ENDFILE from the second execution of a FETCH or READNEXT on,
-//! so that loops end), the areas stay as they are. In concolic runs the
+//! (100, ENDFILE, ITEMERR / QZERO and ENDDATA from the second execution of
+//! a FETCH, READNEXT, READQ and RETRIEVE on, so that loops end), the areas
+//! stay as they are. In concolic runs the
 //! outputs follow the variables `X<key>` (numeric) or `X<key>#<i>`
 //! (bytes). What the statements send out is logged (the expected
 //! results).
@@ -502,18 +503,25 @@ impl StubHost {
             return Ok(ExecOutcome::Continue);
         }
         // a browse or queue read ends from the second time on
-        let ends = matches!(cmd, "READNEXT" | "READPREV") && n > 1;
-        let default_resp = if ends {
-            i128::from(zeus_cobol::front::cics::resp_value("ENDFILE").unwrap_or(20))
-        } else {
-            0
+        // browses and queue reads end from the second time on
+        let end = match cmd {
+            "READNEXT" | "READPREV" if n > 1 => Some("ENDFILE"),
+            "READQ" if n > 1 && call.has("TD") => Some("QZERO"),
+            "READQ" if n > 1 => Some("ITEMERR"),
+            "RETRIEVE" if n > 1 => Some("ENDDATA"),
+            _ => None,
         };
+        let default_resp = end
+            .and_then(zeus_cobol::front::cics::resp_value)
+            .map_or(0, i128::from);
         let mut sent = Vec::new();
         let mut resp = None;
         for (k, (name, arg)) in call.options.iter().enumerate() {
             match arg {
                 Some(ExecArg::Area(a))
-                    if CICS_OUT.contains(&name.as_str()) && !sends(cmd, name) =>
+                    // every option of ASSIGN receives
+                    if (cmd == "ASSIGN" || CICS_OUT.contains(&name.as_str()))
+                        && !sends(cmd, name) =>
                 {
                     let default = match name.as_str() {
                         "RESP" => Some(default_resp),
@@ -676,9 +684,12 @@ impl StubHost {
             if outs[k] {
                 let layout = self.layout(call, Operand::Host(k), v);
                 self.output(m, &format!("{key}.H{}", k + 1), v, &layout, None);
+                // the null indicator: 0 (not null) unless set
                 if let Some(i) = ind {
                     let n = i.len.min(2);
                     m.storage_mut()[i.addr..i.addr + n].fill(0);
+                    let whole = [(String::new(), 0, n, followed(num_of(i)))];
+                    self.output(m, &format!("{key}.I{}", k + 1), i, &whole, None);
                 }
             } else {
                 sent.push(hex(&m.storage()[v.addr..v.addr + v.len.min(AREA_BYTES)]));

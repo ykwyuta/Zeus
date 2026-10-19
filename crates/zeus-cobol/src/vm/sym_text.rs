@@ -337,7 +337,11 @@ impl Machine {
     }
 
     /// An operand's bytes as terms (constants where not followed).
-    fn sym_operand_bytes(&mut self, cur: usize, s: &Src) -> Option<(Vec<Term>, Vec<u8>)> {
+    pub(super) fn sym_operand_bytes(
+        &mut self,
+        cur: usize,
+        s: &Src,
+    ) -> Option<(Vec<Term>, Vec<u8>)> {
         let v = self.eval_src(cur, s).ok()?;
         let n = self.alnum_len(&v).max(1);
         let concrete = self.alnum_bytes(cur, &v, n).ok()?;
@@ -721,5 +725,54 @@ impl Machine {
             ),
         ]);
         Some((Term::ite(valid, Term::Const(0), Term::Const(now.max(1))), 0))
+    }
+}
+
+impl Machine {
+    /// FUNCTION UPPER-CASE / LOWER-CASE / REVERSE of followed
+    /// alphanumeric bytes: the letters' bytes moved (EBCDIC a-i, j-r, s-z
+    /// to A-I, J-R, S-Z and back), or the bytes reversed.
+    pub(super) fn sym_case(
+        &mut self,
+        cur: usize,
+        f: crate::zir::Func,
+        s: &Src,
+    ) -> Option<Vec<Term>> {
+        use crate::zir::Func;
+        if let Src::Loc(l) = s
+            && self.loc_type(cur, l).is_national()
+        {
+            return None;
+        }
+        let (terms, _) = self.sym_operand_bytes(cur, s)?;
+        if terms.iter().all(|t| t.konst().is_some()) {
+            return None;
+        }
+        let lower = vec![(0x81, 0x89), (0x91, 0x99), (0xA2, 0xA9)];
+        let upper = vec![(0xC1, 0xC9), (0xD1, 0xD9), (0xE2, 0xE9)];
+        Some(match f {
+            Func::Reverse => terms.into_iter().rev().collect(),
+            Func::UpperCase => terms
+                .into_iter()
+                .map(|t| {
+                    Term::ite(
+                        Pred::In(t.clone(), lower.clone()),
+                        Term::add(t.clone(), Term::Const(0x40)),
+                        t,
+                    )
+                })
+                .collect(),
+            Func::LowerCase => terms
+                .into_iter()
+                .map(|t| {
+                    Term::ite(
+                        Pred::In(t.clone(), upper.clone()),
+                        Term::sub(t.clone(), Term::Const(0x40)),
+                        t,
+                    )
+                })
+                .collect(),
+            _ => return None,
+        })
     }
 }

@@ -273,6 +273,16 @@ impl Machine {
                 }
             }
             Src::Num(e) => self.sym_ex(cur, e).map(|(t, s)| SymVal::Num(t, s)),
+            Src::Func(
+                f @ (crate::zir::Func::UpperCase
+                | crate::zir::Func::LowerCase
+                | crate::zir::Func::Reverse),
+                args,
+                None,
+            ) => match &args[..] {
+                [crate::zir::Arg::Src(a)] => self.sym_case(cur, *f, a).map(SymVal::Str),
+                _ => None,
+            },
             _ => None,
         }
     }

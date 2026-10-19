@@ -440,7 +440,7 @@ CardDemo のオンライン (`-I app/cpy -I app/cpy-bms`、COBSWAIT を除く 17
 | `COUSR01C`・`COUSR02C` | 27/28・55/56 (96%・98%) | `COUSR00C` | 136/142 (96%) |
 | `COMEN01C` | 45/50 (90%、到達可能な向きの 96%) | `COCRDLIC` | 203/228 (89%) |
 | `COACTVWC` | 116/132 (88%) | `COCRDSLC` | 124/142 (87%) |
-| `COCRDUPC` | 237/274 (86%) | `CORPT00C` | 59/70 (84%) |
+| `COCRDUPC` | 243/274 (89%) | `CORPT00C` | 59/70 (84%) |
 | `COADM01C` | 30/40 (75%、到達可能な向きの 97%) | `COACTUPC` | 536/750 (71%) |
 
 COMEN01C・COADM01C の、表の件数 (11 と 6) を超える選択肢 (`WHEN 12` など) は数値の範囲の証明で不可能とした。
@@ -466,6 +466,42 @@ IMS・Db2・MQ の拡張 (`app/app-authorization-ims-db2-mq`、`-I` にその `c
 
 COPAUA0C は MQGET で受けたメッセージ (長さ W01-DATALEN) を UNSTRING で 18 の項目に分けて NUMVAL にかける。
 ソルバは長さを伸ばし、カンマを足してメッセージを組み立てる。ラウンドで探索をやり直すと 79% まで進む。
+
+GenApp (`tools/fetch-genapp.sh` で取得する `.cache/genapp/base/src` の 31 本、`-I` にその `src`、`--time 60`)。
+どれも `ztest` で全ケースが再現する。所要時間は 1 本あたり 0〜18 秒。31 本のうち 29 本は到達可能な向きを
+すべて通る (うち 23 本は全向き 100%)。
+
+| プログラム | C1 | プログラム | C1 |
+|---|---|---|---|
+| `LGTESTP1`〜`LGTESTP4`・`LGTESTC1` | 22/22〜24/24 (100%) | `LGUPDB01`・`LGAPVS01`・`LGUPVS01` | 42/42・14/14・16/16 (100%) |
+| `LGICVS01`・`LGICDB01`・`LGACDB01` | 20/20・14/14・16/16 (100%) | `LGASTAT1`・`LGDPDB01`・`LGUCDB01` | 12/12・12/12・10/10 (100%) |
+| `LGIPDB01` | 83/84 (99%) | `LGAPDB01` | 36/38 (95%、到達可能な向きの 97%) |
+| `LGUPOL01` | 15/18 (83%、到達可能な向きの 100%) | `LGDPOL01` | 9/12 (75%、同 100%) |
+| `LGACUS01`・`LGICUS01`・`LGUCUS01`・`LGAPOL01` | 5/8 (63%、同 100%) | `LGIPOL01` | 3/6 (50%、同 100%) |
+
+検証で見つけて直したもの (検証前は 12〜70% のものが多かった)。
+
+- `FUNCTION UPPER-CASE`・`LOWER-CASE`・`REVERSE` を記号のまま追う (EBCDIC の小文字の範囲に +0x40)。
+  要求の種類を大文字にしてから EVALUATE するプログラムが通るようになった。
+- 変数の上限 (`MAX_VARS`) を、入力 (32K の COMMAREA を含む) を作った後に `LATE_VARS` (4000) の余裕があるように数える。
+  大きな COMMAREA で上限に達し、スタブの出力 (RESP・SQLCODE) が追えなくなっていた。余裕を `MAX_VARS` 全体に
+  すると、COPAUA0C で記号のバイトが増えて READ の RESP が解けなくなる (79% から 72%) ので小さくした。
+- READQ (TS は ITEMERR、TD は QZERO)・RETRIEVE (ENDDATA) も、READNEXT と同じく 2 回目から終わりの応答を既定にする
+  (キューを読み切るループが終わらなかった)。ASSIGN はすべてのオプションを出力とする。
+- SQL の標識変数 (`:X INDICATOR :IND`) を出力 `I<k>` にする (NULL の分岐。LGIPDB01 は 89% から 99%)。
+- 静的な解析の制御の流れで、EXEC CICS RETURN・XCTL・ABEND の後に次の命令へ進まない。PERFORM は呼び出しの列
+  (内側から 3 段まで) を持つ文脈付きの不動点 (`flow.rs`) にした。段落の終わりは、その段落で終わる PERFORM へ戻る
+  (それ以外は次の段落へ落ちる)。以前は PERFORM だけで使う段落も次の段落へ落ちるとみなしていた。
+  これで「`EIBCALEN = 0` のときだけ PERFORM する誤りの段落の中の `IF EIBCALEN > 0`」の偽が不可能と分かる
+  (LGACUS01 などの 3 方向)。数値の範囲は LINKAGE の項目のうち EIB の EIBCALEN も扱う (タスクの間変わらない)。
+- 文脈を変える解き直しを、入力に依存する向きでも行う。到達したのに解けなかった向きがあり、反対の向きの方が
+  開いている向きに近い (CFG の距離) 分岐で使う。LGAPDB01 の `'01ACOM'` は、要求の種類 (184 行) と長さの検査
+  (210 行) を両方変えないと届かない。長さの検査はほかの種類の経路で両方向とも網羅済みなので、これまでは
+  解き直されなかった (84% から 95%)。
+
+残る向きは、LGAPDB01 の 2 つ目の `EVALUATE CA-REQUEST-ID` の `WHEN OTHER` (1 つ目の EVALUATE が同じ項目の
+ほかの値で RETURN 済み。英数字の入力項目の値の集合を条件で絞る解析がないので証明できない) と、誤りの経路での
+`EIBCALEN < 91` の偽、LGIPDB01 の 1 方向。
 
 バッチで残っていたループの先頭の `IF END-OF-FILE = 'N'` の偽 (ループの条件から起こり得ない) は、静的な解析で
 不可能と証明して分母から外した。CBACT04C・CBSTM03A は Z3 と TRIM・TEST-NUMVAL の記号化で上がった。
@@ -660,7 +696,7 @@ CardDemo で残った向きに当てはめると、生成 AI が直接効くの�
 - **RECEIVE MAP**: INTO の記号マップ (`mapI`) の基本項目ごとに入力にするが、項目の長さ (`...L`) とデータの整合
   (入力した長さ・MDT) は取らない。HANDLE AID は扱わない (EIBAID は EIB の入力なので EVALUATE EIBAID は通る)。
 - **SQL の判定**: CALL の OUT 引数、SELECT INTO のない複数行の結果、SQLSTATE・SQLERRD は入力にしない。
-  FETCH の件数は実行ごとの SQLCODE の変数で表す (件数の変数ではない)。標識変数は常に 0 (NULL にしない)。
+  FETCH の件数は実行ごとの SQLCODE の変数で表す (件数の変数ではない)。標識変数は出力 (既定は 0)。
 - **CICS の出力の判定**: 出力のオプションを名前の一覧 (`CICS_OUT`) で決めているため、コマンドによっては
   送る側の LENGTH・COMMAREA などを入力と誤る、またはその逆がある。RESP のないコマンドの応答は、HANDLE された
   条件の値だけを解く (ERROR の飛び先、HANDLE ABEND は試さない)。
