@@ -35,6 +35,8 @@ enum Pre {
     /// An I/O statement (sets the I/O condition).
     File(super::sym_io::FilePre),
     Inspect(Option<super::sym_text::InspectPre>),
+    Unstring(Option<super::sym_text::UnstringPre>),
+    StringStmt(Option<super::sym_text::StringPre>),
 }
 
 const SPACE: u8 = 0x40;
@@ -397,7 +399,7 @@ impl Machine {
         Some(out)
     }
 
-    fn sym_ex(&mut self, cur: usize, e: &Ex) -> Option<(Term, i32)> {
+    pub(super) fn sym_ex(&mut self, cur: usize, e: &Ex) -> Option<(Term, i32)> {
         match e {
             Ex::Load(loc) => {
                 if let Some(SymVal::Num(t, s)) = self.sym_indexed(cur, loc, false) {
@@ -410,6 +412,12 @@ impl Machine {
                 }
             }
             Ex::Temp(t) => self.sym.as_ref()?.temps.get(&(cur, *t)).cloned(),
+            Ex::Func(crate::zir::Func::NumVal | crate::zir::Func::NumValC, args) => {
+                match args.first() {
+                    Some(crate::zir::Arg::Src(s)) => self.sym_numval(cur, s),
+                    _ => None,
+                }
+            }
             Ex::Neg(x) => self.sym_ex(cur, x).map(|(t, s)| (Term::neg(t), s)),
             Ex::Bin(op, x, y) => {
                 let a = self.sym_ex(cur, x);
@@ -624,6 +632,9 @@ impl Machine {
         let cur = s.cur;
         let pc = s.pc;
         let code = self.instances[cur].code.clone();
+        if let Some(st) = self.sym.as_mut() {
+            st.at = Some((code.name.clone(), pc));
+        }
         let pre = match code.code.get(pc as usize) {
             Some(Instr::Move(src, dst)) => {
                 let v = self.sym_src(cur, src);
@@ -658,6 +669,26 @@ impl Machine {
             Some(Instr::Inspect(target, steps)) => {
                 Pre::Inspect(self.sym_inspect_pre(cur, target, steps))
             }
+            Some(Instr::Unstring {
+                source,
+                delims,
+                into,
+                pointer,
+                tallying,
+            }) => Pre::Unstring(self.sym_unstring_pre(
+                cur,
+                pc,
+                source,
+                delims,
+                into,
+                pointer.as_ref(),
+                tallying.as_ref(),
+            )),
+            Some(Instr::StringStmt {
+                sources,
+                into,
+                pointer,
+            }) => Pre::StringStmt(self.sym_string_pre(cur, pc, sources, into, pointer.as_ref())),
             _ => Pre::None,
         };
         let size_before = self.size_error;
@@ -785,6 +816,7 @@ impl Machine {
                 // the condition as "the jump is taken"
                 let pred = pred.map(|p| if is_if { p } else { Pred::not(p) });
                 if let Some(st) = self.sym.as_mut() {
+                    let pred = pred.filter(|_| !st.long());
                     st.path.push(Step::Branch(Branch {
                         program,
                         pc,
@@ -803,6 +835,20 @@ impl Machine {
                 }
             }
             Pre::File(p) => self.sym_io_post(cur, p),
+            Pre::Unstring(pre) => {
+                if r.is_ok()
+                    && let Some(pre) = pre
+                {
+                    self.sym_unstring_post(pre);
+                }
+            }
+            Pre::StringStmt(pre) => {
+                if r.is_ok()
+                    && let Some(pre) = pre
+                {
+                    self.sym_string_post(pre);
+                }
+            }
             Pre::Inspect(pre) => {
                 if r.is_ok()
                     && let Some(pre) = pre
@@ -830,7 +876,7 @@ impl Machine {
     }
 
     pub(super) fn sym_bind_term(&mut self, a: usize, l: usize, ty: NumType, term: Term) {
-        if term.konst().is_some() {
+        if term.konst().is_some() || !term.small(crate::concolic::MAX_TERM) {
             return;
         }
         let bytes = self.mem[a..a + l].to_vec();
@@ -846,6 +892,9 @@ impl Machine {
     }
 
     pub(super) fn sym_bind_byte_term(&mut self, a: usize, t: Term) {
+        if !t.small(crate::concolic::MAX_TERM) {
+            return;
+        }
         let b = self.mem[a];
         if let Some(st) = self.sym.as_mut() {
             st.bytes.insert(a, (t, b));

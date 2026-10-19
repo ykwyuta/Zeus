@@ -122,6 +122,27 @@ impl Term {
         }
     }
 
+    /// Whether the term has at most `limit` nodes.
+    pub fn small(&self, limit: usize) -> bool {
+        let mut n = 0;
+        self.count(&mut n, limit)
+    }
+
+    fn count(&self, n: &mut usize, limit: usize) -> bool {
+        *n += 1;
+        if *n > limit {
+            return false;
+        }
+        match self {
+            Term::Const(_) | Term::Var(_) => true,
+            Term::Add(a, b) | Term::Sub(a, b) | Term::Mul(a, b) => {
+                a.count(n, limit) && b.count(n, limit)
+            }
+            Term::Neg(a) | Term::Abs(a) | Term::Div(a, _) | Term::Rem(a, _) => a.count(n, limit),
+            Term::If(p, a, b) => p.count(n, limit) && a.count(n, limit) && b.count(n, limit),
+        }
+    }
+
     /// The value with the variables' values from `v`; None on overflow.
     pub fn eval(&self, v: &dyn Fn(u32) -> i128) -> Option<i128> {
         Some(match self {
@@ -195,6 +216,21 @@ fn rel(o: std::cmp::Ordering, r: Rel) -> bool {
 
 #[allow(clippy::should_implement_trait)]
 impl Pred {
+    fn count(&self, n: &mut usize, limit: usize) -> bool {
+        *n += 1;
+        if *n > limit {
+            return false;
+        }
+        match self {
+            Pred::Bool(_) => true,
+            Pred::Cmp(a, _, b) => a.count(n, limit) && b.count(n, limit),
+            Pred::Bytes(a, _, b) => a.iter().chain(b).all(|t| t.count(n, limit)),
+            Pred::In(t, _) => t.count(n, limit),
+            Pred::Not(p) => p.count(n, limit),
+            Pred::And(ps) | Pred::Or(ps) => ps.iter().all(|p| p.count(n, limit)),
+        }
+    }
+
     pub fn not(p: Pred) -> Pred {
         match p {
             Pred::Bool(b) => Pred::Bool(!b),
@@ -385,6 +421,8 @@ pub struct FileInput {
 #[derive(Debug, Default)]
 pub struct SymState {
     pub vars: Vec<Var>,
+    /// The variables by name.
+    names: std::collections::HashMap<String, u32>,
     pub path: Vec<Step>,
     /// Instructions executed (the run stops at `limit`).
     pub steps: u64,
@@ -406,10 +444,19 @@ pub struct SymState {
     /// The I/O condition of the last I/O statement as a condition (None:
     /// concrete).
     pub(crate) io_cond: Option<Pred>,
+    /// The program and instruction being run.
+    pub(crate) at: Option<(String, u32)>,
 }
 
 /// The variables a run has at most (see `SymState::full`).
 pub const MAX_VARS: usize = 20_000;
+
+/// The nodes a term bound to data has at most: a larger one (a value
+/// computed again and again in a loop) is left concrete.
+pub const MAX_TERM: usize = 2_000;
+
+/// The steps a run's path has with conditions at most (`SymState::long`).
+pub const MAX_STEPS: usize = 50_000;
 
 impl SymState {
     pub fn new(limit: u64) -> Self {
@@ -421,6 +468,7 @@ impl SymState {
 
     /// A new input variable.
     pub fn var(&mut self, name: String, kind: VarKind, value: i128) -> u32 {
+        self.names.insert(name.clone(), self.vars.len() as u32);
         self.vars.push(Var { name, kind, value });
         (self.vars.len() - 1) as u32
     }
@@ -432,10 +480,16 @@ impl SymState {
         self.vars.len() >= MAX_VARS
     }
 
+    /// Whether the path is as long as it can be: further decisions are
+    /// recorded without their conditions (the directions still count).
+    pub fn long(&self) -> bool {
+        self.path.len() >= MAX_STEPS
+    }
+
     /// The variable named `name`, created with `value` if there is none.
     pub fn var_named(&mut self, name: String, kind: VarKind, value: i128) -> u32 {
-        match self.vars.iter().position(|v| v.name == name) {
-            Some(i) => i as u32,
+        match self.names.get(&name) {
+            Some(&i) => i,
             None => self.var(name, kind, value),
         }
     }

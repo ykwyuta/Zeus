@@ -243,6 +243,15 @@ impl FileSpec {
 /// whatever the program does with the date.
 pub const CLOCK: u64 = 1_735_722_000;
 
+/// Whether a direction is of a text statement's "is a delimiter here"
+/// decision (not its length or NUMVAL ones).
+fn delimiter_decision(d: &Dir) -> bool {
+    d.0.ends_with("#TEXT") && d.1 % 4096 < 4094
+}
+
+/// Decisions of text statements solved for in a generation (at most).
+const TEXT_FLIPS: usize = 400;
+
 /// Records an input file has at most.
 pub const MAX_RECORDS: usize = 99;
 
@@ -586,6 +595,14 @@ pub fn run(
     let rc = m.return_code();
     let stubbed = m.stub_calls().into_iter().map(|c| c.0).collect();
     let st = m.take_symbolic().unwrap_or_default();
+    if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
+        eprintln!(
+            "  state: {} vars, {} steps, {} instructions",
+            st.vars.len(),
+            st.path.len(),
+            st.steps
+        );
+    }
     drop(m);
     let exec = host.map(|h| h.log.take()).unwrap_or_default();
     let files = specs
@@ -924,6 +941,15 @@ fn apply(
 /// Solves `cons`, first with no I/O statement made to fail that does not
 /// fail already (inputs as the program usually gets them), then with any.
 fn solve(solver: &mut Builtin, cons: &[Pred], vars: &[Var], start: &[i128]) -> Outcome {
+    let t = Instant::now();
+    let r = solve_inner(solver, cons, vars, start);
+    if std::env::var_os("ZTESTGEN_DEBUG").is_some() && t.elapsed() > Duration::from_secs(1) {
+        eprintln!("solve took {:?} ({} conditions)", t.elapsed(), cons.len());
+    }
+    r
+}
+
+fn solve_inner(solver: &mut Builtin, cons: &[Pred], vars: &[Var], start: &[i128]) -> Outcome {
     use zeus_cobol::concolic::Term;
     let pins: Vec<Pred> = vars
         .iter()
@@ -1199,6 +1225,13 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     // covered directions solved for again in other contexts: target ->
     // the contexts (directions taken before it) tried
     let mut contexts: HashMap<Dir, HashSet<u64>> = HashMap::new();
+    // decisions of text statements (UNSTRING delimiters...) solved for:
+    // by the values the conditions before them have, at most TEXT_FLIPS
+    let mut text_tried: HashSet<u64> = HashSet::new();
+    let mut text_queue: VecDeque<Inputs> = VecDeque::new();
+    // runs extended with one more delimiter: (program, statement,
+    // delimiters found) -> how many
+    let mut extended: HashMap<(String, u32, usize), u32> = HashMap::new();
     let mut cases: Vec<Case> = Vec::new();
     let mut runs = 0;
     let mut rng = 0x2545_F491_4F6C_DD1Du64;
@@ -1210,7 +1243,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         if runs >= opts.max_runs || start.elapsed() > opts.time {
             break;
         }
-        let (inp, fuzz) = match queue.pop_front() {
+        let (inp, fuzz) = match queue.pop_front().or_else(|| text_queue.pop_front()) {
             Some(i) => (i, false),
             None => {
                 // the solver has nothing more: mutate the inputs of a case
@@ -1232,10 +1265,22 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             continue;
         }
         runs += 1;
+        let t_run = Instant::now();
         let out = run(module, program, &fields, &inp, opts, true);
+        if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
+            eprintln!("run took {:?}, {} steps", t_run.elapsed(), out.path.len());
+        }
         stubbed.extend(out.stubbed.iter().cloned());
         if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
-            eprintln!("run {runs}: {:?} {:?}", inp.accept, out.error);
+            eprintln!(
+                "run {runs}: {:?} {:?} {:?}",
+                inp.accept,
+                inp.params
+                    .iter()
+                    .map(|p| ebcdic::decode(p))
+                    .collect::<Vec<_>>(),
+                out.error
+            );
             for v in out.vars.iter().filter(|v| v.name.starts_with('X')) {
                 eprintln!("  var {} = {}", v.name, v.value);
             }
@@ -1255,6 +1300,13 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 new_dedup.push(d);
             }
         }
+        // new directions of the branches or of decisions other than the
+        // delimiters of text statements (their lengths, NUMVAL)
+        let fresh = cases.is_empty()
+            || out
+                .branches
+                .iter()
+                .any(|d| !covered.contains(d) && !delimiter_decision(d));
         covered.extend(out.branches.iter().cloned());
         for (p, pc, _) in &out.branches {
             reached.insert((p.clone(), *pc));
@@ -1274,6 +1326,53 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             }
             symbolic.insert((b.program.clone(), b.pc));
             let target = (b.program.clone(), b.pc, !b.jumped);
+            // a text statement's decision (is a delimiter here?): taken the
+            // other way after other data (the bytes before it), as long as
+            // some direction is open: it moves or adds delimiters
+            if b.program.ends_with("#TEXT") {
+                // from the runs that cover something new only
+                let open = all.iter().any(|d| !covered.contains(d));
+                if !open || !fresh || text_tried.len() >= TEXT_FLIPS {
+                    continue;
+                }
+                let Some(cons) = conditions(&out.path, i) else {
+                    continue;
+                };
+                // the data before it: the variables of the statement's
+                // decisions before it in this run
+                let key = {
+                    use std::hash::{Hash, Hasher};
+                    let mut vs = Vec::new();
+                    for st in &out.path[..i] {
+                        if let Step::Branch(x) = st
+                            && x.program == b.program
+                            && x.pc / 4096 == b.pc / 4096
+                            && let Some(p) = &x.pred
+                        {
+                            p.vars(&mut vs);
+                        }
+                    }
+                    vs.sort();
+                    vs.dedup();
+                    let mut h = std::collections::hash_map::DefaultHasher::new();
+                    target.hash(&mut h);
+                    for v in vs {
+                        (v, out.vars[v as usize].value).hash(&mut h);
+                    }
+                    h.finish()
+                };
+                if !text_tried.insert(key) {
+                    continue;
+                }
+                let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
+                if let Outcome::Sat(x) = solve(&mut solver, &cons, &out.vars, &startv) {
+                    let next = apply(&inp, &fields, &specs, &out.vars, &x);
+                    if !seen.contains(&next) {
+                        text_queue.push_back(next);
+                    }
+                }
+                continue;
+            }
             if covered.contains(&target) {
                 // a loop's last decision taken the other way gives a run
                 // with one more iteration: tried while some direction
@@ -1356,6 +1455,49 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 }
                 Outcome::Unsat => a.1 += 1,
                 Outcome::Unknown => {}
+            }
+        }
+        // text statements with fewer delimiters than they may take: one
+        // more delimiter in the last field (a few runs per number of
+        // delimiters), so that later receivers get the data
+        if all.iter().any(|d| !covered.contains(d)) && text_tried.len() < TEXT_FLIPS {
+            let mut groups: BTreeMap<(String, u32), Vec<usize>> = BTreeMap::new();
+            for (i, st) in out.path.iter().enumerate() {
+                if let Step::Branch(x) = st
+                    && x.program.ends_with("#TEXT")
+                    && x.pc % 4096 < 4094
+                {
+                    groups
+                        .entry((x.program.clone(), x.pc / 4096))
+                        .or_default()
+                        .push(i);
+                }
+            }
+            let jumped = |i: usize| matches!(&out.path[i], Step::Branch(x) if x.jumped);
+            for ((prog, ins), idx) in groups {
+                let found = idx.iter().filter(|&&i| jumped(i)).count();
+                let after = idx.iter().rposition(|&i| jumped(i)).map_or(0, |k| k + 1);
+                let last = &idx[after..];
+                if found >= 24 || last.is_empty() {
+                    continue;
+                }
+                let n = extended.entry((prog, ins, found)).or_insert(0);
+                if *n >= 2 {
+                    continue;
+                }
+                *n += 1;
+                let pick = last[7.min(last.len() - 1)];
+                let Some(cons) = conditions(&out.path, pick) else {
+                    continue;
+                };
+                text_tried.insert(pick as u64 ^ (u64::from(ins) << 32) ^ (found as u64) << 48);
+                let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
+                if let Outcome::Sat(x) = solve(&mut solver, &cons, &out.vars, &startv) {
+                    let next = apply(&inp, &fields, &specs, &out.vars, &x);
+                    if !seen.contains(&next) {
+                        text_queue.push_back(next);
+                    }
+                }
             }
         }
         if fuzz {

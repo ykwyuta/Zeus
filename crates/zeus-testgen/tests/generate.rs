@@ -390,3 +390,20 @@ fn covers_dli_commands() {
     }
     assert!(all.contains("\"DLIPGM.15.1.INTO.SUM-LIMIT\""), "{all}");
 }
+
+/// UNSTRING DELIMITED BY ',' into three fields, NUMVAL of the third and
+/// STRING: the solver adds and moves the delimiters (AUTH,X12345,...),
+/// every branch direction.
+#[test]
+fn covers_unstring_string_and_numval() {
+    let (text, all) = generate_and_replay("SPLITPGM");
+    assert!(
+        text.contains("C1: 8 of 8 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"LK-MSG\": \"AUTH,X12345"), "{all}");
+    assert!(all.contains("\"KNOWN CODE\""), "{all}");
+    assert!(all.contains("\"LARGE "), "{all}");
+    assert!(all.contains("\"SMALL "), "{all}");
+    assert!(all.contains("\"NO CODE\""), "{all}");
+}

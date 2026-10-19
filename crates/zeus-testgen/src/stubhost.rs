@@ -328,7 +328,10 @@ impl StubHost {
                 }
                 _ => {}
             }
-            if m.symbolic().is_none() || *off >= AREA_BYTES {
+            if m.symbolic().is_none_or(|st| st.full()) || *off >= AREA_BYTES {
+                if m.symbolic().is_some() {
+                    m.sym_forget_area(addr, *len);
+                }
                 continue;
             }
             let l = (*len).min(AREA_BYTES - off);
