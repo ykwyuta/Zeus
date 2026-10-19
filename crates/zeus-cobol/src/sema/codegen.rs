@@ -3394,6 +3394,7 @@ impl<'a> Gen<'a> {
                 }
             }
             Stmt::Inspect { target, ops } => self.inspect(target, ops)?,
+            Stmt::InspectValue { value, ops } => self.inspect_value(value, ops)?,
             Stmt::String {
                 sources,
                 into,
@@ -3914,6 +3915,35 @@ impl<'a> Gen<'a> {
 
     fn inspect(&mut self, target: &DataRef, ops: &[InspectOp]) -> Result<()> {
         let loc = self.loc(target)?;
+        let steps = self.inspect_steps(ops)?;
+        // TALLYING and REPLACING phrases are separate passes.
+        let tallies: Vec<_> = steps
+            .iter()
+            .filter(|s| matches!(s, zir::InspectStep::Tally { .. }))
+            .cloned()
+            .collect();
+        let others: Vec<_> = steps
+            .into_iter()
+            .filter(|s| !matches!(s, zir::InspectStep::Tally { .. }))
+            .collect();
+        if !tallies.is_empty() {
+            self.emit(Instr::Inspect(loc.clone(), tallies));
+        }
+        if !others.is_empty() {
+            self.emit(Instr::Inspect(loc, others));
+        }
+        Ok(())
+    }
+
+    /// INSPECT ... TALLYING of a function result.
+    fn inspect_value(&mut self, value: &Operand, ops: &[InspectOp]) -> Result<()> {
+        let value = self.src(value)?;
+        let steps = self.inspect_steps(ops)?;
+        self.emit(Instr::InspectValue(value, steps));
+        Ok(())
+    }
+
+    fn inspect_steps(&mut self, ops: &[InspectOp]) -> Result<Vec<zir::InspectStep>> {
         let mut steps = Vec::new();
         let delims = |g: &mut Gen, d: &[(bool, Operand)]| -> Result<(Option<Src>, Option<Src>)> {
             let mut before = None;
@@ -4001,23 +4031,7 @@ impl<'a> Gen<'a> {
                 }
             }
         }
-        // TALLYING and REPLACING phrases are separate passes.
-        let tallies: Vec<_> = steps
-            .iter()
-            .filter(|s| matches!(s, zir::InspectStep::Tally { .. }))
-            .cloned()
-            .collect();
-        let others: Vec<_> = steps
-            .into_iter()
-            .filter(|s| !matches!(s, zir::InspectStep::Tally { .. }))
-            .collect();
-        if !tallies.is_empty() {
-            self.emit(Instr::Inspect(loc.clone(), tallies));
-        }
-        if !others.is_empty() {
-            self.emit(Instr::Inspect(loc, others));
-        }
-        Ok(())
+        Ok(steps)
     }
 
     fn search(

@@ -133,7 +133,7 @@ COBOL コーパスとしての価値は低い。一方で PL/I は 1,473 本・5
 | G1 | `CBL CICS(SP)` を拒否 (`unsupported or invalid CBL/PROCESS option`) | zFAM/zECS 全 19 本 | 統合 CICS 翻訳系の `CICS('SP')` サブオプション (SP 系コマンドの許可) を受け付ける |
 | G2 | `CBL DBCS` を拒否 | zFAM 3 本 | `DBCS` / `NODBCS` オプションを受け付ける (既定は `DBCS`。C1 のリストでも `DBCS` が有効) |
 | G3 | `PROCESS ... NOSEQ` / `NOD` を拒否 | ACIF 16 本 | `SEQUENCE`/`NOSEQUENCE` と、短縮形 (`NOD` = `NODECK` 等) の表を IBM の短縮形一覧に合わせる |
-| G4 | 一連番号付き `PROCESS` 行で、列 73–80 の識別領域 (`00010000`) をオプションとして読む | ACIF `ACIFIBDT` 他 | `CBL`/`PROCESS` 行も列 72 で打ち切る |
+| G4 | (取り下げ) 一連番号付き `PROCESS` 行の列 73–80 をオプションとして読む | — | 調査時にソースを編集して列がずれたための誤認。Zeus は `CBL`/`PROCESS` 行を列 72 で打ち切っている |
 | G5 | 1 ファイル中の 2 つ目の `PROCESS` (バッチコンパイル) を拒否 (`IDENTIFICATION DIVISION expected (found PROCESS)`) | MortgageApplication `epscsmrd.cbl:331` | `END PROGRAM` の後の `CBL`/`PROCESS` を次のコンパイル単位の開始として扱う |
 | G6 | `DFHVALUE(GET/POST/DELETE/HTTP/HTTPS/IMMEDIATE)` が未定義 | zFAM/zECS/zUID 全本 (G1/G2 を外した後) | CICS Web 系・`SYNCPOINT`/`ENQ` 系の CVDA 値を表に追加 |
 | G7 | `OPEN OUTPUT F;` の直後の `ELSE` をファイル名として読む (`file ELSE is not defined`) | ACIF `APKPTXOP.COB:251` | `;` を区切り文字として扱ったうえで、OPEN のファイル名の並びを予約語で終える |
@@ -148,6 +148,36 @@ COBOL コーパスとしての価値は低い。一方で PL/I は 1,473 本・5
 - MortgageApplication の `EPSMORT`/`EPSMLIS` は BMS から生成する記号マップ → 既存の `zbms --copy` で生成する。
 - ACIF の `AFPAGOT` は IBM 製品の COPY メンバー、`STRFLDS` はプログラムではなく COPY メンバー → 対象外。
 - cobol-check の `MOCK`/`MOCKTEST` の `BY VALUE PIC X(80)` は、英数字の BY VALUE を長さ 1 に限る IBM の規則どおりの診断とみられる (仕様で要確認) → 対象外。
+
+## 5.1 実装 (2026-10-19)
+
+§5 の G1–G3、G5–G9 を実装し、A・B 群は `XML PARSE` を使う 1 本を除いて全プログラムがコンパイルできる
+([corpora.md](../inventory/corpora.md))。
+
+- 取得とインベントリー: `tools/fetch-corpora.sh` (§7.1 の固定コミット。ACIF と MortgageApplication は sparse checkout)、
+  `tools/corpora-inventory.sh` (コーパス側の理由で除くプログラムとその理由を出力に列挙する)。
+- G1: `CICS(SP)` のように区切り記号なしのサブオプションも受け付ける。
+- G2/G3: `DBCS`、`NOSEQUENCE` (`NOSEQ`)、`NODECK` (`NOD`) は Zeus の動作そのもの (シフトコードで DBCS 文字を区切る・
+  一連番号を検査しない・オブジェクトデッキを書かない) なので受け付ける。逆の `NODBCS`・`SEQUENCE`・`DECK` は
+  実装がないため従来どおり診断する。
+- G5: `END PROGRAM` の後の `CBL`/`PROCESS` から次のコンパイル単位とし、単位ごとにそのオプションでコンパイルして
+  1 つのモジュールに結合する (`link::modules`)。ほかの単位の行は空行にして行番号を保つ。
+- G6: CVDA を CICS TS 5.5 の一覧 (「CVDAs and numeric values in alphabetic sequence」) の値に置き換えた
+  (`front/cvda.rs`)。従来の 12 個は Zeus 独自の値だったが、ランタイムは名前で引いているので影響はない。
+- G7: OPEN と CLOSE のファイル名の並びを `ELSE`・`WHEN`・`END-` で始まる語で終える。
+- G8/G9: 英数字定数・`)`・`:` の直後に区切りなしで書いた `-語` を字句解析で印付けし、COPY REPLACING / REPLACE の
+  後に、置換で前に語が来たときだけその語につなげる (`'X'-KEY` → `WS-LIT-KEY`、`:TAG:-VALUE` → `WS-TAG-VALUE`)。
+  置換されなければ従来どおり `-` と語になる。G9 の大文字小文字は原因ではなかった。
+- 調査中に見つかった追加の非互換: `INSPECT FUNCTION REVERSE(x) TALLYING ...` (zFAM 8 本)。関数の結果を TALLYING
+  で調べる命令 `InspectValue` を ZIR に追加した (REPLACING / CONVERTING は受け取り側になるので診断する)。
+- 回帰テスト: ZCVS `ZS104A` (COPY REPLACING・REPLACE・OPEN/CLOSE・INSPECT・バッチコンパイルの単位ごとの `TRUNC`)、
+  `crates/zeus-cobol/tests/compiler_control.rs` (オプション、`DFHVALUE` の値、バッチ境界)。
+
+残り:
+
+- MortgageApplication `EPSCSMRD` の 3 番目の単位が `XMLPARSE(COMPAT)` と `XML PARSE` 文を使う。Zeus には
+  XML PARSE がまだないため、オプションだけを受け付けることはせず未対応のままとする。
+- G8 の `'X'-KEY` の置換が Enterprise COBOL の仕様でどう定められているかは未確認 (実運用のソースの書き方に合わせた)。
 
 ## 6. 採用しないもの
 

@@ -13,7 +13,7 @@ All programs use the CCVS85-compatible self-checking report format (`PASS`, `FAI
 | `ZN` | National (`UTF-16BE`), DBCS (`CCSID 930/939`), Intrinsic Functions | `ZN101A` .. `ZN106M` (7) |
 | `ZP` | Subprograms, `ENTRY`, `RECURSIVE`, `LOCAL-STORAGE`, `CANCEL`, `GOBACK` | `ZP101A` .. `ZP106A` + 7 `lib/` subprograms (6) |
 | `ZF` | QSAM (`RECORDING MODE F/V`), AWS Tape, VSAM KSDS/ESDS/RRDS, `SORT` | `ZF101A` .. `ZF201M` (6) |
-| `ZS` | Source Manipulation (`COPY REPLACING`, `LIB`, `EJECT`/`SKIP`) & System (`PARM`, `RETURN-CODE`, `CEE3ABD`) | `ZS101A` .. `ZS103M` (3) |
+| `ZS` | Source Manipulation (`COPY REPLACING`, `LIB`, `EJECT`/`SKIP`) & System (`PARM`, `RETURN-CODE`, `CEE3ABD`), batch compilation | `ZS101A` .. `ZS104A` (4) |
 | `ZX` | Optional XML Processing (`XML PARSE`, `XML GENERATE`) | `ZX101A` .. `ZX104A` (4) |
 | `ZE` | Negative Compile-Error Diagnostics | `ZE101N` .. `ZE125N` (25) |
 

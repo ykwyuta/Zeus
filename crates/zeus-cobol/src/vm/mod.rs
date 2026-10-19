@@ -2167,6 +2167,7 @@ impl Machine {
             }
             Instr::Initialize { .. } => return err("INITIALIZE instruction not expected"),
             Instr::Inspect(loc, steps) => self.inspect(cur, loc, steps)?,
+            Instr::InspectValue(value, steps) => self.inspect_value(cur, value, steps)?,
             Instr::StringStmt {
                 sources,
                 into,
@@ -2580,6 +2581,7 @@ impl Machine {
                 self.rerun_record(cur, *file)
             }
             Instr::Inspect(loc, steps) => self.inspect(cur, loc, steps),
+            Instr::InspectValue(value, steps) => self.inspect_value(cur, value, steps),
             Instr::StringStmt {
                 sources,
                 into,

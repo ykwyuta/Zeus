@@ -820,6 +820,11 @@ pub enum Stmt {
         target: DataRef,
         ops: Vec<InspectOp>,
     },
+    /// INSPECT of a function result (TALLYING only).
+    InspectValue {
+        value: Operand,
+        ops: Vec<InspectOp>,
+    },
     Merge {
         file: String,
         keys: Vec<(bool, Vec<DataRef>)>,

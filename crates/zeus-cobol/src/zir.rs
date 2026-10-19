@@ -1142,6 +1142,8 @@ pub enum Instr {
         replacing: Vec<(Category, Src)>,
     },
     Inspect(Loc, Vec<InspectStep>),
+    /// INSPECT TALLYING of a value that is not a data item.
+    InspectValue(Src, Vec<InspectStep>),
     StringStmt {
         sources: Vec<(Src, Option<Src>)>,
         into: Loc,
