@@ -552,7 +552,7 @@ impl Machine {
         }
         let st = self.sym.as_mut()?;
         for p in assume {
-            st.path.push(Step::Assume(p));
+            st.assume(p);
         }
         let scale = point.map_or(0, |k| body.len() - k - 1) as i32;
         Some((term, scale))

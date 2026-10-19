@@ -45,7 +45,7 @@ impl Default for Builtin {
     fn default() -> Self {
         Builtin {
             budget: 400,
-            time: std::time::Duration::from_millis(300),
+            time: std::time::Duration::from_millis(150),
             seed: 0x9E37_79B9_7F4A_7C15,
         }
     }

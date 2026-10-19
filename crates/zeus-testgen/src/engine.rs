@@ -77,6 +77,8 @@ pub struct RunOut {
     pub stubbed: BTreeSet<String>,
     /// The EXEC statements executed with what they sent out.
     pub exec: Vec<String>,
+    /// Instructions executed (concolic runs).
+    pub instructions: u64,
 }
 
 /// A direction of a conditional jump.
@@ -106,7 +108,7 @@ impl Default for Options {
     fn default() -> Self {
         Options {
             search: Vec::new(),
-            max_runs: 500,
+            max_runs: 2000,
             time: Duration::from_secs(120),
             limit: 2_000_000,
             attempts: 4,
@@ -248,6 +250,15 @@ pub const CLOCK: u64 = 1_735_722_000;
 fn delimiter_decision(d: &Dir) -> bool {
     d.0.ends_with("#TEXT") && d.1 % 4096 < 4094
 }
+
+/// The solver's time for the first attempt at a direction, and for the
+/// later ones and other contexts.
+const SOLVE_TIME: Duration = Duration::from_millis(150);
+const RETRY_TIME: Duration = Duration::from_millis(50);
+
+/// Instructions a run may take at least before it is taken for an
+/// endless loop (see `generate`).
+const LIMIT_FLOOR: u64 = 200_000;
 
 /// Decisions of text statements solved for in a generation (at most).
 const TEXT_FLIPS: usize = 400;
@@ -520,8 +531,9 @@ pub fn run(
     if let Some(h) = &host {
         m.set_exec_host(h.clone());
     }
+    // replays too stop at the instruction limit (with no variables)
+    m.set_symbolic(SymState::new(opts.limit));
     if symbolic {
-        m.set_symbolic(SymState::new(opts.limit));
         for f in fields {
             let a = addrs[f.param] + f.offset;
             let bytes = inputs.params[f.param][f.offset..f.offset + f.len].to_vec();
@@ -595,6 +607,7 @@ pub fn run(
     let rc = m.return_code();
     let stubbed = m.stub_calls().into_iter().map(|c| c.0).collect();
     let st = m.take_symbolic().unwrap_or_default();
+    let instructions = st.steps;
     if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
         eprintln!(
             "  state: {} vars, {} steps, {} instructions",
@@ -641,6 +654,7 @@ pub fn run(
         files,
         stubbed,
         exec,
+        instructions,
     }
 }
 
@@ -788,8 +802,156 @@ fn conditions(path: &[Step], i: usize) -> Option<Vec<Pred>> {
     Some(out)
 }
 
+/// The conditions of a run's path connected through their variables,
+/// built step by step (union-find over the variables, each set with its
+/// steps): the slice for a step is the sets of the target's variables
+/// among the steps before it. Gives what `conditions` gives, for steps
+/// asked in increasing order.
+struct Slicer<'a> {
+    path: &'a [Step],
+    /// Steps added (those before `next`).
+    next: usize,
+    parent: Vec<u32>,
+    /// The steps of each set (at its root).
+    steps: Vec<Vec<u32>>,
+}
+
+impl<'a> Slicer<'a> {
+    fn new(path: &'a [Step], vars: usize) -> Self {
+        Slicer {
+            path,
+            next: 0,
+            parent: (0..vars as u32).collect(),
+            steps: vec![Vec::new(); vars],
+        }
+    }
+
+    fn find(&mut self, mut v: u32) -> u32 {
+        while self.parent[v as usize] != v {
+            let p = self.parent[v as usize];
+            self.parent[v as usize] = self.parent[p as usize];
+            v = p;
+        }
+        v
+    }
+
+    fn union(&mut self, a: u32, b: u32) -> u32 {
+        let (a, b) = (self.find(a), self.find(b));
+        if a == b {
+            return a;
+        }
+        // the larger set's root stays
+        let (big, small) = if self.steps[a as usize].len() >= self.steps[b as usize].len() {
+            (a, b)
+        } else {
+            (b, a)
+        };
+        self.parent[small as usize] = big;
+        let moved = std::mem::take(&mut self.steps[small as usize]);
+        self.steps[big as usize].extend(moved);
+        big
+    }
+
+    fn pred(step: &Step) -> Option<Pred> {
+        match step {
+            Step::Assume(p) => Some(p.clone()),
+            Step::Branch(x) => x.pred.as_ref().map(|p| {
+                if x.jumped {
+                    p.clone()
+                } else {
+                    Pred::not(p.clone())
+                }
+            }),
+        }
+    }
+
+    fn vars_of(step: &Step) -> Vec<u32> {
+        let mut v = Vec::new();
+        match step {
+            Step::Assume(p) => p.vars(&mut v),
+            Step::Branch(x) => {
+                if let Some(p) = &x.pred {
+                    p.vars(&mut v);
+                }
+            }
+        }
+        v
+    }
+
+    /// The conditions before step `i` connected to the other way of the
+    /// branch at `i`, then that other way.
+    fn slice(&mut self, i: usize) -> Option<Vec<Pred>> {
+        let t = Instant::now();
+        let r = self.slice_timed(i);
+        prof_add(1, t.elapsed());
+        r
+    }
+
+    fn slice_timed(&mut self, i: usize) -> Option<Vec<Pred>> {
+        if i < self.next {
+            return conditions(self.path, i);
+        }
+        while self.next < i {
+            let k = self.next;
+            self.next += 1;
+            let vs = Self::vars_of(&self.path[k]);
+            let Some((&first, rest)) = vs.split_first() else {
+                continue;
+            };
+            let mut root = self.find(first);
+            for &v in rest {
+                root = self.union(root, v);
+            }
+            self.steps[root as usize].push(k as u32);
+        }
+        let Step::Branch(b) = &self.path[i] else {
+            return None;
+        };
+        let p = b.pred.as_ref()?;
+        let target = if b.jumped {
+            Pred::not(p.clone())
+        } else {
+            p.clone()
+        };
+        let mut vs = Vec::new();
+        target.vars(&mut vs);
+        let mut roots: Vec<u32> = vs.into_iter().map(|v| self.find(v)).collect();
+        roots.sort();
+        roots.dedup();
+        let mut idx: Vec<u32> = roots
+            .iter()
+            .flat_map(|r| self.steps[*r as usize].iter().copied())
+            .collect();
+        idx.sort();
+        let mut out: Vec<Pred> = Vec::with_capacity(idx.len() + 1);
+        let mut seen = HashSet::new();
+        for k in idx {
+            if let Some(c) = Self::pred(&self.path[k as usize])
+                && seen.insert(c.clone())
+            {
+                out.push(c);
+            }
+        }
+        out.push(target);
+        Some(out)
+    }
+}
+
 /// Inputs with the variables' values from a solution.
 fn apply(
+    inputs: &Inputs,
+    fields: &[Field],
+    specs: &[FileSpec],
+    vars: &[Var],
+    values: &[i128],
+) -> Inputs {
+    let t = Instant::now();
+    let r = apply_timed(inputs, fields, specs, vars, values);
+    prof_add(2, t.elapsed());
+    r
+}
+
+fn apply_timed(
     inputs: &Inputs,
     fields: &[Field],
     specs: &[FileSpec],
@@ -938,13 +1100,42 @@ fn apply(
     new
 }
 
+// Time spent solving, slicing and applying solutions (ZTESTGEN_PROFILE).
+thread_local! {
+    static PROF: std::cell::Cell<[Duration; 3]> = const { std::cell::Cell::new([Duration::ZERO; 3]) };
+}
+
+fn prof_add(k: usize, d: Duration) {
+    PROF.with(|p| {
+        let mut a = p.get();
+        a[k] += d;
+        p.set(a);
+    });
+}
+
 /// Solves `cons`, first with no I/O statement made to fail that does not
 /// fail already (inputs as the program usually gets them), then with any.
 fn solve(solver: &mut Builtin, cons: &[Pred], vars: &[Var], start: &[i128]) -> Outcome {
     let t = Instant::now();
+    let r = solve_timed(solver, cons, vars, start);
+    prof_add(0, t.elapsed());
+    r
+}
+
+fn solve_timed(solver: &mut Builtin, cons: &[Pred], vars: &[Var], start: &[i128]) -> Outcome {
+    let t = Instant::now();
     let r = solve_inner(solver, cons, vars, start);
-    if std::env::var_os("ZTESTGEN_DEBUG").is_some() && t.elapsed() > Duration::from_secs(1) {
-        eprintln!("solve took {:?} ({} conditions)", t.elapsed(), cons.len());
+    if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
+        eprintln!(
+            "solve took {:?} ({} conditions) {}",
+            t.elapsed(),
+            cons.len(),
+            match &r {
+                Outcome::Sat(_) => "sat",
+                Outcome::Unsat => "unsat",
+                Outcome::Unknown => "unknown",
+            }
+        );
     }
     r
 }
@@ -1229,6 +1420,8 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     // by the values the conditions before them have, at most TEXT_FLIPS
     let mut text_tried: HashSet<u64> = HashSet::new();
     let mut text_queue: VecDeque<Inputs> = VecDeque::new();
+    let mut prof = [Duration::ZERO; 5];
+    let mut longest: u64 = 0;
     // runs extended with one more delimiter: (program, statement,
     // delimiters found) -> how many
     let mut extended: HashMap<(String, u32, usize), u32> = HashMap::new();
@@ -1265,8 +1458,18 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             continue;
         }
         runs += 1;
+        let t_loop = Instant::now();
         let t_run = Instant::now();
-        let out = run(module, program, &fields, &inp, opts, true);
+        // runs in endless loops stop at ten times the instructions of the
+        // longest run that ended (at least LIMIT_FLOOR)
+        let limited = Options {
+            limit: opts.limit.min(LIMIT_FLOOR.max(longest.saturating_mul(10))),
+            ..opts.clone()
+        };
+        let out = run(module, program, &fields, &inp, &limited, true);
+        if out.instructions < limited.limit {
+            longest = longest.max(out.instructions);
+        }
         if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
             eprintln!("run took {:?}, {} steps", t_run.elapsed(), out.path.len());
         }
@@ -1311,8 +1514,24 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         for (p, pc, _) in &out.branches {
             reached.insert((p.clone(), *pc));
         }
+        let t_flip = Instant::now();
         // the other way of each branch, where not covered yet
         let mut before: BTreeSet<Dir> = BTreeSet::new();
+        let mut slicer = Slicer::new(&out.path, out.vars.len());
+        // each branch's executions in the run (loops), and whether some
+        // direction that runs depends on the inputs only implicitly
+        let mut total: HashMap<(&str, u32), u32> = HashMap::new();
+        for st in &out.path {
+            if let Step::Branch(x) = st {
+                *total.entry((x.program.as_str(), x.pc)).or_default() += 1;
+            }
+        }
+        let mut so_far: HashMap<(&str, u32), u32> = HashMap::new();
+        let implicit = all.iter().any(|d| {
+            !covered.contains(d)
+                && reached.contains(&(d.0.clone(), d.1))
+                && !symbolic.contains(&(d.0.clone(), d.1))
+        });
         for i in 0..out.path.len() {
             if start.elapsed() > opts.time {
                 break;
@@ -1321,6 +1540,11 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 continue;
             };
             let first = before.insert((b.program.clone(), b.pc, b.jumped));
+            let depth = {
+                let n = so_far.entry((b.program.as_str(), b.pc)).or_default();
+                *n += 1;
+                *n
+            };
             if b.pred.is_none() {
                 continue;
             }
@@ -1335,9 +1559,6 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 if !open || !fresh || text_tried.len() >= TEXT_FLIPS {
                     continue;
                 }
-                let Some(cons) = conditions(&out.path, i) else {
-                    continue;
-                };
                 // the data before it: the variables of the statement's
                 // decisions before it in this run
                 let key = {
@@ -1364,6 +1585,9 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 if !text_tried.insert(key) {
                     continue;
                 }
+                let Some(cons) = slicer.slice(i) else {
+                    continue;
+                };
                 let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
                 if let Outcome::Sat(x) = solve(&mut solver, &cons, &out.vars, &startv) {
                     let next = apply(&inp, &fields, &specs, &out.vars, &x);
@@ -1378,23 +1602,8 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 // with one more iteration: tried while some direction
                 // depends on the inputs only through the values computed
                 // in loops (not followed)
-                let last = !out.path[i + 1..].iter().any(
-                    |s| matches!(s, Step::Branch(x) if x.program == b.program && x.pc == b.pc),
-                );
-                let looped = out.path[..i].iter().any(
-                    |s| matches!(s, Step::Branch(x) if x.program == b.program && x.pc == b.pc),
-                );
-                let implicit = all.iter().any(|d| {
-                    !covered.contains(d)
-                        && reached.contains(&(d.0.clone(), d.1))
-                        && !symbolic.contains(&(d.0.clone(), d.1))
-                });
-                let depth = out.path[..=i]
-                    .iter()
-                    .filter(
-                        |s| matches!(s, Step::Branch(x) if x.program == b.program && x.pc == b.pc),
-                    )
-                    .count() as u32;
+                let last = depth == total[&(b.program.as_str(), b.pc)];
+                let looped = depth > 1;
                 // from the deepest run of the loop so far only
                 let n = deepened.entry((b.program.clone(), b.pc)).or_insert(0);
                 let deepen = last && looped && implicit && depth > *n && depth <= opts.loop_deepen;
@@ -1407,7 +1616,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                     let mut h = std::collections::hash_map::DefaultHasher::new();
                     before.hash(&mut h);
                     let tried = contexts.entry(target.clone()).or_default();
-                    tried.len() < opts.attempts as usize && tried.insert(h.finish())
+                    tried.len() < 12 && tried.insert(h.finish())
                 };
                 if !deepen && !context {
                     continue;
@@ -1415,14 +1624,17 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 if deepen {
                     *n = depth;
                 }
-                if let Some(cons) = conditions(&out.path, i)
-                    && let Outcome::Sat(x) = solve(
+                solver.time = RETRY_TIME;
+                let solved = slicer.slice(i).map(|cons| {
+                    solve(
                         &mut solver,
                         &cons,
                         &out.vars,
                         &out.vars.iter().map(|v| v.value).collect::<Vec<_>>(),
                     )
-                {
+                });
+                solver.time = SOLVE_TIME;
+                if let Some(Outcome::Sat(x)) = solved {
                     let next = apply(&inp, &fields, &specs, &out.vars, &x);
                     if !seen.contains(&next) {
                         queue.push_back(next);
@@ -1435,11 +1647,15 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 continue;
             }
             a.0 += 1;
-            let Some(cons) = conditions(&out.path, i) else {
+            let Some(cons) = slicer.slice(i) else {
                 continue;
             };
             let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
+            // the first attempt at a direction gets the full time, the
+            // later ones (after other paths) less
+            solver.time = if a.0 > 1 { RETRY_TIME } else { SOLVE_TIME };
             let result = solve(&mut solver, &cons, &out.vars, &startv);
+            solver.time = SOLVE_TIME;
             if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
                 eprintln!("target {target:?}: {result:?}");
                 for c in &cons {
@@ -1457,6 +1673,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 Outcome::Unknown => {}
             }
         }
+        prof[1] += t_flip.elapsed();
         // text statements with fewer delimiters than they may take: one
         // more delimiter in the last field (a few runs per number of
         // delimiters), so that later receivers get the data
@@ -1500,6 +1717,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 }
             }
         }
+        prof[0] += t_loop.elapsed();
         if fuzz {
             fruitless = if new_dedup.is_empty() {
                 fruitless + 1
@@ -1507,13 +1725,25 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 0
             };
         }
-        if !new_dedup.is_empty() || cases.is_empty() {
+        // a run stopped before the instruction limit of the options would
+        // not replay the same
+        let cut = out.instructions >= limited.limit && limited.limit < opts.limit;
+        if (!new_dedup.is_empty() || cases.is_empty()) && !cut {
             cases.push(Case {
                 inputs: inp,
                 out,
                 covers: new_dedup,
             });
         }
+    }
+    if std::env::var_os("ZTESTGEN_PROFILE").is_some() {
+        eprintln!(
+            "profile: loop {:?}, flips {:?}, total {:?}; solve/slice/apply {:?}",
+            prof[0],
+            prof[1],
+            start.elapsed(),
+            PROF.with(|p| p.get())
+        );
     }
     // the fewest cases covering the same directions (greedy set cover)
     let mut left: HashSet<Dir> = covered.iter().filter(|d| kept_dir(d)).cloned().collect();

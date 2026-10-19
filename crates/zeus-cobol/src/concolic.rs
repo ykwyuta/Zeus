@@ -423,6 +423,8 @@ pub struct SymState {
     pub vars: Vec<Var>,
     /// The variables by name.
     names: std::collections::HashMap<String, u32>,
+    /// Directions recorded after the path became long (each once).
+    pub(crate) late: std::collections::HashSet<(String, u32, bool)>,
     pub path: Vec<Step>,
     /// Instructions executed (the run stops at `limit`).
     pub steps: u64,
@@ -478,6 +480,14 @@ impl SymState {
     /// on it does not make the run too large to solve.
     pub fn full(&self) -> bool {
         self.vars.len() >= MAX_VARS
+    }
+
+    /// Records a condition the run relies on (not when the path is long:
+    /// the decisions after that have no conditions).
+    pub fn assume(&mut self, p: Pred) {
+        if !self.long() {
+            self.path.push(Step::Assume(p));
+        }
     }
 
     /// Whether the path is as long as it can be: further decisions are

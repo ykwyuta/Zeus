@@ -133,6 +133,7 @@ impl Machine {
             Some((t, b)) if *b == mem[i] => t.clone(),
             _ => Term::Const(i128::from(mem[i])),
         };
+        let st_value = |t: &Term| t.eval(&|v| st.vars[v as usize].value);
         match t.usage {
             // binary: big-endian, two's complement when signed
             NumUsage::Binary | NumUsage::Native if matches!(l, 2 | 4 | 8) => {
@@ -160,7 +161,9 @@ impl Machine {
                         digits.push(lo);
                     }
                     for d in digits {
-                        if d.konst().is_none() {
+                        // a valid digit in this run is assumed to stay one
+                        let valid = st_value(&d).is_some_and(|x| (0..=9).contains(&x));
+                        if d.konst().is_none() && valid {
                             assume.push(Pred::Cmp(d.clone(), Rel::Le, Term::Const(9)));
                         }
                         term = Term::add(Term::mul(term, Term::Const(10)), d);
@@ -168,7 +171,7 @@ impl Machine {
                 }
                 let sign = Term::rem(byte(a + l - 1), 16);
                 for p in assume {
-                    st.path.push(Step::Assume(p));
+                    st.assume(p);
                 }
                 if !t.signed {
                     return Some(term);
@@ -190,16 +193,20 @@ impl Machine {
         for (i, &m) in mem.iter().enumerate().skip(a).take(l) {
             let k = pow10((a + l - 1 - i) as u32)?;
             let digit = match st.bytes.get(&i) {
-                Some((t, b)) if *b == m => {
+                // a digit (assumed to stay one), else its low half byte
+                // as the interpreter reads it (no assumption the run
+                // breaks)
+                Some((t, b)) if *b == m && (0xF0..=0xF9).contains(&m) => {
                     assume.push(Pred::In(t.clone(), vec![(0xF0, 0xF9)]));
                     Term::sub(t.clone(), Term::Const(0xF0))
                 }
+                Some((t, b)) if *b == m => Term::rem(t.clone(), 16),
                 _ => Term::Const(i128::from(m & 0x0F)),
             };
             term = Term::add(term, Term::mul(digit, Term::Const(k)));
         }
         for p in assume {
-            st.path.push(Step::Assume(p));
+            st.assume(p);
         }
         Some(term)
     }
@@ -391,10 +398,10 @@ impl Machine {
             }
         };
         if let Some(s) = self.sym.as_mut() {
-            s.path.push(Step::Assume(Pred::And(vec![
+            s.assume(Pred::And(vec![
                 Pred::Cmp(st.clone(), Rel::Ge, Term::Const(1)),
                 Pred::Cmp(st, Rel::Le, Term::Const(max)),
-            ])));
+            ]));
         }
         Some(out)
     }
@@ -816,6 +823,10 @@ impl Machine {
                 // the condition as "the jump is taken"
                 let pred = pred.map(|p| if is_if { p } else { Pred::not(p) });
                 if let Some(st) = self.sym.as_mut() {
+                    // a long path (an endless loop): each direction once more
+                    if st.long() && !st.late.insert((program.clone(), pc, jumped)) {
+                        return r;
+                    }
                     let pred = pred.filter(|_| !st.long());
                     st.path.push(Step::Branch(Branch {
                         program,
@@ -830,8 +841,7 @@ impl Machine {
                     && let Some(x) = self.sym_value(&t)
                     && let Some(st) = self.sym.as_mut()
                 {
-                    st.path
-                        .push(Step::Assume(Pred::Cmp(t, Rel::Eq, Term::Const(x))));
+                    st.assume(Pred::Cmp(t, Rel::Eq, Term::Const(x)));
                 }
             }
             Pre::File(p) => self.sym_io_post(cur, p),
