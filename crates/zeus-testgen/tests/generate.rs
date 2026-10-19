@@ -231,7 +231,7 @@ fn covers_faults_and_stubs() {
         "{text}"
     );
     assert!(
-        text.contains("stubs (programs called that are not there): CHKSUB"),
+        text.contains("stubs (programs called that ran as stubs): CHKSUB"),
         "{text}"
     );
     let cases: Vec<String> = std::fs::read_dir(&out)
@@ -405,5 +405,88 @@ fn covers_unstring_string_and_numval() {
     assert!(all.contains("\"KNOWN CODE\""), "{all}");
     assert!(all.contains("\"LARGE "), "{all}");
     assert!(all.contains("\"SMALL "), "{all}");
+    assert!(all.contains("\"NO CODE\""), "{all}");
+}
+
+/// A seed written by hand (items by name only) is the first run; the
+/// cases of a generation given back as seeds cover at once what they
+/// covered.
+#[test]
+fn seeds_start_the_search() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/programs/SAMPLE.cbl");
+    let tmp = tempfile::tempdir().unwrap();
+    let seeds = tmp.path().join("seeds");
+    std::fs::create_dir_all(&seeds).unwrap();
+    std::fs::write(
+        seeds.join("admin.json"),
+        r#"{ "params": [ { "fields": { "LK-CODE": "AD", "LK-AMOUNT": "12.50", "LK-USER": "ADMIN001" } } ] }"#,
+    )
+    .unwrap();
+    let ztestgen = |args: &[&str], out: &Path| {
+        let o = Command::new(env!("CARGO_BIN_EXE_ztestgen"))
+            .args(args)
+            .arg("--out")
+            .arg(out)
+            .arg(&src)
+            .output()
+            .unwrap();
+        let text = String::from_utf8_lossy(&o.stdout).into_owned();
+        assert!(
+            o.status.success(),
+            "{text}{}",
+            String::from_utf8_lossy(&o.stderr)
+        );
+        text
+    };
+    // one run: the seed
+    let one = tmp.path().join("one");
+    ztestgen(&["--runs", "1", "--seeds", seeds.to_str().unwrap()], &one);
+    let case = std::fs::read_to_string(one.join("case-001.json")).unwrap();
+    assert!(case.contains("\"LK-USER\": \"ADMIN001\""), "{case}");
+    assert!(case.contains("\"LK-AMOUNT\": \"12.50\""), "{case}");
+    // a full generation, then its cases as seeds with as many runs as
+    // there are cases: the same coverage
+    let full = tmp.path().join("full");
+    let text = ztestgen(&[], &full);
+    let n = std::fs::read_dir(&full)
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .count();
+    let again = tmp.path().join("again");
+    let text2 = ztestgen(
+        &["--runs", &n.to_string(), "--seeds", full.to_str().unwrap()],
+        &again,
+    );
+    let c1 = |t: &str| {
+        t.lines()
+            .find(|l| l.starts_with("C1:"))
+            .unwrap_or("")
+            .to_string()
+    };
+    assert_eq!(
+        c1(&text).split(',').next(),
+        c1(&text2).split(',').next(),
+        "{text}\n{text2}"
+    );
+}
+
+/// A flag's values along the control flow: `IF WS-EOF = 'N'` inside
+/// `PERFORM UNTIL WS-EOF = 'Y'` is never false (proved, not counted), and
+/// the directions on a flag set under input conditions are covered.
+#[test]
+fn proves_impossible_directions() {
+    let (text, all) = generate_and_replay("FLAGPGM");
+    assert!(
+        text.contains("C1: 11 of 12 branch directions")
+            && text.contains("100.0% of the feasible (1 infeasible)"),
+        "{text}"
+    );
+    assert!(
+        text.contains("FLAGPGM line 17 (instruction ")
+            && text.contains("jump: impossible (static analysis"),
+        "{text}"
+    );
+    assert!(all.contains("\"ERROR XX\""), "{all}");
     assert!(all.contains("\"NO CODE\""), "{all}");
 }

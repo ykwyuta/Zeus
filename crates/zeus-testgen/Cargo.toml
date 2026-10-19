@@ -13,6 +13,7 @@ zeus-decimal = { path = "../zeus-decimal" }
 zeus-ds = { path = "../zeus-ds" }
 serde = { workspace = true }
 serde_json = { workspace = true }
+libloading = "0.8"
 
 [dev-dependencies]
 tempfile.workspace = true
@@ -25,5 +26,9 @@ path = "src/bin/ztestgen.rs"
 name = "ztest"
 path = "src/bin/ztest.rs"
 
-[lints]
-workspace = true
+# The Z3 module (smt.rs) needs unsafe code; everything else denies it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

@@ -39,6 +39,8 @@ pub const VSAM_STATUS: [u8; 2] = [0xF9, 0x10];
 #[derive(Debug, Default)]
 pub struct CallStubs {
     pub outputs: BTreeMap<(String, u32, u32), Vec<u8>>,
+    /// Programs that run as stubs even when they are there.
+    pub force: std::collections::BTreeSet<String>,
     /// The stubbed calls: (program, call number, argument lengths).
     pub calls: Vec<(String, u32, Vec<usize>)>,
     pub(super) counts: HashMap<String, u32>,
@@ -75,6 +77,16 @@ impl Machine {
             outputs,
             ..Default::default()
         }));
+    }
+
+    /// Programs to run as stubs even when they are there (test runs).
+    pub fn set_forced_stubs(&mut self, names: std::collections::BTreeSet<String>) {
+        self.stubs.get_or_insert_with(Default::default).force = names;
+    }
+
+    /// Whether a program called runs as a stub although it is there.
+    pub(super) fn forced_stub(&self, name: &str) -> bool {
+        self.stubs.as_ref().is_some_and(|s| s.force.contains(name))
     }
 
     /// The stubbed calls of the run.

@@ -54,6 +54,9 @@ pub struct Inputs {
     pub stubs: BTreeMap<StubArg, Vec<u8>>,
     /// What EXEC statements give the program (`StubHost` keys).
     pub exec: BTreeMap<String, Out>,
+    /// The time of day the program sees (seconds since 1970-01-01 UTC;
+    /// None: `CLOCK`).
+    pub clock: Option<u64>,
 }
 
 /// An argument of a stubbed call: (program, call, argument).
@@ -102,6 +105,17 @@ pub struct Options {
     /// Iterations a loop is taken to (one more per run) while some
     /// direction depends on the inputs only through loops.
     pub loop_deepen: u32,
+    /// Use Z3 (when its library is found) for what the built-in solver
+    /// does not solve in time.
+    pub smt: bool,
+    /// Initial inputs (case files: earlier cases, test data, inputs
+    /// written by hand), run before the default ones.
+    pub seeds: Vec<crate::case::CaseFile>,
+    /// Threads solving conditions.
+    pub threads: usize,
+    /// Programs called that run as stubs even when they are there (their
+    /// outputs are inputs).
+    pub stub: BTreeSet<String>,
 }
 
 impl Default for Options {
@@ -115,6 +129,12 @@ impl Default for Options {
             accept_lines: 4,
             fuzz: 60,
             loop_deepen: 20,
+            smt: true,
+            seeds: Vec::new(),
+            stub: BTreeSet::new(),
+            threads: std::thread::available_parallelism()
+                .map_or(1, |n| n.get())
+                .min(8),
         }
     }
 }
@@ -256,12 +276,89 @@ fn delimiter_decision(d: &Dir) -> bool {
 const SOLVE_TIME: Duration = Duration::from_millis(150);
 const RETRY_TIME: Duration = Duration::from_millis(50);
 
+/// Conditions to solve for a run's inputs.
+struct Job {
+    cons: Vec<Pred>,
+    /// The solver's time.
+    time: Duration,
+    /// The inputs found go to the queue of the text statements.
+    text: bool,
+    /// The direction aimed at (an attempt counted for it).
+    target: Option<Dir>,
+}
+
+/// Solves the jobs, on as many threads as there are solvers.
+fn solve_all(solvers: &mut [Builtin], jobs: &[Job], vars: &[Var], start: &[i128]) -> Vec<Outcome> {
+    let one = |solver: &mut Builtin, job: &Job| {
+        solver.time = job.time;
+        // Z3 for the first attempt at a direction only
+        solver.use_smt = job.time == SOLVE_TIME && job.target.is_some();
+        let r = solve(solver, &job.cons, vars, start);
+        solver.time = SOLVE_TIME;
+        r
+    };
+    if solvers.len() == 1 || jobs.len() <= 1 {
+        return jobs.iter().map(|j| one(&mut solvers[0], j)).collect();
+    }
+    let next = std::sync::atomic::AtomicUsize::new(0);
+    let results: Vec<std::sync::Mutex<Option<Outcome>>> =
+        jobs.iter().map(|_| std::sync::Mutex::new(None)).collect();
+    std::thread::scope(|sc| {
+        for solver in solvers.iter_mut() {
+            let (next, results) = (&next, &results);
+            sc.spawn(move || {
+                loop {
+                    let k = next.fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+                    let Some(job) = jobs.get(k) else { break };
+                    let r = one(solver, job);
+                    if let Ok(mut slot) = results[k].lock() {
+                        *slot = Some(r);
+                    }
+                }
+            });
+        }
+    });
+    results
+        .into_iter()
+        .map(|m| m.into_inner().ok().flatten().unwrap_or(Outcome::Unknown))
+        .collect()
+}
+
+/// Tries of an enabler for a direction it may enable (see
+/// `infeasible::enablers`).
+const ENABLE_TRIES: u32 = 3;
+
 /// Instructions a run may take at least before it is taken for an
 /// endless loop (see `generate`).
 const LIMIT_FLOOR: u64 = 200_000;
 
 /// Decisions of text statements solved for in a generation (at most).
 const TEXT_FLIPS: usize = 400;
+
+/// Times of day the mutations try (boundaries of days, months, years and
+/// leap days), seconds since 1970-01-01 UTC.
+pub const CLOCKS: [u64; 8] = [
+    1_735_689_599, // 2024-12-31 23:59:59
+    1_709_208_000, // 2024-02-29 12:00:00
+    1_738_281_600, // 2025-01-31 00:00:00
+    1_740_700_800, // 2025-02-28 00:00:00
+    1_751_241_600, // 2025-06-30 00:00:00
+    1_764_547_200, // 2025-12-01 00:00:00
+    1_767_182_400, // 2025-12-31 12:00:00
+    946_684_800,   // 2000-01-01 00:00:00
+];
+
+/// Whether the programs look at the time of day.
+fn uses_clock(module: &Module) -> bool {
+    module.programs.iter().any(|p| {
+        p.code.iter().any(|i| {
+            matches!(i, Instr::Accept { from, .. } if *from != AcceptFrom::Stdin) || {
+                let t = serde_json::to_string(i).unwrap_or_default();
+                t.contains("CurrentDate") || t.contains("CEELOCT") || t.contains("CEEGMT")
+            }
+        }) || p.execs.iter().any(|e| e.command == "ASKTIME")
+    })
+}
 
 /// Records an input file has at most.
 pub const MAX_RECORDS: usize = 99;
@@ -479,7 +576,7 @@ pub fn run(
     opts: &Options,
     symbolic: bool,
 ) -> RunOut {
-    zeus_cobol::clock::fix(Some(Duration::from_secs(CLOCK)));
+    zeus_cobol::clock::fix(Some(Duration::from_secs(inputs.clock.unwrap_or(CLOCK))));
     let mut m = Machine::new(opts.search.clone());
     m.add_module(module.clone());
     let specs = file_specs(module, &opts.search);
@@ -513,6 +610,7 @@ pub fn run(
     m.set_stdin(inputs.accept.clone());
     m.set_io_faults(inputs.faults.clone());
     m.set_call_stubs(inputs.stubs.clone());
+    m.set_forced_stubs(opts.stub.clone());
     let addrs: Vec<usize> = inputs
         .params
         .iter()
@@ -711,6 +809,9 @@ pub enum Gap {
     Infeasible,
     /// No inputs found within the attempts.
     NotFound,
+    /// Impossible by static analysis (the values a flag can hold along
+    /// the control flow, see `infeasible`).
+    Impossible,
 }
 
 pub struct Report {
@@ -723,6 +824,8 @@ pub struct Report {
     pub files: Vec<FileSpec>,
     /// The programs called that ran as stubs (in some run).
     pub stubbed: BTreeSet<String>,
+    /// Z3 helped the built-in solver.
+    pub smt: bool,
 }
 
 /// The conditional jumps of the module's programs.
@@ -1188,6 +1291,8 @@ fn next(s: &mut u64) -> u64 {
 pub struct Dictionary {
     pub text: Vec<Vec<u8>>,
     pub nums: Vec<(i128, u32)>,
+    /// The programs look at the time of day (it is an input then).
+    pub clock: bool,
 }
 
 impl Dictionary {
@@ -1216,7 +1321,10 @@ impl Dictionary {
                 _ => {}
             }
         }
-        let mut d = Dictionary::default();
+        let mut d = Dictionary {
+            clock: uses_clock(module),
+            ..Default::default()
+        };
         for p in &module.programs {
             for ins in &p.code {
                 match ins {
@@ -1240,6 +1348,11 @@ fn mutate(
     rng: &mut u64,
 ) -> Inputs {
     let mut new = base.clone();
+    // another time of day, at a boundary of days, months or years
+    if dict.clock && next(rng).is_multiple_of(5) {
+        new.clock = Some(CLOCKS[next(rng) as usize % CLOCKS.len()]);
+        return new;
+    }
     let inputs: Vec<&FileSpec> = specs.iter().filter(|f| f.input).collect();
     let k = next(rng) as usize % (fields.len() + new.accept.len() + inputs.len()).max(1);
     if k >= fields.len() + new.accept.len() && !inputs.is_empty() {
@@ -1372,9 +1485,51 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     // decisions recorded outside the module's branches (EXEC responses)
     // are solved for, and kept by cases, but not counted
     let counted: HashSet<Dir> = all.iter().cloned().collect();
+    // directions proved impossible without running (flags' values): for
+    // the program run, entered once per run with its VALUEs; not when
+    // nested programs may set its data (GLOBAL) or it is recursive
+    let shared = code.recursive
+        || module.programs.iter().any(|p| {
+            p.descs
+                .iter()
+                .any(|d| matches!(d.base, Base::Outer(_) | Base::OuterLinkage(..)))
+        });
+    // for the directions of jumps on flags, the directions that lead to
+    // the MOVEs of the values they need (enabler -> directions)
+    let mut enables: HashMap<Dir, Vec<Dir>> = HashMap::new();
+    if !shared {
+        for ((pc, j), es) in crate::infeasible::enablers(code) {
+            for (epc, ej) in es {
+                enables
+                    .entry((code.name.clone(), epc, ej))
+                    .or_default()
+                    .push((code.name.clone(), pc, j));
+            }
+        }
+    }
+    let mut enabled: HashMap<(Dir, Dir), u32> = HashMap::new();
+    let mut impossible: HashSet<Dir> = if shared {
+        HashSet::new()
+    } else {
+        crate::infeasible::impossible(code)
+            .into_iter()
+            .map(|(pc, j)| (code.name.clone(), pc, j))
+            .collect()
+    };
     let kept_dir = |d: &Dir| counted.contains(d) || d.0.ends_with("#EXEC");
     let start = Instant::now();
-    let mut solver = Builtin::default();
+    // a solver per thread (each with its own Z3 context)
+    let threads = opts.threads.max(1);
+    let mut solvers: Vec<Builtin> = (0..threads)
+        .map(|_| {
+            let mut b = Builtin::default();
+            if opts.smt {
+                b.smt = crate::smt::Z3::load();
+            }
+            b
+        })
+        .collect();
+    let smt = solvers[0].smt.is_some();
     let mut first = default_inputs(&fields, &lens);
     // a CICS program starts with a COMMAREA (EIBCALEN its length, at most
     // AREA_BYTES): the program reads what it moves from it
@@ -1406,7 +1561,19 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         .filter(|f| f.input)
         .map(|f| vec![default_record(f)])
         .collect();
-    let mut queue: VecDeque<Inputs> = VecDeque::from([first]);
+    let mut queue: VecDeque<Inputs> = VecDeque::new();
+    let mut seeds: Vec<Inputs> = Vec::new();
+    for (k, c) in opts.seeds.iter().enumerate() {
+        match crate::case::seed_inputs(c, &fields, &lens, &specs) {
+            Ok(mut i) => {
+                if accepts && i.accept.is_empty() {
+                    i.accept = first.accept.clone();
+                }
+                seeds.push(i);
+            }
+            Err(e) => eprintln!("ztestgen: seed {}: {e}", k + 1),
+        }
+    }
     let mut seen: HashSet<Inputs> = HashSet::new();
     let mut covered: HashSet<Dir> = HashSet::new();
     let mut reached: HashSet<(String, u32)> = HashSet::new();
@@ -1432,6 +1599,49 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     // mutated inputs tried in a row without new coverage
     let mut fruitless = 0;
     let mut stubbed = BTreeSet::new();
+    // the seeds run first without solving, so that the search knows what
+    // they cover before it picks directions; then they run again with it
+    for inp in seeds {
+        if runs >= opts.max_runs || start.elapsed() > opts.time {
+            break;
+        }
+        runs += 1;
+        let out = run(module, program, &fields, &inp, opts, true);
+        stubbed.extend(out.stubbed.iter().cloned());
+        let mut new: Vec<Dir> = Vec::new();
+        for d in &out.branches {
+            if !covered.contains(d) && kept_dir(d) && !new.contains(d) {
+                new.push(d.clone());
+            }
+        }
+        covered.extend(out.branches.iter().cloned());
+        for st in &out.path {
+            if let Step::Branch(b) = st {
+                reached.insert((b.program.clone(), b.pc));
+                if b.pred.is_some() {
+                    symbolic.insert((b.program.clone(), b.pc));
+                }
+            }
+        }
+        queue.push_back(inp.clone());
+        if !new.is_empty() {
+            cases.push(Case {
+                inputs: inp,
+                out,
+                covers: new,
+            });
+        }
+    }
+    // a program that looks at the time of day also starts at the end of
+    // a year
+    if uses_clock(module) {
+        let mut late = first.clone();
+        late.clock = Some(CLOCKS[6]);
+        queue.push_back(first);
+        queue.push_back(late);
+    } else {
+        queue.push_back(first);
+    }
     loop {
         if runs >= opts.max_runs || start.elapsed() > opts.time {
             break;
@@ -1518,6 +1728,9 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         // the other way of each branch, where not covered yet
         let mut before: BTreeSet<Dir> = BTreeSet::new();
         let mut slicer = Slicer::new(&out.path, out.vars.len());
+        // the conditions to solve for this run (solved together, in
+        // parallel, after the path is gone through)
+        let mut jobs: Vec<Job> = Vec::new();
         // each branch's executions in the run (loops), and whether some
         // direction that runs depends on the inputs only implicitly
         let mut total: HashMap<(&str, u32), u32> = HashMap::new();
@@ -1527,8 +1740,15 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             }
         }
         let mut so_far: HashMap<(&str, u32), u32> = HashMap::new();
+        let mut last_at: HashMap<(&str, u32), usize> = HashMap::new();
+        for (k, st) in out.path.iter().enumerate() {
+            if let Step::Branch(x) = st {
+                last_at.insert((x.program.as_str(), x.pc), k);
+            }
+        }
         let implicit = all.iter().any(|d| {
             !covered.contains(d)
+                && !impossible.contains(d)
                 && reached.contains(&(d.0.clone(), d.1))
                 && !symbolic.contains(&(d.0.clone(), d.1))
         });
@@ -1588,14 +1808,42 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 let Some(cons) = slicer.slice(i) else {
                     continue;
                 };
-                let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
-                if let Outcome::Sat(x) = solve(&mut solver, &cons, &out.vars, &startv) {
-                    let next = apply(&inp, &fields, &specs, &out.vars, &x);
-                    if !seen.contains(&next) {
-                        text_queue.push_back(next);
-                    }
-                }
+                jobs.push(Job {
+                    cons,
+                    time: SOLVE_TIME,
+                    text: true,
+                    target: None,
+                });
                 continue;
+            }
+            // the other way of this branch leads to the MOVE of a flag value
+            // that a direction reached later in this run needs
+            let wanted: Vec<Dir> = enables
+                .get(&target)
+                .into_iter()
+                .flatten()
+                .filter(|t| {
+                    !covered.contains(*t)
+                        && !impossible.contains(*t)
+                        && last_at.get(&(t.0.as_str(), t.1)).is_some_and(|&k| k > i)
+                })
+                .cloned()
+                .collect();
+            let mut enabling = false;
+            for t in wanted {
+                let n = enabled.entry((target.clone(), t)).or_insert(0);
+                if *n < ENABLE_TRIES {
+                    *n += 1;
+                    enabling = true;
+                }
+            }
+            if enabling && let Some(cons) = slicer.slice(i) {
+                jobs.push(Job {
+                    cons,
+                    time: RETRY_TIME,
+                    text: false,
+                    target: None,
+                });
             }
             if covered.contains(&target) {
                 // a loop's last decision taken the other way gives a run
@@ -1624,22 +1872,17 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                 if deepen {
                     *n = depth;
                 }
-                solver.time = RETRY_TIME;
-                let solved = slicer.slice(i).map(|cons| {
-                    solve(
-                        &mut solver,
-                        &cons,
-                        &out.vars,
-                        &out.vars.iter().map(|v| v.value).collect::<Vec<_>>(),
-                    )
-                });
-                solver.time = SOLVE_TIME;
-                if let Some(Outcome::Sat(x)) = solved {
-                    let next = apply(&inp, &fields, &specs, &out.vars, &x);
-                    if !seen.contains(&next) {
-                        queue.push_back(next);
-                    }
+                if let Some(cons) = slicer.slice(i) {
+                    jobs.push(Job {
+                        cons,
+                        time: RETRY_TIME,
+                        text: false,
+                        target: None,
+                    });
                 }
+                continue;
+            }
+            if impossible.contains(&target) {
                 continue;
             }
             let a = attempts.entry(target.clone()).or_default();
@@ -1650,28 +1893,14 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             let Some(cons) = slicer.slice(i) else {
                 continue;
             };
-            let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
             // the first attempt at a direction gets the full time, the
             // later ones (after other paths) less
-            solver.time = if a.0 > 1 { RETRY_TIME } else { SOLVE_TIME };
-            let result = solve(&mut solver, &cons, &out.vars, &startv);
-            solver.time = SOLVE_TIME;
-            if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
-                eprintln!("target {target:?}: {result:?}");
-                for c in &cons {
-                    eprintln!("    {c:?}");
-                }
-            }
-            match result {
-                Outcome::Sat(x) => {
-                    let next = apply(&inp, &fields, &specs, &out.vars, &x);
-                    if !seen.contains(&next) {
-                        queue.push_back(next);
-                    }
-                }
-                Outcome::Unsat => a.1 += 1,
-                Outcome::Unknown => {}
-            }
+            jobs.push(Job {
+                cons,
+                time: if a.0 > 1 { RETRY_TIME } else { SOLVE_TIME },
+                text: false,
+                target: Some(target),
+            });
         }
         prof[1] += t_flip.elapsed();
         // text statements with fewer delimiters than they may take: one
@@ -1708,13 +1937,43 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
                     continue;
                 };
                 text_tried.insert(pick as u64 ^ (u64::from(ins) << 32) ^ (found as u64) << 48);
-                let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
-                if let Outcome::Sat(x) = solve(&mut solver, &cons, &out.vars, &startv) {
+                jobs.push(Job {
+                    cons,
+                    time: SOLVE_TIME,
+                    text: true,
+                    target: None,
+                });
+            }
+        }
+        // solve, in parallel, and queue the inputs found
+        let startv: Vec<i128> = out.vars.iter().map(|v| v.value).collect();
+        let outcomes = solve_all(&mut solvers, &jobs, &out.vars, &startv);
+        for (job, r) in jobs.into_iter().zip(outcomes) {
+            if std::env::var_os("ZTESTGEN_DEBUG").is_some()
+                && let Some(t) = &job.target
+            {
+                eprintln!("target {t:?}: {r:?}");
+                for c in &job.cons {
+                    eprintln!("    {c:?}");
+                }
+            }
+            match r {
+                Outcome::Sat(x) => {
                     let next = apply(&inp, &fields, &specs, &out.vars, &x);
                     if !seen.contains(&next) {
-                        text_queue.push_back(next);
+                        if job.text {
+                            text_queue.push_back(next);
+                        } else {
+                            queue.push_back(next);
+                        }
                     }
                 }
+                Outcome::Unsat => {
+                    if let Some(t) = job.target {
+                        attempts.entry(t).or_default().1 += 1;
+                    }
+                }
+                Outcome::Unknown => {}
             }
         }
         prof[0] += t_loop.elapsed();
@@ -1781,12 +2040,24 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     {
         kept.push(c);
     }
+    // a direction covered cannot be impossible: the analysis was wrong
+    // there (reported, not used)
+    let wrong: Vec<&Dir> = impossible.iter().filter(|d| covered.contains(*d)).collect();
+    if !wrong.is_empty() {
+        eprintln!("ztestgen: static analysis wrong for covered directions {wrong:?}");
+        let wrong: Vec<Dir> = wrong.into_iter().cloned().collect();
+        for d in wrong {
+            impossible.remove(&d);
+        }
+    }
     let gaps = all
         .iter()
         .filter(|d| !covered.contains(*d))
         .map(|d| {
             let at = (d.0.clone(), d.1);
-            let gap = if !reached.contains(&at) {
+            let gap = if impossible.contains(d) {
+                Gap::Impossible
+            } else if !reached.contains(&at) {
                 Gap::NotReached
             } else if !symbolic.contains(&at) {
                 Gap::NotSymbolic
@@ -1807,6 +2078,7 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         fields,
         files: specs,
         stubbed,
+        smt,
     })
 }
 

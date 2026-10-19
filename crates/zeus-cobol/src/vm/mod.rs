@@ -1495,6 +1495,11 @@ impl Machine {
             self.le_test_outputs(&name, &addrs);
             return Ok(None);
         }
+        if self.forced_stub(&name) {
+            let sized = self.call_args_sized(cur, args)?;
+            self.call_stub(cur, &name, &sized)?;
+            return Ok(None);
+        }
         let static_call = matches!(program, zir::Src::Alnum(_))
             && interface.unwrap_or(zir::CallInterface::default_for(
                 self.instances[cur].code.dynam,

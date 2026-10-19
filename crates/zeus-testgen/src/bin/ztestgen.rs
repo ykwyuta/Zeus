@@ -3,13 +3,16 @@
 //!
 //! ```text
 //! ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
-//!          [--limit INSTRUCTIONS] [--out DIR] SOURCE.cbl
+//!          [--limit INSTRUCTIONS] [--no-smt] [--threads N] [--stub PROGRAM]...
+//!          [--seeds DIR]... [--out DIR] SOURCE.cbl
 //! ```
 //!
 //! The inputs are the program's USING parameters and the lines it
 //! ACCEPTs. The cases go to DIR (default `tests`) as `case-NNN.json`
 //! with `report.txt`: the branch directions covered and why the others
-//! are not. `ztest` runs the cases again.
+//! are not. `ztest` runs the cases again. `--seeds` gives initial inputs:
+//! case files (earlier cases to start from, or inputs written by hand
+//! with only `fields`, by item name).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -22,7 +25,7 @@ use zeus_testgen::engine::{Gap, Options, generate};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--out DIR] SOURCE.cbl"
+        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--out DIR] SOURCE.cbl"
     );
     ExitCode::from(2)
 }
@@ -48,6 +51,27 @@ fn main() -> ExitCode {
             "--program" => program = val().map(|p| p.to_ascii_uppercase()),
             "--out" | "-o" => match val() {
                 Some(d) => out = d.into(),
+                None => return usage(),
+            },
+            "--no-smt" => opts.smt = false,
+            "--stub" => match val() {
+                Some(p) => {
+                    opts.stub.insert(p.to_ascii_uppercase());
+                }
+                None => return usage(),
+            },
+            "--threads" => match val().and_then(|n| n.parse().ok()) {
+                Some(n) => opts.threads = n,
+                None => return usage(),
+            },
+            "--seeds" => match val() {
+                Some(d) => match zeus_testgen::case::read_dir(std::path::Path::new(&d)) {
+                    Ok(cs) => opts.seeds.extend(cs.into_iter().map(|(_, c)| c)),
+                    Err(e) => {
+                        eprintln!("ztestgen: {e}");
+                        return ExitCode::from(8);
+                    }
+                },
                 None => return usage(),
             },
             "--runs" => match val().and_then(|n| n.parse().ok()) {
@@ -103,7 +127,7 @@ fn main() -> ExitCode {
     let infeasible = report
         .gaps
         .iter()
-        .filter(|(_, g)| *g == Gap::Infeasible)
+        .filter(|(_, g)| matches!(g, Gap::Infeasible | Gap::Impossible))
         .count();
     let covered = total - report.gaps.len();
     let pct = |a: usize, b: usize| {
@@ -120,10 +144,17 @@ fn main() -> ExitCode {
         pct(covered, total),
         pct(covered, total - infeasible),
     );
+    text.push_str(if report.smt {
+        "solver: built-in search, then Z3
+"
+    } else {
+        "solver: built-in search
+"
+    });
     if !report.stubbed.is_empty() {
         let names: Vec<&str> = report.stubbed.iter().map(|s| s.as_str()).collect();
         text.push_str(&format!(
-            "stubs (programs called that are not there): {}\n",
+            "stubs (programs called that ran as stubs): {}\n",
             names.join(", ")
         ));
     }
@@ -135,6 +166,7 @@ fn main() -> ExitCode {
                 Gap::NotSymbolic => "condition does not depend on the inputs followed",
                 Gap::Infeasible => "infeasible (no inputs on the paths tried)",
                 Gap::NotFound => "no inputs found",
+                Gap::Impossible => "impossible (static analysis: the values of the flags)",
             };
             let line = line_of(&module, p, *pc).map_or("?".into(), |l| l.to_string());
             text.push_str(&format!(

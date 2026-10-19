@@ -558,3 +558,89 @@ impl Machine {
         Some((term, scale))
     }
 }
+
+impl Machine {
+    /// FUNCTION LENGTH(FUNCTION TRIM(x)) of followed bytes: 0 when they
+    /// are all spaces, else the length without the leading and trailing
+    /// spaces (exactly up to 24 bytes; longer: 1 or more, the value of
+    /// this run).
+    pub(super) fn sym_trim_length(&mut self, cur: usize, s: &Src) -> Option<(Term, i32)> {
+        let (terms, text) = self.sym_operand_bytes(cur, s)?;
+        if terms.iter().all(|t| t.konst().is_some()) {
+            return None;
+        }
+        let space = |t: &Term| eq(t, 0x40);
+        let all = Pred::And(terms.iter().map(space).collect());
+        let n = terms.len();
+        let rest = if n <= 24 {
+            // leading and trailing spaces counted
+            let count = |order: &mut dyn Iterator<Item = &Term>| {
+                let mut run: Vec<Pred> = Vec::new();
+                let mut c = Term::Const(0);
+                for t in order {
+                    run.push(space(t));
+                    c = Term::add(
+                        c,
+                        Term::ite(Pred::And(run.clone()), Term::Const(1), Term::Const(0)),
+                    );
+                }
+                c
+            };
+            let lead = count(&mut terms.iter());
+            let trail = count(&mut terms.iter().rev());
+            Term::sub(Term::Const(n as i128), Term::add(lead, trail))
+        } else {
+            let first = text.iter().position(|b| *b != 0x40);
+            let last = text.iter().rposition(|b| *b != 0x40);
+            let now = match (first, last) {
+                (Some(f), Some(l)) => l - f + 1,
+                _ => 1,
+            };
+            Term::Const(now as i128)
+        };
+        Some((Term::ite(all, Term::Const(0), rest), 0))
+    }
+
+    /// TEST-NUMVAL / TEST-NUMVAL-C of followed bytes: 0 when the bytes are
+    /// a number (spaces, digits, a point, signs; for -C also the currency
+    /// sign and commas, with a digit), else the value of this run (or 1).
+    pub(super) fn sym_test_numval(
+        &mut self,
+        cur: usize,
+        e: &Ex,
+        s: &Src,
+        currency: bool,
+    ) -> Option<(Term, i32)> {
+        let (terms, _) = self.sym_operand_bytes(cur, s)?;
+        if terms.iter().all(|t| t.konst().is_some()) {
+            return None;
+        }
+        let now = self.eval_ex(cur, e).ok()?;
+        let now = now.rescale(0, zeus_decimal::Rounding::Truncate)?.coef;
+        let mut ok = vec![
+            (0x40, 0x40),
+            (0x4B, 0x4B),
+            (0x4E, 0x4E),
+            (0x60, 0x60),
+            (0xF0, 0xF9),
+        ];
+        if currency {
+            ok.extend([(0x5B, 0x5B), (0x6B, 0x6B)]);
+        }
+        let valid = Pred::And(vec![
+            Pred::And(
+                terms
+                    .iter()
+                    .map(|t| Pred::In(t.clone(), ok.clone()))
+                    .collect(),
+            ),
+            Pred::Or(
+                terms
+                    .iter()
+                    .map(|t| Pred::In(t.clone(), vec![(0xF0, 0xF9)]))
+                    .collect(),
+            ),
+        ]);
+        Some((Term::ite(valid, Term::Const(0), Term::Const(now.max(1))), 0))
+    }
+}

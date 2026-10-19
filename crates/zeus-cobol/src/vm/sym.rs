@@ -425,6 +425,23 @@ impl Machine {
                     _ => None,
                 }
             }
+            Ex::Func(f @ (crate::zir::Func::TestNumVal | crate::zir::Func::TestNumValC), args) => {
+                match &args[..] {
+                    [crate::zir::Arg::Src(s)] => {
+                        self.sym_test_numval(cur, e, s, *f == crate::zir::Func::TestNumValC)
+                    }
+                    _ => None,
+                }
+            }
+            Ex::Func(crate::zir::Func::Length, args) => match &args[..] {
+                [crate::zir::Arg::Src(Src::Func(crate::zir::Func::Trim, targs, None))] => {
+                    match &targs[..] {
+                        [crate::zir::Arg::Src(s)] => self.sym_trim_length(cur, s),
+                        _ => None,
+                    }
+                }
+                _ => None,
+            },
             Ex::Neg(x) => self.sym_ex(cur, x).map(|(t, s)| (Term::neg(t), s)),
             Ex::Bin(op, x, y) => {
                 let a = self.sym_ex(cur, x);

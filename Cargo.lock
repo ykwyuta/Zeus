@@ -1256,6 +1256,7 @@ dependencies = [
 name = "zeus-testgen"
 version = "0.1.0"
 dependencies = [
+ "libloading",
  "serde",
  "serde_json",
  "tempfile",

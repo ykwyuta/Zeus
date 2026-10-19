@@ -38,6 +38,10 @@ pub struct Builtin {
     pub budget: usize,
     /// Time per call.
     pub time: std::time::Duration,
+    /// An SMT solver for what the search does not solve in time.
+    pub smt: Option<crate::smt::Z3>,
+    /// Whether to use it for the next calls.
+    pub use_smt: bool,
     seed: u64,
 }
 
@@ -46,6 +50,8 @@ impl Default for Builtin {
         Builtin {
             budget: 400,
             time: std::time::Duration::from_millis(150),
+            smt: None,
+            use_smt: true,
             seed: 0x9E37_79B9_7F4A_7C15,
         }
     }
@@ -398,7 +404,22 @@ impl Builtin {
 }
 
 impl Solver for Builtin {
+    /// The search, then the SMT solver (if any) when the search found
+    /// nothing in time.
     fn solve(&mut self, cons: &[Pred], vars: &[Var], start: &[i128]) -> Outcome {
+        match self.search(cons, vars, start) {
+            Outcome::Unknown => match &mut self.smt {
+                Some(z3) if self.use_smt => z3.solve(cons, vars, start),
+                _ => Outcome::Unknown,
+            },
+            r => r,
+        }
+    }
+}
+
+impl Builtin {
+    /// Interval reasoning and the local search.
+    fn search(&mut self, cons: &[Pred], vars: &[Var], start: &[i128]) -> Outcome {
         let mut flat = Vec::new();
         for c in cons {
             flatten(&nnf(c, false), &mut flat);
