@@ -2,10 +2,10 @@
 //!
 //! INSPECT: the bytes REPLACING and CONVERTING leave and the count
 //! TALLYING adds, as terms over the bytes inspected. Followed: one phrase
-//! without BEFORE / AFTER, on one-character operands (CONVERTING: strings
-//! of the same length).
+//! on one-character operands (CONVERTING: strings of the same length),
+//! with BEFORE / AFTER INITIAL of one character (up to 64 bytes).
 //!
-//! UNSTRING and STRING with one-character delimiters (or SIZE): the
+//! UNSTRING and STRING with delimiters (or SIZE): the
 //! fields are the bytes between the delimiters of the run, and whether a
 //! position is a delimiter is a decision (not counted in C1) the solver
 //! can take the other way, which moves or adds delimiters. NUMVAL of
@@ -43,27 +43,57 @@ pub(super) struct InspectPre {
     l: usize,
     bytes: Vec<Term>,
     op: Op,
+    /// BEFORE INITIAL and AFTER INITIAL characters.
+    region: (Option<u8>, Option<u8>),
 }
 
 fn eq(t: &Term, c: u8) -> Pred {
     Pred::Cmp(t.clone(), Rel::Eq, Term::Const(i128::from(c)))
 }
 
-/// For each position, whether the phrase applies there.
-fn applies(bytes: &[Term], look: Look) -> Vec<Pred> {
+/// For each position, whether it is in the region of BEFORE INITIAL
+/// `before` (no `before` up to it) and AFTER INITIAL `after` (an `after`
+/// before it).
+fn region(bytes: &[Term], (before, after): (Option<u8>, Option<u8>)) -> Vec<Pred> {
     let mut out = Vec::with_capacity(bytes.len());
-    let mut run: Vec<Pred> = Vec::new();
+    let (mut none_yet, mut seen): (Vec<Pred>, Vec<Pred>) = (Vec::new(), Vec::new());
     for b in bytes {
+        let mut r = Vec::new();
+        if let Some(y) = before {
+            none_yet.push(Pred::not(eq(b, y)));
+            r.push(Pred::And(none_yet.clone()));
+        }
+        if let Some(y) = after {
+            r.push(Pred::Or(seen.clone()));
+            seen.push(eq(b, y));
+        }
+        out.push(match r.len() {
+            0 => Pred::Bool(true),
+            1 => r.remove(0),
+            _ => Pred::And(r),
+        });
+    }
+    out
+}
+
+/// For each position, whether the phrase applies there (in the region).
+fn applies(bytes: &[Term], look: Look, within: (Option<u8>, Option<u8>)) -> Vec<Pred> {
+    let r = region(bytes, within);
+    let mut out = Vec::with_capacity(bytes.len());
+    // the region's positions before: all matches (LEADING), none (FIRST)
+    let mut run: Vec<Pred> = Vec::new();
+    for (b, ri) in bytes.iter().zip(&r) {
         out.push(match look {
-            Look::Characters => Pred::Bool(true),
-            Look::All(c) => eq(b, c),
+            Look::Characters => ri.clone(),
+            Look::All(c) => Pred::And(vec![ri.clone(), eq(b, c)]),
             Look::Leading(c) => {
-                run.push(eq(b, c));
-                Pred::And(run.clone())
+                let p = Pred::And(run.iter().cloned().chain([ri.clone(), eq(b, c)]).collect());
+                run.push(Pred::Or(vec![Pred::not(ri.clone()), eq(b, c)]));
+                p
             }
             Look::First(c) => {
-                let p = Pred::And(run.iter().cloned().chain([eq(b, c)]).collect());
-                run.push(Pred::not(eq(b, c)));
+                let p = Pred::And(run.iter().cloned().chain([ri.clone(), eq(b, c)]).collect());
+                run.push(Pred::Or(vec![Pred::not(ri.clone()), Pred::not(eq(b, c))]));
                 p
             }
         });
@@ -71,8 +101,20 @@ fn applies(bytes: &[Term], look: Look) -> Vec<Pred> {
     out
 }
 
+/// Characters of BEFORE / AFTER INITIAL up to which the region of INSPECT
+/// is followed (the conditions grow with the square of the length).
+const REGION_BYTES: usize = 64;
+
 impl Machine {
     /// One character of an operand (a figurative constant repeats).
+    /// A delimiter (a figurative constant: one character).
+    fn sym_delim(&mut self, cur: usize, s: &Src) -> Option<Vec<u8>> {
+        let v = self.eval_src(cur, s).ok()?;
+        let n = self.alnum_len(&v).max(1);
+        let d = self.alnum_bytes(cur, &v, n).ok()?;
+        (!d.is_empty()).then_some(d)
+    }
+
     fn sym_char(&mut self, cur: usize, s: &Src) -> Option<u8> {
         let v = self.eval_src(cur, s).ok()?;
         let n = self.alnum_len(&v);
@@ -98,6 +140,18 @@ impl Machine {
         steps: &[InspectStep],
     ) -> Option<InspectPre> {
         let [step] = steps else { return None };
+        let (before, after) = match step {
+            InspectStep::Replace { before, after, .. }
+            | InspectStep::Convert { before, after, .. }
+            | InspectStep::Tally { before, after, .. } => (before, after),
+        };
+        let mut within = (None, None);
+        if let Some(b) = before {
+            within.0 = Some(self.sym_char(cur, b)?);
+        }
+        if let Some(x) = after {
+            within.1 = Some(self.sym_char(cur, x)?);
+        }
         let (a, l) = self.addr(cur, target).ok()?;
         match self.loc_type(cur, target) {
             DataType::Alphanumeric { .. } | DataType::Alphabetic { .. } | DataType::Group => {}
@@ -105,18 +159,10 @@ impl Machine {
             _ => return None,
         }
         let op = match step {
-            InspectStep::Replace {
-                kind,
-                by,
-                before: None,
-                after: None,
-            } => Op::Replace(self.sym_look(cur, kind)?, self.sym_char(cur, by)?),
-            InspectStep::Convert {
-                from,
-                to,
-                before: None,
-                after: None,
-            } => {
+            InspectStep::Replace { kind, by, .. } => {
+                Op::Replace(self.sym_look(cur, kind)?, self.sym_char(cur, by)?)
+            }
+            InspectStep::Convert { from, to, .. } => {
                 let f = self.eval_src(cur, from).ok()?;
                 let n = self.alnum_len(&f).max(1);
                 let f = self.alnum_bytes(cur, &f, n).ok()?;
@@ -127,12 +173,7 @@ impl Machine {
                 }
                 Op::Convert(f.into_iter().zip(t).collect())
             }
-            InspectStep::Tally {
-                counter,
-                kind,
-                before: None,
-                after: None,
-            } => {
+            InspectStep::Tally { counter, kind, .. } => {
                 let (ca, cl) = self.addr(cur, counter).ok()?;
                 let DataType::Numeric(t) = self.loc_type(cur, counter) else {
                     return None;
@@ -150,18 +191,32 @@ impl Machine {
                 };
                 Op::Tally((ca, cl, t), old, look)
             }
-            _ => return None,
         };
+        if within != (None, None) && l > REGION_BYTES {
+            return None;
+        }
         let bytes = self.sym_read_bytes(a, l)?;
-        Some(InspectPre { a, l, bytes, op })
+        Some(InspectPre {
+            a,
+            l,
+            bytes,
+            op,
+            region: within,
+        })
     }
 
     pub(super) fn sym_inspect_post(&mut self, pre: InspectPre) {
-        let InspectPre { a, l, bytes, op } = pre;
+        let InspectPre {
+            a,
+            l,
+            bytes,
+            op,
+            region: within,
+        } = pre;
         match op {
             Op::Replace(look, by) => {
                 self.sym_forget(a, l);
-                for (i, (b, p)) in bytes.iter().zip(applies(&bytes, look)).enumerate() {
+                for (i, (b, p)) in bytes.iter().zip(applies(&bytes, look, within)).enumerate() {
                     let t = Term::ite(p, Term::Const(i128::from(by)), b.clone());
                     if t.konst().is_none() {
                         self.sym_bind_byte_term(a + i, t);
@@ -170,12 +225,14 @@ impl Machine {
             }
             Op::Convert(pairs) => {
                 self.sym_forget(a, l);
-                for (i, b) in bytes.iter().enumerate() {
+                let r = region(&bytes, within);
+                for (i, (b, ri)) in bytes.iter().zip(r).enumerate() {
                     // the first occurrence of a character in FROM counts
                     let mut t = b.clone();
                     for (f, to) in pairs.iter().rev() {
                         t = Term::ite(eq(b, *f), Term::Const(i128::from(*to)), t);
                     }
+                    let t = Term::ite(ri, t, b.clone());
                     if t.konst().is_none() {
                         self.sym_bind_byte_term(a + i, t);
                     }
@@ -183,7 +240,7 @@ impl Machine {
             }
             Op::Tally((ca, cl, t), old, look) => {
                 let mut sum = old;
-                for p in applies(&bytes, look) {
+                for p in applies(&bytes, look, within) {
                     sum = Term::add(sum, Term::ite(p, Term::Const(1), Term::Const(0)));
                 }
                 self.sym_forget(ca, cl);
@@ -205,10 +262,25 @@ fn text_id(pc: u32, pos: usize) -> u32 {
     pc.saturating_mul(4096).saturating_add(pos.min(4095) as u32)
 }
 
-fn is_delim(t: &Term, delims: &[u8]) -> Pred {
+/// Whether the data has the delimiter at `i`.
+fn matches_at(data: &[u8], i: usize, d: &[u8]) -> bool {
+    data.get(i..i + d.len()) == Some(d)
+}
+
+/// "The delimiter is at `i`" over the bytes' terms.
+fn delim_at(bytes: &[Term], i: usize, d: &[u8]) -> Pred {
+    match bytes.get(i..i + d.len()) {
+        Some([t]) => eq(t, d[0]),
+        Some(ts) => Pred::And(ts.iter().zip(d).map(|(t, c)| eq(t, *c)).collect()),
+        None => Pred::Bool(false),
+    }
+}
+
+/// "One of the delimiters is at `i`".
+fn some_delim_at(bytes: &[Term], i: usize, delims: &[(bool, Vec<u8>)]) -> Pred {
     match delims {
-        [d] => eq(t, *d),
-        _ => Pred::Or(delims.iter().map(|d| eq(t, *d)).collect()),
+        [(_, d)] => delim_at(bytes, i, d),
+        _ => Pred::Or(delims.iter().map(|(_, d)| delim_at(bytes, i, d)).collect()),
     }
 }
 
@@ -220,7 +292,7 @@ pub(super) struct UnstringPre {
     data: Vec<u8>,
     bytes: Vec<Term>,
     /// (ALL, delimiter)
-    delims: Vec<(bool, u8)>,
+    delims: Vec<(bool, Vec<u8>)>,
     start: usize,
     /// The receivers (address, length, type), and the other items the
     /// statement sets.
@@ -228,13 +300,17 @@ pub(super) struct UnstringPre {
     other: Vec<(usize, usize)>,
 }
 
+/// A source of a STRING: its bytes as terms and values, and its
+/// delimiter (None: SIZE).
+type StringSource = (Vec<Term>, Vec<u8>, Option<Vec<u8>>);
+
 /// A STRING on followed bytes: each source's bytes (terms, values) and
 /// delimiter (None: SIZE).
 #[derive(Debug, Clone)]
 pub(super) struct StringPre {
     prog: String,
     pc: u32,
-    sources: Vec<(Vec<Term>, Vec<u8>, Option<u8>)>,
+    sources: Vec<StringSource>,
     dst: (usize, usize),
     start: usize,
 }
@@ -328,7 +404,7 @@ impl Machine {
         let bytes = self.sym_read_bytes(a, l)?;
         let mut ds = Vec::new();
         for (all, d) in delims {
-            ds.push((*all, self.sym_char(cur, d)?));
+            ds.push((*all, self.sym_delim(cur, d)?));
         }
         let start = self.sym_pointer(cur, pointer)?;
         let mut targets = Vec::new();
@@ -374,7 +450,6 @@ impl Machine {
             into,
             other,
         } = pre;
-        let chars: Vec<u8> = delims.iter().map(|d| d.1).collect();
         for (a, l) in other {
             self.sym_forget(a, l);
         }
@@ -387,9 +462,9 @@ impl Machine {
             let mut end = data.len();
             let mut found = None;
             for i in p..data.len() {
-                let hit = delims.iter().position(|d| d.1 == data[i]);
+                let hit = delims.iter().position(|d| matches_at(&data, i, &d.1));
                 if i - first < SCAN {
-                    self.sym_decide(&prog, text_id(pc, i), is_delim(&bytes[i], &chars));
+                    self.sym_decide(&prog, text_id(pc, i), some_delim_at(&bytes, i, &delims));
                 }
                 if let Some(k) = hit {
                     end = i;
@@ -411,15 +486,15 @@ impl Machine {
             }
             p = end;
             if let Some(k) = found {
-                let (repeat, d) = delims[k];
-                p = end + 1;
-                if repeat {
-                    while p < data.len() && data[p] == d {
-                        self.sym_decide(&prog, text_id(pc, p), eq(&bytes[p], d));
-                        p += 1;
+                let (repeat, d) = &delims[k];
+                p = end + d.len();
+                if *repeat {
+                    while matches_at(&data, p, d) {
+                        self.sym_decide(&prog, text_id(pc, p), delim_at(&bytes, p, d));
+                        p += d.len();
                     }
                     if p < data.len() && p - end <= SCAN {
-                        self.sym_decide(&prog, text_id(pc, p), eq(&bytes[p], d));
+                        self.sym_decide(&prog, text_id(pc, p), delim_at(&bytes, p, d));
                     }
                 }
             }
@@ -440,7 +515,7 @@ impl Machine {
             let (terms, concrete) = self.sym_operand_bytes(cur, s)?;
             followed |= terms.iter().any(|t| t.konst().is_none());
             let d = match d {
-                Some(d) => Some(self.sym_char(cur, d)?),
+                Some(d) => Some(self.sym_delim(cur, d)?),
                 None => None,
             };
             out.push((terms, concrete, d));
@@ -475,14 +550,18 @@ impl Machine {
             let end = match d {
                 None => concrete.len(),
                 Some(d) => {
+                    // as the interpreter: no delimiter longer than the source
                     let mut end = concrete.len();
-                    for (i, b) in concrete.iter().enumerate() {
-                        if i < SCAN {
-                            self.sym_decide(&prog, text_id(pc, pos + i), eq(&terms[i], d));
-                        }
-                        if *b == d {
-                            end = i;
-                            break;
+                    if d.len() <= concrete.len() {
+                        for i in 0..=concrete.len() - d.len() {
+                            if i < SCAN {
+                                let at = delim_at(&terms, i, &d);
+                                self.sym_decide(&prog, text_id(pc, pos + i), at);
+                            }
+                            if matches_at(&concrete, i, &d) {
+                                end = i;
+                                break;
+                            }
                         }
                     }
                     end

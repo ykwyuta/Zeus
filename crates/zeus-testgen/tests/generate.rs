@@ -340,15 +340,15 @@ fn covers_sql_statements() {
     );
 }
 
-/// INSPECT (TALLYING, REPLACING), a JUSTIFIED RIGHT move, a subscript
-/// that follows the inputs, an LE service's feedback (CEEDAYS), a FILE
-/// STATUS that is not numeric (VSAM) and a DL/I call (CBLTDLI) read
-/// until GB: every branch direction.
+/// INSPECT (TALLYING, REPLACING, BEFORE INITIAL), a JUSTIFIED RIGHT
+/// move, subscripts that follow the inputs (one and two dimensions), an
+/// LE service's feedback (CEEDAYS), a FILE STATUS that is not numeric
+/// (VSAM) and a DL/I call (CBLTDLI) read until GB: every branch direction.
 #[test]
 fn covers_text_le_vsam_and_dli_calls() {
     let (text, all) = generate_and_replay("TEXTPGM");
     assert!(
-        text.contains("C1: 20 of 20 branch directions (100.0%)"),
+        text.contains("C1: 24 of 24 branch directions (100.0%)"),
         "{text}"
     );
     for out in [
@@ -362,6 +362,8 @@ fn covers_text_le_vsam_and_dli_calls() {
         "\"VSAM ERROR\"",
         "\"CREDIT",
         "\"SEGMENTS 00",
+        "\"ZEROS BEFORE DASH\"",
+        "\"GRID Z\"",
     ] {
         assert!(all.contains(out), "{out}: {all}");
     }
@@ -391,17 +393,19 @@ fn covers_dli_commands() {
     assert!(all.contains("\"DLIPGM.15.1.INTO.SUM-LIMIT\""), "{all}");
 }
 
-/// UNSTRING DELIMITED BY ',' into three fields, NUMVAL of the third and
-/// STRING: the solver adds and moves the delimiters (AUTH,X12345,...),
-/// every branch direction.
+/// UNSTRING DELIMITED BY ',' into three fields, NUMVAL of the third,
+/// STRING, and UNSTRING DELIMITED BY '::': the solver adds and moves the
+/// delimiters (AUTH,X12345,..., ...::END), every branch direction.
 #[test]
 fn covers_unstring_string_and_numval() {
     let (text, all) = generate_and_replay("SPLITPGM");
     assert!(
-        text.contains("C1: 8 of 8 branch directions (100.0%)"),
+        text.contains("C1: 10 of 10 branch directions (100.0%)"),
         "{text}"
     );
     assert!(all.contains("\"LK-MSG\": \"AUTH,X12345"), "{all}");
+    // a delimiter of two characters
+    assert!(all.contains("\"DOUBLE COLON\""), "{all}");
     assert!(all.contains("\"KNOWN CODE\""), "{all}");
     assert!(all.contains("\"LARGE "), "{all}");
     assert!(all.contains("\"SMALL "), "{all}");

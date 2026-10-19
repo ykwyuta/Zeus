@@ -47,6 +47,11 @@
            05  SEG-KIND          PIC X.
            05  SEG-AMOUNT        PIC S9(5) COMP-3.
        01  WS-SEGS               PIC 9(3) VALUE 0.
+       01  WS-ZEROS              PIC 9(2) VALUE 0.
+       01  WS-GRID-V             PIC X(6) VALUE 'ABCXYZ'.
+       01  WS-GRID REDEFINES WS-GRID-V.
+           05  WS-ROW            OCCURS 2 TIMES.
+               10  WS-CELL       PIC X OCCURS 3 TIMES.
        LINKAGE SECTION.
        01  LK-OPTION             PIC X(2).
        01  LK-DATE               PIC X(8).
@@ -65,9 +70,18 @@
                ELSE
                    DISPLAY 'OPTION ' WS-ITEM(WS-OPT)
                END-IF
+               IF WS-CELL(2, WS-OPT) = 'Z'
+                   DISPLAY 'GRID Z'
+               END-IF
            END-IF
            IF WS-SPACES = 2
                DISPLAY 'NO OPTION'
+           END-IF
+      *    zeros before the first dash
+           INSPECT LK-DATE TALLYING WS-ZEROS FOR ALL '0'
+               BEFORE INITIAL '-'
+           IF WS-ZEROS > 2
+               DISPLAY 'ZEROS BEFORE DASH'
            END-IF
       *    an LE service's feedback
            MOVE LK-DATE TO WS-DATE-TXT

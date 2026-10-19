@@ -297,12 +297,14 @@ impl Machine {
         self.sym_src(cur, s)
     }
 
-    /// An element of a one-dimension table with a subscript that follows
-    /// the inputs: for each occurrence, its value when the subscript is
-    /// that occurrence (the subscript is assumed in range). `bytes`: an
+    /// An element of a table with a subscript that follows the inputs (one;
+    /// the others as they are): for each occurrence along it, its value
+    /// when the subscript is that occurrence (assumed in range). `bytes`: an
     /// unsigned DISPLAY integer element as its bytes.
     fn sym_indexed(&mut self, cur: usize, loc: &crate::zir::Loc, bytes: bool) -> Option<SymVal> {
-        let [sub] = &loc.subs[..] else { return None };
+        if loc.subs.is_empty() {
+            return None;
+        }
         // a reference modification that does not follow the inputs
         if let Some((start, len)) = &loc.refmod
             && (self
@@ -316,12 +318,24 @@ impl Machine {
         }
         let code = self.instances[cur].code.clone();
         let desc = &code.descs[loc.desc as usize];
-        let [dim] = &desc.dims[..] else { return None };
-        if dim.dynamic_stride.is_some() || desc.dynamic_offset.is_some() {
+        if desc.dims.len() != loc.subs.len() || desc.dynamic_offset.is_some() {
             return None;
         }
-        let (st, sc) = self.sym_ex(cur, sub)?;
-        if sc != 0 || st.konst().is_some() {
+        // one subscript that follows the inputs (the others as they are)
+        let mut found = None;
+        for (k, sub) in loc.subs.iter().enumerate() {
+            if let Some((t, sc)) = self.sym_ex(cur, sub)
+                && t.konst().is_none()
+            {
+                if found.is_some() || sc != 0 {
+                    return None;
+                }
+                found = Some((k, t));
+            }
+        }
+        let (which, st) = found?;
+        let dim = &desc.dims[which];
+        if dim.dynamic_stride.is_some() {
             return None;
         }
         let k = self.sym_value(&st)?;

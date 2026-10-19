@@ -8,6 +8,8 @@
        01  WS-AMOUNT             PIC 9(7)V99.
        01  WS-FIELDS             PIC 9(2) VALUE 0.
        01  WS-OUT                PIC X(30).
+       01  WS-HEAD               PIC X(10).
+       01  WS-TAIL               PIC X(10).
        LINKAGE SECTION.
        01  LK-MSG                PIC X(30).
        PROCEDURE DIVISION USING LK-MSG.
@@ -38,5 +40,12 @@
            END-STRING
            IF WS-OUT(1:1) = '-'
                DISPLAY 'NO CODE'
+           END-IF
+           MOVE SPACES TO WS-HEAD WS-TAIL
+           UNSTRING LK-MSG DELIMITED BY '::'
+               INTO WS-HEAD WS-TAIL
+           END-UNSTRING
+           IF WS-TAIL = 'END'
+               DISPLAY 'DOUBLE COLON'
            END-IF
            GOBACK.
