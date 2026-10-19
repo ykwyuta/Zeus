@@ -186,6 +186,10 @@ zlayout [-I DIR]... [--bms DIR]... [--out DIR] [--kinds K,...] [--values] [--no-
     (`SELECT.段落名`) の INTO のホスト変数。1 つの構造ならその構造、別々の項目なら標識変数とともに `…-ROW` の
     01 の下に 05 で並べ直す。
 - 01 の REDEFINES (作業域の 01 を再定義する 01) は同じデータの別のレコードとして扱う。
+- 選んだ形が元のレコードより短いとき (大きな項目が REDEFINES する短い元の項目を選んだとき)、レコードの残りを
+  最後の `FILLER PIC X(n)` にして、レイアウトの長さをレコードの長さにそろえる。
+- `Options::records` (ライブラリから): 名前で指定した 01 のうち、どの入出力にも当たらないものを種類 RECORD の
+  レイアウトにする。0012 の `ztestgen` がテストケースのデータ (端末の入力の作業域など) に使う。
 - 判別子は、段落の `MOVE 定数 TO 共通部の項目` (書く側) と、`EVALUATE 項目 WHEN 定数`・`EVALUATE TRUE WHEN 条件名`・
   `IF 項目 = 定数`・`IF 条件名` (読む側) から推定する。分岐の先と、その先で PERFORM される段落 (2 段まで) で使う
   項目から、どの形かを決める。複数の形に同じ値が現れるもの (どのレコードにも入れる定数) は判別子にしない。
@@ -194,7 +198,7 @@ zlayout [-I DIR]... [--bms DIR]... [--out DIR] [--kinds K,...] [--values] [--no-
 
 ### 確かめたこと
 
-CardDemo・GenApp・Bank of Z の COBOL プログラム 117 本 (`--bms .cache`): 1354 レイアウトを出力し、全件の
+CardDemo・GenApp・Bank of Z の COBOL プログラム 117 本 (`--bms .cache`): 1356 レイアウトを出力し、全件の
 再コンパイルの確認が一致した。読めなかったのは IBTRAN (REPOSITORY 段落: コンパイラの未対応) だけ。
 
 - CBEXPORT (書く側) と CBIMPORT (読む側) の EXPFILE は、どちらも `EXPORT-REC-TYPE = 'C'`・`'A'`・`'T'`・`'X'`・`'D'`

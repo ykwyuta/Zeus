@@ -4,7 +4,7 @@
 //! ```text
 //! ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
 //!          [--limit INSTRUCTIONS] [--no-smt] [--threads N] [--stub PROGRAM]...
-//!          [--seeds DIR]... [--out DIR] SOURCE.cbl
+//!          [--seeds DIR]... [--bms DIR]... [--no-layouts] [--out DIR] SOURCE.cbl
 //! ```
 //!
 //! The inputs are the program's USING parameters and the lines it
@@ -12,7 +12,10 @@
 //! with `report.txt`: the branch directions covered and why the others
 //! are not. `ztest` runs the cases again. `--seeds` gives initial inputs:
 //! case files (earlier cases to start from, or inputs written by hand
-//! with only `fields`, by item name).
+//! with only `fields`, by item name). The layouts of the data in the
+//! cases go to `DIR/layouts` (zeus-layout copybooks, `layouts.csv`, and
+//! `data.csv`: which part of the cases each describes; `--bms DIR`: BMS
+//! mapsets for the symbolic maps; `--no-layouts`: none).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -25,7 +28,7 @@ use zeus_testgen::engine::{Gap, Options, generate};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--out DIR] SOURCE.cbl"
+        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--bms DIR]... [--no-layouts] [--out DIR] SOURCE.cbl"
     );
     ExitCode::from(2)
 }
@@ -36,6 +39,8 @@ fn main() -> ExitCode {
     let mut out = PathBuf::from("tests");
     let mut program = None;
     let mut source = None;
+    let mut bms = Vec::new();
+    let mut layouts = true;
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut val = || it.next();
@@ -54,6 +59,11 @@ fn main() -> ExitCode {
                 None => return usage(),
             },
             "--no-smt" => opts.smt = false,
+            "--no-layouts" => layouts = false,
+            "--bms" => match val() {
+                Some(d) => bms.push(PathBuf::from(d)),
+                None => return usage(),
+            },
             "--stub" => match val() {
                 Some(p) => {
                     opts.stub.insert(p.to_ascii_uppercase());
@@ -92,7 +102,7 @@ fn main() -> ExitCode {
     }
     let Some(source) = source else { return usage() };
     let fo = FrontOptions {
-        copy_dirs: copy,
+        copy_dirs: copy.clone(),
         ..Default::default()
     };
     let module = match zeus_cobol::compile_file(&source, &fo) {
@@ -175,7 +185,80 @@ fn main() -> ExitCode {
             ));
         }
     }
+    if layouts {
+        text.push_str(&write_layouts(
+            &source,
+            &copy,
+            &bms,
+            &module,
+            &program,
+            &report.files,
+            &out,
+        ));
+    }
     let _ = std::fs::write(out.join("report.txt"), &text);
     print!("{text}");
     ExitCode::SUCCESS
+}
+
+/// Writes the layouts of the cases' data to `out/layouts`: the report's
+/// lines about them.
+fn write_layouts(
+    source: &std::path::Path,
+    copy: &[PathBuf],
+    bms: &[PathBuf],
+    module: &zeus_cobol::zir::Module,
+    program: &str,
+    files: &[zeus_testgen::engine::FileSpec],
+    out: &std::path::Path,
+) -> String {
+    use zeus_testgen::layouts;
+    let records = layouts::records(module, program, files);
+    let all = match layouts::analyze(source, copy, bms, records) {
+        Ok(l) => l,
+        Err(e) => {
+            return format!(
+                "
+layouts: not written ({e})
+"
+            );
+        }
+    };
+    let rows = layouts::data_map(module, program, files, &all);
+    let dir = out.join("layouts");
+    if let Err(e) = layouts::write(&all, &rows, &dir) {
+        return format!(
+            "
+layouts: {}: {e}
+",
+            dir.display()
+        );
+    }
+    let failed = all
+        .iter()
+        .filter(|l| matches!(l.check, Some(Err(_))))
+        .count();
+    let mut text = format!(
+        "
+layouts: {} copybooks in {} (layouts.csv; data.csv: the data of the cases){}
+",
+        all.len(),
+        dir.display(),
+        if failed > 0 {
+            format!(", {failed} differ from the program (see layouts.csv)")
+        } else {
+            String::new()
+        }
+    );
+    for r in &rows {
+        text.push_str(&format!(
+            "  {} ({}, {}): {}
+",
+            r.data,
+            r.direction,
+            r.record,
+            r.layouts.join(" ")
+        ));
+    }
+    text
 }

@@ -37,6 +37,10 @@ pub struct Options {
     pub check: bool,
     /// Directories of BMS mapsets: their symbolic maps are COPY members.
     pub bms_dirs: Vec<PathBuf>,
+    /// Level-01 records written as layouts of kind RECORD (resource: the
+    /// record's name) when no interface has them (the data of test cases
+    /// a program receives otherwise, such as a terminal's input).
+    pub records: Vec<String>,
 }
 
 impl Default for Options {
@@ -50,6 +54,7 @@ impl Default for Options {
             max_layouts: 256,
             check: true,
             bms_dirs: Vec::new(),
+            records: Vec::new(),
         }
     }
 }
@@ -132,6 +137,38 @@ impl Ctx<'_> {
             .name
             .clone()
             .unwrap_or_else(|| "FILLER".into())
+    }
+
+    /// The end (offset after it) of item `id` and its subordinate items
+    /// as chosen.
+    fn end(&self, id: usize, choices: &Choices, top: bool) -> u32 {
+        let it = &self.dm.items[id];
+        let n = if top {
+            1
+        } else {
+            it.occurs.as_ref().map_or(1, |o| o.max)
+        };
+        if it.children.is_empty() {
+            return it.offset + it.len * n;
+        }
+        // a group: its items as chosen (in its first occurrence), then the
+        // other occurrences
+        let mut e = 0;
+        for g in self.sp.groups(id) {
+            if g.len() > 1
+                && let Some(&c) = choices.get(&g[0])
+            {
+                e = e.max(self.end(c, choices, false));
+                continue;
+            }
+            for &c in &g {
+                e = e.max(self.end(c, choices, false));
+            }
+        }
+        if e == 0 {
+            e = it.offset + it.len;
+        }
+        e + it.len * (n - 1)
     }
 
     /// Writes item `id` and its subordinate items as chosen.
@@ -291,7 +328,29 @@ fn program(
             })
             .unwrap_or_default()
     };
-    for ifc in iface::find(p, &dm) {
+    let mut ifaces = iface::find(p, &dm);
+    for name in &opts.records {
+        let Some(id) = dm
+            .items
+            .iter()
+            .position(|it| it.level == 1 && it.name.as_deref() == Some(name.as_str()))
+        else {
+            continue;
+        };
+        if ifaces.iter().any(|f| f.roots.contains(&id)) {
+            continue;
+        }
+        ifaces.push(iface::Iface {
+            kind: "RECORD",
+            resource: name.clone(),
+            detail: format!("RECORD  {name}"),
+            roots: vec![id],
+            record: None,
+            split: true,
+            row: None,
+        });
+    }
+    for ifc in ifaces {
         if !opts.kinds.is_empty() && !opts.kinds.iter().any(|k| k.eq_ignore_ascii_case(ifc.kind)) {
             continue;
         }
@@ -510,6 +569,26 @@ fn program(
                     &mut expect,
                     &mut odo,
                 );
+                // a shorter alternative chosen (REDEFINES by a larger
+                // item): the rest of the record
+                let used = ctx.end(*root, choices, true);
+                if let Some(&first) = it.children.first()
+                    && used < it.offset + it.len
+                {
+                    let rest = it.offset + it.len - used;
+                    t.entry(
+                        12,
+                        dm.items[first].level,
+                        "FILLER",
+                        &[format!("PIC X({rest})")],
+                        opts.offsets.then_some(used - it.offset + 1),
+                    );
+                    expect.push(Expect {
+                        name: "FILLER".into(),
+                        pos: used - it.offset + 1,
+                        len: rest,
+                    });
+                }
                 let text = t.into_string();
                 let extra: Vec<String> = odo
                     .into_iter()

@@ -78,6 +78,12 @@ const CICS_OUT: &[&str] = &[
     "FLENGTH",
 ];
 
+/// Whether a CICS command's option receives data (its area is an input
+/// of the run).
+pub fn receives(command: &str, option: &str) -> bool {
+    (command == "ASSIGN" || CICS_OUT.contains(&option)) && !sends(command, option)
+}
+
 /// Commands for which an option in `CICS_OUT` is only sent.
 fn sends(command: &str, option: &str) -> bool {
     match option {
@@ -253,7 +259,7 @@ fn count_markers(s: &str) -> usize {
 }
 
 /// Which host variables of a SQL statement it sets (as the Db2 host does).
-fn sql_outputs(sql: &str, n: usize) -> Vec<bool> {
+pub fn sql_outputs(sql: &str, n: usize) -> Vec<bool> {
     let words: Vec<String> = sql
         .split_whitespace()
         .map(|w| w.to_ascii_uppercase())

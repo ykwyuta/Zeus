@@ -11,6 +11,7 @@ repository.workspace = true
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-decimal = { path = "../zeus-decimal" }
 zeus-ds = { path = "../zeus-ds" }
+zeus-layout = { path = "../zeus-layout" }
 serde = { workspace = true }
 serde_json = { workspace = true }
 libloading = "0.8"

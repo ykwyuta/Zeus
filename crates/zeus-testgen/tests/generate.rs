@@ -445,6 +445,62 @@ fn covers_abend_exits_and_received_lengths() {
     assert!(all.contains(".ABEND\""), "{all}");
 }
 
+/// The layouts of the cases' data (zeus-layout copybooks, checked), and
+/// which part of the cases each describes; the records written shown by
+/// item.
+#[test]
+fn writes_the_layouts_of_the_data() {
+    let tmp = tempfile::tempdir().unwrap();
+    for (name, rows) in [
+        (
+            "FILEPGM",
+            vec![
+                "files[TRAN-FILE],input,TRAN-REC,FILEPGM.FILE.TRANIN.cpy",
+                "expect.files[RPT-FILE],output,RPT-REC,FILEPGM.FILE.RPTOUT.RPT-REC.cpy FILEPGM.FILE.RPTOUT.WS-LINE.cpy",
+            ],
+        ),
+        (
+            "CICSPGM",
+            vec![
+                "params[1],input/output,DFHCOMMAREA,CICSPGM.RECORD.DFHCOMMAREA.cpy",
+                "exec[CICSPGM.25.*.INTO],input,WS-INPUT,CICSPGM.RECORD.WS-INPUT.cpy",
+                "exec[CICSPGM.43.*.INTO],input,WS-ACCT,CICSPGM.FILE.ACCTDAT.cpy",
+            ],
+        ),
+    ] {
+        let src = Path::new(env!("CARGO_MANIFEST_DIR")).join(format!("tests/programs/{name}.cbl"));
+        let out = tmp.path().join(name);
+        let o = Command::new(env!("CARGO_BIN_EXE_ztestgen"))
+            .arg("--out")
+            .arg(&out)
+            .arg(&src)
+            .output()
+            .unwrap();
+        assert!(o.status.success());
+        let dir = out.join("layouts");
+        let data = std::fs::read_to_string(dir.join("data.csv")).unwrap();
+        for r in rows {
+            assert!(data.contains(r), "{data}");
+            let file = r.rsplit(',').next().unwrap().split(' ').next().unwrap();
+            let cpy = std::fs::read_to_string(dir.join(file)).unwrap();
+            assert!(cpy.contains(&format!("PROGRAM   : {name}")), "{cpy}");
+        }
+        let index = std::fs::read_to_string(dir.join("layouts.csv")).unwrap();
+        assert!(!index.contains("ERROR"), "{index}");
+        assert!(index.lines().skip(1).all(|l| l.ends_with(",OK")), "{index}");
+    }
+    // the records written, by item
+    let cases: String = std::fs::read_dir(tmp.path().join("FILEPGM"))
+        .unwrap()
+        .flatten()
+        .filter(|e| e.path().extension().is_some_and(|x| x == "json"))
+        .map(|e| std::fs::read_to_string(e.path()).unwrap())
+        .collect();
+    assert!(cases.contains("\"RPT-REC\": "), "{cases}");
+    let report = std::fs::read_to_string(tmp.path().join("CICSPGM/report.txt")).unwrap();
+    assert!(report.contains("layouts: "), "{report}");
+}
+
 /// A seed written by hand (items by name only) is the first run; the
 /// cases of a generation given back as seeds cover at once what they
 /// covered.

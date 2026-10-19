@@ -225,13 +225,29 @@ EXEC 文は `stubhost.rs`) と zeus-cobol の記号の層 (`concolic.rs`、
 
 ```text
 ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time S] [--limit N]
-         [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--out DIR] SOURCE.cbl
+         [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--bms DIR]...
+         [--no-layouts] [--out DIR] SOURCE.cbl
 ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
 ```
 
 `ztestgen` は `--out` (既定 `tests`) に `case-001.json`… と `report.txt` (網羅率と、通せなかった分岐ごとの理由)
 を書く。`ztest` はケースを通常のインタプリタで実行して期待値と比べ、違いがあれば終了コード 1。`--coverage` で
 `zcov` の記録を取れるので、生成器の自己申告ではなく実測の C1 を確かめられる。
+
+ケースを人が確かめられるように、`ztestgen` は入力と出力のデータのレイアウト定義を `--out` の `layouts/` に書く
+(`layouts.rs`。`--no-layouts` で書かない)。
+
+- 0013 の zeus-layout (`zlayout` と同じ処理、同じ COPY の検索先と `--bms`) で、プログラムが受け渡すデータの
+  コピーブックと `layouts.csv` を作る。
+- ケースのデータで zeus-layout の種類に当てはまらないグループ項目 (RECEIVE INTO の作業域、1 バイトの COMMAREA など)
+  は、種類 RECORD のレイアウトにする (`zeus_layout::Options::records`)。
+- `data.csv` に、ケースファイルのどの場所 (`params[k]`、`files[名前]`、`expect.files[名前]`、
+  `exec[PGM.行.*.オプション]`、`expect.exec[...]`、`stubs[PGM.k]`、`accept`) がどのレコードと、どのレイアウトかを書く
+  (方向は input / output / input/output)。
+- ケースの `expect.files` には、書いたレコードの項目ごとの値 (`fields`、入力のレコードと同じ表示) も入れる。
+  `ztest` は `records` だけを比べる。
+
+使い方とケースの読み方は [利用者ガイド](../userguide/ztestgen.md) に書いた。
 
 ### 記号の層
 

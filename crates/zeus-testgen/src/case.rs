@@ -10,7 +10,8 @@
 //!   "stubs": [ { "program": "SUBPGM", "call": 1, "argument": 1, "hex": "..." } ],
 //!   "exec": { "PGM.120.1.RESP": { "num": 13 }, "PGM.120.1.INTO.ACCT-ID": { "hex": "F0F1" } },
 //!   "expect": { "return_code": 0, "display": [ "..." ], "params": [ "C1C2..." ],
-//!               "error": null, "files": [ { "name": "OUT-FILE", "records": [ "..." ] } ],
+//!               "error": null,
+//!               "files": [ { "name": "OUT-FILE", "records": [ "..." ], "fields": [ { ... } ] } ],
 //!               "exec": [ "CICS READ FILE('ACCTDAT') RIDFLD=F0F1" ] },
 //!   "covers": [ { "program": "PGM", "line": 42, "pc": 17, "jumped": true } ] }
 //! ```
@@ -18,7 +19,8 @@
 //! The parameters are their storage in hexadecimal (EBCDIC); `fields`
 //! shows the input items' values for reading. `files` are the records of
 //! the files the program reads; `expect.files` those of the files it
-//! writes. `faults` are I/O statements made to fail (the n-th OPEN, READ,
+//! writes (`fields`: their items' values for reading, not compared).
+//! `faults` are I/O statements made to fail (the n-th OPEN, READ,
 //! ... of a file: status 35 or 30, or with `status` F910, '9' and a binary
 //! byte as VSAM logical errors give it); `stubs` what the stubs of the
 //! programs called that are not there set in their arguments (leading
@@ -95,11 +97,14 @@ pub struct InFile {
     pub records: Vec<Param>,
 }
 
-/// The records written to an output file (hexadecimal).
+/// The records written to an output file (hexadecimal), and the values
+/// of their items for reading (not compared: `records` are).
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct OutFile {
     pub name: String,
     pub records: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fields: Vec<serde_json::Map<String, serde_json::Value>>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -165,8 +170,33 @@ fn out_files(files: &[(String, Vec<Vec<u8>>)]) -> Vec<OutFile> {
         .map(|(n, r)| OutFile {
             name: n.clone(),
             records: r.iter().map(|b| hex(b)).collect(),
+            fields: Vec::new(),
         })
         .collect()
+}
+
+/// The values of a record's items by name.
+fn record_fields(
+    items: &[zeus_cobol::concolic::RecordField],
+    r: &[u8],
+) -> serde_json::Map<String, serde_json::Value> {
+    let mut m = serde_json::Map::new();
+    for rf in items {
+        let fd = Field {
+            param: 0,
+            name: rf.name.clone(),
+            offset: rf.offset,
+            len: rf.len,
+            num: rf.num,
+        };
+        if rf.offset + rf.len <= r.len() {
+            m.insert(
+                rf.name.clone(),
+                serde_json::Value::String(field_text(&fd, r)),
+            );
+        }
+    }
+    m
 }
 
 fn lines(s: &str) -> Vec<String> {
@@ -263,7 +293,19 @@ pub fn case_file(
             display: lines(&c.out.display),
             params: c.out.params.iter().map(|b| hex(b)).collect(),
             error: c.out.error.clone(),
-            files: out_files(&c.out.files),
+            files: out_files(&c.out.files)
+                .into_iter()
+                .zip(&c.out.files)
+                .map(|(mut o, (_, recs))| {
+                    if let Some(f) = specs.iter().find(|f| f.name == o.name) {
+                        o.fields = recs
+                            .iter()
+                            .map(|r| record_fields(&f.out_fields, r))
+                            .collect();
+                    }
+                    o
+                })
+                .collect(),
             stubbed: c.out.stubbed.iter().cloned().collect(),
             exec: c.out.exec.clone(),
         },

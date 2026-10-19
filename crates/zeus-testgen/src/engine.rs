@@ -267,6 +267,9 @@ pub struct FileSpec {
     pub input: bool,
     pub output: bool,
     pub fields: Vec<RecordField>,
+    /// The record's items of a file the program writes (to show the
+    /// records written).
+    pub out_fields: Vec<RecordField>,
     /// Indexed files: the primary key and the alternate keys (offset,
     /// length, duplicates allowed).
     pub keys: Vec<(usize, usize, bool)>,
@@ -537,12 +540,15 @@ pub fn file_specs(module: &Module, search: &[PathBuf]) -> Vec<FileSpec> {
                     }
                 }
             }
-            if input && let Some(rec) = p.descs.get(def.record as usize) {
+            let mut record_items = Vec::new();
+            if (input || output)
+                && let Some(rec) = p.descs.get(def.record as usize)
+            {
                 let descs: Vec<_> = p.descs.iter().filter(|d| d.base == rec.base).collect();
                 for (name, offset, len, num) in
                     items(&descs, rec.offset as usize, def.max_len as usize)
                 {
-                    fields.push(RecordField {
+                    record_items.push(RecordField {
                         name,
                         offset,
                         len,
@@ -550,6 +556,10 @@ pub fn file_specs(module: &Module, search: &[PathBuf]) -> Vec<FileSpec> {
                     });
                 }
             }
+            if input {
+                fields = record_items.clone();
+            }
+            let out_fields = if output { record_items } else { Vec::new() };
             out.push(FileSpec {
                 name: def.name.clone(),
                 assign: def.assign.clone(),
@@ -558,6 +568,7 @@ pub fn file_specs(module: &Module, search: &[PathBuf]) -> Vec<FileSpec> {
                 input,
                 output,
                 fields,
+                out_fields,
                 keys,
             });
         }
