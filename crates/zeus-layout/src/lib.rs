@@ -41,6 +41,8 @@ pub struct Options {
     /// record's name) when no interface has them (the data of test cases
     /// a program receives otherwise, such as a terminal's input).
     pub records: Vec<String>,
+    /// The representation of the source file (not of its COPY members).
+    pub source_encoding: zeus_cobol::front::SourceEncoding,
 }
 
 impl Default for Options {
@@ -55,6 +57,7 @@ impl Default for Options {
             check: true,
             bms_dirs: Vec::new(),
             records: Vec::new(),
+            source_encoding: Default::default(),
         }
     }
 }
@@ -288,6 +291,7 @@ pub fn symbolic_maps(opts: &mut Options) -> std::io::Result<Option<tempfile::Tem
 pub fn analyze_file(path: &Path, opts: &Options) -> Result<Vec<Layout>, String> {
     let fo = FrontOptions {
         copy_dirs: opts.copy_dirs.clone(),
+        source_encoding: opts.source_encoding,
         ..Default::default()
     };
     let mut files = FileTable::default();

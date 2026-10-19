@@ -30,7 +30,8 @@ cargo build --release -p zeus-testgen
 ```text
 ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
          [--limit INSTRUCTIONS] [--no-smt] [--threads N] [--stub PROGRAM]...
-         [--seeds DIR]... [--bms DIR]... [--no-layouts] [--out DIR] SOURCE.cbl
+         [--seeds DIR]... [--bms DIR]... [--no-layouts]
+         [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl
 ```
 
 | オプション | 意味 | 既定 |
@@ -47,6 +48,8 @@ ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
 | `--seeds DIR` | 初期入力にするケースファイルのディレクトリ (後述) | なし |
 | `--bms DIR` | BMS マップセットのディレクトリ (レイアウトのシンボリック・マップ) | なし |
 | `--no-layouts` | レイアウト定義を書き出さない | 書き出す |
+| `--source-encoding E` | ソースの表現 (`utf8`、`ebcdic`、`ebcdic80`。`zcobc` と同じ) | `utf8` |
+| `--ccsid N` | EBCDIC のコードページ (`zcobc` と同じ) | 037 |
 | `--out DIR` | 出力先 | `tests` |
 
 例:
@@ -67,6 +70,9 @@ ztestgen -I app/cpy -I app/cpy-bms --time 60 --out out/COSGN00C app/cbl/COSGN00C
 | 入力 | ケースファイルでの場所 |
 |---|---|
 | PROCEDURE DIVISION USING の引数 (CICS は EIB と COMMAREA) | `params` |
+| 引数の POINTER の項目が指す領域 (`SET ADDRESS OF R TO P` で LINKAGE のレコードを置く領域。出口プログラムなど) | `params` の USING の数より後ろ |
+| 呼び出し元が開いている EXTERNAL のファイル (プログラムが OPEN せずに READ するもの) | `files` |
+| EXEC CICS が SET で返す領域 (WEB RECEIVE、GET CONTAINER などの記憶域) | `exec` (`オプション名.SET`) |
 | ACCEPT で読む行 (SYSIN) | `accept` |
 | 入力ファイルのレコード (順次・索引) | `files` |
 | ファイル入出力の失敗 (OPEN・READ などの n 回目を失敗させる) | `faults` |
@@ -112,6 +118,7 @@ layouts: 3 copybooks in out/FILEPGM/layouts (layouts.csv; data.csv: the data of 
 | `no inputs found` | 条件は入力に依存するが、時間内に解けなかった | `--time` を延ばす、シードを与える |
 | `infeasible (no inputs on the paths tried)` | 試した経路では満たせなかった (証明ではない) | 本当に起こり得ないかをソースで確認 |
 | `impossible (static analysis: ...)` | 静的な解析で起こり得ないと証明した (分母から除く) | 不要な分岐の可能性 |
+| `taken only by runs stopped at the instruction limit` | 命令数の上限で止めた実行だけが通った (再現しないのでケースにしない) | 長いループなら `--limit` を増やす。終わらないループの可能性もある |
 
 `line` はソースの行、`instruction` は内部の命令番号です。`jump` / `next` は条件分岐の命令が飛んだ側か、
 次へ進んだ側かで、IF の真偽とは一致しないことがあります (行のソースを見て判断してください)。
@@ -143,7 +150,7 @@ FILEPGM のケースの例 (`covers` は一部省略):
 
 | キー | 内容 |
 |---|---|
-| `params[k]` | k 番目 (0 から) の USING の引数。`hex` は記憶域の 16 進 (EBCDIC)、`fields` は基本項目ごとの値 (読むための表示) |
+| `params[k]` | k 番目 (0 から) の USING の引数。`hex` は記憶域の 16 進 (EBCDIC)、`fields` は基本項目ごとの値 (読むための表示)。USING の数より後ろは、引数の POINTER が指す領域 (その POINTER には実行時にこの領域のアドレスが入る)。1 つの `PIC X(n)` の引数をそのまま集団項目に MOVE するプログラムでは、`fields` はその集団項目の基本項目 |
 | `accept` | ACCEPT で読む行 |
 | `files[].records[]` | 入力ファイルのレコード。`hex` と `fields` は引数と同じ |
 | `faults` | 失敗させた入出力 (`file`、`statement`、`occurrence` = 何回目か、`status` = VSAM の状態 `F910` など。なければ 35 / 30) |
@@ -279,8 +286,10 @@ COMP は 2 進です。
 ## 8. 再実行 (ztest)
 
 ```text
-ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
+ztest [-I DIR]... [-L DIR]... [--coverage DIR] [--source-encoding E] [--ccsid N] SOURCE.cbl CASES-DIR
 ```
+
+`--source-encoding` と `--ccsid` は `ztestgen` に与えたものと同じにします。
 
 ```bash
 ztest -I app/cpy app/cbl/CBACT04C.cbl out/CBACT04C

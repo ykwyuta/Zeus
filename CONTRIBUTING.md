@@ -85,7 +85,9 @@ file when a change alters it; CI checks that it is up to date.
 `docs/proposal/0022-additional-cobol-corpora.md` (fetched by
 `tools/fetch-corpora.sh` into `.cache/corpora`) and rewrites
 `docs/inventory/corpora.md`, listing the programs left out for reasons
-outside Zeus.
+outside Zeus. `tools/corpora-testgen.sh` generates C1 test cases for
+them with `ztestgen`, replays them with `ztest` and prints the coverage of
+each program (seeds in `tools/corpora-seeds`).
 
 ## Hercules decimal-instruction oracle
 

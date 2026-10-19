@@ -575,6 +575,81 @@ Bank of Z (`tools/fetch-bankofz.sh` で取得する `.cache/bankofz/src/base` �
 到達不能と報告した SAMPLE の 1 方向は、`LK-AMOUNT > 1000.50` を満たしたあとの `ON SIZE ERROR` の
 「起きない」向きで、区間の証明で示される。
 
+#### 追加コーパス ([0022](0022-additional-cobol-corpora.md)) での検証 (2026-10-20)
+
+`tools/corpora-testgen.sh --time 60` (1 本 60 秒、4 本並列) で 0022 の 9 コーパスの 91 本を生成し、`ztest` で全ケースの
+再現を確かめた。呼び出し先は同じコーパスの .zo を `-L` で与えた。生成できないのは XML PARSE を使う EPSCSMRD (コンパイル
+できない) と、終わらないループそのものが教材の CBL0015 だけ。数字は分岐の向き (網羅 / 全体)。
+
+| コーパス | 本数 | 検証前 | 拡張後 |
+|---|---|---|---|
+| Walmart zFAM | 14 | 491/1116 (44%) | 815/1116 (73%) |
+| Walmart zECS | 5 | 45/348 (13%) | 293/348 (84%) |
+| Walmart zUID | 2 | 生成できない (EBCDIC のソース) | 24/24 (100%) |
+| DGFiP 固定資産税 | 5 | 78/152 (51%) | 123/152 (81%) |
+| ACIF 利用者出口 | 16 | 6/340 (2%) | 222/340 (65%) |
+| MortgageApplication | 5 | 89/92 (97%) | 89/92 (97%) |
+| zopeneditor-sample | 3 | 150/164 (91%) | 150/164 (91%) |
+| COBOL 教材 | 28 | 169/180 (94%) | 166/176 (94%) |
+| cobol-check | 13 | 34/54 (63%) | 31/54 (57%) |
+| 計 | 91 | 1062/2446 (43%) | 1913/2466 (78%) |
+
+拡張後の数字は下記のカウンターまでを含む。探索には乱数があり、実行ごとに数向き上下する (cobol-check の DB2PROG は
+14 向きのうち 10〜13)。
+
+検証で見つけて直したもの。
+
+- **ソースの表現**: `ztestgen`・`ztest`・`zlayout` に `--source-encoding`・`--ccsid` (`zcobc` と同じ)。zUID は EBCDIC の
+  ソースで、生成できなかった。
+- **POINTER の引数が指す領域**: 出口プログラム (ACIF) は引数に POINTER の並びを受け取り、`SET ADDRESS OF R TO P` で
+  LINKAGE のレコードを置く。POINTER の項目には空白 (アドレス X'40404040') が入り、最初の SET ADDRESS OF で止まって
+  いた。プログラムがレコードを置く POINTER ごとに、置かれるレコードが入る長さの領域を引数の後ろに足し、そのアドレスを
+  POINTER に入れる (領域の中の POINTER も同じに 16 個まで)。領域の項目は引数と同じく入力になる。ACIF は 2% から 53%。
+- **物理ブロックのファイル**: `BLOCK CONTAINS`・`RECORDING MODE U/S` のファイルは、実行時と同じ BDW・RDW の形で入力を
+  書き、出力を読む (`zeus_cobol::vm::dataset_layout` を実行時と共用)。RDW だけで書いていたので READ が「data set
+  damaged」で止まっていた (APRPTXOP 9% から 53%、APKINFIL 58% から 100%)。
+- **実行時の誤り (zcobc)**: `RECORD VARYING DEPENDING ON` に FROM・TO がないとき、最小のレコード長を OCCURS DEPENDING ON の
+  最小の個数で数えていなかった (最大の長さを最小にしたので、短いレコードの WRITE が状態 44 で止まった)。
+- **1 つの PIC X の引数をレコードに MOVE する**: DGFiP の計算モジュールは 600 バイトの `PIC X` の引数を
+  `MOVE COMBATM TO COMBAT` で構造のある作業域に写してから、数字の項目を `NUMERIC` で検査する。引数が下位の項目を持たず、
+  集団項目にそのまま MOVE されるときは、その集団項目の基本項目を引数の項目にする (数字の項目は 0 から始まる)。
+  EFITA3B8 が 29% から 86%、EFITA3N8 が 19% から 64%。
+- **呼び出し元が開いた EXTERNAL のファイル**: OPEN しないで READ する EXTERNAL のファイルを入力にし、最初の READ・START で
+  INPUT に開く (`Machine::set_preopened`)。
+- **CICS の出力の判定**: コマンドの 2 語目 (WEB EXTRACT など) ごとの出力のオプションの表を足した (WEB EXTRACT・RECEIVE・
+  READ・READNEXT・CONVERSE・OPEN・PARSE、DOCUMENT CREATE・RETRIEVE)。INQUIRE は資源の名前以外が出力 (NEXT の閲覧では
+  名前も)。WEB EXTRACT の PATHLENGTH などが入力にならず、要求の経路がたどれなかった。
+- **SET で返す記憶域と GETMAIN**: WEB RECEIVE・GET CONTAINER などの `SET(ptr)` には、求めた長さ (`AREA_BYTES` まで) の
+  領域を確保してそのバイトを出力 (`オプション.SET`) にし、アドレスを SET に入れる。GETMAIN は FLENGTH・INITIMG どおりに
+  確保する。
+- **ループを終わらせる応答**: ファイルの READ・DELETE、WEB READNEXT、INQUIRE ... NEXT も、READNEXT と同じく 2 回目から
+  NOTFND・ENDFILE・END を既定にした (zFAM はレコードのセグメントを NOTFND まで DELETE する。既定が NORMAL だと
+  200 万命令まで回り、1 回の実行に 40 秒かかって探索が進まなかった)。ZFAM003 が 0 ケースから 82%、PLT の 2 本が 100%。
+- **報告の網羅率**: 命令数の上限で止めた実行はケースにしない (再現しない) が、その向きを網羅に数えていた。網羅は残した
+  ケースの向きだけで数え、ほかは「taken only by runs stopped at the instruction limit」と報告する。まだ終わった実行が
+  ない間は上限を 4 倍ずつ上げる (`--limit` まで)。上限が上限のまま止まる長いループの向きは数えないので、教材と
+  cobol-check の数字は少し下がった。
+- **シード**: zFAM・zECS は URI の `/` の数 (ループで数える数) を検査してから処理に入るので、正しい要求を
+  `tools/corpora-seeds` に置いた (ZFAM002 が 24% から 47%、ECS001 が 17% から 100%)。ZECS001 (34% から 75%) は
+  下記のカウンターでシードなしに 79% になり、シードがあるとかえって下がった (62%) のでシードを外した。
+- **ループで数える数 (カウンター)**: `IF 条件 ADD k TO N END-IF` (THEN が数値項目への加算だけで ELSE がない IF。
+  k は定数でも項目でもよい) の条件が入力に従うとき、IF を抜けた所で N を「前の N + (条件が成り立てば k、でなければ 0)」
+  の項 (`Term::If` の和) に結び付ける。具体値は変わらない (結び付けるのは項の値が N の値と一致するとき)。ループで
+  `/` を数えた `SLASH-COUNTER` の後の `IF SLASH-COUNTER NOT EQUAL SEVEN` が入力に従う条件になる。
+  - その IF の分岐は経路に `counted` と記録し、後の分岐を解くときの前提にしない (向きを変えてもカウンターの項が
+    変わるだけ)。カウンターの項を含む条件を解くときは、経路の前のほうの、カウンターの項を含む条件 (ループの
+    `UNTIL ... OR SLASH-COUNTER = SEVEN`) も前提から外す。経路は変わってよい (変わった経路を次の実行がたどる)。
+  - 桁あふれしない (項の最大値が桁数に収まる) カウンターは桁の切り捨て (剰余と絶対値) で包まない。包むと反復ごとに
+    入れ子が深くなり、SMT の式が指数的に大きくなる (87 GB の確保で止まった)。カウンターの項は節の数
+    `MAX_COUNT_TERM` (20000) まで (通常の項は 2000)。
+  - シードなしで ZECS001 が 34% から 79% (シードありの 75% を上回る)、ZFAM002 が 24% から 29%。ZFAM002 の残りは
+    クエリー文字列の構文と、ループの VARYING の添字 (反復の回数) から計算するキーの長さで、カウンターの形ではない。
+    試験は `tests/programs/CNTPGM.cbl`。
+
+残る向きは、URI・メッセージの形を数えるループ (ZFAM002 の残りの大半)、ACIF の出口が受け取る AFP のレコードの
+構造化フィールド (長さとバイトの組合せ)、DGFiP の税率ファイル (EXTERNAL の索引ファイル) のキーが合うレコード
+(EFITAUX2)、100 万回のループ (CBLC2。`--limit 10000000` でも時間内に終わらない) など。
+
 ### 未実装と制限
 
 - 段階 B の残り: 相対ファイル、LINE SEQUENTIAL の入力、多次元の表と書き込みの記号の添字、REDEFINES の

@@ -167,7 +167,8 @@ fn parts(module: &Module, program: &str, files: &[FileSpec]) -> Vec<Part> {
                     let Some(rec) = record_of(code, loc.desc).filter(|r| r != "DFHEIBLK") else {
                         continue;
                     };
-                    if receives(&e.command, &o.name) {
+                    let first = e.options.first().map_or("", |o| o.name.as_str());
+                    if receives(&e.command, first, &o.name) {
                         push(key(&o.name), "input", rec, Find::Record(&[]));
                     } else {
                         push(
@@ -270,12 +271,14 @@ pub fn analyze(
     source: &Path,
     copy_dirs: &[PathBuf],
     bms_dirs: &[PathBuf],
+    source_encoding: zeus_cobol::front::SourceEncoding,
     records: Vec<String>,
 ) -> Result<Vec<Layout>, String> {
     let mut opts = zeus_layout::Options {
         copy_dirs: copy_dirs.to_vec(),
         bms_dirs: bms_dirs.to_vec(),
         records,
+        source_encoding,
         ..Default::default()
     };
     let _maps = zeus_layout::symbolic_maps(&mut opts).map_err(|e| e.to_string())?;

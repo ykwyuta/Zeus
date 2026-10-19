@@ -6,7 +6,8 @@
 //! ...); a group area has a key per elementary item
 //! (`P.l.n.INTO.ITEM`). Unset: RESP and SQLCODE are 0 (100, ENDFILE,
 //! ITEMERR / QZERO, ENDDATA and NOTFND from the second execution of a SQL
-//! FETCH, READNEXT, READQ, RETRIEVE and FETCH ANY on, so that loops end),
+//! FETCH, READNEXT (also WEB READNEXT), READQ, RETRIEVE, FETCH ANY and a
+//! READ or DELETE of a file on, so that loops end),
 //! the areas stay as they are. In concolic runs the
 //! outputs follow the variables `X<key>` (numeric) or `X<key>#<i>`
 //! (bytes). What the statements send out is logged (the expected
@@ -78,10 +79,113 @@ const CICS_OUT: &[&str] = &[
     "FLENGTH",
 ];
 
+/// More options that receive, of the commands named by two words (the
+/// second is the command's first option): the CICS web and document
+/// commands.
+const CICS_OUT_OF: &[(&str, &str, &[&str])] = &[
+    (
+        "WEB",
+        "EXTRACT",
+        &[
+            "SCHEME",
+            "HOST",
+            "HOSTLENGTH",
+            "HOSTTYPE",
+            "HTTPMETHOD",
+            "METHODLENGTH",
+            "HTTPVERSION",
+            "VERSIONLEN",
+            "PATH",
+            "PATHLENGTH",
+            "PORTNUMBER",
+            "QUERYSTRING",
+            "QUERYSTRLEN",
+            "REQUESTTYPE",
+            "URIMAP",
+            "REALM",
+            "REALMLEN",
+        ],
+    ),
+    (
+        "WEB",
+        "RECEIVE",
+        &[
+            "LENGTH",
+            "MEDIATYPE",
+            "CHARACTERSET",
+            "BODYCHARSET",
+            "TYPE",
+            "STATUSCODE",
+            "STATUSTEXT",
+            "STATUSLEN",
+        ],
+    ),
+    ("WEB", "READ", &["VALUE", "VALUELENGTH"]),
+    (
+        "WEB",
+        "READNEXT",
+        &[
+            "HTTPHEADER",
+            "NAMELENGTH",
+            "VALUE",
+            "VALUELENGTH",
+            "FORMFIELD",
+        ],
+    ),
+    (
+        "WEB",
+        "CONVERSE",
+        &[
+            "TOLENGTH",
+            "STATUSCODE",
+            "STATUSTEXT",
+            "STATUSLEN",
+            "MEDIATYPE",
+            "BODYCHARSET",
+        ],
+    ),
+    ("WEB", "OPEN", &["SESSTOKEN"]),
+    (
+        "WEB",
+        "PARSE",
+        &[
+            "SCHEME",
+            "SCHEMENAME",
+            "HOST",
+            "HOSTLENGTH",
+            "HOSTTYPE",
+            "PORTNUMBER",
+            "PATH",
+            "PATHLENGTH",
+            "QUERYSTRING",
+            "QUERYSTRLEN",
+        ],
+    ),
+    ("DOCUMENT", "CREATE", &["DOCTOKEN", "DOCSIZE"]),
+    ("DOCUMENT", "RETRIEVE", &["LENGTH"]),
+];
+
 /// Whether a CICS command's option receives data (its area is an input
-/// of the run).
-pub fn receives(command: &str, option: &str) -> bool {
-    (command == "ASSIGN" || CICS_OUT.contains(&option)) && !sends(command, option)
+/// of the run). `first` is the name of the command's first option (the
+/// second word of WEB EXTRACT, the resource of INQUIRE).
+pub fn receives(command: &str, first: &str, option: &str) -> bool {
+    receives_in(command, first, option, false)
+}
+
+/// [`receives`] of a command executed: in a browse of resources
+/// (INQUIRE ... NEXT) the resource's name receives too.
+fn receives_in(command: &str, first: &str, option: &str, next: bool) -> bool {
+    if CICS_OUT_OF
+        .iter()
+        .any(|(c, f, out)| *c == command && *f == first && out.contains(&option))
+    {
+        return true;
+    }
+    // every option of ASSIGN and INQUIRE but the resource receives
+    (command == "ASSIGN"
+        || command == "INQUIRE" && (option != first || next)
+        || CICS_OUT.contains(&option))
+        && !sends(command, option)
 }
 
 /// Commands for which an option in `CICS_OUT` is only sent.
@@ -138,6 +242,7 @@ const CONDITIONS: &[&str] = &[
     "TSIOERR",
     "CHANNELERR",
     "CONTAINERERR",
+    "END",
 ];
 
 fn condition(resp: i128) -> String {
@@ -475,6 +580,7 @@ impl StubHost {
                 pc: call.line * 64 + i as u32,
                 jumped: hit,
                 pred: Some(Pred::Cmp(Term::Var(v), Rel::Eq, Term::Const(c))),
+                counted: false,
             }));
             if hit {
                 break;
@@ -517,6 +623,7 @@ impl StubHost {
                 pc: call.line * 64 + 32 + i as u32,
                 jumped: hit,
                 pred: Some(p),
+                counted: false,
             }));
             if hit {
                 break;
@@ -568,6 +675,7 @@ impl StubHost {
                 pc: call.line * 64 + 63,
                 jumped: hit,
                 pred: Some(Pred::Cmp(Term::Var(v), Rel::Ne, Term::Const(0))),
+                counted: false,
             }));
         }
         if !hit {
@@ -618,9 +726,18 @@ impl StubHost {
             self.log.borrow_mut().push(format!("CICS {cmd} ABEND"));
             return Ok(ExecOutcome::Continue);
         }
-        // browses and queue reads end from the second time on
+        // browses and queue reads end from the second time on; so do the
+        // reads and deletes of a file in a loop (segments of a record until
+        // NOTFND)
+        let first = call.options.first().map_or("", |(n, _)| n.as_str());
         let end = match cmd {
             "READNEXT" | "READPREV" if n > 1 => Some("ENDFILE"),
+            "WEB" if n > 1 && first == "READNEXT" => Some("ENDFILE"),
+            // a browse of resources (INQUIRE ... NEXT)
+            "INQUIRE" if n > 1 && call.has("NEXT") => Some("END"),
+            "READ" | "DELETE" if n > 1 && (call.has("FILE") || call.has("DATASET")) => {
+                Some("NOTFND")
+            }
             "READQ" if n > 1 && call.has("TD") => Some("QZERO"),
             "READQ" if n > 1 => Some("ITEMERR"),
             "RETRIEVE" if n > 1 => Some("ENDDATA"),
@@ -628,19 +745,20 @@ impl StubHost {
             "FETCH" if n > 1 && call.has("ANY") => Some("NOTFND"),
             _ => None,
         };
-        let default_resp2 = i128::from(end == Some("NOTFND"));
+        let default_resp2 = i128::from(cmd == "FETCH" && end == Some("NOTFND"));
         let default_resp = end
             .and_then(zeus_cobol::front::cics::resp_value)
             .map_or(0, i128::from);
+        if cmd == "GETMAIN" {
+            self.getmain(m, call);
+        } else if call.has("SET") {
+            self.set_buffer(m, call, key);
+        }
         let mut sent = Vec::new();
         let mut resp = None;
         for (k, (name, arg)) in call.options.iter().enumerate() {
             match arg {
-                Some(ExecArg::Area(a))
-                    // every option of ASSIGN receives
-                    if (cmd == "ASSIGN" || CICS_OUT.contains(&name.as_str()))
-                        && !sends(cmd, name) =>
-                {
+                Some(ExecArg::Area(a)) if receives_in(cmd, first, name, call.has("NEXT")) => {
                     // the code of the abend the exit was given
                     if cmd == "ASSIGN"
                         && name == "ABCODE"
@@ -736,6 +854,87 @@ impl StubHost {
                 "CICS condition {cond} (line {})",
                 call.line
             ))),
+        }
+    }
+
+    /// GETMAIN: storage of FLENGTH / LENGTH bytes (INITIMG: their value),
+    /// its address in SET (a POINTER item or ADDRESS OF a record).
+    fn getmain(&self, m: &mut Machine, call: &ExecCall) {
+        let value = |arg: Option<&ExecArg>, m: &Machine| -> Option<i128> {
+            match arg? {
+                ExecArg::Num(d) => d.rescale(0, Rounding::Truncate).map(|d| d.coef),
+                ExecArg::Area(a) => {
+                    num_of(a).map(|t| raw(&t, &m.storage()[a.addr..a.addr + a.len]))
+                }
+                ExecArg::Alnum(b) => b.first().map(|&x| i128::from(x)),
+                _ => None,
+            }
+        };
+        let len = value(call.arg("FLENGTH").or(call.arg("LENGTH")), m)
+            .unwrap_or(0)
+            .clamp(0, 16 << 20) as usize;
+        let init = value(call.arg("INITIMG"), m).unwrap_or(0) as u8;
+        let addr = m.getmain(len.max(1), init);
+        match call.arg("SET") {
+            Some(ExecArg::Area(a)) => {
+                zeus_decimal::binary::write(
+                    &mut m.storage_mut()[a.addr..a.addr + a.len],
+                    addr as i128,
+                );
+            }
+            Some(ExecArg::Pointer {
+                linkage: Some(slot),
+                ..
+            }) => {
+                let _ = m.set_linkage(call.instance, *slot, addr);
+            }
+            _ => {}
+        }
+    }
+
+    /// A command that gives its data in storage of its own (`SET` instead
+    /// of INTO: WEB RECEIVE, GET CONTAINER, READ, RETRIEVE ...): a buffer
+    /// of the length asked (at most `AREA_BYTES`) whose bytes are the
+    /// outputs `key.SET`, its address in SET.
+    fn set_buffer(&self, m: &mut Machine, call: &ExecCall, key: &str) {
+        let len = ["LENGTH", "FLENGTH", "MAXLENGTH", "TOLENGTH"]
+            .iter()
+            .find_map(|o| match call.arg(o) {
+                Some(ExecArg::Num(d)) => d.rescale(0, Rounding::Truncate).map(|d| d.coef),
+                Some(ExecArg::Area(a)) => {
+                    num_of(a).map(|t| raw(&t, &m.storage()[a.addr..a.addr + a.len]))
+                }
+                _ => None,
+            })
+            .filter(|&n| n > 0)
+            .map_or(AREA_BYTES, |n| (n as usize).min(AREA_BYTES));
+        let addr = m.getmain(len, 0x40);
+        let area = Area {
+            addr,
+            len,
+            ty: DataType::Alphanumeric { just: false },
+        };
+        self.output(
+            m,
+            &format!("{key}.SET"),
+            &area,
+            &[(String::new(), 0, len, None)],
+            None,
+        );
+        match call.arg("SET") {
+            Some(ExecArg::Area(a)) if a.ty == DataType::Pointer => {
+                zeus_decimal::binary::write(
+                    &mut m.storage_mut()[a.addr..a.addr + a.len],
+                    addr as i128,
+                );
+            }
+            Some(ExecArg::Pointer {
+                linkage: Some(slot),
+                ..
+            }) => {
+                let _ = m.set_linkage(call.instance, *slot, addr);
+            }
+            _ => {}
         }
     }
 

@@ -350,6 +350,10 @@ pub struct Branch {
     pub jumped: bool,
     /// None: the condition does not depend on the inputs.
     pub pred: Option<Pred>,
+    /// The branch only decides whether a counter is added to (`IF c ADD
+    /// k TO N`), and the counter's term holds the condition: solving for a
+    /// later branch leaves this one free.
+    pub counted: bool,
 }
 
 /// A step of a run's path: a decision on a condition over the inputs.
@@ -453,6 +457,11 @@ pub struct SymState {
     pub(crate) io_cond: Option<Pred>,
     /// The program and instruction being run.
     pub(crate) at: Option<(String, u32)>,
+    /// Counters added to under a condition that follows inputs (`IF c
+    /// ADD k TO N`), to bind when the run gets past the IF: (instance,
+    /// instruction after the IF, address, length, type, the value as a
+    /// term).
+    pub(crate) counts: Vec<(usize, u32, usize, usize, crate::zir::NumType, Term)>,
 }
 
 /// The variables a run has at most (see `SymState::full`).
@@ -463,6 +472,10 @@ pub const LATE_VARS: usize = 4_000;
 /// The nodes a term bound to data has at most: a larger one (a value
 /// computed again and again in a loop) is left concrete.
 pub const MAX_TERM: usize = 2_000;
+
+/// The nodes of a counter's term (a sum of conditions, see `Branch::counted`)
+/// at most: it grows by a condition per iteration, without nesting.
+pub const MAX_COUNT_TERM: usize = 20_000;
 
 /// The steps a run's path has with conditions at most (`SymState::long`).
 pub const MAX_STEPS: usize = 50_000;

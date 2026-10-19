@@ -450,9 +450,10 @@ impl<'a> Gen<'a> {
             }
         }
         let max_len = self.dm.items[area].len;
+        // records with an OCCURS DEPENDING ON table: at its minimum
         let min_len = records
             .iter()
-            .map(|&r| self.dm.items[r].len)
+            .map(|&r| self.dm.min_record_len(r))
             .min()
             .unwrap_or(max_len);
         // Physical QSAM format is independent of the logical record lengths:

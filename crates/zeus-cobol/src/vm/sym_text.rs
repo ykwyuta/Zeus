@@ -336,6 +336,7 @@ impl Machine {
             pc: id,
             jumped: hit,
             pred: Some(p),
+            counted: false,
         }));
     }
 

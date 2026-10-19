@@ -590,3 +590,62 @@ fn proves_impossible_directions() {
     assert!(all.contains("\"ERROR XX\""), "{all}");
     assert!(all.contains("\"NO CODE\""), "{all}");
 }
+
+/// An exit's parameters: the areas its POINTER items address (records
+/// based on them with SET ADDRESS OF) are inputs; a PIC X parameter moved
+/// to a record has that record's fields; a blocked variable-length file
+/// with an OCCURS DEPENDING ON record is written as the program does.
+#[test]
+fn covers_pointed_areas_moved_records_and_blocked_files() {
+    let (text, all) = generate_and_replay("PTRPGM");
+    assert!(
+        text.contains("C1: 6 of 6 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"LONG DATA\""), "{all}");
+    assert!(all.contains("\"EOF\""), "{all}");
+    assert!(all.contains("\"WS-AMOUNT\""), "{all}");
+    // BIG ORDER, as the record written
+    assert!(all.contains("C2C9C740D6D9C4C5D9"), "{all}");
+}
+
+/// An EXTERNAL file the program reads without opening it (its caller
+/// has it open): its records are inputs.
+#[test]
+fn covers_an_external_file_opened_by_the_caller() {
+    let (text, all) = generate_and_replay("EXTPGM");
+    assert!(
+        text.contains("C1: 4 of 4 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"HIGH RATE\""), "{all}");
+    assert!(all.contains("\"NO RATE\""), "{all}");
+}
+
+/// CICS web services: WEB EXTRACT's outputs, the body WEB RECEIVE gives
+/// in storage of its own (SET), GETMAIN, a browse of URIMAPs that ends
+/// and deletes in a loop until a record is not found.
+#[test]
+fn covers_web_requests_storage_and_browse_loops() {
+    let (text, all) = generate_and_replay("WEBPGM");
+    assert!(
+        text.contains("C1: 14 of 14 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"LOAD\""), "{all}");
+    assert!(all.contains("\"SEGMENTS\""), "{all}");
+    assert!(all.contains("\"NO PATH\""), "{all}");
+}
+
+/// A counter added to under conditions in a loop (the slashes of a path)
+/// follows the inputs: the check of its value is covered both ways.
+#[test]
+fn covers_conditions_on_counts_kept_in_loops() {
+    let (text, all) = generate_and_replay("CNTPGM");
+    assert!(
+        text.contains("C1: 6 of 6 branch directions (100.0%)"),
+        "{text}"
+    );
+    assert!(all.contains("\"GOOD PATH\""), "{all}");
+    assert!(all.contains("\"BAD PATH\""), "{all}");
+}

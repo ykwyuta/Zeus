@@ -8,6 +8,7 @@ pub mod data;
 pub(crate) mod eval;
 pub mod exec;
 mod files;
+pub use files::dataset_layout;
 mod func;
 mod le;
 mod numeric;

@@ -4,7 +4,7 @@
 //! ```text
 //! ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
 //!          [--limit INSTRUCTIONS] [--no-smt] [--threads N] [--stub PROGRAM]...
-//!          [--seeds DIR]... [--bms DIR]... [--no-layouts] [--out DIR] SOURCE.cbl
+//!          [--seeds DIR]... [--bms DIR]... [--no-layouts] [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl
 //! ```
 //!
 //! The inputs are the program's USING parameters and the lines it
@@ -22,13 +22,13 @@ use std::process::ExitCode;
 use std::rc::Rc;
 use std::time::Duration;
 
-use zeus_cobol::front::FrontOptions;
+use zeus_cobol::front::{FrontOptions, SourceEncoding};
 use zeus_testgen::case::{case_file, line_of};
 use zeus_testgen::engine::{Gap, Options, generate};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--bms DIR]... [--no-layouts] [--out DIR] SOURCE.cbl"
+        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--bms DIR]... [--no-layouts] [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl"
     );
     ExitCode::from(2)
 }
@@ -41,6 +41,7 @@ fn main() -> ExitCode {
     let mut source = None;
     let mut bms = Vec::new();
     let mut layouts = true;
+    let mut encoding = SourceEncoding::default();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         let mut val = || it.next();
@@ -52,6 +53,14 @@ fn main() -> ExitCode {
             "-L" => match val() {
                 Some(d) => opts.search.push(PathBuf::from(d)),
                 None => return usage(),
+            },
+            "--source-encoding" => match val().and_then(|e| SourceEncoding::parse(&e)) {
+                Some(e) => encoding = e,
+                None => return usage(),
+            },
+            "--ccsid" => match val().and_then(|c| c.parse().ok()) {
+                Some(c) if zeus_cobol::codepage::set_active(c) => {}
+                _ => return usage(),
             },
             "--program" => program = val().map(|p| p.to_ascii_uppercase()),
             "--out" | "-o" => match val() {
@@ -103,6 +112,7 @@ fn main() -> ExitCode {
     let Some(source) = source else { return usage() };
     let fo = FrontOptions {
         copy_dirs: copy.clone(),
+        source_encoding: encoding,
         ..Default::default()
     };
     let module = match zeus_cobol::compile_file(&source, &fo) {
@@ -177,6 +187,7 @@ fn main() -> ExitCode {
                 Gap::Infeasible => "infeasible (no inputs on the paths tried)",
                 Gap::NotFound => "no inputs found",
                 Gap::Impossible => "impossible (static analysis: the values of flags and numbers)",
+                Gap::LimitOnly => "taken only by runs stopped at the instruction limit (--limit)",
             };
             let line = line_of(&module, p, *pc).map_or("?".into(), |l| l.to_string());
             text.push_str(&format!(
@@ -190,6 +201,7 @@ fn main() -> ExitCode {
             &source,
             &copy,
             &bms,
+            encoding,
             &module,
             &program,
             &report.files,
@@ -203,10 +215,12 @@ fn main() -> ExitCode {
 
 /// Writes the layouts of the cases' data to `out/layouts`: the report's
 /// lines about them.
+#[allow(clippy::too_many_arguments)]
 fn write_layouts(
     source: &std::path::Path,
     copy: &[PathBuf],
     bms: &[PathBuf],
+    encoding: SourceEncoding,
     module: &zeus_cobol::zir::Module,
     program: &str,
     files: &[zeus_testgen::engine::FileSpec],
@@ -214,7 +228,7 @@ fn write_layouts(
 ) -> String {
     use zeus_testgen::layouts;
     let records = layouts::records(module, program, files);
-    let all = match layouts::analyze(source, copy, bms, records) {
+    let all = match layouts::analyze(source, copy, bms, encoding, records) {
         Ok(l) => l,
         Err(e) => {
             return format!(

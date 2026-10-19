@@ -23,6 +23,9 @@ pub struct IoFaults {
     /// The last statement that could fail: (file, kind, occurrence, how
     /// it failed or 0).
     pub(super) last: Option<(String, &'static str, u32, u8)>,
+    /// EXTERNAL files (by name) the caller has open INPUT when the program
+    /// runs: opened at the first READ or START.
+    pub(super) preopened: std::collections::BTreeSet<String>,
 }
 
 /// A statement made to fail with status 35 or 30.
@@ -72,6 +75,13 @@ impl Machine {
         }));
     }
 
+    /// EXTERNAL files that the program reads but its caller opens (test
+    /// runs): they are opened INPUT at their first READ or START. Call after
+    /// [`Machine::set_io_faults`].
+    pub fn set_preopened(&mut self, files: std::collections::BTreeSet<String>) {
+        self.faults.get_or_insert_with(Default::default).preopened = files;
+    }
+
     pub fn set_call_stubs(&mut self, outputs: BTreeMap<(String, u32, u32), Vec<u8>>) {
         self.stubs = Some(Box::new(CallStubs {
             outputs,
@@ -103,6 +113,18 @@ impl Machine {
         kind: &'static str,
         mode: Option<OpenMode>,
     ) -> RResult<bool> {
+        if matches!(kind, "READ" | "START") {
+            let def = &self.instances[cur].code.files[f as usize];
+            if def.external
+                && self
+                    .faults
+                    .as_ref()
+                    .is_some_and(|x| x.preopened.contains(&def.name))
+                && self.state(cur, f).open_mode().is_none()
+            {
+                self.open_file(cur, f, OpenMode::Input)?;
+            }
+        }
         let Some(faults) = self.faults.as_mut() else {
             return Ok(false);
         };

@@ -12,12 +12,13 @@ use std::path::PathBuf;
 use std::rc::Rc;
 use std::time::{Duration, Instant};
 
-use zeus_cobol::concolic::{FileInput, Pred, RecordField, Step, SymState, Var, VarKind};
+use zeus_cobol::concolic::{FileInput, Pred, RecordField, Step, SymState, Term, Var, VarKind};
 use zeus_cobol::ebcdic;
 use zeus_cobol::vm::Machine;
 use zeus_cobol::vm::data as vdata;
 use zeus_cobol::zir::{
     AcceptFrom, Base, DataType, Desc, Instr, Module, NumType, NumUsage, OpenMode, Org, ProgramCode,
+    Src,
 };
 use zeus_decimal::Rounding;
 use zeus_ds::dd::Allocation;
@@ -139,6 +140,9 @@ impl Default for Options {
     }
 }
 
+/// An elementary item of an area: name, offset, length, numeric type.
+pub(crate) type AreaItem = (String, usize, usize, Option<NumType>);
+
 /// The elementary items of `descs` in `[start, start+len)`, without
 /// overlaps (the first one wins): name, offset from `start`, length and
 /// numeric type. Tables give an item per occurrence (at most 100, or
@@ -204,30 +208,144 @@ pub(crate) fn items(
     out
 }
 
-/// The input fields of the USING parameters of a program.
+/// An input area of a program: a USING parameter, or the storage a
+/// POINTER item of another area points to.
+#[derive(Debug, Clone)]
+pub struct Area {
+    /// The LINKAGE records on the area (a parameter's record, or the
+    /// records SET ADDRESS OF ... TO the pointer).
+    pub slots: Vec<u32>,
+    /// For a pointed-to area: the area (parameter index), offset and
+    /// length of the POINTER item that holds its address, and its name.
+    pub pointer: Option<(usize, usize, usize, String)>,
+}
+
+/// Areas pointed to, at most (pointers in pointed-to areas included).
+const MAX_POINTED: usize = 16;
+
+/// The input areas of a program: its USING parameters, then the areas
+/// that POINTER items in them address, when the program bases LINKAGE
+/// records on those items (`SET ADDRESS OF R TO P`, as exits that get a
+/// list of pointers do). Each pointed-to area is an extra parameter.
+pub fn areas(code: &ProgramCode) -> Vec<Area> {
+    let mut out: Vec<Area> = code
+        .using
+        .iter()
+        .map(|&slot| Area {
+            slots: vec![slot],
+            pointer: None,
+        })
+        .collect();
+    let mut k = 0;
+    while k < out.len() && out.len() < code.using.len() + MAX_POINTED {
+        let slots = out[k].slots.clone();
+        for (i, d) in code.descs.iter().enumerate() {
+            let Base::Linkage(s) = d.base else { continue };
+            if d.ty != DataType::Pointer || !d.dims.is_empty() || !slots.contains(&s) {
+                continue;
+            }
+            let mut targets: Vec<u32> = code
+                .code
+                .iter()
+                .filter_map(|ins| match ins {
+                    Instr::SetAddress(n, zeus_cobol::zir::Ex::Load(l))
+                        if l.desc as usize == i && l.subs.is_empty() && l.refmod.is_none() =>
+                    {
+                        Some(*n)
+                    }
+                    _ => None,
+                })
+                .collect();
+            targets.sort_unstable();
+            targets.dedup();
+            // a record already on an input area keeps it
+            targets.retain(|n| !out.iter().any(|a| a.slots.contains(n)));
+            if targets.is_empty() || out.len() >= code.using.len() + MAX_POINTED {
+                continue;
+            }
+            out.push(Area {
+                slots: targets,
+                pointer: Some((k, d.offset as usize, d.len as usize, d.name.clone())),
+            });
+        }
+        k += 1;
+    }
+    out
+}
+
+/// The items of the group a parameter with no items of its own (one
+/// `PIC X(n)` record) is moved to as a whole (`MOVE PARM TO RECORD`): the
+/// parameter's fields are the record's (names and numeric items), so that
+/// inputs start with valid numbers where the program expects them.
+fn moved_to(code: &ProgramCode, slots: &[u32], len: usize) -> Option<Vec<AreaItem>> {
+    let mut own = code
+        .descs
+        .iter()
+        .enumerate()
+        .filter(|(_, d)| matches!(d.base, Base::Linkage(s) if slots.contains(&s)));
+    let (k, d) = own.next()?;
+    if own.next().is_some()
+        || !matches!(d.ty, DataType::Alphanumeric { .. })
+        || d.offset != 0
+        || d.len as usize != len
+        || !d.dims.is_empty()
+    {
+        return None;
+    }
+    code.code.iter().find_map(|ins| {
+        let Instr::Move(Src::Loc(from), to) = ins else {
+            return None;
+        };
+        if from.desc as usize != k
+            || from.refmod.is_some()
+            || !to.subs.is_empty()
+            || to.refmod.is_some()
+        {
+            return None;
+        }
+        let g = code.descs.get(to.desc as usize)?;
+        if g.ty != DataType::Group || !g.dims.is_empty() {
+            return None;
+        }
+        let start = g.offset as usize;
+        let n = len.min(g.len as usize);
+        let record: Vec<&Desc> = code
+            .descs
+            .iter()
+            .filter(|x| {
+                x.base == g.base && x.offset as usize >= start && (x.offset as usize) < start + n
+            })
+            .collect();
+        let found = items(&record, start, n);
+        (!found.is_empty()).then_some(found)
+    })
+}
+
+/// The input fields of the input areas of a program ([`areas`]) and the
+/// length of each area.
 pub fn fields(code: &ProgramCode) -> (Vec<Field>, Vec<usize>) {
     let mut fields = Vec::new();
     let mut lens = Vec::new();
-    for (k, slot) in code.using.iter().enumerate() {
+    let extent = |d: &Desc| -> usize {
+        let mut e = d.offset as usize + d.len as usize;
+        for dim in &d.dims {
+            e += (dim.max.saturating_sub(1) as usize) * dim.stride as usize;
+        }
+        e
+    };
+    for (k, area) in areas(code).iter().enumerate() {
         let descs: Vec<_> = code
             .descs
             .iter()
-            .filter(|d| d.base == Base::Linkage(*slot))
+            .filter(|d| matches!(d.base, Base::Linkage(s) if area.slots.contains(&s)))
             .collect();
-        let extent = |d: &Desc| -> usize {
-            let mut e = d.offset as usize + d.len as usize;
-            for dim in &d.dims {
-                e += (dim.max.saturating_sub(1) as usize) * dim.stride as usize;
-            }
-            e
-        };
         let mut len = descs.iter().map(|d| extent(d)).max().unwrap_or(0);
         // a record put on the parameter (SET ADDRESS OF R TO ADDRESS OF
         // P: an IMS PCB passed as a POINTER item) fits in its area
         for i in &code.code {
             if let Instr::SetAddress(n, zeus_cobol::zir::Ex::AddressOf(l)) = i
                 && let Some(d) = code.descs.get(l.desc as usize)
-                && d.base == Base::Linkage(*slot)
+                && matches!(d.base, Base::Linkage(s) if area.slots.contains(&s))
             {
                 let r = code
                     .descs
@@ -240,7 +358,11 @@ pub fn fields(code: &ProgramCode) -> (Vec<Field>, Vec<usize>) {
             }
         }
         lens.push(len);
-        for (name, offset, len, num) in items(&descs, 0, len) {
+        let mut area_items = items(&descs, 0, len);
+        if let Some(record) = moved_to(code, &area.slots, len) {
+            area_items = record;
+        }
+        for (name, offset, len, num) in area_items {
             fields.push(Field {
                 param: k,
                 name,
@@ -270,6 +392,12 @@ pub struct FileSpec {
     /// The record's items of a file the program writes (to show the
     /// records written).
     pub out_fields: Vec<RecordField>,
+    /// The blocks of the data set (BLOCK CONTAINS, RECORDING MODE U/S), as
+    /// the program reads and writes it; None: records as they are.
+    pub layout: Option<zeus_ds::physical::Layout>,
+    /// An EXTERNAL file the program reads without opening it (its caller
+    /// opens it INPUT).
+    pub preopened: bool,
     /// Indexed files: the primary key and the alternate keys (offset,
     /// length, duplicates allowed).
     pub keys: Vec<(usize, usize, bool)>,
@@ -519,8 +647,19 @@ pub fn file_specs(module: &Module, search: &[PathBuf]) -> Vec<FileSpec> {
                     .any(|i| matches!(i, Instr::Open(x, o) if *x as usize == f && m.contains(o)))
             };
             let indexed = def.org == Org::Indexed;
+            // an EXTERNAL file the program never opens: its caller has it
+            // open (INPUT) when the program runs
+            let preopened = def.external
+                && !opens(&[
+                    OpenMode::Input,
+                    OpenMode::Output,
+                    OpenMode::InputOutput,
+                    OpenMode::Extend,
+                ])
+                && (indexed || def.org == Org::Sequential && !text);
             let input = (def.org == Org::Sequential && !text && opens(&[OpenMode::Input]))
-                || (indexed && opens(&[OpenMode::Input, OpenMode::InputOutput]));
+                || (indexed && opens(&[OpenMode::Input, OpenMode::InputOutput]))
+                || preopened;
             let output = (matches!(def.org, Org::Sequential | Org::LineSequential)
                 && opens(&[OpenMode::Output, OpenMode::Extend]))
                 || (indexed && opens(&[OpenMode::Output, OpenMode::InputOutput, OpenMode::Extend]));
@@ -564,6 +703,8 @@ pub fn file_specs(module: &Module, search: &[PathBuf]) -> Vec<FileSpec> {
                 name: def.name.clone(),
                 assign: def.assign.clone(),
                 format,
+                layout: zeus_cobol::vm::dataset_layout(def, &Default::default(), false),
+                preopened,
                 len: def.max_len as usize,
                 input,
                 output,
@@ -721,8 +862,14 @@ pub fn run(
             } else {
                 f.format
             };
-            for r in inputs.files.get(k).map(|r| &r[..]).unwrap_or(&[]) {
-                zeus_ds::format::encode_into(format, r, 0x40, &mut data);
+            let records = inputs.files.get(k).map(|r| &r[..]).unwrap_or(&[]);
+            match f.layout.map(|l| l.encode(records, 0x40)) {
+                Some(Ok(blocks)) => data = blocks.concat(),
+                _ => {
+                    for r in records {
+                        zeus_ds::format::encode_into(format, r, 0x40, &mut data);
+                    }
+                }
             }
             k += 1;
             let _ = std::fs::write(&path, data);
@@ -739,6 +886,13 @@ pub fn run(
     m.set_stdout(Box::new(out.clone()));
     m.set_stdin(inputs.accept.clone());
     m.set_io_faults(inputs.faults.clone());
+    m.set_preopened(
+        specs
+            .iter()
+            .filter(|f| f.preopened)
+            .map(|f| f.name.clone())
+            .collect(),
+    );
     m.set_call_stubs(inputs.stubs.clone());
     m.set_forced_stubs(opts.stub.clone());
     let addrs: Vec<usize> = inputs
@@ -819,7 +973,26 @@ pub fn run(
         }
         st.inputs_bound();
     }
-    let args: Vec<Option<usize>> = addrs.iter().map(|a| Some(*a)).collect();
+    // the pointers to the pointed-to areas; the USING parameters are the
+    // arguments
+    let mut using = addrs.len();
+    if let Some(code) = module.programs.iter().find(|p| p.name == program) {
+        using = code.using.len().min(addrs.len());
+        for (k, a) in areas(code).iter().enumerate() {
+            if let (Some((p, offset, len)), Some(&target)) = (
+                a.pointer.as_ref().map(|(p, o, l, _)| (*p, *o, *l)),
+                addrs.get(k),
+            ) && let Some(&base) = addrs.get(p)
+                && offset + len <= inputs.params[p].len()
+            {
+                zeus_decimal::binary::write(
+                    &mut m.storage_mut()[base + offset..base + offset + len],
+                    target as i128,
+                );
+            }
+        }
+    }
+    let args: Vec<Option<usize>> = addrs[..using].iter().map(|a| Some(*a)).collect();
     let r = m.run_program(program, &args);
     m.flush_coverage();
     let error = match r {
@@ -857,7 +1030,13 @@ pub fn run(
             } else {
                 f.format
             };
-            let recs = zeus_ds::format::decode(format, &data).unwrap_or_default();
+            let recs = match f.layout {
+                Some(l) => l
+                    .split(&data)
+                    .and_then(|b| l.decode(&b))
+                    .unwrap_or_default(),
+                None => zeus_ds::format::decode(format, &data).unwrap_or_default(),
+            };
             (f.name.clone(), recs)
         })
         .collect();
@@ -943,6 +1122,9 @@ pub enum Gap {
     /// Impossible by static analysis (the values a flag can hold along
     /// the control flow, see `infeasible`).
     Impossible,
+    /// Taken only by runs stopped at the instruction limit (no case: they
+    /// would not replay the same).
+    LimitOnly,
 }
 
 pub struct Report {
@@ -973,8 +1155,31 @@ pub fn directions(module: &Module) -> Vec<Dir> {
     out
 }
 
+/// Whether a condition is on a counter's term (a sum of conditions, see
+/// `Branch::counted`).
+fn on_counter(p: &Pred) -> bool {
+    fn term(t: &Term) -> bool {
+        match t {
+            Term::If(..) => true,
+            Term::Const(_) | Term::Var(_) => false,
+            Term::Add(a, b) | Term::Sub(a, b) | Term::Mul(a, b) => term(a) || term(b),
+            Term::Neg(a) | Term::Abs(a) | Term::Div(a, _) | Term::Rem(a, _) => term(a),
+        }
+    }
+    match p {
+        Pred::Bool(_) => false,
+        Pred::Cmp(a, _, b) => term(a) || term(b),
+        Pred::Bytes(a, _, b) => a.iter().chain(b).any(term),
+        Pred::In(t, _) => term(t),
+        Pred::Not(p) => on_counter(p),
+        Pred::And(v) | Pred::Or(v) => v.iter().any(on_counter),
+    }
+}
+
 /// The conditions a path keeps up to step `i`, and the other way of the
-/// branch at `i`; only those sharing variables with that branch.
+/// branch at `i`; only those sharing variables with that branch. For a
+/// condition on a counter, the earlier conditions on counters (the counts
+/// along a loop, the loop's end) are left free: the path may change.
 fn conditions(path: &[Step], i: usize) -> Option<Vec<Pred>> {
     let Step::Branch(b) = &path[i] else {
         return None;
@@ -986,10 +1191,12 @@ fn conditions(path: &[Step], i: usize) -> Option<Vec<Pred>> {
         p.clone()
     };
     let mut all: Vec<Pred> = Vec::new();
+    let counter = on_counter(&target);
     for s in &path[..i] {
         match s {
             Step::Assume(p) => all.push(p.clone()),
-            Step::Branch(x) => {
+            Step::Branch(x) if counter && x.pred.as_ref().is_some_and(on_counter) => {}
+            Step::Branch(x) if !x.counted => {
                 if let Some(p) = &x.pred {
                     all.push(if x.jumped {
                         p.clone()
@@ -998,6 +1205,8 @@ fn conditions(path: &[Step], i: usize) -> Option<Vec<Pred>> {
                     });
                 }
             }
+            // free: the counter's term holds it
+            Step::Branch(_) => {}
         }
     }
     // the conditions connected to the target through their variables
@@ -1089,6 +1298,7 @@ impl<'a> Slicer<'a> {
     fn pred(step: &Step) -> Option<Pred> {
         match step {
             Step::Assume(p) => Some(p.clone()),
+            Step::Branch(x) if x.counted => None,
             Step::Branch(x) => x.pred.as_ref().map(|p| {
                 if x.jumped {
                     p.clone()
@@ -1159,8 +1369,10 @@ impl<'a> Slicer<'a> {
         idx.sort();
         let mut out: Vec<Pred> = Vec::with_capacity(idx.len() + 1);
         let mut seen = HashSet::new();
+        let counter = on_counter(&target);
         for k in idx {
             if let Some(c) = Self::pred(&self.path[k as usize])
+                && !(counter && matches!(self.path[k as usize], Step::Branch(_)) && on_counter(&c))
                 && seen.insert(c.clone())
             {
                 out.push(c);
@@ -1734,6 +1946,8 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
     let mut text_queue: VecDeque<Inputs> = VecDeque::new();
     let mut prof = [Duration::ZERO; 5];
     let mut longest: u64 = 0;
+    // the limit of runs while none has ended (raised when one is stopped)
+    let mut floor = LIMIT_FLOOR;
     // runs extended with one more delimiter: (program, statement,
     // delimiters found) -> how many
     let mut extended: HashMap<(String, u32, usize), u32> = HashMap::new();
@@ -1849,14 +2063,17 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
         let t_loop = Instant::now();
         let t_run = Instant::now();
         // runs in endless loops stop at ten times the instructions of the
-        // longest run that ended (at least LIMIT_FLOOR)
+        // longest run that ended (at least `floor`)
         let limited = Options {
-            limit: opts.limit.min(LIMIT_FLOOR.max(longest.saturating_mul(10))),
+            limit: opts.limit.min(floor.max(longest.saturating_mul(10))),
             ..opts.clone()
         };
         let out = run(module, program, &fields, &inp, &limited, true);
         if out.instructions < limited.limit {
             longest = longest.max(out.instructions);
+        } else if longest == 0 {
+            // no run has ended: a long run, not necessarily an endless one
+            floor = floor.saturating_mul(4).min(opts.limit);
         }
         if std::env::var_os("ZTESTGEN_DEBUG").is_some() {
             eprintln!("run took {:?}, {} steps", t_run.elapsed(), out.path.len());
@@ -2314,12 +2531,20 @@ pub fn generate(module: &Rc<Module>, program: &str, opts: &Options) -> Result<Re
             impossible.remove(&d);
         }
     }
+    // covered: by the cases kept (runs stopped at the instruction limit
+    // took the others)
+    let in_cases: HashSet<Dir> = kept
+        .iter()
+        .flat_map(|c| c.out.branches.iter().cloned())
+        .collect();
     let gaps = all
         .iter()
-        .filter(|d| !covered.contains(*d))
+        .filter(|d| !in_cases.contains(*d))
         .map(|d| {
             let at = (d.0.clone(), d.1);
-            let gap = if impossible.contains(d) {
+            let gap = if covered.contains(d) {
+                Gap::LimitOnly
+            } else if impossible.contains(d) {
                 Gap::Impossible
             } else if !reached.contains(&at) {
                 Gap::NotReached

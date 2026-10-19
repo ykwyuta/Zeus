@@ -200,6 +200,56 @@ pub struct SortSpec {
     pub merge: bool,
 }
 
+/// The physical layout (blocks and record descriptors) of the data set of
+/// sequential file `def` with the DD's attributes, or None when its records
+/// are stored as they are (no BLOCK CONTAINS, DCB block size, tape or
+/// RECORDING MODE U/S).
+pub fn dataset_layout(def: &FileDef, dd: &zeus_ds::dd::IoAttributes, tape: bool) -> Option<Layout> {
+    if def.org != Org::Sequential || def.print {
+        return None;
+    }
+    if !tape
+        && def.block_size.is_none()
+        && dd.block_size.is_none()
+        && !matches!(def.recording_mode, Some('U' | 'S'))
+    {
+        return None;
+    }
+    let mode = def
+        .recording_mode
+        .unwrap_or(if fixed_length(def) { 'F' } else { 'V' });
+    // The virtual tape's system-selected device block is at most 256 KiB.
+    // Explicit sizes and sizes read from an existing label take precedence.
+    let limit = if tape && mode != 'S' {
+        dd.block_size_limit
+            .filter(|&n| n != 0)
+            .unwrap_or(32760)
+            .min(256 * 1024)
+    } else {
+        32760
+    };
+    let automatic = match mode {
+        'F' => (limit / def.max_len.max(1)).max(1) * def.max_len,
+        'U' => def.max_len,
+        _ => limit,
+    };
+    let block_size = dd
+        .block_size
+        .or(def.block_size)
+        .filter(|&n| n != 0)
+        .unwrap_or(if def.block_size.is_none() && dd.block_size.is_none() {
+            def.max_len + if matches!(mode, 'V' | 'S') { 8 } else { 0 }
+        } else {
+            automatic
+        });
+    Some(Layout {
+        mode,
+        record_len: def.max_len as usize,
+        block_size: block_size as usize,
+        write_only: def.write_only,
+    })
+}
+
 fn fixed_length(def: &FileDef) -> bool {
     def.min_len == def.max_len && def.record_depending.is_none()
 }
@@ -1181,51 +1231,8 @@ impl Machine {
     }
 
     fn physical_layout(&self, def: &FileDef, path: &std::path::Path) -> Option<Layout> {
-        if def.org != Org::Sequential || def.print {
-            return None;
-        }
         let dd = self.dd.io_attributes(&[&def.assign, &def.name]);
-        let tape = self.is_tape(def, path);
-        if !tape
-            && def.block_size.is_none()
-            && dd.block_size.is_none()
-            && !matches!(def.recording_mode, Some('U' | 'S'))
-        {
-            return None;
-        }
-        let mode = def
-            .recording_mode
-            .unwrap_or(if fixed_length(def) { 'F' } else { 'V' });
-        // The virtual tape's system-selected device block is at most 256 KiB.
-        // Explicit sizes and sizes read from an existing label take precedence.
-        let limit = if tape && mode != 'S' {
-            dd.block_size_limit
-                .filter(|&n| n != 0)
-                .unwrap_or(32760)
-                .min(256 * 1024)
-        } else {
-            32760
-        };
-        let automatic = match mode {
-            'F' => (limit / def.max_len.max(1)).max(1) * def.max_len,
-            'U' => def.max_len,
-            _ => limit,
-        };
-        let block_size = dd
-            .block_size
-            .or(def.block_size)
-            .filter(|&n| n != 0)
-            .unwrap_or(if def.block_size.is_none() && dd.block_size.is_none() {
-                def.max_len + if matches!(mode, 'V' | 'S') { 8 } else { 0 }
-            } else {
-                automatic
-            });
-        Some(Layout {
-            mode,
-            record_len: def.max_len as usize,
-            block_size: block_size as usize,
-            write_only: def.write_only,
-        })
+        dataset_layout(def, &dd, self.is_tape(def, path))
     }
 
     fn tape_input_layout(

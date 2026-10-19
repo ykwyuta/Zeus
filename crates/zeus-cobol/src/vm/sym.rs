@@ -55,6 +55,60 @@ fn align(a: (Term, i32), b: (Term, i32)) -> Option<(Term, Term, i32)> {
     Some((a.0.rescale(a.1, s)?, b.0.rescale(b.1, s)?, s))
 }
 
+/// `IF c ADD k TO N END-IF`: the conditional jump at `pc` goes past a block
+/// (entered when it does not jump) that only adds to a numeric item: the
+/// item, what is added and the instruction after the block.
+fn guarded_increment(
+    code: &crate::zir::ProgramCode,
+    pc: u32,
+) -> Option<(&crate::zir::Loc, &Ex, u32)> {
+    let target = match code.code.get(pc as usize)? {
+        Instr::JumpIf(_, t) | Instr::JumpUnless(_, t) => *t,
+        _ => return None,
+    };
+    if target <= pc + 1 || target - pc > 8 {
+        return None;
+    }
+    let plain = |l: &crate::zir::Loc| l.subs.is_empty() && l.refmod.is_none();
+    let mut found = None;
+    for i in pc + 1..target {
+        match &code.code[i as usize] {
+            Instr::NumericContext { .. } | Instr::ClearSizeError | Instr::Nop => {}
+            Instr::Jump(t) if *t == target && i + 1 == target => {}
+            Instr::Store {
+                value: Ex::Bin(Op::Add, a, b),
+                dst,
+                ..
+            } if found.is_none() && plain(dst) => {
+                let inc = match (&**a, &**b) {
+                    (Ex::Load(l), k) | (k, Ex::Load(l)) if plain(l) && l.desc == dst.desc => k,
+                    _ => return None,
+                };
+                found = Some((dst, inc));
+            }
+            _ => return None,
+        }
+    }
+    found.map(|(d, k)| (d, k, target))
+}
+
+/// The least and greatest values of a counter's term: constants added to
+/// and `If(c, k, 0)` (None for any other term).
+fn counter_bounds(t: &Term) -> Option<(i128, i128)> {
+    match t {
+        Term::Const(c) => Some((*c, *c)),
+        Term::Add(a, b) => {
+            let (a, b) = (counter_bounds(a)?, counter_bounds(b)?);
+            Some((a.0.checked_add(b.0)?, a.1.checked_add(b.1)?))
+        }
+        Term::If(_, a, b) => {
+            let (a, b) = (counter_bounds(a)?, counter_bounds(b)?);
+            Some((a.0.min(b.0), a.1.max(b.1)))
+        }
+        _ => None,
+    }
+}
+
 /// Unsigned zoned decimal: every byte a digit with the F zone.
 pub(super) fn plain_display(t: &NumType) -> bool {
     t.usage == NumUsage::Display && !t.signed && t.sign == SignPos::None
@@ -725,6 +779,7 @@ impl Machine {
         if let Some(st) = self.sym.as_mut() {
             st.at = Some((code.name.clone(), pc));
         }
+        self.sym_bind_counts(cur, pc);
         let pre = match code.code.get(pc as usize) {
             Some(Instr::Move(src, dst)) => {
                 let v = self.sym_src(cur, src);
@@ -911,6 +966,10 @@ impl Machine {
                 let pred = p.filter(|p| !p.is_ground());
                 // the condition as "the jump is taken"
                 let pred = pred.map(|p| if is_if { p } else { Pred::not(p) });
+                let counted = match &pred {
+                    Some(p) if s.cur == cur => self.sym_count(cur, &code, pc, p),
+                    _ => false,
+                };
                 if let Some(st) = self.sym.as_mut() {
                     // a long path (an endless loop): each direction once more
                     if st.long() && !st.late.insert((program.clone(), pc, jumped)) {
@@ -922,6 +981,7 @@ impl Machine {
                         pc,
                         jumped,
                         pred,
+                        counted,
                     }));
                 }
             }
@@ -972,6 +1032,100 @@ impl Machine {
             }
         }
         r
+    }
+
+    /// At a conditional jump (taken when `jump`) past an `ADD k TO N`
+    /// block: N gets past the block as N + (k if the block ran, else 0), a
+    /// term of the condition (counters of matches in a loop follow inputs).
+    /// True when the counter follows the condition.
+    fn sym_count(
+        &mut self,
+        cur: usize,
+        code: &crate::zir::ProgramCode,
+        pc: u32,
+        jump: &Pred,
+    ) -> bool {
+        let Some((dst, inc, join)) = guarded_increment(code, pc) else {
+            return false;
+        };
+        let DataType::Numeric(nt) = self.loc_type(cur, dst) else {
+            return false;
+        };
+        let Ok((a, l)) = self.addr(cur, dst) else {
+            return false;
+        };
+        let load = Ex::Load(dst.clone());
+        let old = match self.sym_ex(cur, &load) {
+            Some(t) => t,
+            None => match self.eval_ex(cur, &load) {
+                Ok(d) => dec_term(d),
+                Err(_) => return false,
+            },
+        };
+        let k = match self.sym_ex(cur, inc) {
+            Some(t) => t,
+            None => match self.eval_ex(cur, inc) {
+                Ok(d) => dec_term(d),
+                Err(_) => return false,
+            },
+        };
+        let Some((old, k, sc)) = align(old, k) else {
+            return false;
+        };
+        let raw = Term::add(old, Term::ite(Pred::not(jump.clone()), k, Term::Const(0)));
+        // a counter that cannot overflow its digits needs no truncation
+        // (a term of nested remainders grows with every iteration)
+        let fits = sc == nt.scale
+            && counter_bounds(&raw).is_some_and(|(lo, hi)| {
+                pow10(nt.digits).is_some_and(|cap| hi < cap && (nt.signed && lo > -cap || lo >= 0))
+            });
+        let stored = if fits {
+            raw
+        } else {
+            let Some((_, stored)) = Self::sym_store_term(&nt, raw, sc) else {
+                return false;
+            };
+            stored
+        };
+        if let Some(st) = self.sym.as_mut() {
+            st.counts.retain(|c| !(c.0 == cur && c.2 == a));
+            st.counts.push((cur, join, a, l, nt, stored));
+        }
+        true
+    }
+
+    /// The counters of [`Machine::sym_count`] whose block ends at `pc`,
+    /// bound when their value is the term's.
+    fn sym_bind_counts(&mut self, cur: usize, pc: u32) {
+        let Some(st) = self.sym.as_mut() else { return };
+        if st.counts.is_empty() {
+            return;
+        }
+        let (now, rest): (Vec<_>, Vec<_>) = std::mem::take(&mut st.counts)
+            .into_iter()
+            .partition(|c| c.0 == cur && c.1 == pc);
+        st.counts = rest;
+        for (_, _, a, l, nt, term) in now {
+            let value = super::data::num_value(&nt, &self.mem[a..a + l])
+                .rescale(nt.scale.max(0) as u32, zeus_decimal::Rounding::Truncate)
+                .map(|d| d.coef);
+            if value.is_some()
+                && term.small(crate::concolic::MAX_COUNT_TERM)
+                && self.sym_value(&term) == value
+            {
+                self.sym_forget(a, l);
+                let bytes = self.mem[a..a + l].to_vec();
+                if let Some(st) = self.sym.as_mut() {
+                    st.nums.push(NumShadow {
+                        addr: a,
+                        len: l,
+                        ty: nt,
+                        term,
+                        bytes,
+                    });
+                }
+            }
+        }
     }
 
     pub(super) fn sym_bind_term(&mut self, a: usize, l: usize, ty: NumType, term: Term) {

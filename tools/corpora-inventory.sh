@@ -9,73 +9,27 @@ set -eu
 out=docs/inventory/corpora.md
 work=work/corpora
 bin=target/release
-c=.cache/corpora
 corpora="zfam zecs zuid taxe-fonciere mortgage zopeneditor cobol-course cobol-check acif"
 
-tools/fetch-corpora.sh >/dev/null
 cargo build --release -q -p zeus-cobol -p zeus-bms
 rm -rf "$work"
 mkdir -p "$work" "$(dirname "$out")"
-: >"$work/excluded.tsv"
-
-# Programs left out for reasons outside Zeus.
-excluded() { # corpus program reason
-    printf '%s\t%s\t%s\n' "$1" "$2" "$3" >>"$work/excluded.tsv"
-}
-excluded taxe-fonciere FMSTAU2 "its COPY members XB30 and XB35 are not published"
-excluded cobol-course CBL0002 "lab exercise: the compile error is to be corrected"
-excluded cobol-course CBL0009 "lab exercise: the compile error is to be corrected"
-excluded cobol-course CBL0012 "lab exercise: the compile error is to be corrected"
-excluded cobol-check MOCK "BY VALUE of a PIC X(80) item (test input of the mock parser)"
-excluded cobol-check MOCKTEST "BY VALUE of a PIC X(80) item (test input of the mock parser)"
-excluded acif ACIFOTX "COPY member AFPAGOT is part of the Print Services product"
-excluded acif STRFLDS "a COPY member, not a program"
-
-# Compiles the sources that are not excluded: corpus zcobc-options... -- sources...
-inv() {
-    corpus=$1
-    shift
-    : >"$work/args"
-    while [ "$1" != "--" ]; do
-        printf '%s\n' "$1" >>"$work/args"
-        shift
-    done
-    shift
-    count=0
-    for f in "$@"; do
-        name=$(basename "$f" | sed 's/\.[^.]*$//' | tr a-z A-Z)
-        if awk -F'\t' -v c="$corpus" -v n="$name" '$1 == c && $2 == n { found = 1 } END { exit !found }' \
-            "$work/excluded.tsv"; then
-            continue
-        fi
-        printf '%s\n' "$f" >>"$work/args"
-        count=$((count + 1))
-    done
-    printf '%s\t%s\n' "$corpus" "$count" >>"$work/counts.tsv"
-    # one argument per line (paths contain spaces)
-    tr '\n' '\0' <"$work/args" | xargs -0 "$bin/zcobc" inventory | sed "s/^/$corpus	/" >>"$work/all.tsv"
-}
+tools/corpora-programs.sh >"$work/programs.tsv"
+awk -F'\t' '$1 == "X" { print $2 "\t" $3 "\t" $4 }' "$work/programs.tsv" >"$work/excluded.tsv"
 : >"$work/counts.tsv"
 : >"$work/all.tsv"
-
-inv zfam -I "$c/zfam/Source" -- "$c"/zfam/Source/*.cbl
-inv zecs -I "$c/zecs/Source" -- "$c"/zecs/Source/*.cbl
-inv zuid --source-encoding ebcdic --ccsid 37 -I "$c/zuid/cbl" -- "$c"/zuid/cbl/*.cbl
-inv taxe-fonciere -I "$c/taxe-fonciere/src" -- "$c"/taxe-fonciere/src/*.cob
-m=$c/mortgage/zBuilder/MortgageApplication
-mkdir -p "$work/bms-mortgage"
-for f in "$m"/bms/*.bms; do
-    $bin/zbms "$f" --copy "$work/bms-mortgage/$(basename "$f" .bms | tr a-z A-Z).cpy"
+for corpus in $corpora; do
+    # the options (the same for the corpus), then the sources; NUL-separated
+    awk -F'\t' -v c="$corpus" '
+        $1 == "P" && $2 == c {
+            if (!n++) for (i = 4; i <= NF; i++) printf "%s%c", $i, 0
+            src[n] = $3
+        }
+        END { for (i = 1; i <= n; i++) printf "%s%c", src[i], 0 }' "$work/programs.tsv" >"$work/args"
+    count=$(awk -F'\t' -v c="$corpus" '$1 == "P" && $2 == c' "$work/programs.tsv" | wc -l)
+    printf '%s\t%s\n' "$corpus" "$count" >>"$work/counts.tsv"
+    xargs -0 "$bin/zcobc" inventory <"$work/args" | sed "s/^/$corpus	/" >>"$work/all.tsv"
 done
-inv mortgage -I "$m/copybook" -I "$work/bms-mortgage" -- "$m"/cobol/*.cbl
-z=$c/zopeneditor
-inv zopeneditor -I "$z/COPYBOOK" -I "$z/COPYLIB" -I "$z/COPYLIB-MVS" -- "$z"/COBOL/*
-inv cobol-course -- "$c"/cobol-course/*/Labs/cbl/* "$c"/cobol-course/*/Challenges/*/cbl/*
-k=$c/cobol-check
-inv cobol-check -I "$k/src/main/cobol/copy" -I "$k/src/main/cobol/copy/Outrec" -I "$k/copybooks" \
-    -- "$k"/src/main/cobol/*.CBL "$k"/src/main/cobol/*.cbl
-a="$c/acif/zOS-Print/ACIF-User-Exit-samples/Cobol Source"
-inv acif -I "$a" -- "$a"/*
 
 {
     echo "# Syntax usage inventory of the additional corpora"

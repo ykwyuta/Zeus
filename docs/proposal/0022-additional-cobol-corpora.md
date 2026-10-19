@@ -220,7 +220,7 @@ COBOL コーパスとしての価値は低い。一方で PL/I は 1,473 本・5
 | **K3 CICS Web (G6 以降)** | `DFHVALUE` の追加、zeus-cics の `WEB`/`DOCUMENT`/`URIMAP` 対応、zFAM の RDO・IDCAMS 取り込み | zFAM に HTTP で PUT/GET/DELETE してデータが往復するスクリプト (`tools/zfam.sh`) が CI で通る |
 | **K4 バッチ E2E** | B2/B3 の JCL を `zjob` で実行し、教材記載の出力と比較 | `tools/omp-course.sh` が全ラボで RC 0 (意図的な誤りのラボを除く) |
 | **K5 IBM リストのオラクル化** | C1 のリストから IGY 診断を抽出するツールを `zeus-ccvs` に追加し、Zeus の診断と比較した表を `docs/oracle/ibm-listing-differences.md` に出す | 233 本の比較表ができ、差異ごとに「Zeus を直す」「記録して許容」を決める |
-| **K6 C1 テスト生成** | A4 の計算モジュールに `ztestgen` を適用 | 6 本 (COPY 欠落の FMSTAU2 を除く 5 本) の C1 網羅率を [0012](0012-c1-test-generation.md) に記録する |
+| **K6 C1 テスト生成** | 全コーパスに `ztestgen` を適用 (`tools/corpora-testgen.sh`) | 実施済み (2026-10-20): 91 本で 43% から 78%、全ケースが `ztest` で再現。結果と拡張は [0012](0012-c1-test-generation.md) の「追加コーパスでの検証」 |
 
 ## 8. 未確認事項
 

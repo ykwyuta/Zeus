@@ -2,7 +2,7 @@
 //! results with the expected ones.
 //!
 //! ```text
-//! ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR
+//! ztest [-I DIR]... [-L DIR]... [--coverage DIR] [--source-encoding E] [--ccsid N] SOURCE.cbl CASES-DIR
 //! ```
 //!
 //! `--coverage DIR` records coverage (see `zcov`). The exit status is 1
@@ -12,12 +12,14 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::rc::Rc;
 
-use zeus_cobol::front::FrontOptions;
+use zeus_cobol::front::{FrontOptions, SourceEncoding};
 use zeus_testgen::case::{read_dir, replay};
 use zeus_testgen::engine::Options;
 
 fn usage() -> ExitCode {
-    eprintln!("usage: ztest [-I DIR]... [-L DIR]... [--coverage DIR] SOURCE.cbl CASES-DIR");
+    eprintln!(
+        "usage: ztest [-I DIR]... [-L DIR]... [--coverage DIR] [--source-encoding E] [--ccsid N] SOURCE.cbl CASES-DIR"
+    );
     ExitCode::from(2)
 }
 
@@ -25,6 +27,7 @@ fn main() -> ExitCode {
     let mut copy = Vec::new();
     let mut opts = Options::default();
     let mut pos = Vec::new();
+    let mut encoding = SourceEncoding::default();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
         match a.as_str() {
@@ -35,6 +38,14 @@ fn main() -> ExitCode {
             "-L" => match it.next() {
                 Some(d) => opts.search.push(PathBuf::from(d)),
                 None => return usage(),
+            },
+            "--source-encoding" => match it.next().and_then(|e| SourceEncoding::parse(&e)) {
+                Some(e) => encoding = e,
+                None => return usage(),
+            },
+            "--ccsid" => match it.next().and_then(|c| c.parse().ok()) {
+                Some(c) if zeus_cobol::codepage::set_active(c) => {}
+                _ => return usage(),
             },
             "--coverage" => match it.next() {
                 Some(d) => zeus_cobol::coverage::set_dir(std::path::Path::new(&d)),
@@ -49,6 +60,7 @@ fn main() -> ExitCode {
     };
     let fo = FrontOptions {
         copy_dirs: copy,
+        source_encoding: encoding,
         ..Default::default()
     };
     let module = match zeus_cobol::compile_file(source, &fo) {

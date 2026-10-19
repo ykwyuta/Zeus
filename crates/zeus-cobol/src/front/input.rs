@@ -13,6 +13,16 @@ pub enum SourceEncoding {
     Ebcdic80,
 }
 impl SourceEncoding {
+    /// The value of a `--source-encoding` option: utf8, ebcdic or ebcdic80.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "utf8" | "utf-8" => Some(Self::Utf8),
+            "ebcdic" => Some(Self::Ebcdic),
+            "ebcdic80" => Some(Self::Ebcdic80),
+            _ => None,
+        }
+    }
+
     pub(crate) fn padded(self) -> bool {
         self != Self::Utf8
     }
