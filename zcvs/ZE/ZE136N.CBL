@@ -1,0 +1,9 @@
+      * SIGN on unsigned: reject only this rule.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZE136N.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  ITEM-A PIC 99 SIGN LEADING SEPARATE.
+       PROCEDURE DIVISION.
+           STOP RUN.
+       END PROGRAM ZE136N.

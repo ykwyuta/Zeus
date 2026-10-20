@@ -170,7 +170,7 @@ COBOL コーパスとしての価値は低い。一方で PL/I は 1,473 本・5
   置換されなければ従来どおり `-` と語になる。G9 の大文字小文字は原因ではなかった。
 - 調査中に見つかった追加の非互換: `INSPECT FUNCTION REVERSE(x) TALLYING ...` (zFAM 8 本)。関数の結果を TALLYING
   で調べる命令 `InspectValue` を ZIR に追加した (REPLACING / CONVERTING は受け取り側になるので診断する)。
-- 回帰テスト: ZCVS `ZS104A` (COPY REPLACING・REPLACE・OPEN/CLOSE・INSPECT・バッチコンパイルの単位ごとの `TRUNC`)、
+- 回帰テスト: ZCVS `ZS106A` (COPY REPLACING・REPLACE・OPEN/CLOSE・INSPECT・バッチコンパイルの単位ごとの `TRUNC`)、
   `crates/zeus-cobol/tests/compiler_control.rs` (オプション、`DFHVALUE` の値、バッチ境界)。
 
 残り:

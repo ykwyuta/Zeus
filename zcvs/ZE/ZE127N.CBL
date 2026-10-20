@@ -1,0 +1,6 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZE127N.
+       REPLACE ==== BY ==ABC==.
+       PROCEDURE DIVISION.
+           STOP RUN.
+       END PROGRAM ZE127N.

@@ -1,21 +1,64 @@
 # ZCVS — z/OS Enterprise COBOL Validation Suite
 
-ZCVS is a clean-room validation suite (`GPL-3.0-or-later`) targeting IBM Enterprise COBOL for z/OS V4.2 / V6.4 language semantics, compiler options (`CBL`/`PROCESS`), EBCDIC/DBCS/National encodings, pointer & subprogram linkage (`NODYNAM`/`DYNAM`), QSAM/VSAM/AWS-tape file I/O, system interfaces (`PARM`, `RETURN-CODE`, `CEE3ABD`), XML (`XML PARSE`, `XML GENERATE`), and negative compile-time diagnostics.
+ZCVS is a clean-room validation suite (`GPL-3.0-or-later`) targeting IBM Enterprise COBOL for z/OS V4.2 / V6.4 language semantics, compiler options, EBCDIC/DBCS/National encodings, pointers and subprogram linkage, QSAM/VSAM/AWS-tape file I/O, system interfaces, and negative compile-time diagnostics. Implemented and missing scenarios are distinguished in the audit below.
 
-All programs use the CCVS85-compatible self-checking report format (`PASS`, `FAIL*`, `SKIP`, `END OF TEST-SUMMARY`) via shared copybooks in `zcvs/copy/` so they can be executed both locally with `zeus-ccvs` and on an IBM z/OS system via `IGYWCLG`.
+Runtime programs use the CCVS85-compatible self-checking report format (`PASS`, `FAIL*`, summary counts, `END OF TEST-2`) via shared copybooks in `zcvs/copy/`. Negative programs expect compilation errors; paired positive controls expect successful compilation. The JCL exporter prepares z/OS members, but local results do not certify execution on IBM z/OS.
+
+See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missing scenarios, specification constraints, and acceptance rules. Passing all implemented checks does not mean proposal 0019 is fully covered. [coverage.json](coverage.json) is the reviewed inventory of executable checks, not a claim of complete language coverage.
 
 ## Modules
 
 | Module | Category | Programs |
 |--------|----------|----------|
-| `ZD` | Data Representation & Binary/Packed/Float/Pointer | `ZD101A` .. `ZD107A` (7) |
-| `ZA` | Compiler Options & Arithmetic (`TRUNC`, `NUMPROC`, `ARITH`, `ZWB`) | `ZA101A` .. `ZA108A` (8) |
-| `ZN` | National (`UTF-16BE`), DBCS (`CCSID 930/939`), Intrinsic Functions | `ZN101A` .. `ZN106M` (7) |
-| `ZP` | Subprograms, `ENTRY`, `RECURSIVE`, `LOCAL-STORAGE`, `CANCEL`, `GOBACK` | `ZP101A` .. `ZP106A` + 7 `lib/` subprograms (6) |
-| `ZF` | QSAM (`RECORDING MODE F/V`), AWS Tape, VSAM KSDS/ESDS/RRDS, `SORT` | `ZF101A` .. `ZF201M` (6) |
-| `ZS` | Source Manipulation (`COPY REPLACING`, `LIB`, `EJECT`/`SKIP`) & System (`PARM`, `RETURN-CODE`, `CEE3ABD`), batch compilation | `ZS101A` .. `ZS104A` (4) |
-| `ZX` | Optional XML Processing (`XML PARSE`, `XML GENERATE`) | `ZX101A` .. `ZX104A` (4) |
-| `ZE` | Negative Compile-Error Diagnostics | `ZE101N` .. `ZE125N` (25) |
+| `ZD` | Packed/zoned/binary storage, layout, ODO, edited PICTURE, figurative constants, collation | `ZD101A` .. `ZD115A` (15) |
+| `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA121A` (21) |
+| `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN113A`, including `ZN102B` and `ZN106M` (14) |
+| `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments | `ZP101A` .. `ZP112A` + 16 `lib/` subprograms (12 mains) |
+| `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF114A`, `ZF201M`, `ZF202M` (16) |
+| `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS106A`, including `ZS103M` (6) |
+| `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX109A` (9) |
+| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE145N`, `ZE126P` .. `ZE145P` (65) |
+
+The suite contains 158 main programs: 93 runtime programs with 1,431 assertions,
+45 negative compile checks, and 20 successful-compilation controls. Cargo tests
+run both Zeus backends and require the exact program set, assertion IDs in
+report order, counts, and zero deleted/manual checks. They rebuild `zcobc` and
+`zeus-rt` through Cargo to avoid testing stale binaries:
+
+```bash
+cargo test -p zeus-ccvs --test zcvs
+```
+
+New scenario groups correspond to audit IDs D04 (`ZD108A`), A05/A06
+(`ZA110A`/`ZA109A`), N07 (`ZN107A`), P05 (`ZP107A`), F01 (`ZF106A`),
+S05 (`ZS104A`), X01 (`ZX105A`), and E01/E02/E07/E08 (`ZE126N/P` ..
+`ZE133N/P`). The audit records the remaining partitions within those groups.
+
+A further 14 programs add 335 assertions for native/custom EBCDIC collation,
+NUMPROC/NUMCLS sign validation and normalization, pointer rebinding and ENTRY
+aliases, KSDS alternate-index creation/update/deletion/recovery and duplicate
+status `02`, tape HDR2 mismatches, REPLACE scope, INITIALIZE precedence, and
+TRIM/TEST-NUMVAL/ABS. See audit IDs D02, A07, P06, F05–F07, S01, X03–X05.
+
+The latest expansion adds 53 mains and 7 helpers: 29 runtime programs with
+766 assertions, 12 negative diagnostics and 12 matching positive controls.
+It covers packed/zoned byte matrices, ODO moving tails, nested SYNC strides,
+TRUNC aliases and width limits, independent arithmetic receivers, external
+floats, national categories and four Japanese CCSIDs, storage lifetime,
+recursive PERFORM frames, ENTRY arities, RETURNING groups/77 items, sparse
+RRDS, partial START, multiple alternate indexes, QSAM sequencing/EXTEND,
+four tape volumes, and national/decimal-comma intrinsic functions.
+
+The Rust harness additionally inspects all four `ZF202M` AWS images without
+the production decoder: label lengths/order, HDR2 format, EOV versus EOF,
+tape marks, raw payloads, physical block counts and previous-length chains.
+These physical checks are separate from the 1,431 COBOL assertions.
+
+`ZA111A`–`ZA114A` use Zeus's `CBL NUMCLS` selection to test both NUMCLS
+installation settings. On IBM z/OS, NUMCLS is an installation setting rather
+than a source compiler option: align that setting and remove this Zeus
+selection before compiling these four sources. `ZA115A` explicitly targets
+the legacy COBOL 4.2 `NUMPROC(MIG)` option, which is unavailable in COBOL 6.
 
 ## Usage
 
@@ -38,3 +81,7 @@ Export 80-column z/OS PDS datasets and `IGYWCLG` batch JCL jobs:
 ```bash
 cargo run -p zeus-ccvs -- export-jcl --suite zcvs --out work/zcvs-zos --hlq IBMUSER.ZCVS
 ```
+
+`ZS106A` preserves the production-source idioms from proposal 0022: literal
+COPY REPLACING, tag-word REPLACE, OPEN/CLOSE statement boundaries, INSPECT
+on a function result, and per-program compiler options in batch compilation.

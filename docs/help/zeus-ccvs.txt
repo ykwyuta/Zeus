@@ -1,7 +1,7 @@
 DETAILED USAGE - zeus-ccvs
 
-Run the NIST CCVS85 COBOL-85 suite through GnuCOBOL, the Zeus interpreter or
-standalone Zeus native executables. Extraction, execution and reporting are
+Run CCVS85/ZCVS (COBOL), ZPVS (PL/I), and ZHVS (HLASM), with shared
+reports and standalone native executables. Extraction, execution and reporting are
 separate commands. No external documentation is needed for this help.
 
 EXTRACT
@@ -14,9 +14,14 @@ EXTRACT
 
 RUN
   zeus-ccvs run --suite work/suite --toolchain KIND --out results.json [options]
-  --toolchain KIND  gnucobol, zeus or zeus-native.
+  --toolchain KIND  gnucobol, zeus, zeus-native, zpli, zpli-native,
+                    zas, zas-obj or zas-goff.
   --cobc FILE       GnuCOBOL compiler path (gnucobol).
   --zcobc FILE      Zeus compiler path (otherwise next to this executable).
+  --zpli FILE       PL/I driver path (otherwise next to this executable).
+  --zas FILE        Assembler path (otherwise next to this executable).
+  HLASM uses zpli run-hlasm from the assembler's directory for callbacks.
+  A failed/empty run returns nonzero; compile diagnostics must match.
   --work DIR        Working directory (default work/run); toolchain-specific
                     build/run files are written beneath it.
   --modules LIST    Comma-separated suite modules, e.g. NC,SM,IC. Defaults to
@@ -25,8 +30,7 @@ RUN
   --jobs N          Parallel workers (default 4).
   --timeout N       Per-step timeout in seconds (default 120).
   --out FILE        Required JSON results file; existing file is replaced.
-  Native runs need zeus-rt available to zcobc. The harness prints a summary;
-  inspect the result counts rather than assuming exit 0 means every test passed.
+  Native runs need zeus-rt available next to the compiler. Failed tests return 1.
 
 REPORT
   zeus-ccvs report --results results.json [--results zcvs.json] [--baseline baseline.json] [--programs]
@@ -41,7 +45,7 @@ MANIFEST
 EXPORT-JCL
   zeus-ccvs export-jcl --suite zcvs --out work/zcvs-zos [--hlq USER.ZCVS] [--modules LIST]
   Export a suite into 80-column PDS members (COPY/, SRCLIB/) and z/OS
-  IGYCRCTL+IEWL JCL job streams (JCL/).
+  IGYCRCTL/IBMZPLI/ASMA90 + IEWL JCL job streams (JCL/).
 
 EXAMPLES
   zeus-ccvs extract --newcob newcob.val --out work/suite --overlay ccvs85/exec85-zeus.conf
@@ -51,6 +55,6 @@ EXAMPLES
   zeus-ccvs report --results results.json --results zcvs.json --programs
 
 EXIT STATUS
-  0 command completed; 2 invalid usage or harness failure. Test failures and
-  compiler/runtime outcomes are recorded in JSON and summarized in reports.
+  0 command completed successfully; 1 test failure or empty run;
+  2 invalid usage or harness failure. Outcomes are recorded in JSON.
   Use --help/-h for any command; --version prints the harness version.

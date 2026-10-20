@@ -101,8 +101,12 @@ impl Machine {
                 match value::parse_number(&text) {
                     Some(v) => Ok(v),
                     None => {
-                        self.conversion(s, act)?;
-                        Ok(Value::fixed(0, 0, true))
+                        let repaired = self.conversion(s, act)?;
+                        if repaired != *s {
+                            self.arith_value(Value::Char(repaired), from, act)
+                        } else {
+                            Ok(Value::fixed(0, 0, true))
+                        }
                     }
                 }
             }
@@ -120,20 +124,23 @@ impl Machine {
     }
 
     /// CONVERSION: raised for an invalid character string.
-    fn conversion(&mut self, src: &[u8], act: usize) -> R<()> {
+    fn conversion(&mut self, src: &[u8], act: usize) -> R<Vec<u8>> {
         let bad = src
             .iter()
             .copied()
             .find(|c| !matches!(*c, 0xF0..=0xF9 | 0x40 | 0x4B | 0x60 | 0x4E | 0xC5))
             .unwrap_or(SPACE);
-        PENDING_CONV.with(|p| *p.borrow_mut() = Some((src.to_vec(), bad)));
+        let previous = PENDING_CONV.with(|p| p.replace(Some((src.to_vec(), bad))));
         let r = if self.enabled_now(act, cond::CONVERSION) {
             self.raise(Cond::Conversion, 600, act)
         } else {
             Ok(())
         };
-        PENDING_CONV.with(|p| *p.borrow_mut() = None);
-        r
+        let repaired = PENDING_CONV
+            .with(|p| p.replace(previous))
+            .map(|v| v.0)
+            .unwrap_or_else(|| src.to_vec());
+        r.map(|()| repaired)
     }
 
     /// High-order digits lost on assignment: SIZE when enabled.

@@ -34,7 +34,22 @@ impl Val {
         match self {
             Val::Fixed(n) => *n,
             Val::Bit(b) => i64::from(*b),
-            Val::Char(s) => s.trim().parse().unwrap_or(0),
+            Val::Char(s) => {
+                let text = s.trim();
+                if let Some(rest) = text.strip_prefix('-') {
+                    rest.trim()
+                        .parse::<i64>()
+                        .ok()
+                        .and_then(i64::checked_neg)
+                        .unwrap_or(0)
+                } else {
+                    text.strip_prefix('+')
+                        .unwrap_or(text)
+                        .trim()
+                        .parse()
+                        .unwrap_or(0)
+                }
+            }
         }
     }
 

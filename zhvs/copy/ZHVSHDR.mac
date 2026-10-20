@@ -1,0 +1,10 @@
+         MACRO
+         ZHVSHDR
+         USING *,12
+         LR 12,15
+         ST 14,ZRETURN
+         MVC ZCMD(4),=F'0'
+         LA 1,ZPLIST
+         L 15,=V(ZHVRPT)
+         BASR 14,15
+         MEND

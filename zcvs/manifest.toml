@@ -124,3 +124,161 @@ diagnostic_contains = "SCREEN SECTION"
 [programs.ZE125N]
 expect = "compile-error"
 diagnostic_contains = "CBL/PROCESS option"
+
+[programs.ZE126N]
+expect = "compile-error"
+diagnostic_contains = "condition-name VALUE requires a value"
+
+[programs.ZE126P]
+expect = "compile-only"
+
+[programs.ZE127N]
+expect = "compile-error"
+diagnostic_contains = "empty replacement search operand"
+
+[programs.ZE127P]
+expect = "compile-only"
+
+[programs.ZE128N]
+expect = "compile-error"
+diagnostic_contains = "pseudo-text delimiters"
+
+[programs.ZE128P]
+expect = "compile-only"
+
+[programs.ZE129N]
+expect = "compile-error"
+diagnostic_contains = "RECURSIVE"
+
+[programs.ZE129P]
+expect = "compile-only"
+
+[programs.ZE130N]
+expect = "compile-error"
+diagnostic_contains = "ARITH"
+
+[programs.ZE130P]
+expect = "compile-only"
+
+[programs.ZE131N]
+expect = "compile-error"
+diagnostic_contains = "ARITH"
+
+[programs.ZE131P]
+expect = "compile-only"
+
+[programs.ZE132N]
+expect = "compile-error"
+diagnostic_contains = "EXIT is not defined"
+
+[programs.ZE132P]
+expect = "compile-only"
+
+[programs.ZE133N]
+expect = "compile-error"
+diagnostic_contains = "pseudo-text delimiters"
+
+[programs.ZE133P]
+expect = "compile-only"
+
+[programs.ZF109A]
+jcl = "ZF109A.JCL"
+
+[programs.ZN110A]
+ccsid = 930
+
+[programs.ZN111A]
+ccsid = 939
+
+[programs.ZN112A]
+ccsid = 1390
+
+[programs.ZN113A]
+ccsid = 1399
+
+[programs.ZF202M]
+jcl = "ZF202M.JCL"
+
+[programs.ZE134N]
+expect = "compile-error"
+diagnostic_contains = "JUSTIFIED requires"
+
+[programs.ZE134P]
+expect = "compile-only"
+
+[programs.ZE135N]
+expect = "compile-error"
+diagnostic_contains = "BLANK WHEN ZERO requires"
+
+[programs.ZE135P]
+expect = "compile-only"
+
+[programs.ZE136N]
+expect = "compile-error"
+diagnostic_contains = "SIGN requires"
+
+[programs.ZE136P]
+expect = "compile-only"
+
+[programs.ZE137N]
+expect = "compile-error"
+diagnostic_contains = "cannot have PICTURE"
+
+[programs.ZE137P]
+expect = "compile-only"
+
+[programs.ZE138N]
+expect = "compile-error"
+diagnostic_contains = "VALUE must be NULL"
+
+[programs.ZE138P]
+expect = "compile-only"
+
+[programs.ZE139N]
+expect = "compile-error"
+diagnostic_contains = "USAGE NATIONAL requires"
+
+[programs.ZE139P]
+expect = "compile-only"
+
+[programs.ZE140N]
+expect = "compile-error"
+diagnostic_contains = "external floating item requires"
+
+[programs.ZE140P]
+expect = "compile-only"
+
+[programs.ZE141N]
+expect = "compile-error"
+diagnostic_contains = "external floating item requires"
+
+[programs.ZE141P]
+expect = "compile-only"
+
+[programs.ZE142N]
+expect = "compile-error"
+diagnostic_contains = "external floating item requires"
+
+[programs.ZE142P]
+expect = "compile-only"
+
+[programs.ZE143N]
+expect = "compile-error"
+diagnostic_contains = "BLANK WHEN ZERO requires"
+
+[programs.ZE143P]
+expect = "compile-only"
+
+[programs.ZE144N]
+expect = "compile-error"
+diagnostic_contains = "ODO object must be an integer"
+
+[programs.ZE144P]
+expect = "compile-only"
+
+[programs.ZE145N]
+expect = "compile-error"
+diagnostic_contains = "LOCAL-STORAGE cannot specify EXTERNAL"
+
+[programs.ZE145P]
+expect = "compile-only"

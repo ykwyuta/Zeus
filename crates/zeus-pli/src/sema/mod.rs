@@ -249,6 +249,8 @@ impl Compiler {
             keyed: false,
             direct: false,
             regional: false,
+            record_format: None,
+            record_keys: None,
         };
         for a in attrs {
             match a {
@@ -260,8 +262,31 @@ impl Compiler {
                 Attr::Update => f.update = true,
                 Attr::Keyed => f.keyed = true,
                 Attr::Direct => f.direct = true,
-                Attr::Environment(e) if e.to_ascii_uppercase().contains("REGIONAL") => {
-                    f.regional = true;
+                Attr::Environment(e) => {
+                    let upper = e.to_ascii_uppercase();
+                    let words: Vec<_> = upper
+                        .split(|c: char| !c.is_ascii_alphanumeric())
+                        .filter(|s| !s.is_empty())
+                        .collect();
+                    f.regional |= words.contains(&"REGIONAL");
+                    let number = |key: &str| {
+                        words
+                            .iter()
+                            .position(|w| *w == key)
+                            .and_then(|i| words.get(i + 1))
+                            .and_then(|n| n.parse::<u32>().ok())
+                    };
+                    if words.iter().any(|w| matches!(*w, "V" | "VB")) {
+                        f.record_format = Some(zeus_ds::format::RecordFormat::Variable);
+                    } else if words.iter().any(|w| matches!(*w, "F" | "FB")) {
+                        f.record_format = Some(zeus_ds::format::RecordFormat::Fixed(
+                            number("RECSIZE").unwrap_or(80).max(1),
+                        ));
+                    }
+                    if let Some(len) = number("KEYLENGTH") {
+                        f.record_keys =
+                            Some((len, number("KEYLOC").unwrap_or(1).saturating_sub(1)));
+                    }
                 }
                 Attr::External(Some(n)) => f.ddname = n.chars().take(8).collect(),
                 _ => {}
@@ -486,6 +511,7 @@ impl Compiler {
             params: Vec::new(),
             returns: None,
             main,
+            noexecops: p.options.iter().any(|o| o == "NOEXECOPS"),
             external,
             recursive: p.recursive,
             entries: Vec::new(),

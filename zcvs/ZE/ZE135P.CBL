@@ -1,0 +1,9 @@
+      * BLANK WHEN ZERO signed: accept only this rule.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZE135P.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  ITEM-A PIC 99 BLANK WHEN ZERO.
+       PROCEDURE DIVISION.
+           STOP RUN.
+       END PROGRAM ZE135P.

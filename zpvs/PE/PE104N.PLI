@@ -1,0 +1,5 @@
+ /* LIKE unknown: one rule and its positive control. */
+ PE104N: PROC OPTIONS(MAIN);
+ DCL X LIKE MISSING;
+
+ END PE104N;

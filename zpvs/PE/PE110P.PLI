@@ -1,0 +1,5 @@
+ /* RETURN no result: one rule and its positive control. */
+ PE110P: PROC OPTIONS(MAIN);
+
+ RETURN;
+ END PE110P;

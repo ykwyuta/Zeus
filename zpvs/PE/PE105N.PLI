@@ -1,0 +1,5 @@
+ /* LIKE scalar: one rule and its positive control. */
+ PE105N: PROC OPTIONS(MAIN);
+ DCL BASE CHAR(4); DCL X LIKE BASE;
+
+ END PE105N;

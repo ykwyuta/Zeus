@@ -1,0 +1,5 @@
+ /* OFFSET area unknown: one rule and its positive control. */
+ PE115P: PROC OPTIONS(MAIN);
+ DCL A AREA(100); DCL X OFFSET(A);
+
+ END PE115P;

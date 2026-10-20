@@ -120,7 +120,7 @@ fn ebcdic(s: &str) -> Vec<u8> {
 }
 
 impl Machine {
-    fn file_id(&mut self, f: &Option<Expr>, default: &str, act: usize) -> R<FileId> {
+    pub(super) fn file_id(&mut self, f: &Option<Expr>, default: &str, act: usize) -> R<FileId> {
         match f {
             Some(e) => match self.eval(e, act)? {
                 Value::File(id) => Ok(id),
@@ -142,6 +142,8 @@ impl Machine {
                     keyed: false,
                     direct: false,
                     regional: false,
+                    record_format: None,
+                    record_keys: None,
                 };
                 Rc::make_mut(&mut self.module).files.push(decl.clone());
                 self.files.push(FileState::new(&decl));
@@ -171,16 +173,24 @@ impl Machine {
             st.print = true;
         }
         let dd = st.ddname();
-        let info = self.env.dds.get(&dd).cloned();
+        let info = self.env.dds.get(&dd).cloned().or_else(|| {
+            std::env::var_os(format!("DD_{dd}")).map(|path| DdInfo {
+                path: path.into(),
+                format: None,
+                keys: None,
+                sysout: false,
+                relative: false,
+            })
+        });
         let st = &mut self.files[f as usize];
         match info {
             Some(d) => {
                 st.path = Some(d.path.clone());
-                st.format = d.format;
-                st.keys = d.keys;
+                st.format = d.format.or(st.decl.record_format);
+                st.keys = d.keys.or(st.decl.record_keys);
                 st.relative = d.relative;
                 if st.stream && st.output {
-                    st.sink = Some(match (d.sysout, d.format) {
+                    st.sink = Some(match (d.sysout, st.format) {
                         (false, Some(fmt)) => Sink::Records(d.path.clone(), fmt, Vec::new()),
                         _ => {
                             let file = std::fs::OpenOptions::new()
@@ -196,7 +206,7 @@ impl Machine {
                 } else if st.stream {
                     // stream input: records of the data set (or text)
                     let data = std::fs::read(&d.path).unwrap_or_default();
-                    st.inrecs = match d.format {
+                    st.inrecs = match st.format {
                         Some(fmt) if !d.sysout && !data.is_empty() => {
                             zeus_ds::format::decode(fmt, &data).unwrap_or_default()
                         }
@@ -237,6 +247,7 @@ impl Machine {
         st.open = true;
         st.fresh = true;
         st.lineno = 1;
+        st.pageno = 1;
         st.line.clear();
         st.endpage_done = false;
         Ok(true)
@@ -598,6 +609,8 @@ impl Machine {
             keyed: false,
             direct: false,
             regional: false,
+            record_format: None,
+            record_keys: None,
         };
         let mut st = FileState::new(&decl);
         st.open = true;
@@ -954,6 +967,8 @@ impl Machine {
                 keyed: false,
                 direct: false,
                 regional: false,
+                record_format: None,
+                record_keys: None,
             });
             st.open = true;
             st.inrecs = vec![text];

@@ -50,7 +50,11 @@ impl Outcome {
     /// failing test.
     pub fn ok(&self) -> bool {
         match self {
-            Outcome::Ran { counts } => counts.fail == 0,
+            Outcome::Ran { counts } => {
+                counts.total > 0
+                    && counts.fail == 0
+                    && counts.pass + counts.deleted + counts.inspect == counts.total
+            }
             Outcome::Compiled => true,
             _ => false,
         }
@@ -94,7 +98,24 @@ pub struct RunOptions {
 }
 
 pub fn run(tc: &Toolchain, opts: &RunOptions) -> Result<SuiteResult> {
+    anyhow::ensure!(
+        !opts.modules.is_empty() && opts.jobs > 0,
+        "at least one module and one worker are required"
+    );
     let manifest = Manifest::load(&opts.suite)?;
+    if let Some(m) = &manifest {
+        let actual = match tc.source_extensions()[0] {
+            "PLI" => "pli",
+            "ASM" => "hlasm",
+            _ => "cobol",
+        };
+        anyhow::ensure!(
+            m.language.is_empty() || m.language == actual,
+            "suite language {} does not match toolchain {}",
+            m.language,
+            tc.name()
+        );
+    }
     fs::create_dir_all(&opts.work)?;
     copy_dir(&opts.suite.join("copy"), &opts.work.join("copy"))?;
     let copyalt_src = opts.suite.join("copyalt");
@@ -127,6 +148,17 @@ pub fn run(tc: &Toolchain, opts: &RunOptions) -> Result<SuiteResult> {
         anyhow::bail!("{}", errors.join("\n"));
     }
     let mut modules = results.into_inner().unwrap();
+    if !opts.programs.is_empty() {
+        for requested in &opts.programs {
+            anyhow::ensure!(
+                modules
+                    .iter()
+                    .any(|m| m.programs.iter().any(|p| &p.program == requested)),
+                "requested program {requested} was not found"
+            );
+        }
+        modules.retain(|m| !m.programs.is_empty());
+    }
     modules.sort_by_key(|m: &ModuleResult| order(&m.module));
     Ok(SuiteResult {
         suite: manifest.and_then(|m| (!m.name.is_empty()).then_some(m.name)),
@@ -143,11 +175,14 @@ pub const MODULES: &[&str] = &[
 
 /// Canonical ZCVS module order for reports.
 pub const ZCVS_MODULES: &[&str] = &["ZD", "ZA", "ZN", "ZP", "ZF", "ZS", "ZE", "ZX"];
+pub const ZPVS_MODULES: &[&str] = &["PD", "PA", "PC", "PS", "PF", "PM", "PE"];
+pub const ZHVS_MODULES: &[&str] = &["HA", "HM", "HI", "HD", "HF", "HS", "HE"];
 
 /// Combined canonical module order across CCVS85 and ZCVS.
 pub const ALL_MODULES: &[&str] = &[
     "NC", "SM", "IC", "SQ", "RL", "IX", "ST", "IF", "SG", "OB", "DB", "RW", "CM", "ZD", "ZA", "ZN",
-    "ZP", "ZF", "ZS", "ZE", "ZX",
+    "ZP", "ZF", "ZS", "ZE", "ZX", "PD", "PA", "PC", "PS", "PF", "PM", "PE", "HA", "HM", "HI", "HD",
+    "HF", "HS", "HE",
 ];
 
 pub fn order(module: &str) -> usize {
@@ -170,22 +205,31 @@ fn run_module(
     }
     copy_dir(&src, &dir).with_context(|| format!("module {module} not found in suite"))?;
     let dir = dir.canonicalize()?;
+    let common_lib = opts.suite.join("lib");
+    if common_lib.is_dir() {
+        copy_dir(&common_lib, &dir.join("lib"))?;
+    }
     let ibm_std = manifest.is_some();
 
     // Called subprograms first.
     let lib = dir.join("lib");
     if lib.is_dir() {
-        for source in sorted_files(&lib, &["CBL"])? {
+        for source in sorted_files(&lib, &["CBL", "PLI", "ASM"])? {
             let program = stem(&source);
             let rel = Path::new("lib").join(source.file_name().unwrap());
             let mut cmd = tc.compile_subprogram_with(&program, &rel, ibm_std);
             let log = dir.join(format!("{program}.compile.log"));
-            run_logged(&mut cmd, &dir, &log, opts.timeout)?;
+            let status = run_logged(&mut cmd, &dir, &log, opts.timeout)?;
+            anyhow::ensure!(
+                status.is_some_and(|s| s.success()),
+                "helper {program} failed; see {}",
+                log.display()
+            );
         }
     }
 
     let mut programs = Vec::new();
-    for source in sorted_files(&dir, &["CBL", "SUB"])? {
+    for source in sorted_files(&dir, tc.source_extensions())? {
         let program = stem(&source);
         if !opts.programs.is_empty() && !opts.programs.contains(&program) {
             continue;
@@ -240,12 +284,15 @@ fn run_program(
                     },
                 })
             }
-            Some(_) => {
+            Some(status) => {
                 let diag_ok = match (&cfg.diagnostic_contains, tc) {
-                    (Some(needle), Toolchain::Zeus { .. } | Toolchain::ZeusNative { .. }) => {
+                    (Some(needle), tc) if !matches!(tc, Toolchain::GnuCobol { .. }) => {
                         let text = fs::read_to_string(&log).unwrap_or_default();
-                        text.to_ascii_lowercase()
-                            .contains(&needle.to_ascii_lowercase())
+                        matches!(status.code(), Some(8..=16))
+                            && !text.contains("panicked at")
+                            && text
+                                .to_ascii_lowercase()
+                                .contains(&needle.to_ascii_lowercase())
                     }
                     _ => true,
                 };
@@ -279,7 +326,7 @@ fn run_program(
         return Ok(Outcome::Compiled);
     }
 
-    if source.extension().is_some_and(|e| e == "CBL") {
+    if source.extension().is_some_and(|e| e != "SUB") {
         for entry in fs::read_dir(dir)? {
             let path = entry?.path();
             if path

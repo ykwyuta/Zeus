@@ -1,0 +1,130 @@
+[suite]
+name = "ZPVS"
+language = "pli"
+required_modules = ["PD", "PA", "PC", "PS", "PF", "PM", "PE"]
+optional_modules = []
+
+[programs.PF103A]
+jcl = "PF103A.JCL"
+
+[programs.PF104M]
+jcl = "PF104M.JCL"
+
+[programs.PF105A]
+jcl = "PF105A.JCL"
+
+[programs.PE101N]
+expect = "compile-error"
+diagnostic_contains = "out of range"
+
+[programs.PE101P]
+expect = "compile-only"
+
+[programs.PE102N]
+expect = "compile-error"
+diagnostic_contains = "out of range"
+
+[programs.PE102P]
+expect = "compile-only"
+
+[programs.PE103N]
+expect = "compile-error"
+diagnostic_contains = "arithmetic type"
+
+[programs.PE103P]
+expect = "compile-only"
+
+[programs.PE104N]
+expect = "compile-error"
+diagnostic_contains = "not declared"
+
+[programs.PE104P]
+expect = "compile-only"
+
+[programs.PE105N]
+expect = "compile-error"
+diagnostic_contains = "not a structure"
+
+[programs.PE105P]
+expect = "compile-only"
+
+[programs.PE106N]
+expect = "compile-error"
+diagnostic_contains = "BASED structure"
+
+[programs.PE106P]
+expect = "compile-only"
+
+[programs.PE107N]
+expect = "compile-error"
+diagnostic_contains = "scalar member"
+
+[programs.PE107P]
+expect = "compile-only"
+
+[programs.PE108N]
+expect = "compile-error"
+diagnostic_contains = "outside a DO"
+
+[programs.PE108P]
+expect = "compile-only"
+
+[programs.PE109N]
+expect = "compile-error"
+diagnostic_contains = "no enclosing DO"
+
+[programs.PE109P]
+expect = "compile-only"
+
+[programs.PE110N]
+expect = "compile-error"
+diagnostic_contains = "without RETURNS"
+
+[programs.PE110P]
+expect = "compile-only"
+
+[programs.PE111N]
+expect = "compile-error"
+diagnostic_contains = "BASED variable"
+
+[programs.PE111P]
+expect = "compile-only"
+
+[programs.PE112N]
+expect = "compile-error"
+diagnostic_contains = "no GENERIC alternative"
+
+[programs.PE112P]
+expect = "compile-only"
+
+[programs.PE113N]
+expect = "compile-error"
+diagnostic_contains = "not BASED or CONTROLLED"
+
+[programs.PE113P]
+expect = "compile-only"
+
+[programs.PE114N]
+expect = "compile-error"
+diagnostic_contains = "not an AREA"
+
+[programs.PE114P]
+expect = "compile-only"
+
+[programs.PE115N]
+expect = "compile-error"
+diagnostic_contains = "not declared"
+
+[programs.PE115P]
+expect = "compile-only"
+
+[programs.PF102A]
+jcl = "PF102A.JCL"
+
+[programs.PM107A]
+parm = "RUNTIME/HELLO"
+expect_exit_code = 4
+
+[programs.PM108A]
+parm = "RUNTIME/HELLO"
+expect_exit_code = 4

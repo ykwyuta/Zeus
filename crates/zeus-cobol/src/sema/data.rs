@@ -735,7 +735,34 @@ impl DataModel {
                     end = end.max(cursor);
                 }
             }
-            end - offset
+            let mut len = end - offset;
+            if self.items[id].occurs.is_some() {
+                // Every occurrence must preserve the alignment of subordinate
+                // SYNCHRONIZED items, including nested groups and tables.
+                let mut pending = children.clone();
+                let mut boundary = 1;
+                while let Some(child) = pending.pop() {
+                    let item = &self.items[child];
+                    if item.entry.sync {
+                        let alignment = match item.usage {
+                            Usage::Binary
+                            | Usage::NativeBinary
+                            | Usage::Index
+                            | Usage::Pointer
+                            | Usage::Pointer32
+                            | Usage::ProcedurePointer
+                            | Usage::FunctionPointer
+                            | Usage::Float
+                            | Usage::Double => self.elementary_len(child)?,
+                            _ => 1,
+                        };
+                        boundary = boundary.max(alignment);
+                    }
+                    pending.extend_from_slice(&item.children);
+                }
+                len = align(len, boundary);
+            }
+            len
         };
         self.items[id].len = len;
         let count = self.items[id].occurs.as_ref().map_or(1, |o| o.max.max(1));

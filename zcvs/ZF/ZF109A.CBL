@@ -1,0 +1,115 @@
+      * SPEC: OPEN FILE STATUS 39; AUDIT F07.
+      * ZF109A: Tape HDR2 record length and format mismatch
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZF109A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+           SELECT GOOD-FILE ASSIGN TO TAPE1 FILE STATUS FS.
+           SELECT LONG-FILE ASSIGN TO TAPE1 FILE STATUS FS.
+           SELECT VAR-FILE ASSIGN TO TAPE1 FILE STATUS FS.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       FD  GOOD-FILE RECORDING MODE F
+           RECORD CONTAINS 8 CHARACTERS
+           BLOCK CONTAINS 16 CHARACTERS
+           LABEL RECORDS STANDARD.
+       01  GOOD-REC PIC X(8).
+       FD  LONG-FILE RECORDING MODE F
+           RECORD CONTAINS 9 CHARACTERS
+           BLOCK CONTAINS 18 CHARACTERS
+           LABEL RECORDS STANDARD.
+       01  LONG-REC PIC X(9).
+       FD  VAR-FILE RECORDING MODE V
+           RECORD VARYING FROM 4 TO 8 CHARACTERS
+           BLOCK CONTAINS 20 CHARACTERS
+           LABEL RECORDS STANDARD.
+       01  VAR-REC PIC X(8).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  FS PIC XX.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZF109A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'HDR-CREATE' TO ZCVS-TEST-NAME.
+           OPEN OUTPUT GOOD-FILE.
+           MOVE 'ORIGINAL' TO GOOD-REC.
+           WRITE GOOD-REC.
+           CLOSE GOOD-FILE.
+           IF FS = '00'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '00' TO ZCVS-EXPECTED
+               MOVE FS TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'HDR-CONTROL' TO ZCVS-TEST-NAME.
+           OPEN INPUT GOOD-FILE.
+           READ GOOD-FILE.
+           IF FS = '00' AND GOOD-REC = 'ORIGINAL'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '00' TO ZCVS-EXPECTED
+               MOVE FS TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'HDR-LRECL-MISMATCH' TO ZCVS-TEST-NAME.
+           CLOSE GOOD-FILE.
+           OPEN INPUT LONG-FILE.
+           IF FS = '39'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '39' TO ZCVS-EXPECTED
+               MOVE FS TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'HDR-LRECL-RECOVER' TO ZCVS-TEST-NAME.
+           OPEN INPUT GOOD-FILE.
+           READ GOOD-FILE.
+           IF FS = '00' AND GOOD-REC = 'ORIGINAL'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '00' TO ZCVS-EXPECTED
+               MOVE FS TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'HDR-RECFM-MISMATCH' TO ZCVS-TEST-NAME.
+           CLOSE GOOD-FILE.
+           OPEN INPUT VAR-FILE.
+           IF FS = '39'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '39' TO ZCVS-EXPECTED
+               MOVE FS TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'HDR-RECFM-RECOVER' TO ZCVS-TEST-NAME.
+           OPEN INPUT GOOD-FILE.
+           READ GOOD-FILE.
+           IF FS = '00' AND GOOD-REC = 'ORIGINAL'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '00' TO ZCVS-EXPECTED
+               MOVE FS TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+           CLOSE GOOD-FILE.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.

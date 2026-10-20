@@ -1,0 +1,5 @@
+ /* complex nonnumeric: one rule and its positive control. */
+ PE103N: PROC OPTIONS(MAIN);
+ DCL X CHAR(4) COMPLEX;
+
+ END PE103N;

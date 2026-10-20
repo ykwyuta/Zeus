@@ -83,6 +83,8 @@ pub struct Proc {
     pub params: Vec<VarId>,
     pub returns: Option<Ty>,
     pub main: bool,
+    #[serde(default)]
+    pub noexecops: bool,
     pub external: bool,
     pub recursive: bool,
     /// Secondary entry points: name, parameters, index in the body.
@@ -174,6 +176,11 @@ pub struct FileDecl {
     /// ENVIRONMENT(REGIONAL(1)): records in numbered regions.
     #[serde(default)]
     pub regional: bool,
+    /// Record attributes from ENVIRONMENT; explicit DD attributes take priority.
+    #[serde(default)]
+    pub record_format: Option<zeus_ds::format::RecordFormat>,
+    #[serde(default)]
+    pub record_keys: Option<(u32, u32)>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -403,6 +410,8 @@ pub enum Ek {
 /// Assignment target.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum Target {
+    /// ONCHAR / ONSOURCE repair the current conversion source.
+    Condition(crate::builtin::Bif),
     Ref(Ref),
     /// SUBSTR(ref, start[, length]) pseudovariable
     Substr(Ref, Expr, Option<Expr>),

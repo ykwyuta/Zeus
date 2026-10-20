@@ -25,6 +25,24 @@ fn execute(module: &hlasm::Module, base: usize) -> (i32, Vec<u8>) {
 }
 
 #[test]
+fn test_decimal_emits_rsl_a_length_and_rejects_out_of_range_lengths() {
+    // RSL-a: EB, length-minus-one in the high nibble, B/D, reserved, C0.
+    for (length, byte) in [(1, 0x00), (16, 0xf0)] {
+        let module = compile(&format!(
+            "DECIMAL CSECT\n TP 837({length},3)\n BR 14\n END\n"
+        ));
+        let loaded = roundtrip(&module);
+        assert_eq!(&loaded.storage[..6], &[0xeb, byte, 0x33, 0x45, 0, 0xc0]);
+    }
+    for operand in ["837(0,3)", "837(17,3)", "837(2,2,3)"] {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("invalid.asm");
+        std::fs::write(&file, format!("BAD CSECT\n TP {operand}\n END\n")).unwrap();
+        assert!(hlasm::compile_file(&file, &[]).is_err(), "{operand}");
+    }
+}
+
+#[test]
 fn source_emits_architectural_instructions_and_exact_obj_record_fields() {
     let mut source = compile("SMALL CSECT\n LA 15,37\n BR 14\n END\n");
     source.storage.truncate(6);

@@ -1,0 +1,5 @@
+ /* LEAVE outside: one rule and its positive control. */
+ PE108N: PROC OPTIONS(MAIN);
+
+ LEAVE;
+ END PE108N;

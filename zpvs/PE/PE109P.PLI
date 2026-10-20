@@ -1,0 +1,5 @@
+ /* ITERATE label: one rule and its positive control. */
+ PE109P: PROC OPTIONS(MAIN);
+
+ MISSING: DO; ITERATE MISSING; END MISSING;
+ END PE109P;

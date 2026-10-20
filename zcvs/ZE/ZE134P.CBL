@@ -1,0 +1,9 @@
+      * JUSTIFIED numeric: accept only this rule.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZE134P.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  ITEM-A PIC XX JUSTIFIED.
+       PROCEDURE DIVISION.
+           STOP RUN.
+       END PROGRAM ZE134P.

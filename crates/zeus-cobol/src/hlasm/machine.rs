@@ -231,7 +231,7 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             }
             op
         }
-        0x88..=0x8f | 0x90 | 0x98 | 0x9a | 0x9b | 0xba | 0xbb | 0xbe | 0xbf => {
+        0x88..=0x8f | 0x90 | 0x98 | 0x9a | 0x9b | 0xba | 0xbb | 0xbd | 0xbe | 0xbf => {
             let op = match b[0] {
                 0x88 => "SRL",
                 0x89 => "SLL",
@@ -247,13 +247,14 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
                 0x9b => "STAM",
                 0xba => "CS",
                 0xbb => "CDS",
+                0xbd => "CLM",
                 0xbe => "STCM",
                 0xbf => "ICM",
                 _ => "",
             };
             i.registers = vec![r1, r2];
             i.address = Some(address(&b[2..4], 0));
-            if matches!(b[0], 0xbe | 0xbf) {
+            if matches!(b[0], 0xbd..=0xbf) {
                 i.registers = vec![r1];
                 i.immediate = u32::from(r2);
             }
@@ -359,6 +360,14 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             _ => "",
         },
         0xed => floating::decode(&mut i, b).unwrap_or(""),
+        0xeb if b[5] == 0xc0 => {
+            if b[1] & 15 != 0 || b[4] != 0 {
+                return Err("reserved TP encoding bits".into());
+            }
+            i.length = u32::from(b[1] >> 4) + 1;
+            i.address = Some(address(&b[2..4], 0));
+            "TP"
+        }
         0xeb => long_storage::decode(&mut i, b).unwrap_or(""),
         0xe3 => {
             let op = match b[5] {

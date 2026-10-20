@@ -1,0 +1,9 @@
+      * SIGN on unsigned: accept only this rule.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZE136P.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  ITEM-A PIC S99 SIGN LEADING SEPARATE.
+       PROCEDURE DIVISION.
+           STOP RUN.
+       END PROGRAM ZE136P.

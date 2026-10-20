@@ -2855,6 +2855,7 @@ impl Machine {
             return self.set_status(cur, def, "21");
         }
         let st = self.state(cur, f);
+        let duplicate = st.keyed().duplicates_alternate(&rec);
         if let Err(e) = st.keyed().insert(rec) {
             let component = if e == DsError::DuplicateAlternateKey {
                 2
@@ -2864,7 +2865,7 @@ impl Machine {
             return self.set_vsam_status(cur, def, "22", 8, component);
         }
         st.modified = true;
-        self.set_status(cur, def, "00")
+        self.set_status(cur, def, if duplicate { "02" } else { "00" })
     }
 
     fn indexed_read_key(
@@ -2879,13 +2880,17 @@ impl Machine {
         let st = self.state(cur, f);
         match st.keyed().get_by(which as usize, &key) {
             Some(found) => {
+                let duplicate = st
+                    .keyed()
+                    .next(which as usize, Some(&found.position), false)
+                    .is_some_and(|next| next.position.key == found.position.key);
                 st.last_key = Some(found.primary);
                 st.last_read = Some(0);
                 st.key_pos = Some(found.position);
                 st.key_of_ref = which;
                 st.at_end = false;
                 self.put_record(cur, def, &found.record, into)?;
-                self.set_status(cur, def, "00")
+                self.set_status(cur, def, if duplicate { "02" } else { "00" })
             }
             None => self.set_vsam_status(cur, def, "23", 16, if which == 0 { 0 } else { 2 }),
         }
@@ -2908,11 +2913,15 @@ impl Machine {
         let from = st.key_pos.clone();
         match st.keyed().next(which, from.as_ref(), inclusive) {
             Some(found) => {
+                let duplicate = st
+                    .keyed()
+                    .next(which, Some(&found.position), false)
+                    .is_some_and(|next| next.position.key == found.position.key);
                 st.key_pos = Some(found.position);
                 st.last_read = Some(0);
                 st.last_key = Some(found.primary);
                 self.put_record(cur, def, &found.record, into)?;
-                self.set_status(cur, def, "00")
+                self.set_status(cur, def, if duplicate { "02" } else { "00" })
             }
             None => {
                 st.at_end = true;
@@ -2932,10 +2941,11 @@ impl Machine {
                 return self.set_status(cur, def, "21");
             }
         }
+        let duplicate = st.keyed().duplicates_alternate(&rec);
         match st.keyed().replace(rec) {
             Ok(()) => {
                 st.modified = true;
-                self.set_status(cur, def, "00")
+                self.set_status(cur, def, if duplicate { "02" } else { "00" })
             }
             Err(DsError::NotFound) => self.set_vsam_status(cur, def, "23", 16, 0),
             Err(e) => self.set_vsam_status(

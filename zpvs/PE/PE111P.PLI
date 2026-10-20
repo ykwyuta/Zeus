@@ -1,0 +1,5 @@
+ /* LOCATE scalar: one rule and its positive control. */
+ PE111P: PROC OPTIONS(MAIN);
+ DCL F FILE RECORD OUTPUT; DCL X CHAR(8) BASED;
+ LOCATE X FILE(F);
+ END PE111P;

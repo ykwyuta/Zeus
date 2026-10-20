@@ -1,0 +1,6 @@
+ /* GENERIC mismatch: one rule and its positive control. */
+ PE112P: PROC OPTIONS(MAIN);
+ DCL G GENERIC(C WHEN(FIXED));
+ CALL G(7);
+ C: PROC(X); DCL X FIXED BIN(31); END C;
+ END PE112P;

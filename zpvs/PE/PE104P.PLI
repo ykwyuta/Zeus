@@ -1,0 +1,6 @@
+ /* LIKE unknown: one rule and its positive control. */
+ PE104P: PROC OPTIONS(MAIN);
+ DCL 1 BASE, 2 V FIXED BIN(31);
+ DCL X LIKE BASE;
+
+ END PE104P;

@@ -1,0 +1,21 @@
+         MACRO
+         ZHVSCHK &ID,&ACT,&EXP,&LEN
+         LCLA &N
+&N       SETA &SYSNDX
+         MVC ZLINE(120),ZBLANK
+         MVC ZLINE+6(K'&ID),=C'&ID'
+         CLC &ACT.(&LEN),&EXP
+         BNE ZB&SYSNDX
+         MVC ZLINE(4),=C'PASS'
+         AP ZPASS,=P'1'
+         B ZW&SYSNDX
+ZB&SYSNDX DS 0H
+         MVC ZLINE(5),=C'FAIL*'
+         AP ZFAIL,=P'1'
+ZW&SYSNDX DS 0H
+         AP ZTOTAL,=P'1'
+         MVC ZCMD(4),=F'1'
+         LA 1,ZPLIST
+         L 15,=V(ZHVRPT)
+         BASR 14,15
+         MEND

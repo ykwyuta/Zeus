@@ -1,0 +1,84 @@
+       CBL NUMPROC(MIG)
+      * SPEC: ENTERPRISE COBOL 4.2 NUMPROC; AUDIT A07.
+      * ZA115A: COBOL 4.2 NUMPROC MIG preferred-sign controls
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZA115A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  SP-RAW PIC X(3).
+       01  SP REDEFINES SP-RAW PIC S9(4) COMP-3.
+       01  UP-RAW PIC X(3).
+       01  UP REDEFINES UP-RAW PIC 9(4) COMP-3.
+       01  SZ-RAW PIC X(4).
+       01  SZ REDEFINES SZ-RAW PIC S9(4).
+       01  UZ-RAW PIC X(4).
+       01  UZ REDEFINES UZ-RAW PIC 9(4).
+       01  OUT-P PIC S9(4) COMP-3.
+       01  OUT-P-RAW REDEFINES OUT-P PIC X(3).
+       01  OUT-Z PIC S9(4).
+       01  OUT-Z-RAW REDEFINES OUT-Z PIC X(4).
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZA115A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'SP-MIG-POS' TO ZCVS-TEST-NAME.
+           MOVE X'01234C' TO SP-RAW.
+           MOVE SP TO OUT-P.
+           IF SP IS NUMERIC AND OUT-P = 1234
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '1234' TO ZCVS-EXPECTED
+               MOVE OUT-P-RAW TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'SP-MIG-NEG' TO ZCVS-TEST-NAME.
+           MOVE X'01234D' TO SP-RAW.
+           MOVE SP TO OUT-P.
+           IF SP IS NUMERIC AND OUT-P = -1234
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '-1234' TO ZCVS-EXPECTED
+               MOVE OUT-P-RAW TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'SZ-MIG-POS' TO ZCVS-TEST-NAME.
+           MOVE X'F1F2F3C4' TO SZ-RAW.
+           MOVE SZ TO OUT-P.
+           IF SZ IS NUMERIC AND OUT-P = 1234
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '1234' TO ZCVS-EXPECTED
+               MOVE OUT-P-RAW TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'SZ-MIG-NEG' TO ZCVS-TEST-NAME.
+           MOVE X'F1F2F3D4' TO SZ-RAW.
+           MOVE SZ TO OUT-P.
+           IF SZ IS NUMERIC AND OUT-P = -1234
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '-1234' TO ZCVS-EXPECTED
+               MOVE OUT-P-RAW TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.

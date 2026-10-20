@@ -1,0 +1,20 @@
+HI101A CSECT
+         ZHVSHDR
+* ADD-SIGNED
+         LGHI 2,12
+         AGHI 2,-5
+         STG 2,ACTUAL
+         ZHVSCHK ADD-SIGNED,ACTUAL,=XL8'0000000000000007',8
+* ADD-CARRY
+         LG 2,=XL8'FFFFFFFFFFFFFFFF'
+         LGHI 3,1
+         ALGR 2,3
+         LGHI 4,5
+         LGHI 5,2
+         ALCGR 4,5
+         STG 4,ACTUAL
+         ZHVSCHK ADD-CARRY,ACTUAL,=XL8'0000000000000008',8
+         ZHVSSUM
+ACTUAL DS D
+         LTORG
+         END

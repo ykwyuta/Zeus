@@ -4,10 +4,13 @@ USAGE
   zpli compile [options] SOURCE.pli
   zpli compile --native [options] SOURCE.pli
   zpli run [options] MODULE.zo
+  zpli run-hlasm [options] MODULE.zo
   zpli [options] SOURCE.pli
   zpli --help | zpli compile --help | zpli run --help
 
 COMMANDS
+  run-hlasm  Run an assembler module/OBJ/GOFF with the PL/I and COBOL
+             cross-language linker installed; accepts run options.
   compile  Compile one source to a .zo module, or to a standalone executable
            with --native. Default output: source.zo, or source without its
            extension for --native.

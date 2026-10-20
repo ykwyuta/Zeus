@@ -357,6 +357,9 @@ impl Compiler {
                 })
                 .ok_or_else(|| self.err(r.pos, format!("LIKE: {} is not declared", r.name())))?;
             let root = self.m.vars[target as usize].root;
+            if self.m.vars[target as usize].ty.is_some() {
+                return Err(self.err(r.pos, format!("LIKE: {} is not a structure", r.name())));
+            }
             let decl = self
                 .decl_ast
                 .get(&root)
