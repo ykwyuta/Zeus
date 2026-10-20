@@ -273,7 +273,7 @@ pub fn normalize(data: &[u8]) -> Vec<u8> {
         return data.to_vec();
     }
     let mut text = Vec::new();
-    for record in data.chunks_exact(120) {
+    for record in data.as_chunks::<120>().0 {
         for &byte in record {
             text.push(match byte {
                 0x40 => b' ',
