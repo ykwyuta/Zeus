@@ -1127,6 +1127,20 @@ pub enum Gap {
     LimitOnly,
 }
 
+impl Gap {
+    /// Why the direction has no case, as the reports say it.
+    pub fn reason(&self) -> &'static str {
+        match self {
+            Gap::NotReached => "not reached",
+            Gap::NotSymbolic => "condition does not depend on the inputs followed",
+            Gap::Infeasible => "infeasible (no inputs on the paths tried)",
+            Gap::NotFound => "no inputs found",
+            Gap::Impossible => "impossible (static analysis: the values of flags and numbers)",
+            Gap::LimitOnly => "taken only by runs stopped at the instruction limit (--limit)",
+        }
+    }
+}
+
 pub struct Report {
     pub cases: Vec<Case>,
     /// Every branch direction of the programs, covered or not.

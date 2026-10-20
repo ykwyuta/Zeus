@@ -30,7 +30,7 @@ cargo build --release -p zeus-testgen
 ```text
 ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
          [--limit INSTRUCTIONS] [--no-smt] [--threads N] [--stub PROGRAM]...
-         [--seeds DIR]... [--bms DIR]... [--no-layouts]
+         [--seeds DIR]... [--bms DIR]... [--no-layouts] [--no-html]
          [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl
 ```
 
@@ -48,6 +48,7 @@ ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
 | `--seeds DIR` | 初期入力にするケースファイルのディレクトリ (後述) | なし |
 | `--bms DIR` | BMS マップセットのディレクトリ (レイアウトのシンボリック・マップ) | なし |
 | `--no-layouts` | レイアウト定義を書き出さない | 書き出す |
+| `--no-html` | `report.html` を書き出さない | 書き出す |
 | `--source-encoding E` | ソースの表現 (`utf8`、`ebcdic`、`ebcdic80`。`zcobc` と同じ) | `utf8` |
 | `--ccsid N` | EBCDIC のコードページ (`zcobc` と同じ) | 037 |
 | `--out DIR` | 出力先 | `tests` |
@@ -85,6 +86,7 @@ ztestgen -I app/cpy -I app/cpy-bms --time 60 --out out/COSGN00C app/cbl/COSGN00C
 ```text
 out/FILEPGM/
   report.txt                        網羅率と、通せなかった分岐の一覧
+  report.html                       ソースの上で、通った経路と通っていない経路 (後述)
   case-001.json ... case-005.json   テストケース
   layouts/
     FILEPGM.FILE.TRANIN.cpy         入力ファイル TRANIN のレイアウト
@@ -122,6 +124,27 @@ layouts: 3 copybooks in out/FILEPGM/layouts (layouts.csv; data.csv: the data of 
 
 `line` はソースの行、`instruction` は内部の命令番号です。`jump` / `next` は条件分岐の命令が飛んだ側か、
 次へ進んだ側かで、IF の真偽とは一致しないことがあります (行のソースを見て判断してください)。
+
+### report.html: 通っていない経路をソースで見る
+
+`report.html` はブラウザで開く 1 ファイルの報告です (外部のファイルを読みません)。
+
+- **上部**: 網羅率の棒、理由ごとの件数。
+- **Where the cases stop**: ケースが到達した分岐のうち、どのケースも通らない向き (条件の真・偽) と理由。
+  ここが対応すべき箇所です。その先の分岐は「到達しない」になります。
+- **Not reached**: 到達しない向きを段落ごとにまとめたもの (開いて行に移動できます)。
+- **Paragraphs no case runs**: どのケースも実行しない段落。
+- **ソース**: 分岐のある行に、条件の真 (`T`)・偽 (`F`) の印を付けます。緑は通った向き (マウスを当てると通した
+  ケースの番号)、赤は通っていない向き (マウスを当てると理由)、灰色は起こり得ない向き。赤い行はどのケースも
+  実行しない文、黄色の行は分岐の片方が通っていない行です。行の左の数は、ケースを再実行したときにその行の文が
+  実行された回数です。
+- **Only the lines near what is not covered**: 通っていない向きと実行されない文の前後 3 行だけを表示します。
+
+文と段落の実行回数は、生成の最後に残したケースを網羅の記録付きで再実行して数えます (`zcov` と同じ数え方)。
+EVALUATE の WHEN の分岐は EVALUATE の行にまとめて表示されます。
+
+`tools/corpora-testgen.sh` は、全プログラムの網羅率と各 `report.html` へのリンクを
+`work/corpora-testgen/index.html` に書きます。
 
 ## 5. テストケース (case-NNN.json) の読み方
 

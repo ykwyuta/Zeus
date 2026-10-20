@@ -4,7 +4,8 @@
 //! ```text
 //! ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS]
 //!          [--limit INSTRUCTIONS] [--no-smt] [--threads N] [--stub PROGRAM]...
-//!          [--seeds DIR]... [--bms DIR]... [--no-layouts] [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl
+//!          [--seeds DIR]... [--bms DIR]... [--no-layouts] [--no-html]
+//!          [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl
 //! ```
 //!
 //! The inputs are the program's USING parameters and the lines it
@@ -15,7 +16,10 @@
 //! with only `fields`, by item name). The layouts of the data in the
 //! cases go to `DIR/layouts` (zeus-layout copybooks, `layouts.csv`, and
 //! `data.csv`: which part of the cases each describes; `--bms DIR`: BMS
-//! mapsets for the symbolic maps; `--no-layouts`: none).
+//! mapsets for the symbolic maps; `--no-layouts`: none). `report.html`
+//! shows on the source which ways of each branch the cases take and why
+//! the others are not covered, with the statements no case runs
+//! (`--no-html`: none).
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -28,7 +32,7 @@ use zeus_testgen::engine::{Gap, Options, generate};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--bms DIR]... [--no-layouts] [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl"
+        "usage: ztestgen [-I DIR]... [-L DIR]... [--program NAME] [--runs N] [--time SECONDS] [--limit N] [--no-smt] [--threads N] [--stub PROGRAM]... [--seeds DIR]... [--bms DIR]... [--no-layouts] [--no-html] [--source-encoding E] [--ccsid N] [--out DIR] SOURCE.cbl"
     );
     ExitCode::from(2)
 }
@@ -41,6 +45,7 @@ fn main() -> ExitCode {
     let mut source = None;
     let mut bms = Vec::new();
     let mut layouts = true;
+    let mut html = true;
     let mut encoding = SourceEncoding::default();
     let mut it = std::env::args().skip(1);
     while let Some(a) = it.next() {
@@ -69,6 +74,7 @@ fn main() -> ExitCode {
             },
             "--no-smt" => opts.smt = false,
             "--no-layouts" => layouts = false,
+            "--no-html" => html = false,
             "--bms" => match val() {
                 Some(d) => bms.push(PathBuf::from(d)),
                 None => return usage(),
@@ -181,14 +187,7 @@ fn main() -> ExitCode {
     if !report.gaps.is_empty() {
         text.push_str("\nnot covered:\n");
         for ((p, pc, j), g) in &report.gaps {
-            let why = match g {
-                Gap::NotReached => "not reached",
-                Gap::NotSymbolic => "condition does not depend on the inputs followed",
-                Gap::Infeasible => "infeasible (no inputs on the paths tried)",
-                Gap::NotFound => "no inputs found",
-                Gap::Impossible => "impossible (static analysis: the values of flags and numbers)",
-                Gap::LimitOnly => "taken only by runs stopped at the instruction limit (--limit)",
-            };
+            let why = g.reason();
             let line = line_of(&module, p, *pc).map_or("?".into(), |l| l.to_string());
             text.push_str(&format!(
                 "  {p} line {line} (instruction {pc}) {}: {why}\n",
@@ -208,9 +207,46 @@ fn main() -> ExitCode {
             &out,
         ));
     }
+    if html {
+        let coverage = replay_coverage(&module, &program, &report, &opts);
+        let page =
+            zeus_testgen::html::page(&module, &program, &report, coverage.as_ref(), encoding);
+        match std::fs::write(out.join("report.html"), page) {
+            Ok(()) => text.push_str(&format!(
+                "
+report.html: {}
+",
+                out.join("report.html").display()
+            )),
+            Err(e) => eprintln!("ztestgen: report.html: {e}"),
+        }
+    }
     let _ = std::fs::write(out.join("report.txt"), &text);
     print!("{text}");
     ExitCode::SUCCESS
+}
+
+/// The statement and paragraph coverage of the cases: each replayed with
+/// coverage recorded in a temporary directory.
+fn replay_coverage(
+    module: &Rc<zeus_cobol::zir::Module>,
+    program: &str,
+    report: &zeus_testgen::engine::Report,
+    opts: &Options,
+) -> Option<zeus_cobol::coverage::ProgramCov> {
+    let dir = std::env::temp_dir().join(format!("ztestgen-coverage-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&dir);
+    zeus_cobol::coverage::set_dir(&dir);
+    for c in &report.cases {
+        let _ = zeus_testgen::engine::run(module, program, &report.fields, &c.inputs, opts, false);
+    }
+    let _ = zeus_cobol::coverage::save();
+    let found = zeus_cobol::coverage::load_dir(&dir)
+        .ok()?
+        .into_iter()
+        .find(|p| p.name == program && p.language == "COBOL");
+    let _ = std::fs::remove_dir_all(&dir);
+    found
 }
 
 /// Writes the layouts of the cases' data to `out/layouts`: the report's

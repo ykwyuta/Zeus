@@ -33,6 +33,16 @@ pub(crate) fn clean(text: &str) -> String {
     text.chars().filter(|&ch| ch != PAD).collect()
 }
 
+/// The text of a source file as the compiler reads it (for reports and
+/// listings outside the compiler).
+pub fn source_text(bytes: &[u8], encoding: SourceEncoding) -> String {
+    match decode(bytes, encoding, crate::codepage::active().ccsid, 0, false) {
+        Ok(t) if encoding.padded() => clean(&t),
+        Ok(t) => t,
+        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+    }
+}
+
 pub(crate) fn decode(
     bytes: &[u8],
     encoding: SourceEncoding,

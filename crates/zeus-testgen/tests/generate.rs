@@ -649,3 +649,41 @@ fn covers_conditions_on_counts_kept_in_loops() {
     assert!(all.contains("\"GOOD PATH\""), "{all}");
     assert!(all.contains("\"BAD PATH\""), "{all}");
 }
+
+/// report.html: on the source, both ways of each branch (covered with the
+/// cases, or why not), the statements no case runs; the impossible ways
+/// apart from those where the cases stop.
+#[test]
+fn writes_the_coverage_on_the_source() {
+    let src = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/programs/FLAGPGM.cbl");
+    let tmp = tempfile::tempdir().unwrap();
+    let out = tmp.path().join("cases");
+    let o = Command::new(env!("CARGO_BIN_EXE_ztestgen"))
+        .arg("--out")
+        .arg(&out)
+        .arg(&src)
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    let html = std::fs::read_to_string(out.join("report.html")).unwrap();
+    assert!(html.contains("14</b> of 16 branch directions"), "{html}");
+    // line 19: the way proven impossible
+    assert!(html.contains("<tr id=\"f0-19\""), "{html}");
+    assert!(
+        html.contains("class=\"d imp\" title=\"condition "),
+        "{html}"
+    );
+    assert!(html.contains("class=\"d ok\" title=\"condition "), "{html}");
+    assert!(html.contains(": cases 0"), "{html}");
+    // every way the cases can take is taken: nowhere they stop
+    assert!(!html.contains("Where the cases stop"), "{html}");
+    let o = Command::new(env!("CARGO_BIN_EXE_ztestgen"))
+        .arg("--no-html")
+        .arg("--out")
+        .arg(tmp.path().join("plain"))
+        .arg(&src)
+        .output()
+        .unwrap();
+    assert!(o.status.success());
+    assert!(!tmp.path().join("plain/report.html").exists());
+}

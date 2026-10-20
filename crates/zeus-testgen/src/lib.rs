@@ -1,6 +1,7 @@
 pub mod case;
 pub mod engine;
 mod flow;
+pub mod html;
 pub mod infeasible;
 pub mod layouts;
 pub mod ranges;
