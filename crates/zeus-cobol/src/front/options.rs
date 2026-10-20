@@ -200,6 +200,10 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
             ("CICS", None) => cics = true,
             ("CICS", Some(arg)) if cics_options(arg) => cics = true,
             ("NOCICS", None) => cics = false,
+            // Shift codes in alphanumeric literals delimit DBCS characters.
+            ("DBCS", None) => {}
+            // Zeus neither checks sequence numbers nor writes an object deck.
+            ("NOSEQUENCE" | "NOSEQ", None) | ("NODECK" | "NOD", None) => {}
             // SQL is translated by the integrated EXEC SQL front end.
             // Code is immutable and each Machine owns its data (RENT).
             ("RENT", None) => {}
@@ -359,10 +363,12 @@ fn option_end(text: &str) -> Option<usize> {
     None
 }
 
+/// CICS translator suboptions, delimited (`CICS('SP')`) or not (`CICS(SP)`).
 fn cics_options(arg: &str) -> bool {
-    let Some(options) = arg.strip_prefix('\'').and_then(|s| s.strip_suffix('\'')) else {
-        return false;
-    };
+    let options = ['\'', '"']
+        .iter()
+        .find_map(|q| arg.strip_prefix(*q).and_then(|s| s.strip_suffix(*q)))
+        .unwrap_or(arg);
     !options.is_empty()
         && options
             .split(',')

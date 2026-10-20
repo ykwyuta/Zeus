@@ -13,6 +13,16 @@ pub enum SourceEncoding {
     Ebcdic80,
 }
 impl SourceEncoding {
+    /// The value of a `--source-encoding` option: utf8, ebcdic or ebcdic80.
+    pub fn parse(name: &str) -> Option<Self> {
+        match name.to_ascii_lowercase().as_str() {
+            "utf8" | "utf-8" => Some(Self::Utf8),
+            "ebcdic" => Some(Self::Ebcdic),
+            "ebcdic80" => Some(Self::Ebcdic80),
+            _ => None,
+        }
+    }
+
     pub(crate) fn padded(self) -> bool {
         self != Self::Utf8
     }
@@ -21,6 +31,16 @@ impl SourceEncoding {
 pub(crate) const PAD: char = '\u{FDD0}';
 pub(crate) fn clean(text: &str) -> String {
     text.chars().filter(|&ch| ch != PAD).collect()
+}
+
+/// The text of a source file as the compiler reads it (for reports and
+/// listings outside the compiler).
+pub fn source_text(bytes: &[u8], encoding: SourceEncoding) -> String {
+    match decode(bytes, encoding, crate::codepage::active().ccsid, 0, false) {
+        Ok(t) if encoding.padded() => clean(&t),
+        Ok(t) => t,
+        Err(_) => String::from_utf8_lossy(bytes).into_owned(),
+    }
 }
 
 pub(crate) fn decode(

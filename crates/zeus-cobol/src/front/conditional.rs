@@ -139,7 +139,7 @@ struct Parser<'a> {
 impl<'a> Parser<'a> {
     fn new(text: &str, variables: &'a Variables) -> Result<Self> {
         let stream: Vec<_> = text.chars().map(|c| (c, Pos::default())).collect();
-        let tokens = lexer::lex(&stream, false)?
+        let tokens = lexer::join_suffixes(lexer::lex(&stream, false)?)
             .into_iter()
             .map(|t| t.tok)
             .collect();

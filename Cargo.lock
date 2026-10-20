@@ -1253,6 +1253,20 @@ dependencies = [
 ]
 
 [[package]]
+name = "zeus-testgen"
+version = "0.1.0"
+dependencies = [
+ "libloading",
+ "serde",
+ "serde_json",
+ "tempfile",
+ "zeus-cobol",
+ "zeus-decimal",
+ "zeus-ds",
+ "zeus-layout",
+]
+
+[[package]]
 name = "zeus-zconnect"
 version = "0.1.0"
 dependencies = [

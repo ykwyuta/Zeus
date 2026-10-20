@@ -81,6 +81,14 @@ their BMS symbolic maps, compiles every COBOL program and rewrites
 data clauses and EXEC commands the programs use). Commit the regenerated
 file when a change alters it; CI checks that it is up to date.
 
+`tools/corpora-inventory.sh` does the same for the additional corpora of
+`docs/proposal/0022-additional-cobol-corpora.md` (fetched by
+`tools/fetch-corpora.sh` into `.cache/corpora`) and rewrites
+`docs/inventory/corpora.md`, listing the programs left out for reasons
+outside Zeus. `tools/corpora-testgen.sh` generates C1 test cases for
+them with `ztestgen`, replays them with `ztest` and prints the coverage of
+each program (seeds in `tools/corpora-seeds`).
+
 ## Hercules decimal-instruction oracle
 
 `zeus-hercdiff` generates packed-decimal instruction cases (AP, SP, ZAP, CP,

@@ -588,3 +588,60 @@ fn cross_references_resolve_procedure_and_file_targets() {
         "{listing}"
     );
 }
+
+#[test]
+fn production_option_spellings_are_accepted_and_their_opposites_diagnosed() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("main.cbl");
+    let program = |options: &str| {
+        format!("CBL {options}\nID DIVISION.\nPROGRAM-ID. T.\nPROCEDURE DIVISION.\nGOBACK.")
+    };
+    for options in [
+        "CICS(SP)",
+        "CICS('SP,EDF')",
+        "DBCS,CICS(SP)",
+        "NOSEQ NOD",
+        "NOSEQUENCE,NODECK",
+    ] {
+        source(&path, &program(options));
+        zeus_cobol::compile_file(&path, &FrontOptions::default())
+            .unwrap_or_else(|e| panic!("{options}: {e}"));
+    }
+    for options in ["CICS(XYZ)", "NODBCS", "SEQUENCE", "DECK"] {
+        source(&path, &program(options));
+        let error = zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap_err();
+        assert!(
+            error.message.contains("unsupported or invalid"),
+            "{options}: {error}"
+        );
+    }
+}
+
+#[test]
+fn dfhvalue_gives_the_documented_cvda_numbers() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("main.cbl");
+    source(
+        &path,
+        "ID DIVISION.\nPROGRAM-ID. T.\nDATA DIVISION.\nWORKING-STORAGE SECTION.\n01 N PIC 9(4).\nPROCEDURE DIVISION.\nMOVE DFHVALUE(HTTP) TO N DISPLAY N\nMOVE DFHVALUE(HTTPS) TO N DISPLAY N\nMOVE DFHVALUE(GET) TO N DISPLAY N\nMOVE DFHVALUE(POST) TO N DISPLAY N\nMOVE DFHVALUE(IMMEDIATE) TO N DISPLAY N\nMOVE DFHVALUE(ENABLED) TO N DISPLAY N\nSTOP RUN.",
+    );
+    let module = zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap();
+    assert_eq!(
+        String::from_utf8(run(module)).unwrap(),
+        "1096\n1029\n0748\n0636\n0002\n0023\n"
+    );
+}
+
+#[test]
+fn batch_compilation_starts_a_program_at_cbl_after_end_program() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("main.cbl");
+    // CBL inside a comment entry is not a batch boundary
+    source(
+        &path,
+        "CBL NOCICS\nID DIVISION.\nPROGRAM-ID. MAIN.\nAUTHOR. ME.\n    PROCESS (X'00').\nPROCEDURE DIVISION.\nCALL 'SUB'\nSTOP RUN.\nEND PROGRAM MAIN.\nPROCESS CICS\nID DIVISION.\nPROGRAM-ID. SUB.\nPROCEDURE DIVISION.\nEXEC CICS RETURN END-EXEC.\nEND PROGRAM SUB.",
+    );
+    let module = zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap();
+    let names: Vec<_> = module.programs.iter().map(|p| p.name.as_str()).collect();
+    assert_eq!(names, ["MAIN", "SUB"]);
+}

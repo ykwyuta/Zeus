@@ -1059,6 +1059,16 @@
       "REPLACE-PROGRAM-END"
     ]
   },
+  "ZS106A": {
+    "expect": "run",
+    "tests": [
+      "COPY-LITERAL-WORD",
+      "REPLACE-TAG-WORD",
+      "OPEN-CLOSE-ELSE",
+      "INSPECT-FUNCTION",
+      "BATCH-OPTIONS"
+    ]
+  },
   "ZX101A": {
     "expect": "run",
     "tests": [

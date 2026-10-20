@@ -25,6 +25,10 @@ pub enum Tok {
     Pseudo(Vec<Token>),
     /// Parser directive; None restores DLL/DYNAM compiler defaults.
     CallInterface(Option<crate::zir::CallInterface>),
+    /// `-word` written without a separator after a literal, `)` or `:`
+    /// (`'X'-KEY`, `:TAG:-KEY`): joins the word that COPY REPLACING or
+    /// REPLACE puts in place of that text; see [`join_suffixes`].
+    Suffix(String),
     Period,
     LParen,
     RParen,
@@ -62,7 +66,7 @@ impl Token {
     /// Text used for pseudo-text comparison and diagnostics.
     pub fn text(&self) -> String {
         match &self.tok {
-            Tok::Word(w) | Tok::Num(w) | Tok::Pic(w) => w.clone(),
+            Tok::Word(w) | Tok::Num(w) | Tok::Pic(w) | Tok::Suffix(w) => w.clone(),
             Tok::Str(s) => format!("\"{s}\""),
             Tok::Hex(b) => format!(
                 "X\"{}\"",
@@ -97,6 +101,35 @@ impl Token {
             Tok::Ge => ">=".into(),
         }
     }
+}
+
+/// Resolves [`Tok::Suffix`] once COPY and REPLACE are done: a suffix after a
+/// word (the replacement of the literal, `)` or `:` it followed) extends
+/// that word; any other suffix is the `-` and word as written.
+pub fn join_suffixes(tokens: Vec<Token>) -> Vec<Token> {
+    let mut out: Vec<Token> = Vec::with_capacity(tokens.len());
+    for t in tokens {
+        let Tok::Suffix(suffix) = &t.tok else {
+            out.push(t);
+            continue;
+        };
+        if let Some(Token {
+            tok: Tok::Word(w), ..
+        }) = out.last_mut()
+        {
+            w.push_str(suffix);
+            continue;
+        }
+        out.push(Token {
+            tok: Tok::Minus,
+            pos: t.pos,
+        });
+        out.push(Token {
+            tok: Tok::Word(suffix[1..].to_string()),
+            pos: t.pos,
+        });
+    }
+    out
 }
 
 struct Lexer<'a> {
@@ -166,6 +199,18 @@ impl Lexer<'_> {
 
     fn push(&mut self, tok: Tok, pos: Pos) {
         self.out.push(Token { tok, pos });
+    }
+
+    /// A `-` directly after the closing quote of a literal, a `)` or a `:`,
+    /// followed by a word.
+    fn suffix_start(&self) -> bool {
+        self.i > 0
+            && matches!(self.s[self.i - 1].0, '\'' | '"' | ')' | ':')
+            && matches!(
+                self.out.last().map(|t| &t.tok),
+                Some(Tok::Str(_) | Tok::RParen | Tok::Colon)
+            )
+            && self.peek(1).is_some_and(|c| c.is_ascii_alphabetic())
     }
 
     fn literal(&mut self, quote: char) -> Result<String> {
@@ -484,6 +529,19 @@ impl Lexer<'_> {
         if c == '"' || c == '\'' {
             let s = self.literal(c)?;
             self.push(Tok::Str(s), pos);
+            return Ok(());
+        }
+        if c == '-' && self.suffix_start() {
+            self.i += 1;
+            let start = self.i;
+            while self.peek(0).is_some_and(is_word_char) {
+                self.i += 1;
+            }
+            let word: String = self.s[start..self.i]
+                .iter()
+                .map(|(c, _)| c.to_ascii_uppercase())
+                .collect();
+            self.push(Tok::Suffix(format!("-{word}")), pos);
             return Ok(());
         }
         if (c == '+' || c == '-') && self.signed_number_start() {

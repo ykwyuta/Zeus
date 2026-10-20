@@ -15,11 +15,11 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 | `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN107A`, including `ZN102B` and `ZN106M` (8) |
 | `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments | `ZP101A` .. `ZP108A` + 9 `lib/` subprograms (8 mains) |
 | `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF109A`, `ZF201M` (10) |
-| `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope | `ZS101A` .. `ZS105A`, including `ZS103M` (5) |
+| `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS106A`, including `ZS103M` (6) |
 | `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX107A` (7) |
 | `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE133N`, `ZE126P` .. `ZE133P` (41) |
 
-The suite contains 104 main programs: 63 runtime programs with 660 assertions,
+The suite contains 105 main programs: 64 runtime programs with 665 assertions,
 33 negative compile checks, and 8 successful-compilation controls. Cargo tests
 run both Zeus backends and require the exact program set, assertion IDs in
 report order, counts, and zero deleted/manual checks. They rebuild `zcobc` and
@@ -67,3 +67,7 @@ Export 80-column z/OS PDS datasets and `IGYWCLG` batch JCL jobs:
 ```bash
 cargo run -p zeus-ccvs -- export-jcl --suite zcvs --out work/zcvs-zos --hlq IBMUSER.ZCVS
 ```
+
+`ZS106A` preserves the production-source idioms from proposal 0022: literal
+COPY REPLACING, tag-word REPLACE, OPEN/CLOSE statement boundaries, INSPECT
+on a function result, and per-program compiler options in batch compilation.

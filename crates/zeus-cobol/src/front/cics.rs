@@ -2,8 +2,8 @@
 //! `DFHRESP(condition)` and `DFHVALUE(cvda)` become numeric literals.
 //!
 //! The RESP values are the EIBRESP numbers of the CICS conditions as
-//! documented for the RESP option. CVDA values are those Zeus's CICS
-//! runtime uses for the few CVDAs the applications name.
+//! documented for the RESP option. The CVDA values are the documented
+//! CICS values ([`super::cvda`]).
 
 use super::ast::{DataRef, Program};
 use super::lexer::{Tok, Token};
@@ -244,23 +244,12 @@ pub fn resp_value(name: &str) -> Option<u32> {
     RESP.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
 }
 
-/// CVDA value used by the Zeus CICS runtime.
+/// The numeric value of a CVDA name.
 pub fn cvda_value(name: &str) -> Option<u32> {
-    const CVDA: &[(&str, u32)] = &[
-        ("NORMAL", 1),
-        ("ABEND", 2),
-        ("SECERROR", 3),
-        ("UCTRAN", 10),
-        ("NOUCTRAN", 11),
-        ("TRANIDONLY", 12),
-        ("ENABLED", 20),
-        ("DISABLED", 21),
-        ("OPEN", 22),
-        ("CLOSED", 23),
-        ("TERMINAL", 30),
-        ("TASK", 31),
-    ];
-    CVDA.iter().find(|(n, _)| *n == name).map(|(_, v)| *v)
+    let cvda = super::cvda::CVDA;
+    cvda.binary_search_by_key(&name, |(n, _)| n)
+        .ok()
+        .map(|i| cvda[i].1)
 }
 
 /// Replaces `DFHRESP(name)` and `DFHVALUE(name)` by numeric literals.

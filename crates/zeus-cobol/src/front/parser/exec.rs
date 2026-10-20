@@ -99,7 +99,7 @@ impl Parser {
                 sql: Some(sql),
             });
         }
-        let toks = crate::front::cics::translate(lexer::lex(text, false)?)?;
+        let toks = crate::front::cics::translate(lexer::join_suffixes(lexer::lex(text, false)?))?;
         let mut j = 0;
         let word = |j: usize| toks.get(j).and_then(|t| t.word().map(str::to_string));
         let command = word(0).ok_or_else(|| Diag::error(pos, "EXEC command expected"))?;

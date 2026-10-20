@@ -3,7 +3,7 @@
 //!
 //! ```text
 //! zlayout [-I DIR]... [--bms DIR]... [--out DIR] [--kinds K,...] [--values] [--no-offsets]
-//!         [--keep-base] [--max-layouts N] [--no-check] PROGRAM.cbl...
+//!         [--keep-base] [--max-layouts N] [--no-check] [--source-encoding E] [--ccsid N] PROGRAM.cbl...
 //! ```
 //!
 //! `--bms DIR`: BMS mapsets under DIR give the symbolic maps programs COPY.
@@ -17,12 +17,13 @@
 
 use std::path::PathBuf;
 use std::process::ExitCode;
+use zeus_cobol::front::SourceEncoding;
 
 use zeus_layout::{Options, analyze_file, write};
 
 fn usage() -> ExitCode {
     eprintln!(
-        "usage: zlayout [-I DIR]... [--bms DIR]... [--out DIR] [--kinds K,...] [--values] [--no-offsets] [--keep-base] [--max-layouts N] [--no-check] PROGRAM.cbl..."
+        "usage: zlayout [-I DIR]... [--bms DIR]... [--out DIR] [--kinds K,...] [--values] [--no-offsets] [--keep-base] [--max-layouts N] [--no-check] [--source-encoding E] [--ccsid N] PROGRAM.cbl..."
     );
     ExitCode::from(2)
 }
@@ -58,6 +59,14 @@ fn main() -> ExitCode {
             "--max-layouts" => match it.next().and_then(|n| n.parse().ok()) {
                 Some(n) => opts.max_layouts = n,
                 None => return usage(),
+            },
+            "--source-encoding" => match it.next().and_then(|e| SourceEncoding::parse(&e)) {
+                Some(e) => opts.source_encoding = e,
+                None => return usage(),
+            },
+            "--ccsid" => match it.next().and_then(|c| c.parse().ok()) {
+                Some(c) if zeus_cobol::codepage::set_active(c) => {}
+                _ => return usage(),
             },
             "--values" => opts.values = true,
             "--no-offsets" => opts.offsets = false,

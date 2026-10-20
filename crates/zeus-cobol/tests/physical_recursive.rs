@@ -1356,3 +1356,28 @@ fn tape_marks_no_rewind_reversed_and_standard_labels() {
     );
     assert_eq!(vm.run_main(compile(&input).unwrap()).unwrap(), 0);
 }
+
+#[test]
+fn record_varying_without_from_takes_its_minimum_from_the_odo_table() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().join("odo.dat");
+    let module = compile(
+        "ID DIVISION.\nPROGRAM-ID. ODOMIN.\nENVIRONMENT DIVISION.\nINPUT-OUTPUT SECTION.\nFILE-CONTROL.\nSELECT F ASSIGN TO ODOMIN FILE STATUS FS.\nDATA DIVISION.\nFILE SECTION.\nFD F BLOCK CONTAINS 0 RECORDING MODE V\n    RECORD VARYING DEPENDING ON N.\n01 R.\n   05 C PIC X OCCURS 1 TO 80 DEPENDING ON N.\nWORKING-STORAGE SECTION.\n01 FS PIC XX.\n01 N PIC 9(8) BINARY.\nPROCEDURE DIVISION.\nOPEN OUTPUT F\nMOVE 27 TO N\nWRITE R FROM 'SHORT RECORD'\nDISPLAY FS\nCLOSE F\nSTOP RUN.",
+    )
+    .unwrap();
+    let out = Capture::default();
+    let mut vm = Machine::new(vec![]);
+    vm.set_stdout(Box::new(out.clone()));
+    vm.allocate(
+        "ODOMIN",
+        zeus_ds::dd::Allocation {
+            path: path.clone(),
+            format: None,
+        },
+    );
+    vm.run_main(module).unwrap();
+    assert_eq!(String::from_utf8(out.0.borrow().clone()).unwrap(), "00\n");
+    // one block: BDW, then the RDW of a 27-byte record
+    let data = std::fs::read(path).unwrap();
+    assert_eq!(&data[..8], &[0, 35, 0, 0, 0, 31, 0, 0]);
+}

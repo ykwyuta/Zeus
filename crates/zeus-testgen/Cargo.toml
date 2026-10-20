@@ -1,0 +1,35 @@
+[package]
+name = "zeus-testgen"
+description = "Zeus test generation for COBOL programs: concolic execution and a solver to cover both ways of every branch (ztestgen, ztest)"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+repository.workspace = true
+
+[dependencies]
+zeus-cobol = { path = "../zeus-cobol" }
+zeus-decimal = { path = "../zeus-decimal" }
+zeus-ds = { path = "../zeus-ds" }
+zeus-layout = { path = "../zeus-layout" }
+serde = { workspace = true }
+serde_json = { workspace = true }
+libloading = "0.8"
+
+[dev-dependencies]
+tempfile.workspace = true
+
+[[bin]]
+name = "ztestgen"
+path = "src/bin/ztestgen.rs"
+
+[[bin]]
+name = "ztest"
+path = "src/bin/ztest.rs"
+
+# The Z3 module (smt.rs) needs unsafe code; everything else denies it.
+[lints.rust]
+unsafe_code = "deny"
+
+[lints.clippy]
+all = { level = "warn", priority = -1 }

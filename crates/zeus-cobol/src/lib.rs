@@ -4,7 +4,9 @@
 //! and code generation to ZIR ([`sema`], [`zir`]), and execution by the ZIR
 //! interpreter ([`vm`]).
 
+pub mod clock;
 pub mod codepage;
+pub mod concolic;
 pub mod coverage;
 pub mod diag;
 pub mod dll;
@@ -42,14 +44,50 @@ pub fn compile_file_with_listing(
     (module, listing)
 }
 
+/// Compiles each program of a batch compilation separately (with its own
+/// CBL / PROCESS options) and binds them into one module.
 fn compile_impl(
     path: &Path,
     opts: &FrontOptions,
-    listing: Option<&mut String>,
+    mut listing: Option<&mut String>,
 ) -> Result<zir::Module, Diag> {
+    let mut modules = Vec::new();
+    let mut unit = 0;
+    loop {
+        let mut unit_listing = String::new();
+        let (module, units) = compile_unit(
+            path,
+            opts,
+            unit,
+            listing.is_some().then_some(&mut unit_listing),
+        );
+        if let Some(listing) = listing.as_deref_mut() {
+            listing.push_str(&unit_listing);
+        }
+        modules.push(module?);
+        unit += 1;
+        if unit >= units {
+            break;
+        }
+    }
+    if modules.len() == 1 {
+        return Ok(modules.pop().unwrap());
+    }
+    link::modules(modules).map_err(|e| Diag::error(Default::default(), e))
+}
+
+/// One program of the source; also returns the number of programs (1 when
+/// the source cannot be read).
+fn compile_unit(
+    path: &Path,
+    opts: &FrontOptions,
+    unit: usize,
+    listing: Option<&mut String>,
+) -> (Result<zir::Module, Diag>, usize) {
     let compiled_at = vm::timestamp();
     let mut files = FileTable::default();
     let mut listing_tokens = Vec::new();
+    let mut units = 1;
     let name = |d: Diag, files: &FileTable| {
         let mut d = d;
         d.file = files
@@ -60,8 +98,9 @@ fn compile_impl(
         d
     };
     let result = (|| {
-        let (tokens, cics) =
-            front::source_tokens(path, opts, &mut files).map_err(|d| name(d, &files))?;
+        let (tokens, cics, count) =
+            front::source_unit_tokens(path, opts, &mut files, unit).map_err(|d| name(d, &files))?;
+        units = count;
         if listing.is_some() {
             listing_tokens.clone_from(&tokens);
         }
@@ -93,7 +132,7 @@ fn compile_impl(
             &front::listing_options(),
         );
     }
-    result
+    (result, units)
 }
 
 /// Serialised form of a module (`.zo` file).

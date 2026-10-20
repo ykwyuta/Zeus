@@ -23,7 +23,7 @@ Zeus は、z/OS 向けアプリケーションのソースを Linux／Windows �
 | IBM MQ | MQI 呼び出し、メッセージ送受信、コミット／バックアウト、CICS のトリガー監視 | `zmq` / [対応範囲](docs/proposal/0005-ibm-mq.md) |
 | IMS | DBD/PSB、階層データベース、DL/I、GSAM、WAL、バッチ／メッセージ処理リージョン、TM キュー | `zims`、`zjob ims` / [対応範囲](docs/proposal/0006-ims-db.md) |
 | REST API | z/OS Connect プロジェクトの OpenAPI と要求・応答マッピングを読み、CICS のプログラム／IMS トランザクションを呼び出す | `zconn` / [対応範囲](docs/proposal/0008-zconnect.md) |
-| 調査・検証 | 依存関係と未対応構文の CSV、固定長レイアウトの COPY 句、文・分岐のカバレッジ | `zdeps`、`zlayout`、`zcov` |
+| 調査・検証 | 依存関係と未対応構文の CSV、固定長レイアウトの COPY 句、文・分岐のカバレッジ、C1 網羅テストの生成 | `zdeps`、`zlayout`、`zcov`、`ztestgen`、`ztest` |
 | 単独実行ファイル | ランタイムとモジュールを同梱し、Zeus のコマンドを別途インストールせずに実行 | `zcobc compile --native`、`zpli compile --native` |
 
 「実装」は、各製品・言語の全機能に対応するという意味ではありません。対応する形式・設定・制約は各リンク先で確認できます。
@@ -39,7 +39,7 @@ Zeus は、z/OS 向けアプリケーションのソースを Linux／Windows �
 | `zeus-linux-x86_64` | Linux x86-64。Ubuntu 22.04 上でビルド |
 | `zeus-windows-x86_64` | Windows x86-64 |
 
-展開した `bin` を PATH に追加してください。`zcobc`、`zpli`、`zas`、`zjob`、`zcics`、`zbms`、`zims`、`zmq`、`zconn`、`zdeps`、`zlayout`、`zcov`、`zeus-rt` が含まれます。単独実行ファイルを作る場合は、`zeus-rt` をコンパイラーと同じディレクトリーに置きます。
+展開した `bin` を PATH に追加してください。`zcobc`、`zpli`、`zas`、`zjob`、`zcics`、`zbms`、`zims`、`zmq`、`zconn`、`zdeps`、`zlayout`、`zcov`、`ztestgen`、`ztest`、`zeus-rt` が含まれます。単独実行ファイルを作る場合は、`zeus-rt` をコンパイラーと同じディレクトリーに置きます。
 
 ### ソースからビルド
 
@@ -203,20 +203,23 @@ CardDemo、GenApp、Bank of Z の取得・構築・シナリオ実行用スク�
 
 記録済みの [構文使用・コンパイル一覧](docs/inventory/apps.md) では、CardDemo 41/41、GenApp 31/31、Bank of Z 42/43、計 **114/115 プログラム** がコンパイルできています。Bank of Z の IBTRAN は未対応です。固定した取得コミットでの記録であり、全シナリオの実行成功や、現在の作業ツリーでの再検証結果を示す数字ではありません。
 
-## 依存関係・レイアウト・カバレッジ
+## 依存関係・レイアウト・カバレッジ・テスト生成
 
 ```sh
 zdeps analyze --lib copybooks --out deps src
 zlayout -I copybooks --out layouts src/report.cbl
 zcobc run --coverage coverage report.zo
 zcov report --detail --lcov coverage.lcov --html coverage-html coverage
+ztestgen -I copybooks --out cases src/report.cbl
+ztest -I copybooks --coverage coverage src/report.cbl cases
 ```
 
 - **`zdeps`** は COPY/INCLUDE、呼び出し、JCL、CICS、IMS などの関係を追い、CSV を出力します。既定ではコンパイルも行い、未対応構文、位置、一般のコンパイル診断を分けて報告します。移植調査の入口であり、実行互換性の合格判定ではありません。
 - **`zlayout`** はファイル、引数、COMMAREA、MQ、BMS、SQL などの固定長レイアウトを COPY 句として出力し、コンパイルして配置を検査します。
 - **`zcov`** は実行時の文・分岐・段落／手続きの通過情報から、集計、LCOV、HTML を生成します。`ZEUS_COVERAGE` で `zjob`、`zcics` や単独実行ファイルからも記録できます。
+- **`ztestgen`** は生成 AI を使わず、concolic 実行と自前のソルバで、分岐の両方向 (C1) を通る入力 (USING の引数、ACCEPT の行、順次・索引ファイルのレコード) を求め、現在の出力を期待値とするテストケース (JSON) と、通せなかった分岐の理由を出力します。**`ztest`** はそれを再実行して比べます。入出力エラーの注入 (OPEN・READ などの失敗) と、ないサブプログラムの CALL のスタブにも対応します。EXEC CICS・EXEC SQL・EXEC DLI と DL/I の CALL はスタブで実行し、応答 (RESP、INTO、SQLCODE、ホスト変数、DL/I の状態コード) を入力に、送った内容を期待値にします。
 
-詳細: [依存関係](docs/proposal/0011-dependency-analysis.md) / [レイアウト](docs/proposal/0013-fixed-length-layouts.md) / [カバレッジ](docs/proposal/0010-coverage.md)。
+詳細: [依存関係](docs/proposal/0011-dependency-analysis.md) / [レイアウト](docs/proposal/0013-fixed-length-layouts.md) / [カバレッジ](docs/proposal/0010-coverage.md) / [テスト生成](docs/proposal/0012-c1-test-generation.md)。
 
 ## 互換性と制約
 
@@ -251,7 +254,7 @@ NIST CCVS85 の必須 8 モジュールと一部の任意モジュールの合�
 |---|---|
 | コンパイル・実行・DD | [zcobc](docs/help/zcobc.txt)、[zpli](docs/help/zpli.txt)、[zas](docs/help/zas.txt)、[zjob](docs/help/zjob.txt) |
 | オンライン・API・メッセージ | [zcics](docs/help/zcics.txt)、[zbms](docs/help/zbms.txt)、[zconn](docs/help/zconn.txt)、[zims](docs/help/zims.txt)、[zmq](docs/help/zmq.txt) |
-| 調査・実行結果の分析 | [zdeps](docs/help/zdeps.txt)、[zcov](docs/help/zcov.txt)、[レイアウト](docs/proposal/0013-fixed-length-layouts.md) |
+| 調査・実行結果の分析 | [zdeps](docs/help/zdeps.txt)、[zcov](docs/help/zcov.txt)、[レイアウト](docs/proposal/0013-fixed-length-layouts.md)、[テスト生成](docs/proposal/0012-c1-test-generation.md) |
 | 設計判断・実装計画 | [docs/proposal](docs/proposal) |
 | ビルド・試験・クリーンルーム方針 | [CONTRIBUTING.md](CONTRIBUTING.md)、[CCVS85](ccvs85/README.md) |
 
