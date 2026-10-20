@@ -1,0 +1,5 @@
+ /* ALLOCATE automatic: one rule and its positive control. */
+ PE113P: PROC OPTIONS(MAIN);
+ DCL X FIXED BIN(31) CONTROLLED;
+ ALLOCATE X;
+ END PE113P;

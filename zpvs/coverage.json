@@ -1,0 +1,630 @@
+{
+  "PA101A": {
+    "expect": "run",
+    "tests": [
+      "FIXED-ADD",
+      "FIXED-SUB",
+      "FIXED-MUL",
+      "FIXED-DIV",
+      "BINARY-MIXED",
+      "EXPLICIT-ADD",
+      "EXPLICIT-MULTIPLY",
+      "EXPLICIT-DIVIDE",
+      "POWER-NEG",
+      "POWER-ZERO"
+    ]
+  },
+  "PA102A": {
+    "expect": "run",
+    "tests": [
+      "CHAR-TO-NUM",
+      "NUM-TO-CHAR",
+      "BIN-TO-BIT",
+      "BIT-TO-BIN",
+      "AND-BITS",
+      "OR-BITS",
+      "NOT-BITS",
+      "BOOL-XOR"
+    ]
+  },
+  "PA103A": {
+    "expect": "run",
+    "tests": [
+      "PIC-POS",
+      "PIC-ZERO",
+      "PIC-MAX",
+      "FLOAT-PIC-NORMAL",
+      "FLOAT-PIC-NEG",
+      "PIC-SCALE"
+    ]
+  },
+  "PA104A": {
+    "expect": "run",
+    "tests": [
+      "ARRAY-BROADCAST",
+      "ARRAY-ARITH",
+      "ARRAY-SECTION",
+      "ARRAY-BOUNDS",
+      "BY-NAME",
+      "SUBSTR-PSEUDO",
+      "UNSPEC-PSEUDO"
+    ]
+  },
+  "PC101A": {
+    "expect": "run",
+    "tests": [
+      "DO-TO-BY",
+      "DO-NEG-BY",
+      "DO-WHILE-ZERO",
+      "DO-UNTIL-ONCE",
+      "DO-ITERATE",
+      "DO-LEAVE-LABEL",
+      "SELECT-WHEN",
+      "SELECT-OTHER"
+    ]
+  },
+  "PC102A": {
+    "expect": "run",
+    "tests": [
+      "RECURSIVE-0",
+      "RECURSIVE-1",
+      "RECURSIVE-2",
+      "RECURSIVE-3",
+      "RECURSIVE-4",
+      "RECURSIVE-5",
+      "RECURSIVE-6",
+      "RECURSIVE-7",
+      "RECURSIVE-8",
+      "LEXICAL-PARENT",
+      "LEXICAL-SHADOW"
+    ]
+  },
+  "PC103A": {
+    "expect": "run",
+    "tests": [
+      "ENTRY-TWICE",
+      "ENTRY-REBOUND",
+      "ENTRY-ARRAY",
+      "ENTRY-COPY",
+      "GENERIC-FIXED",
+      "GENERIC-CHAR"
+    ]
+  },
+  "PC104A": {
+    "expect": "run",
+    "tests": [
+      "FETCH-FIRST",
+      "FETCH-STATIC",
+      "RELEASE-RESET",
+      "FETCH-TITLE",
+      "FETCH-MISSING",
+      "FETCH-RECOVER"
+    ]
+  },
+  "PC105A": {
+    "expect": "run",
+    "tests": [
+      "SIGNAL-DYNAMIC",
+      "REVERT-PARENT",
+      "OUTER-REMAINS"
+    ]
+  },
+  "PC106A": {
+    "expect": "run",
+    "tests": [
+      "ZERODIVIDE-HANDLER",
+      "SIZE-HANDLER",
+      "RECOVER-ARITH"
+    ]
+  },
+  "PC107A": {
+    "expect": "run",
+    "tests": [
+      "CONVERSION-REPAIR",
+      "CONVERSION-INPUT-KEPT",
+      "CONVERSION-SUCCESS"
+    ]
+  },
+  "PC108A": {
+    "expect": "run",
+    "tests": [
+      "ONSOURCE-REPAIR",
+      "ONSOURCE-INPUT-KEPT",
+      "ONSOURCE-REPEAT"
+    ]
+  },
+  "PD101A": {
+    "expect": "run",
+    "tests": [
+      "DEC-1-0",
+      "DEC-1-1",
+      "DEC-1-2",
+      "DEC-1-3",
+      "DEC-1-4",
+      "DEC-2-0",
+      "DEC-2-1",
+      "DEC-2-2",
+      "DEC-2-3",
+      "DEC-2-4",
+      "DEC-3-0",
+      "DEC-3-1",
+      "DEC-3-2",
+      "DEC-3-3",
+      "DEC-3-4",
+      "DEC-4-0",
+      "DEC-4-1",
+      "DEC-4-2",
+      "DEC-4-3",
+      "DEC-4-4",
+      "DEC-5-0",
+      "DEC-5-1",
+      "DEC-5-2",
+      "DEC-5-3",
+      "DEC-5-4",
+      "DEC-7-0",
+      "DEC-7-1",
+      "DEC-7-2",
+      "DEC-7-3",
+      "DEC-7-4",
+      "DEC-9-0",
+      "DEC-9-1",
+      "DEC-9-2",
+      "DEC-9-3",
+      "DEC-9-4",
+      "DEC-15-0",
+      "DEC-15-1",
+      "DEC-15-2",
+      "DEC-15-3",
+      "DEC-15-4",
+      "DEC-31-0",
+      "DEC-31-1",
+      "DEC-31-2",
+      "DEC-31-3",
+      "DEC-31-4"
+    ]
+  },
+  "PD102A": {
+    "expect": "run",
+    "tests": [
+      "CHAR-PAD",
+      "CHAR-TRUNC",
+      "VAR-LENGTH",
+      "VAR-PREFIX",
+      "VAR-EMPTY",
+      "VAR-MAX",
+      "BIT-PAD",
+      "BIT-TRUNC",
+      "BIT-BOUNDARY"
+    ]
+  },
+  "PD103A": {
+    "expect": "run",
+    "tests": [
+      "UNALIGNED-SIZE",
+      "UNALIGNED-BYTES",
+      "ALIGNED-SIZE",
+      "ALIGNED-BYTES"
+    ]
+  },
+  "PD104A": {
+    "expect": "run",
+    "tests": [
+      "TYPE-MEMBERS",
+      "LIKE-COPY",
+      "LIKE-INDEPENDENT",
+      "ALIAS-SCALE",
+      "TYPE-SIZES"
+    ]
+  },
+  "PD105A": {
+    "expect": "run",
+    "tests": [
+      "ORDINAL-FIRST",
+      "ORDINAL-LAST",
+      "ORDINAL-VALUE",
+      "ORDINAL-SUCC",
+      "ORDINAL-PRED",
+      "DEFAULT-I-N"
+    ]
+  },
+  "PD106A": {
+    "expect": "run",
+    "tests": [
+      "WIDE-BYTES",
+      "GRAPHIC-BYTES",
+      "COMPLEX-REAL",
+      "COMPLEX-CONJ",
+      "COMPLEX-MAGNITUDE",
+      "HFP-SHORT",
+      "HFP-LONG",
+      "FLOAT-SIZES"
+    ]
+  },
+  "PD107A": {
+    "expect": "run",
+    "tests": [
+      "B7-BOUND-0",
+      "B7-BOUND-1",
+      "B7-BOUND-2",
+      "B7-BOUND-3",
+      "B7-BOUND-4",
+      "U7-BOUND-0",
+      "U7-BOUND-1",
+      "U7-BOUND-2",
+      "B8-BOUND-0",
+      "B8-BOUND-1",
+      "B8-BOUND-2",
+      "B8-BOUND-3",
+      "B8-BOUND-4",
+      "U8-BOUND-0",
+      "U8-BOUND-1",
+      "U8-BOUND-2",
+      "B15-BOUND-0",
+      "B15-BOUND-1",
+      "B15-BOUND-2",
+      "B15-BOUND-3",
+      "B15-BOUND-4",
+      "U15-BOUND-0",
+      "U15-BOUND-1",
+      "U15-BOUND-2",
+      "B16-BOUND-0",
+      "B16-BOUND-1",
+      "B16-BOUND-2",
+      "B16-BOUND-3",
+      "B16-BOUND-4",
+      "U16-BOUND-0",
+      "U16-BOUND-1",
+      "U16-BOUND-2",
+      "B31-BOUND-0",
+      "B31-BOUND-1",
+      "B31-BOUND-2",
+      "B31-BOUND-3",
+      "B31-BOUND-4",
+      "U31-BOUND-0",
+      "U31-BOUND-1",
+      "U31-BOUND-2",
+      "B32-BOUND-0",
+      "B32-BOUND-1",
+      "B32-BOUND-2",
+      "B32-BOUND-3",
+      "B32-BOUND-4",
+      "U32-BOUND-0",
+      "U32-BOUND-1",
+      "U32-BOUND-2",
+      "B63-BOUND-0",
+      "B63-BOUND-1",
+      "B63-BOUND-2",
+      "B63-BOUND-3",
+      "B63-BOUND-4",
+      "U63-BOUND-0",
+      "U63-BOUND-1",
+      "U63-BOUND-2"
+    ]
+  },
+  "PE101N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE101P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE102N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE102P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE103N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE103P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE104N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE104P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE105N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE105P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE106N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE106P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE107N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE107P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE108N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE108P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE109N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE109P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE110N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE110P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE111N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE111P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE112N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE112P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE113N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE113P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE114N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE114P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE115N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE115P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PF101A": {
+    "expect": "run",
+    "tests": [
+      "PUT-STRING-EDIT",
+      "GET-STRING-EDIT",
+      "GET-STRING-LIST",
+      "PUT-STRING-DATA"
+    ]
+  },
+  "PF102A": {
+    "expect": "run",
+    "tests": [
+      "PRINT-FIRST-SKIP",
+      "PRINT-NEXT-SKIP",
+      "PRINT-LINE",
+      "PRINT-ENDPAGE",
+      "PRINT-ENDPAGE-ONCE",
+      "PRINT-PAGE",
+      "PRINT-REOPEN"
+    ]
+  },
+  "PF103A": {
+    "expect": "run",
+    "tests": [
+      "RECORD-CREATE",
+      "RECORD-FIRST",
+      "RECORD-SECOND",
+      "RECORD-EOF",
+      "RECORD-REOPEN",
+      "RECORD-CLOSE"
+    ]
+  },
+  "PF104M": {
+    "expect": "run",
+    "tests": [
+      "KSDS-WRITE",
+      "KSDS-READ",
+      "KSDS-DUPLICATE",
+      "KSDS-RECOVER",
+      "KSDS-REWRITE",
+      "KSDS-DELETE",
+      "KSDS-REINSERT",
+      "KSDS-CLOSE"
+    ]
+  },
+  "PF105A": {
+    "expect": "run",
+    "tests": [
+      "RECORD-CREATE",
+      "RECORD-FIRST",
+      "RECORD-SECOND",
+      "RECORD-EOF",
+      "RECORD-REOPEN",
+      "RECORD-CLOSE"
+    ]
+  },
+  "PM101A": {
+    "expect": "run",
+    "tests": [
+      "MACRO-LOOP",
+      "MACRO-INACTIVE"
+    ]
+  },
+  "PM102A": {
+    "expect": "run",
+    "tests": [
+      "MACRO-PROC",
+      "MACRO-PROC-ZERO",
+      "MACRO-PROC-NEG"
+    ]
+  },
+  "PM103A": {
+    "expect": "run",
+    "tests": [
+      "BIF-TRIM",
+      "BIF-REVERSE",
+      "BIF-COPY",
+      "BIF-TRANSLATE",
+      "BIF-LOWER",
+      "BIF-UPPER",
+      "BIF-INDEX",
+      "BIF-SEARCH",
+      "BIF-VERIFY",
+      "BIF-TALLY",
+      "BIF-LENGTH",
+      "BIF-CENTER",
+      "BIF-LEFT",
+      "BIF-RIGHT",
+      "BIF-MOD",
+      "BIF-REM",
+      "BIF-FLOOR",
+      "BIF-CEIL",
+      "BIF-ROUND"
+    ]
+  },
+  "PM104M": {
+    "expect": "run",
+    "tests": [
+      "PLI-COBOL-SHARED",
+      "PLI-HLASM-SHARED",
+      "PLI-HLASM-RETCODE",
+      "PLI-COBOL-REPEAT"
+    ]
+  },
+  "PM105A": {
+    "expect": "run",
+    "tests": [
+      "LILIAN-ORIGIN",
+      "LILIAN-LEAP",
+      "DATE-DELTA",
+      "SQRT",
+      "SIN-ZERO",
+      "COS-ZERO",
+      "LOG-ONE",
+      "ABS-NEG",
+      "MINMAX"
+    ]
+  },
+  "PM106A": {
+    "expect": "run",
+    "tests": [
+      "STATEMENT-POSITIONAL",
+      "STATEMENT-KEYWORD"
+    ]
+  },
+  "PM107A": {
+    "expect": "run",
+    "tests": [
+      "MAIN-PARM-TEXT",
+      "MAIN-PARM-LENGTH",
+      "PLIRETC-VALUE"
+    ]
+  },
+  "PM108A": {
+    "expect": "run",
+    "tests": [
+      "MAIN-PARM-TEXT",
+      "MAIN-PARM-LENGTH",
+      "PLIRETC-VALUE"
+    ]
+  },
+  "PS101A": {
+    "expect": "run",
+    "tests": [
+      "NULL-SYSNULL",
+      "NULL-IMAGE",
+      "SYSNULL-IMAGE",
+      "ALLOC-BASED",
+      "POINTER-ALIAS",
+      "POINTER-REBIND",
+      "POINTER-ADD",
+      "FREE-OTHER-STORAGE"
+    ]
+  },
+  "PS102A": {
+    "expect": "run",
+    "tests": [
+      "CTL-ZERO",
+      "CTL-FIRST",
+      "CTL-SECOND",
+      "CTL-RESTORE",
+      "CTL-EMPTY",
+      "CTL-ARRAY-FIRST",
+      "CTL-ARG-PUSH",
+      "CTL-ARG-RESTORE"
+    ]
+  },
+  "PS103A": {
+    "expect": "run",
+    "tests": [
+      "AREA-ALLOC",
+      "OFFSET-ROUNDTRIP",
+      "AREA-COPY",
+      "AREA-INDEPENDENT",
+      "AREA-EMPTY-RESET"
+    ]
+  },
+  "PS104A": {
+    "expect": "run",
+    "tests": [
+      "REFER-ALLOC",
+      "REFER-TAIL",
+      "REFER-SHRINK",
+      "REFER-WRITE-SHRUNK",
+      "REFER-RESTORE"
+    ]
+  },
+  "PS105A": {
+    "expect": "run",
+    "tests": [
+      "DEFINED-POSITION",
+      "DEFINED-WRITE",
+      "ISUB-DIAGONAL",
+      "ISUB-TRANSPOSE",
+      "ISUB-WRITE"
+    ]
+  },
+  "PS106A": {
+    "expect": "run",
+    "tests": [
+      "HANDLE-EXISTING",
+      "NEW-TYPED",
+      "NEW-INDEPENDENT",
+      "HANDLE-FREE"
+    ]
+  }
+}

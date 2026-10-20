@@ -1,0 +1,7 @@
+ /* REFER missing: one rule and its positive control. */
+ PE107P: PROC OPTIONS(MAIN);
+ DCL N FIXED BIN(31);
+ DCL 1 X BASED, 2 CNT FIXED BIN(31),
+ 2 A(N REFER(CNT)) CHAR(1);
+
+ END PE107P;

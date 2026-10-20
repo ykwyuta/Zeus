@@ -1042,6 +1042,20 @@ pub(crate) fn execute_entry_with_host(
                             }
                         }
                     }
+                    "TP" => {
+                        let a = ea()?;
+                        let n = ins.length as usize;
+                        if !(1..=16).contains(&n) {
+                            return Err("invalid TP length".into());
+                        }
+                        let bytes = &mem[range(mem, a, n)?];
+                        let bad_digit = bytes
+                            .iter()
+                            .enumerate()
+                            .any(|(j, byte)| byte >> 4 > 9 || j + 1 < n && byte & 15 > 9);
+                        let bad_sign = bytes[n - 1] & 15 < 10;
+                        cc = u8::from(bad_digit) * 2 + u8::from(bad_sign);
+                    }
                     "SRP" => {
                         let a = ea()?;
                         let length = ins.length as usize;

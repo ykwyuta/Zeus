@@ -1,0 +1,108 @@
+      * NUMVAL RETURNS FLOAT; ROUND TO TWO DECIMAL PLACES.
+      * AUDIT: X05; SPECIFICATION AND LIMITS IN SCENARIOS.MD.
+      * ZX109A: Decimal comma NUMVAL punctuation and invalid positions
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZX109A.
+       ENVIRONMENT DIVISION.
+       CONFIGURATION SECTION.
+       SPECIAL-NAMES. DECIMAL-POINT IS COMMA.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  RESULT-NUM PIC S9(5)V99 COMP-3.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZX109A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'COMMA-NUMVAL-0' TO ZCVS-TEST-NAME.
+           COMPUTE RESULT-NUM ROUNDED = FUNCTION NUMVAL('123,45').
+           IF RESULT-NUM = 123,45
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '123.45' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'COMMA-NUMVAL-1' TO ZCVS-TEST-NAME.
+           COMPUTE RESULT-NUM ROUNDED = FUNCTION NUMVAL('-12,50').
+           IF RESULT-NUM = -12,5
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '-12.5' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'COMMA-NUMVAL-2' TO ZCVS-TEST-NAME.
+           COMPUTE RESULT-NUM ROUNDED = FUNCTION NUMVAL-C('1.234,56').
+           IF RESULT-NUM = 1234,56
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '1234.56' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'COMMA-NUMVAL-3' TO ZCVS-TEST-NAME.
+           COMPUTE RESULT-NUM ROUNDED = FUNCTION NUMVAL('12-').
+           IF RESULT-NUM = -12
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '-12' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'COMMA-TEST-0' TO ZCVS-TEST-NAME.
+           IF FUNCTION TEST-NUMVAL('123,45') = 0
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'COMMA-TEST-1' TO ZCVS-TEST-NAME.
+           IF FUNCTION TEST-NUMVAL-C('1.234,56') = 0
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'COMMA-TEST-2' TO ZCVS-TEST-NAME.
+           IF FUNCTION TEST-NUMVAL('12X,50') = 3
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '3' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'COMMA-TEST-3' TO ZCVS-TEST-NAME.
+           IF FUNCTION TEST-NUMVAL('1,2,3') = 4
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '4' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.
+

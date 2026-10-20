@@ -32,6 +32,7 @@ pub struct ProgramConfig {
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct Manifest {
     pub name: String,
+    pub language: String,
     pub required_modules: Vec<String>,
     pub optional_modules: Vec<String>,
     pub programs: BTreeMap<String, ProgramConfig>,
@@ -92,6 +93,12 @@ impl Manifest {
                 Section::Root => bail!("line {}: key '{key}' outside of section", lineno + 1),
                 Section::Suite => match key {
                     "name" => m.name = parse_str(val, lineno + 1)?,
+                    "language" => {
+                        m.language = parse_str(val, lineno + 1)?;
+                        if !matches!(m.language.as_str(), "cobol" | "pli" | "hlasm") {
+                            bail!("line {}: unknown language", lineno + 1);
+                        }
+                    }
                     "required_modules" => m.required_modules = parse_str_array(val, lineno + 1)?,
                     "optional_modules" => m.optional_modules = parse_str_array(val, lineno + 1)?,
                     _ => bail!("line {}: unknown [suite] key '{key}'", lineno + 1),

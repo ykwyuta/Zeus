@@ -248,6 +248,8 @@ NIST CCVS85 の必須 8 モジュールと一部の任意モジュールの合�
 
 ## 詳しい使い方と開発
 
+独自の互換性スイートは [ZCVS（COBOL）](zcvs/README.md)、[ZPVS（PL/I）](zpvs/README.md)、[ZHVS（HLASM）](zhvs/README.md) に収録しています。[検証一覧](docs/validation-suites.md)から全シナリオ台帳と実行方法を参照できます。PL/Iの通常/ネイティブ、HLASMのZeus/OBJ/GOFFを含め、`cargo test --all` とCIで検査します。
+
 引数・既定値・環境変数・終了コードは各コマンドの `--help` を参照してください。例えば `zcobc compile --help`、`zjob catalog --help`、`zcics --help` が使えます。主要コマンドの詳細ヘルプは実行ファイルに組み込まれ、オフラインでも読めます。元のガイドは [docs/help](docs/help) にあります。
 
 | 読みたい内容 | 文書 |

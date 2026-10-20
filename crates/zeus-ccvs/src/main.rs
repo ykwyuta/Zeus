@@ -17,7 +17,10 @@ use anyhow::{Context, Result};
 use clap::{Parser, Subcommand, ValueEnum};
 
 use zeus_ccvs::{
-    exec85, extract, jcl, manifest::Manifest, population, runner, summary, toolchain::Toolchain,
+    exec85, extract, jcl,
+    manifest::Manifest,
+    population, runner, summary,
+    toolchain::{AsmFormat, Toolchain},
 };
 
 #[derive(Parser)]
@@ -33,6 +36,11 @@ enum ToolchainKind {
     Zeus,
     /// zcobc compile --native: native executables with machine code
     ZeusNative,
+    Zpli,
+    ZpliNative,
+    Zas,
+    ZasObj,
+    ZasGoff,
 }
 
 #[derive(Subcommand)]
@@ -70,6 +78,12 @@ enum Cmd {
         /// Path of `zcobc` (default: next to this executable).
         #[arg(long)]
         zcobc: Option<PathBuf>,
+        /// Path of the PL/I compiler (default: next to this executable).
+        #[arg(long)]
+        zpli: Option<PathBuf>,
+        /// Path of the assembler (default: next to this executable).
+        #[arg(long)]
+        zas: Option<PathBuf>,
         /// Comma-separated modules (default: all present in the suite).
         #[arg(long, value_delimiter = ',')]
         modules: Vec<String>,
@@ -182,6 +196,8 @@ fn real_main() -> Result<ExitCode> {
             toolchain,
             cobc,
             zcobc,
+            zpli,
+            zas,
             modules,
             programs,
             jobs,
@@ -190,6 +206,32 @@ fn real_main() -> Result<ExitCode> {
         } => {
             let tc = match toolchain {
                 ToolchainKind::Gnucobol => Toolchain::gnucobol(cobc),
+                ToolchainKind::Zpli | ToolchainKind::ZpliNative => Toolchain::Zpli {
+                    compiler: zpli
+                        .unwrap_or(
+                            std::env::current_exe()?
+                                .with_file_name(format!("zpli{}", std::env::consts::EXE_SUFFIX)),
+                        )
+                        .canonicalize()
+                        .context("locating zpli")?,
+                    native: matches!(toolchain, ToolchainKind::ZpliNative),
+                },
+                ToolchainKind::Zas | ToolchainKind::ZasObj | ToolchainKind::ZasGoff => {
+                    Toolchain::Zas {
+                        compiler: zas
+                            .unwrap_or(
+                                std::env::current_exe()?
+                                    .with_file_name(format!("zas{}", std::env::consts::EXE_SUFFIX)),
+                            )
+                            .canonicalize()
+                            .context("locating zas")?,
+                        format: match toolchain {
+                            ToolchainKind::ZasObj => AsmFormat::Obj,
+                            ToolchainKind::ZasGoff => AsmFormat::Goff,
+                            _ => AsmFormat::Zeus,
+                        },
+                    }
+                }
                 ToolchainKind::Zeus | ToolchainKind::ZeusNative => {
                     let zcobc = match zcobc {
                         Some(p) => p,
@@ -236,6 +278,13 @@ fn real_main() -> Result<ExitCode> {
             }
             fs::write(&out, serde_json::to_string_pretty(&result)? + "\n")?;
             print!("{}", summary::markdown(&result, None));
+            if result
+                .modules
+                .iter()
+                .any(|m| m.programs.is_empty() || m.programs.iter().any(|p| !p.outcome.ok()))
+            {
+                return Ok(ExitCode::from(1));
+            }
         }
         Cmd::Report {
             results,

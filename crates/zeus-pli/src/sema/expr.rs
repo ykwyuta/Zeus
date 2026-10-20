@@ -823,8 +823,16 @@ impl Compiler {
         }
         match self.sym(name) {
             Some(Sym::Var(v)) => self.ordinal_vars.get(&v).copied(),
-            None if matches!(name.as_str(), "ORDINALSUCC" | "ORDINALPRED") => {
+            None | Some(Sym::Builtin(_))
+                if matches!(name.as_str(), "ORDINALSUCC" | "ORDINALPRED") =>
+            {
                 self.ordinal_of(lists.first()?.first()?)
+            }
+            None | Some(Sym::Builtin(_)) if matches!(name.as_str(), "FIRST" | "LAST") => {
+                let ast::Expr::Ref(ty) = lists.first()?.first()? else {
+                    return None;
+                };
+                self.ordinals.iter().position(|(name, _)| name == ty.name())
             }
             _ => None,
         }
@@ -1415,7 +1423,8 @@ impl Compiler {
                 let string_args: &[usize] = match b {
                     Substr | Copy | Repeat | Reverse | Lowercase | Uppercase | Length
                     | MaxLength | Hex | Unspec => &[0],
-                    Index | Search | Verify | Tally | Bool => &[0, 1],
+                    Index | Search | Verify | Tally => &[0, 1],
+                    Bool => &[0, 1, 2],
                     Left | Right | Center | CenterRight => &[0, 2],
                     Trim | Translate => &[0, 1, 2],
                     _ => &[],
@@ -1496,6 +1505,19 @@ impl Compiler {
             };
             if let Some(b) = pseudo {
                 let args = &r.parts[0].1[0];
+                if matches!(b, Bif::OnChar | Bif::OnSource) {
+                    if !args.is_empty() {
+                        return Err(self.err(r.pos, "condition pseudovariable takes no arguments"));
+                    }
+                    return Ok((
+                        Target::Condition(b),
+                        Some(if b == Bif::OnChar {
+                            Ty::char(1)
+                        } else {
+                            char_any()
+                        }),
+                    ));
+                }
                 let ast::Expr::Ref(inner) = args
                     .first()
                     .ok_or_else(|| self.err(r.pos, "pseudovariable needs an argument"))?

@@ -129,20 +129,53 @@ pub fn export_jcl(
     fs::create_dir_all(&jcl_dir)?;
 
     let mut summary = ExportSummary::default();
+    let source_ext = match manifest.language.as_str() {
+        "pli" => "PLI",
+        "hlasm" => "ASM",
+        _ => "CBL",
+    };
+    let all_name = if manifest.name.is_empty() {
+        "ZCVSALL".to_string()
+    } else {
+        format!("{}ALL", manifest.name)
+    };
 
     // 1. Export COPY members from `copy/`.
     let suite_copy = suite.join("copy");
     if suite_copy.is_dir() {
-        for entry in sorted_entries(&suite_copy, &["CBL", "CPY"])? {
+        for entry in sorted_entries(&suite_copy, &["CBL", "CPY", "PLI", "mac"])? {
             let member = stem_upper(&entry)?;
             let content = format_fixed80(&fs::read_to_string(&entry)?)?;
-            fs::write(copy_dir.join(format!("{member}.CBL")), content)?;
+            let ext = entry.extension().unwrap().to_string_lossy();
+            fs::write(copy_dir.join(format!("{member}.{ext}")), content)?;
             summary.copy_members += 1;
         }
     }
 
     // 2. Export SRCLIB members and per-module JCL jobs.
-    let mut all_jcl = render_job_card("ZCVSALL", "ZCVS FULL VALIDATION SUITE");
+    let mut all_jcl = render_job_card(&all_name, "LANGUAGE VALIDATION SUITE");
+    let mut common_steps = String::new();
+    let common_lib = suite.join("lib");
+    if common_lib.is_dir() {
+        for sub in sorted_entries(&common_lib, &["CBL", "PLI", "ASM"])? {
+            let member = stem_upper(&sub)?;
+            let ext = sub.extension().unwrap().to_string_lossy();
+            fs::write(
+                srclib_dir.join(format!("{member}.{ext}")),
+                format_fixed80(&fs::read_to_string(&sub)?)?,
+            )?;
+            summary.source_members += 1;
+            common_steps.push_str(&render_other_steps(
+                hlq,
+                &member,
+                &ext,
+                &ProgramConfig::default(),
+                true,
+                &[],
+            ));
+        }
+        all_jcl.push_str(&common_steps);
+    }
     for module in &modules {
         let mod_dir = suite.join(module);
         if !mod_dir.is_dir() {
@@ -150,27 +183,48 @@ pub fn export_jcl(
         }
         let job_name = format!("{module}JOB");
         let mut mod_jcl = render_job_card(&job_name, &format!("ZCVS MODULE {module}"));
+        mod_jcl.push_str(&common_steps);
 
         // Subprograms in `lib/` first.
         let lib_dir = mod_dir.join("lib");
         if lib_dir.is_dir() {
-            for sub in sorted_entries(&lib_dir, &["CBL"])? {
+            for sub in sorted_entries(&lib_dir, &["CBL", "PLI", "ASM"])? {
                 let member = stem_upper(&sub)?;
                 let content = format_fixed80(&fs::read_to_string(&sub)?)?;
-                fs::write(srclib_dir.join(format!("{member}.CBL")), content)?;
+                let ext = sub.extension().unwrap().to_string_lossy();
+                fs::write(srclib_dir.join(format!("{member}.{ext}")), content)?;
                 summary.source_members += 1;
 
-                let step = render_subprogram_steps(hlq, &member);
+                let step = if ext == "CBL" {
+                    render_subprogram_steps(hlq, &member)
+                } else {
+                    render_other_steps(
+                        hlq,
+                        &member,
+                        &ext,
+                        &ProgramConfig {
+                            expect: ExpectKind::CompileOnly,
+                            ..Default::default()
+                        },
+                        true,
+                        &[],
+                    )
+                };
                 mod_jcl.push_str(&step);
                 all_jcl.push_str(&step);
             }
         }
 
         // Main programs in module directory.
-        for src in sorted_entries(&mod_dir, &["CBL", "SUB"])? {
+        let extensions: &[&str] = if source_ext == "CBL" {
+            &["CBL", "SUB"]
+        } else {
+            std::slice::from_ref(&source_ext)
+        };
+        for src in sorted_entries(&mod_dir, extensions)? {
             let member = stem_upper(&src)?;
             let content = format_fixed80(&fs::read_to_string(&src)?)?;
-            fs::write(srclib_dir.join(format!("{member}.CBL")), content)?;
+            fs::write(srclib_dir.join(format!("{member}.{source_ext}")), content)?;
             summary.source_members += 1;
 
             let cfg = manifest.programs.get(&member).cloned().unwrap_or_default();
@@ -182,7 +236,11 @@ pub fn export_jcl(
             } else {
                 Vec::new()
             };
-            let step = render_program_steps(hlq, &member, &cfg, &extra_dds);
+            let step = if source_ext == "CBL" {
+                render_program_steps(hlq, &member, &cfg, &extra_dds)
+            } else {
+                render_other_steps(hlq, &member, source_ext, &cfg, false, &extra_dds)
+            };
             mod_jcl.push_str(&step);
             all_jcl.push_str(&step);
         }
@@ -191,9 +249,64 @@ pub fn export_jcl(
         summary.jcl_members += 1;
     }
 
-    fs::write(jcl_dir.join("ZCVSALL.JCL"), &all_jcl)?;
+    fs::write(jcl_dir.join(format!("{all_name}.JCL")), &all_jcl)?;
     summary.jcl_members += 1;
     Ok(summary)
+}
+
+fn render_other_steps(
+    hlq: &str,
+    member: &str,
+    ext: &str,
+    cfg: &ProgramConfig,
+    helper: bool,
+    extra_dds: &[DdAllocation],
+) -> String {
+    let (compiler, options, library) = if ext == "PLI" {
+        ("IBMZPLI", "OBJECT,MARGINS(2,72)", "IBMZPLI.SIBMZCMP")
+    } else {
+        ("ASMA90", "OBJECT", "ASM.SASMMOD1")
+    };
+    let mut s =
+        format!("//* PROGRAM {member}\n//C{member:<7} EXEC PGM={compiler},PARM='{options}'\n");
+    s.push_str(&format!(
+        "//STEPLIB  DD DSN={library},DISP=SHR\n//SYSLIB   DD DSN={hlq}.COPY,DISP=SHR\n"
+    ));
+    if ext == "ASM" {
+        s.push_str("//         DD DSN=SYS1.MACLIB,DISP=SHR\n");
+    }
+    s.push_str(&format!("//SYSIN    DD DSN={hlq}.SRCLIB({member}),DISP=SHR\n//SYSPRINT DD SYSOUT=*\n//SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))\n"));
+    if cfg.expect == ExpectKind::CompileError {
+        s.push_str(&format!("//SYSLIN   DD DUMMY\n//V{member:<7} EXEC PGM=IDCAMS,COND=(8,LE,C{member})\n//SYSPRINT DD SYSOUT=*\n//SYSIN    DD *\n SET MAXCC = 16\n/*\n"));
+        return s;
+    }
+    s.push_str(&format!("//SYSLIN   DD DSN=&&OBJ{member},DISP=(MOD,PASS),UNIT=SYSDA,\n//            SPACE=(TRK,(5,5))\n"));
+    if cfg.expect == ExpectKind::CompileOnly && !helper {
+        return s;
+    }
+    s.push_str(&format!("//L{member:<7} EXEC PGM=IEWL,PARM='LIST,XREF',COND=(4,LT,C{member})\n//SYSLIB   DD DSN=CEE.SCEELKED,DISP=SHR\n//         DD DSN={hlq}.LOAD,DISP=SHR\n//SYSLIN   DD DSN=&&OBJ{member},DISP=(OLD,DELETE)\n//SYSLMOD  DD DSN={hlq}.LOAD({member}),DISP=SHR\n//SYSPRINT DD SYSOUT=*\n//SYSUT1   DD UNIT=SYSDA,SPACE=(CYL,(1,1))\n"));
+    if helper {
+        return s;
+    }
+    let parm = cfg
+        .parm
+        .as_ref()
+        .map(|p| format!(",PARM='{p}'"))
+        .unwrap_or_default();
+    s.push_str(&format!("//G{member:<7} EXEC PGM={member}{parm},COND=(4,LT,L{member})\n//STEPLIB  DD DSN={hlq}.LOAD,DISP=SHR\n//         DD DSN=CEE.SCEERUN,DISP=SHR\n//REPORT   DD DSN={hlq}.REPORT({member}),DISP=SHR\n//SYSPRINT DD SYSOUT=*\n"));
+    for dd in extra_dds {
+        let unit = if dd.kind == DdKind::Tape {
+            "3480"
+        } else {
+            "SYSDA"
+        };
+        let _ = writeln!(s, "//{:<8} DD DSN={hlq}.{member}.{},", dd.ddname, dd.ddname);
+        let _ = writeln!(
+            s,
+            "//            UNIT={unit},SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)"
+        );
+    }
+    s
 }
 
 fn stem_upper(path: &Path) -> Result<String> {

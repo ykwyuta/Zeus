@@ -1,0 +1,5 @@
+ /* binary precision: one rule and its positive control. */
+ PE102P: PROC OPTIONS(MAIN);
+ DCL X FIXED BIN(63);
+
+ END PE102P;

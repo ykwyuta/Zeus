@@ -6,6 +6,7 @@ enum Format {
     Length,
     Decimal,
     Srp,
+    TestDecimal,
     Immediate,
     Mask,
     TwoRegisters,
@@ -221,6 +222,7 @@ fn format(ins: &Instruction) -> Format {
         | "EDMK" => Length,
         "AP" | "SP" | "CP" | "ZAP" | "MP" | "DP" | "PACK" | "UNPK" => Decimal,
         "SRP" => Srp,
+        "TP" => TestDecimal,
         "MVI" | "CLI" | "NI" | "OI" | "XI" | "TM" => Immediate,
         "BC" | "BCR" | "BR" => Mask,
         _ if super::operation::masked_bytes(&ins.op).is_some() => Mask,
@@ -287,6 +289,7 @@ pub(super) fn byte(ins: &Instruction) -> u8 {
             (ins.length.saturating_sub(1) as u8) << 4 | ins.source_length.saturating_sub(1) as u8
         }
         Srp => (ins.length.saturating_sub(1) as u8) << 4 | ins.immediate as u8,
+        TestDecimal => (ins.length.saturating_sub(1) as u8) << 4,
         Immediate => ins.immediate as u8,
         Mask if ins.op == "BC" => {
             (ins.immediate as u8) << 4 | ins.address.as_ref().map_or(0, |a| a.index)
@@ -335,6 +338,12 @@ pub(super) fn apply(ins: &mut Instruction, byte: u8) -> Result<(), String> {
         Decimal => {
             ins.length = u32::from(high) + 1;
             ins.source_length = u32::from(low) + 1;
+        }
+        TestDecimal => {
+            if byte & 15 != 0 {
+                return Err("EX changes reserved TP bits".into());
+            }
+            ins.length = u32::from(byte >> 4) + 1;
         }
         Srp => {
             ins.length = u32::from(high) + 1;

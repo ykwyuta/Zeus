@@ -17,12 +17,41 @@ use crate::special::Need;
 
 #[derive(Debug, Clone)]
 pub enum Toolchain {
-    GnuCobol { cobc: PathBuf },
-    Zeus { zcobc: PathBuf },
-    ZeusNative { zcobc: PathBuf },
+    GnuCobol {
+        cobc: PathBuf,
+    },
+    Zeus {
+        zcobc: PathBuf,
+    },
+    ZeusNative {
+        zcobc: PathBuf,
+    },
+    Zpli {
+        compiler: PathBuf,
+        native: bool,
+    },
+    Zas {
+        compiler: PathBuf,
+        format: AsmFormat,
+    },
+}
+
+#[derive(Debug, Clone, Copy)]
+pub enum AsmFormat {
+    Zeus,
+    Obj,
+    Goff,
 }
 
 impl Toolchain {
+    pub fn source_extensions(&self) -> &'static [&'static str] {
+        match self {
+            Self::Zpli { .. } => &["PLI"],
+            Self::Zas { .. } => &["ASM"],
+            _ => &["CBL", "SUB"],
+        }
+    }
+
     pub fn gnucobol(cobc: Option<PathBuf>) -> Self {
         Toolchain::GnuCobol {
             cobc: cobc.unwrap_or_else(|| PathBuf::from("cobc")),
@@ -42,6 +71,20 @@ impl Toolchain {
             Toolchain::GnuCobol { .. } => "gnucobol",
             Toolchain::Zeus { .. } => "zeus",
             Toolchain::ZeusNative { .. } => "zeus-native",
+            Self::Zpli { native: false, .. } => "zpli",
+            Self::Zpli { native: true, .. } => "zpli-native",
+            Self::Zas {
+                format: AsmFormat::Zeus,
+                ..
+            } => "zas",
+            Self::Zas {
+                format: AsmFormat::Obj,
+                ..
+            } => "zas-obj",
+            Self::Zas {
+                format: AsmFormat::Goff,
+                ..
+            } => "zas-goff",
         }
     }
 
@@ -51,6 +94,9 @@ impl Toolchain {
             Toolchain::GnuCobol { cobc } => Command::new(cobc).arg("--version").output(),
             Toolchain::Zeus { zcobc } | Toolchain::ZeusNative { zcobc } => {
                 Command::new(zcobc).arg("--version").output()
+            }
+            Self::Zpli { compiler, .. } | Self::Zas { compiler, .. } => {
+                Command::new(compiler).arg("--version").output()
             }
         };
         out.ok()
@@ -77,6 +123,45 @@ impl Toolchain {
     ) -> Command {
         let exe = format!("{program}{}", std::env::consts::EXE_SUFFIX);
         match self {
+            Self::Zpli { compiler, native } => {
+                let mut cmd = Command::new(compiler);
+                cmd.arg("compile");
+                if *native {
+                    cmd.arg("--native");
+                }
+                if let Some(cp) = ccsid {
+                    cmd.args(["--ccsid", &cp.to_string()]);
+                }
+                cmd.args(["-I", "../copy", "-I", ".", "-o"])
+                    .arg(if *native {
+                        exe
+                    } else {
+                        format!("{program}.zo")
+                    })
+                    .arg(source);
+                cmd
+            }
+            Self::Zas { compiler, format } => {
+                let mut cmd = Command::new(compiler);
+                let format = match format {
+                    AsmFormat::Zeus => "zeus",
+                    AsmFormat::Obj => "obj",
+                    AsmFormat::Goff => "goff",
+                };
+                cmd.args([
+                    "compile",
+                    "-I",
+                    "../copy",
+                    "-I",
+                    ".",
+                    "--output-format",
+                    format,
+                    "-o",
+                ])
+                .arg(format!("{program}.zo"))
+                .arg(source);
+                cmd
+            }
             Toolchain::GnuCobol { cobc } => {
                 let mut cmd = gnucobol_base(cobc, ibm_std);
                 cmd.arg("-x");
@@ -123,6 +208,25 @@ impl Toolchain {
 
     /// Command compiling the called subprogram with optional IBM dialect mode.
     pub fn compile_subprogram_with(&self, program: &str, source: &Path, ibm_std: bool) -> Command {
+        if let Self::Zpli { compiler, .. } | Self::Zas { compiler, .. } = self {
+            let ext = source.extension().and_then(|e| e.to_str()).unwrap_or("");
+            let driver = match ext {
+                "CBL" => "zcobc",
+                "ASM" => "zas",
+                _ => "zpli",
+            };
+            let mut cmd = Command::new(
+                compiler.with_file_name(format!("{driver}{}", std::env::consts::EXE_SUFFIX)),
+            );
+            cmd.arg("compile");
+            if ext == "CBL" {
+                cmd.arg("--subprogram");
+            }
+            cmd.args(["-I", "../copy", "-I", ".", "-o"])
+                .arg(format!("{program}.zo"))
+                .arg(source);
+            return cmd;
+        }
         match self {
             Toolchain::GnuCobol { cobc } => {
                 let mut cmd = gnucobol_base(cobc, ibm_std);
@@ -136,6 +240,7 @@ impl Toolchain {
                     .arg(source);
                 cmd
             }
+            Self::Zpli { .. } | Self::Zas { .. } => unreachable!(),
         }
     }
 
@@ -153,6 +258,33 @@ impl Toolchain {
     pub fn run_in(&self, dir: &Path, program: &str, parm: Option<&str>) -> Command {
         let exe = dir.join(format!("{program}{}", std::env::consts::EXE_SUFFIX));
         match self {
+            Self::Zpli { compiler, native } => {
+                let mut cmd = if *native {
+                    Command::new(&exe)
+                } else {
+                    let mut cmd = Command::new(compiler);
+                    cmd.arg("run").arg(format!("{program}.zo"));
+                    cmd
+                };
+                if let Some(p) = parm {
+                    cmd.args(["--parm", p]);
+                }
+                cmd
+            }
+            Self::Zas { compiler, .. } => {
+                // The shared PL/I run-unit driver installs the cross-language
+                // linker, including assembler -> PL/I callbacks.
+                let mut cmd = Command::new(
+                    compiler.with_file_name(format!("zpli{}", std::env::consts::EXE_SUFFIX)),
+                );
+                cmd.arg("run-hlasm")
+                    .arg(format!("{program}.zo"))
+                    .args(["-L", "."]);
+                if let Some(p) = parm {
+                    cmd.args(["--parm", p]);
+                }
+                cmd
+            }
             Toolchain::GnuCobol { .. } => {
                 let mut cmd = Command::new(&exe);
                 if let Some(p) = parm {
@@ -191,6 +323,7 @@ impl Toolchain {
         match self {
             Toolchain::GnuCobol { .. } => cmd.env("COB_SET_DEBUG", v),
             Toolchain::Zeus { .. } | Toolchain::ZeusNative { .. } => cmd.env("ZEUS_DEBUG", v),
+            Self::Zpli { .. } | Self::Zas { .. } => cmd,
         };
     }
 
@@ -208,6 +341,8 @@ impl Toolchain {
             Toolchain::ZeusNative { .. } => {
                 vec![program.to_string(), exe, format!("{program}.zo")]
             }
+            Self::Zpli { native: true, .. } => vec![exe, format!("{program}.zo")],
+            Self::Zpli { .. } | Self::Zas { .. } => vec![format!("{program}.zo")],
         }
     }
 }

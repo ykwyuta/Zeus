@@ -1,0 +1,1124 @@
+{
+  "HA101A": {
+    "expect": "run",
+    "tests": [
+      "EQU-FORWARD",
+      "EQU-DIFFERENCE",
+      "EQU-CHAIN",
+      "EXPR-PRECEDENCE",
+      "EXPR-PARENS",
+      "EXPR-NEGATIVE"
+    ]
+  },
+  "HA102A": {
+    "expect": "run",
+    "tests": [
+      "ATTR-LENGTH",
+      "ATTR-SCALE",
+      "ATTR-INTEGER",
+      "ATTR-EQU-LEN",
+      "ATTR-LITERAL"
+    ]
+  },
+  "HA103A": {
+    "expect": "run",
+    "tests": [
+      "DC-CHAR",
+      "DC-HEX",
+      "DC-BITS",
+      "DC-HALF",
+      "DC-FULL",
+      "DC-DOUBLE",
+      "DC-PACKED",
+      "DC-ZONED",
+      "DC-SCALED",
+      "DC-REPEAT"
+    ]
+  },
+  "HA104A": {
+    "expect": "run",
+    "tests": [
+      "CNOP-ALIGN",
+      "DSECT-SIZE",
+      "ORG-RESTORE",
+      "ORG-OVERWRITE"
+    ]
+  },
+  "HA105A": {
+    "expect": "run",
+    "tests": [
+      "USING-PUSH-POP",
+      "USING-RESTORED"
+    ]
+  },
+  "HD101A": {
+    "expect": "run",
+    "tests": [
+      "MVC",
+      "CLC-EQUAL",
+      "MVN",
+      "MVZ",
+      "XC-SELF",
+      "NC",
+      "OC"
+    ]
+  },
+  "HD102A": {
+    "expect": "run",
+    "tests": [
+      "CVD-N1234567",
+      "CVB-N1234567",
+      "CVD-N1",
+      "CVB-N1",
+      "CVD-0",
+      "CVB-0",
+      "CVD-1",
+      "CVB-1",
+      "CVD-1234567",
+      "CVB-1234567"
+    ]
+  },
+  "HD103A": {
+    "expect": "run",
+    "tests": [
+      "EDIT-POS",
+      "EDIT-ZERO",
+      "EDIT-NEG-CC"
+    ]
+  },
+  "HD104A": {
+    "expect": "run",
+    "tests": [
+      "ZAP",
+      "AP",
+      "SP",
+      "CP",
+      "MP",
+      "DP",
+      "PACK",
+      "UNPK",
+      "TP-VALID"
+    ]
+  },
+  "HD105A": {
+    "expect": "run",
+    "tests": [
+      "TP-SIGN-0",
+      "TP-SIGN-1",
+      "TP-SIGN-2",
+      "TP-SIGN-3",
+      "TP-SIGN-4",
+      "TP-SIGN-5",
+      "TP-SIGN-6",
+      "TP-SIGN-7",
+      "TP-SIGN-8",
+      "TP-SIGN-9",
+      "TP-SIGN-A",
+      "TP-SIGN-B",
+      "TP-SIGN-C",
+      "TP-SIGN-D",
+      "TP-SIGN-E",
+      "TP-SIGN-F",
+      "TP-INPUT-KEPT"
+    ]
+  },
+  "HD106A": {
+    "expect": "run",
+    "tests": [
+      "TP-SIGN-0",
+      "TP-SIGN-1",
+      "TP-SIGN-2",
+      "TP-SIGN-3",
+      "TP-SIGN-4",
+      "TP-SIGN-5",
+      "TP-SIGN-6",
+      "TP-SIGN-7",
+      "TP-SIGN-8",
+      "TP-SIGN-9",
+      "TP-SIGN-A",
+      "TP-SIGN-B",
+      "TP-SIGN-C",
+      "TP-SIGN-D",
+      "TP-SIGN-E",
+      "TP-SIGN-F",
+      "TP-INPUT-KEPT"
+    ]
+  },
+  "HE101N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE101P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE102N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE102P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE103N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE103P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE104N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE104P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE105N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE105P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE106N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE106P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE107N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE107P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE108N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE108P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE109N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE109P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE110N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE110P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE111N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE111P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE112N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE112P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE113N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE113P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE114N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE114P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE115N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE115P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE116N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE116P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE117N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE117P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE118N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE118P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE119N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE119P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HE120N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "HE120P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "HF101A": {
+    "expect": "run",
+    "tests": [
+      "HFP-ADD",
+      "HFP-MUL",
+      "HFP-DIV",
+      "HFP-SQRT"
+    ]
+  },
+  "HF102A": {
+    "expect": "run",
+    "tests": [
+      "BFP-ADD",
+      "BFP-MUL",
+      "BFP-SQRT",
+      "BFP-NEG-ZERO",
+      "BFP-INFINITY"
+    ]
+  },
+  "HF103A": {
+    "expect": "run",
+    "tests": [
+      "DPD-ONE",
+      "DPD-QUANTUM",
+      "DPD-EIGHTS",
+      "DFP-ADD",
+      "DFP-MUL"
+    ]
+  },
+  "HF201A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF202A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF203A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF204A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF205A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF206A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF207A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF208A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF209A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF210A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF211A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF212A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF213A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF214A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF215A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF216A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF217A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF218A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF219A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF220A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF221A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF222A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF223A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF224A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF225A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF226A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF227A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF228A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF229A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF230A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF231A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF232A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF233A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF234A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF235A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF236A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF237A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF238A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF239A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF240A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF241A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF242A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF243A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF244A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF245A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF246A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF247A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF248A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF249A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF250A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF251A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF252A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF253A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HF254A": {
+    "expect": "run",
+    "tests": [
+      "PFPO-POS",
+      "PFPO-META-POS",
+      "PFPO-NEG",
+      "PFPO-META-NEG",
+      "PFPO-ZERO",
+      "PFPO-META-ZERO"
+    ]
+  },
+  "HI101A": {
+    "expect": "run",
+    "tests": [
+      "ADD-SIGNED",
+      "ADD-CARRY"
+    ]
+  },
+  "HI102A": {
+    "expect": "run",
+    "tests": [
+      "IIHF-LOW-PRESERVE",
+      "IILF-HIGH-PRESERVE",
+      "BYTE-REVERSE",
+      "STORE-REVERSE",
+      "LONG-DISP"
+    ]
+  },
+  "HI103A": {
+    "expect": "run",
+    "tests": [
+      "ROTATE-32",
+      "POPCNT-BYTES",
+      "POPCNT-TOTAL",
+      "FLOGR-POSITION",
+      "RISBG-ZERO",
+      "XGRK-DISTINCT"
+    ]
+  },
+  "HI104A": {
+    "expect": "run",
+    "tests": [
+      "ICM-MASK-0",
+      "ICM-MASK-1",
+      "ICM-MASK-2",
+      "ICM-MASK-3",
+      "ICM-MASK-4",
+      "ICM-MASK-5",
+      "ICM-MASK-6",
+      "ICM-MASK-7",
+      "ICM-MASK-8",
+      "ICM-MASK-9",
+      "ICM-MASK-10",
+      "ICM-MASK-11",
+      "ICM-MASK-12",
+      "ICM-MASK-13",
+      "ICM-MASK-14",
+      "ICM-MASK-15"
+    ]
+  },
+  "HI105A": {
+    "expect": "run",
+    "tests": [
+      "CS-SUCCESS",
+      "CS-STORED",
+      "CS-FAIL",
+      "CS-FAIL-UNCHANGED",
+      "LAAG-OLD",
+      "LAAG-STORED"
+    ]
+  },
+  "HI106A": {
+    "expect": "run",
+    "tests": [
+      "LGF",
+      "LLGF",
+      "LGH",
+      "LLGH",
+      "LLGC",
+      "AG",
+      "SG",
+      "AGFR",
+      "SGFR",
+      "LCGR",
+      "LPGR",
+      "LNGR"
+    ]
+  },
+  "HI107A": {
+    "expect": "run",
+    "tests": [
+      "SIGNED-ZERO",
+      "SIGNED-NEG",
+      "SIGNED-POS",
+      "SIGNED-OVERFLOW",
+      "LOGICAL-ZERO",
+      "LOGICAL-CARRY",
+      "COMPARE-LOW",
+      "COMPARE-HIGH",
+      "COMPARE-EQUAL"
+    ]
+  },
+  "HI108A": {
+    "expect": "run",
+    "tests": [
+      "SLLG-0",
+      "SRLG-0",
+      "SLLG-1",
+      "SRLG-1",
+      "SLLG-31",
+      "SRLG-31",
+      "SLLG-32",
+      "SRLG-32",
+      "SLLG-63",
+      "SRLG-63",
+      "SLLG-64",
+      "SRLG-64"
+    ]
+  },
+  "HI109A": {
+    "expect": "run",
+    "tests": [
+      "ICMH-MASK-0",
+      "ICMH-MASK-1",
+      "ICMH-MASK-2",
+      "ICMH-MASK-3",
+      "ICMH-MASK-4",
+      "ICMH-MASK-5",
+      "ICMH-MASK-6",
+      "ICMH-MASK-7",
+      "ICMH-MASK-8",
+      "ICMH-MASK-9",
+      "ICMH-MASK-10",
+      "ICMH-MASK-11",
+      "ICMH-MASK-12",
+      "ICMH-MASK-13",
+      "ICMH-MASK-14",
+      "ICMH-MASK-15"
+    ]
+  },
+  "HM101A": {
+    "expect": "run",
+    "tests": [
+      "POSITION-DEFAULT",
+      "KEYWORD-OVERRIDE",
+      "SUBLIST-N",
+      "SUBLIST-LENGTH"
+    ]
+  },
+  "HM102A": {
+    "expect": "run",
+    "tests": [
+      "SETA-LOOP",
+      "SETB-SELECT",
+      "SETC-SUBSTR"
+    ]
+  },
+  "HM103A": {
+    "expect": "run",
+    "tests": [
+      "MACRO-C2X",
+      "MACRO-UPPER",
+      "MACRO-HEX",
+      "MACRO-INDEX"
+    ]
+  },
+  "HM104A": {
+    "expect": "run",
+    "tests": [
+      "OPSYN-SNAPSHOT",
+      "LOOKAHEAD-LENGTH"
+    ]
+  },
+  "HS101A": {
+    "expect": "run",
+    "tests": [
+      "SAM24",
+      "SAM31",
+      "LINK-RETURN"
+    ]
+  },
+  "HS102A": {
+    "expect": "run",
+    "tests": [
+      "STORAGE-DATA",
+      "FREEMAIN-STATUS",
+      "POST-ECB"
+    ]
+  },
+  "HS103A": {
+    "expect": "run",
+    "tests": [
+      "QSAM-EODAD-COUNT",
+      "QSAM-PAYLOAD-SUM"
+    ]
+  },
+  "HS104A": {
+    "expect": "run",
+    "tests": [
+      "HLASM-PLI-SHARED",
+      "HLASM-PLI-TEXT",
+      "HLASM-COBOL-SHARED",
+      "HLASM-COBOL-TEXT"
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+ /* precision zero: one rule and its positive control. */
+ PE101P: PROC OPTIONS(MAIN);
+ DCL X FIXED DEC(1);
+
+ END PE101P;

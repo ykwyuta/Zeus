@@ -228,7 +228,7 @@ impl Ty {
                 unsigned,
                 ..
             } => {
-                let p = u32::from(*p) + u32::from(*unsigned);
+                let p = u32::from(*p) + u32::from(!*unsigned);
                 let n = match p {
                     0..=8 => 1,
                     9..=16 => 2,

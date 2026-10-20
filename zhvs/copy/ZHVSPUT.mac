@@ -1,0 +1,7 @@
+         MACRO
+         ZHVSPUT
+         MVC ZCMD(4),=F'1'
+         LA 1,ZPLIST
+         L 15,=V(ZHVRPT)
+         BASR 14,15
+         MEND

@@ -5,7 +5,8 @@ use std::fmt::Write;
 
 use crate::report::Counts;
 use crate::runner::{
-    ALL_MODULES, MODULES, ModuleResult, Outcome, SuiteResult, ZCVS_MODULES, order,
+    ALL_MODULES, MODULES, ModuleResult, Outcome, SuiteResult, ZCVS_MODULES, ZHVS_MODULES,
+    ZPVS_MODULES, order,
 };
 
 /// CCVS85 modules that must pass (docs/proposal/0003 section 5.2).
@@ -15,7 +16,10 @@ pub const REQUIRED: &[&str] = &["NC", "SM", "IC", "SQ", "RL", "IX", "ST", "IF"];
 pub const ZCVS_REQUIRED: &[&str] = &["ZD", "ZA", "ZN", "ZP", "ZF", "ZS", "ZE"];
 
 pub fn is_required(module: &str) -> bool {
-    REQUIRED.contains(&module) || ZCVS_REQUIRED.contains(&module)
+    REQUIRED.contains(&module)
+        || ZCVS_REQUIRED.contains(&module)
+        || ZPVS_MODULES.contains(&module)
+        || ZHVS_MODULES.contains(&module)
 }
 
 /// Merges multiple `SuiteResult` sets (for example CCVS85 + ZCVS) into one.
@@ -152,11 +156,12 @@ pub fn markdown(current: &SuiteResult, baseline: Option<&SuiteResult>) -> String
         .modules
         .iter()
         .any(|m| ZCVS_MODULES.contains(&m.module.as_str()));
-    let title = match (has_ccvs, has_zcvs) {
+    let legacy_title = match (has_ccvs, has_zcvs) {
         (true, true) => "CCVS85 + ZCVS",
         (false, true) => "ZCVS",
         _ => "CCVS85",
     };
+    let title = current.suite.as_deref().unwrap_or(legacy_title);
     let _ = writeln!(out, "### {title} results: {}\n", label(current));
     if let Some(b) = baseline {
         let _ = writeln!(out, "Baseline: {}\n", label(b));
@@ -213,15 +218,25 @@ pub fn markdown(current: &SuiteResult, baseline: Option<&SuiteResult>) -> String
         }
         out.push('\n');
     }
-    let active_required: Vec<&str> = match (has_ccvs, has_zcvs) {
+    let mut active_required: Vec<&str> = match (has_ccvs, has_zcvs) {
         (true, true) => REQUIRED
             .iter()
             .chain(ZCVS_REQUIRED.iter())
             .copied()
             .collect(),
         (false, true) => ZCVS_REQUIRED.to_vec(),
-        _ => REQUIRED.to_vec(),
+        (true, false) => REQUIRED.to_vec(),
+        _ => Vec::new(),
     };
+    for modules in [ZPVS_MODULES, ZHVS_MODULES] {
+        if current
+            .modules
+            .iter()
+            .any(|m| modules.contains(&m.module.as_str()))
+        {
+            active_required.extend_from_slice(modules);
+        }
+    }
     let required_passed = active_required
         .iter()
         .filter(|m| cur.values().any(|(name, s)| name == *m && s.passed()))

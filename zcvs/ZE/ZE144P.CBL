@@ -1,0 +1,11 @@
+      * ODO integer: accept only this rule.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZE144P.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  COUNTER-NUM PIC 9.
+       01  ITEM-A PIC X OCCURS 1 TO 3
+           DEPENDING ON COUNTER-NUM.
+       PROCEDURE DIVISION.
+           STOP RUN.
+       END PROGRAM ZE144P.

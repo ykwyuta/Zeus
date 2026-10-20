@@ -442,7 +442,7 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         | "SRA" | "NI" | "OI" | "XI" | "TM" | "BC" | "BAL" | "BAS" | "NOP" | "BNH" | "BNL"
         | "BO" | "BNO" | "BP" | "BM" | "BZ" | "BNZ" | "BNP" | "BNM" | "CVB" | "CVD" => 4,
         "MVC" | "CLC" | "XC" | "NC" | "OC" | "MVN" | "MVZ" | "TR" | "ZAP" | "AP" | "SP" | "CP"
-        | "MP" | "DP" | "PACK" | "UNPK" | "TRT" | "TRTR" | "SRP" | "ED" | "EDMK" => 6,
+        | "MP" | "DP" | "PACK" | "UNPK" | "TRT" | "TRTR" | "SRP" | "TP" | "ED" | "EDMK" => 6,
         // STIMER is implemented as an OS service, not an IBM macro expansion.
         "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE" | "LINK" | "LINKX" | "XCTL" | "XCTLX"
         | "LOAD" | "DELETE" | "WTO" | "WAIT" | "POST" | "OPEN" | "CLOSE" | "GET" | "PUT"
@@ -1155,6 +1155,9 @@ fn address(
     let mut len = value.length;
     let (mut base, mut index) = (0, 0);
     if ss_length {
+        if sub.len() > 2 {
+            return Err("invalid length/base address subfields".into());
+        }
         if let Some(n) = sub.first().filter(|n| !n.is_empty()) {
             len = u32::try_from(expression(n, symbols, &s.section, s.offset)?.value)
                 .map_err(|_| "invalid length")?;
@@ -3361,6 +3364,15 @@ fn compile_layout(
                     i.length = len;
                     2
                 }
+                "TP" => {
+                    let (a, len) = addr(0, true)?;
+                    if !(1..=16).contains(&len) || a.index != 0 {
+                        return Err("TP requires length 1..16 and no index register".into());
+                    }
+                    i.address = Some(a);
+                    i.length = len;
+                    1
+                }
                 "SRP" => {
                     let (a, length) = addr(0, true)?;
                     if !(1..=16).contains(&length) {
@@ -3417,10 +3429,14 @@ fn compile_layout(
             {
                 return Err("index not permitted for RS/SI instruction".into());
             }
-            if pair_operation(&s.op) && !i.registers[0].is_multiple_of(2) {
+            if (pair_operation(&s.op) || matches!(s.op.as_str(), "M" | "MR" | "D" | "DR"))
+                && !i.registers[0].is_multiple_of(2)
+            {
                 return Err("instruction requires an even register pair".into());
             }
-            if shift_operation(&s.op) && i.address.as_ref().is_some_and(|a| a.index != 0) {
+            if (shift_operation(&s.op) || matches!(s.op.as_str(), "SLL" | "SRL" | "SLA" | "SRA"))
+                && i.address.as_ref().is_some_and(|a| a.index != 0)
+            {
                 return Err("index not permitted for shift/rotate instruction".into());
             }
             Ok(i)

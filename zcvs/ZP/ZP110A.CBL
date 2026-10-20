@@ -1,0 +1,116 @@
+      * AUDIT: P03; SPECIFICATION AND LIMITS IN SCENARIOS.MD.
+       CBL DYNAM
+      * ZP110A: Group and level 77 RETURNING and exception preservation
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZP110A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  RESULT-GROUP.
+           05  TEXT-OUT PIC XX.
+           05  NUM-OUT PIC 99.
+       01  NUMBER-OUT PIC S9(7) COMP-3.
+       01  SHORT-OUT PIC S9(7) COMP-3.
+       01  FLAG PIC X.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZP110A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'RET-GROUP-1' TO ZCVS-TEST-NAME.
+           MOVE 7 TO RETURN-CODE.
+           CALL 'ZPS10G' RETURNING RESULT-GROUP.
+           IF TEXT-OUT = 'AB' AND NUM-OUT = 1
+             AND RETURN-CODE = 7
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'RET-GROUP-2' TO ZCVS-TEST-NAME.
+           MOVE 7 TO RETURN-CODE.
+           CALL 'ZPS10G' RETURNING RESULT-GROUP.
+           IF TEXT-OUT = 'AB' AND NUM-OUT = 2
+             AND RETURN-CODE = 7
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'RET-GROUP-3' TO ZCVS-TEST-NAME.
+           MOVE 7 TO RETURN-CODE.
+           CALL 'ZPS10G' RETURNING RESULT-GROUP.
+           IF TEXT-OUT = 'AB' AND NUM-OUT = 3
+             AND RETURN-CODE = 7
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'RET-LEVEL-77' TO ZCVS-TEST-NAME.
+           CALL 'ZPS10N' RETURNING NUMBER-OUT.
+           IF NUMBER-OUT = -12345 AND RETURN-CODE = 7
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'RET-77-TO-01' TO ZCVS-TEST-NAME.
+           CALL 'ZPS10N' RETURNING SHORT-OUT.
+           IF SHORT-OUT = -12345 AND RETURN-CODE = 7
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'FAIL-RESULT-GROUP' TO ZCVS-TEST-NAME.
+           MOVE 'N' TO FLAG.
+           CALL 'NOZPS10' RETURNING RESULT-GROUP
+             ON EXCEPTION MOVE 'Y' TO FLAG END-CALL.
+           IF TEXT-OUT = 'AB' AND NUM-OUT = 3
+             AND FLAG = 'Y' AND RETURN-CODE = 7
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'FAIL-NUMBER-OUT' TO ZCVS-TEST-NAME.
+           MOVE 'N' TO FLAG.
+           CALL 'NOZPS10' RETURNING NUMBER-OUT
+             ON EXCEPTION MOVE 'Y' TO FLAG END-CALL.
+           IF NUMBER-OUT = -12345
+             AND FLAG = 'Y' AND RETURN-CODE = 7
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.

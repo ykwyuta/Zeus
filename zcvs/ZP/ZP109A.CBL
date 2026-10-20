@@ -1,0 +1,151 @@
+      * AUDIT: P01; SPECIFICATION AND LIMITS IN SCENARIOS.MD.
+       CBL DYNAM
+      * ZP109A: Independent persistent and initial program storage
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZP109A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  ANSWER-TEXT PIC X(8).
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZP109A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'STORAGE-CALL-1' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09A' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0112INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0112INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-2' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09A' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0212INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0212INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-3' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09B' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '1012INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '1012INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-4' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09A' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0312INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0312INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-5' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09I' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0112INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0112INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-6' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09I' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0112INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0112INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-7' TO ZCVS-TEST-NAME.
+           CANCEL 'ZPS09A'.
+           CALL 'ZPS09A' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0112INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0112INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-8' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09B' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '1112INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '1112INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-9' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09A' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0212INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0212INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-10' TO ZCVS-TEST-NAME.
+           CANCEL 'ZPS09B'.
+           CALL 'ZPS09B' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '1012INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '1012INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-11' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09A' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0312INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0312INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'STORAGE-CALL-12' TO ZCVS-TEST-NAME.
+           CALL 'ZPS09I' USING ANSWER-TEXT.
+           IF ANSWER-TEXT = '0112INIT'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0112INIT' TO ZCVS-EXPECTED
+               MOVE ANSWER-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.

@@ -551,6 +551,19 @@ impl Machine {
                 Value::int((n + 4).rem_euclid(7) + 1)
             }
             PliRetV => Value::int(i64::from(self.rc)),
+            LineNo | PageNo => {
+                let file = if let Some(Value::File(file)) = v.first() {
+                    *file
+                } else {
+                    self.file_id(&None, "SYSPRINT", act)?
+                };
+                let state = &self.files[file as usize];
+                Value::int(if b == LineNo {
+                    state.lineno
+                } else {
+                    state.pageno
+                } as i64)
+            }
             Null => Value::Ptr(value::NULL),
             // ORDINAL members: the table the compiler gives (value, name)
             OrdinalName | OrdinalSucc | OrdinalPred => {

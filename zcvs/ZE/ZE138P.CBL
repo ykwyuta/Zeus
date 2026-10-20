@@ -1,0 +1,9 @@
+      * pointer value: accept only this rule.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZE138P.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  ITEM-A USAGE PROCEDURE-POINTER VALUE NULL.
+       PROCEDURE DIVISION.
+           STOP RUN.
+       END PROGRAM ZE138P.

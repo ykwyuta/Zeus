@@ -1,0 +1,10 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. PMS01A.
+       DATA DIVISION.
+       LINKAGE SECTION.
+       01  N PIC S9(9) COMP-5.
+       01  TEXT-IN PIC X(4).
+       PROCEDURE DIVISION USING N TEXT-IN.
+           ADD 7 TO N.
+           MOVE 'COBL' TO TEXT-IN.
+           GOBACK.

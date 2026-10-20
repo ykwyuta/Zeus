@@ -1,0 +1,5 @@
+ /* ALLOCATE IN scalar: one rule and its positive control. */
+ PE114P: PROC OPTIONS(MAIN);
+ DCL A AREA(100); DCL X FIXED BIN(31) BASED;
+ ALLOCATE X IN(A);
+ END PE114P;

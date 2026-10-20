@@ -1,0 +1,102 @@
+      * AUDIT: N04; SPECIFICATION AND LIMITS IN SCENARIOS.MD.
+      * ZN109A: National group character units and subordinate categorie
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZN109A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  NAT-GROUP GROUP-USAGE NATIONAL.
+           05  LETTERS PIC N(2).
+           05  DIGITS-NUM PIC 99.
+       01  GROUP-RAW REDEFINES NAT-GROUP PIC X(8).
+       01  NAT-SHORT PIC N(2) USAGE NATIONAL.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZN109A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'NAT-GROUP-MOVE' TO ZCVS-TEST-NAME.
+           MOVE N'AB12' TO NAT-GROUP.
+           IF LETTERS = N'AB' AND DIGITS-NUM = 12
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NAT-GROUP-BYTES' TO ZCVS-TEST-NAME.
+           IF GROUP-RAW = X'0041004200310032'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NAT-GROUP-LENGTH' TO ZCVS-TEST-NAME.
+           IF FUNCTION LENGTH(NAT-GROUP) = 4
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '4' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NAT-GROUP-REFMOD' TO ZCVS-TEST-NAME.
+           MOVE NAT-GROUP(2:2) TO NAT-SHORT.
+           IF NAT-SHORT = N'B1'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NAT-GROUP-REPLACE' TO ZCVS-TEST-NAME.
+           MOVE N'98' TO NAT-GROUP(3:2).
+           IF DIGITS-NUM = 98
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NAT-GROUP-INIT' TO ZCVS-TEST-NAME.
+           INITIALIZE NAT-GROUP.
+           IF LETTERS = N'  ' AND DIGITS-NUM = 0
+             AND GROUP-RAW = X'0020002000300030'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NAT-GROUP-SELECT' TO ZCVS-TEST-NAME.
+           MOVE N'AB12' TO NAT-GROUP.
+           INITIALIZE NAT-GROUP REPLACING NATIONAL BY N'XY'.
+           IF LETTERS = N'XY' AND DIGITS-NUM = 12
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'SPEC RESULT' TO ZCVS-EXPECTED
+               MOVE 'MISMATCH' TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.

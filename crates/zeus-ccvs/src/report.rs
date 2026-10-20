@@ -123,6 +123,8 @@ fn summary_line(line: &[u8], c: &mut Counts, count_require: bool) -> bool {
 }
 
 pub fn evaluate(style: Style, report: &[u8], stdout: &[u8]) -> Counts {
+    let normalized = normalize(report);
+    let report = normalized.as_slice();
     let mut c = Counts::default();
     match style {
         Style::Normal => {
@@ -264,9 +266,69 @@ pub fn evaluate(style: Style, report: &[u8], stdout: &[u8]) -> Counts {
     c
 }
 
+/// Fixed 120-byte REPORT records use invariant EBCDIC letters and digits on
+/// PL/I and assembler. Preserve ASCII reports and their existing line layout.
+pub fn normalize(data: &[u8]) -> Vec<u8> {
+    if data.is_ascii() || !data.len().is_multiple_of(120) {
+        return data.to_vec();
+    }
+    let mut text = Vec::new();
+    for record in data.chunks_exact(120) {
+        for &byte in record {
+            text.push(match byte {
+                0x40 => b' ',
+                0xc1..=0xc9 => b'A' + (byte - 0xc1),
+                0xd1..=0xd9 => b'J' + (byte - 0xd1),
+                0xe2..=0xe9 => b'S' + (byte - 0xe2),
+                0xf0..=0xf9 => b'0' + (byte - 0xf0),
+                0x4b => b'.',
+                0x4d => b'(',
+                0x5d => b')',
+                0x5c => b'*',
+                0x60 => b'-',
+                0x7e => b'=',
+                0x4e => b'+',
+                _ => b'?',
+            });
+        }
+        text.push(b'\n');
+    }
+    text
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn fixed_ebcdic_records_and_truncation() {
+        let lines = [
+            " 2 OF 2 TESTS WERE EXECUTED SUCCESSFULLY",
+            " NO TEST(S) FAILED",
+            " NO TEST(S) DELETED",
+        ];
+        let mut records = Vec::new();
+        for line in lines {
+            let mut record = vec![0x40; 120];
+            for (dst, c) in record.iter_mut().zip(line.bytes()) {
+                *dst = match c {
+                    b'A'..=b'I' => 0xc1 + (c - b'A'),
+                    b'J'..=b'R' => 0xd1 + (c - b'J'),
+                    b'S'..=b'Z' => 0xe2 + (c - b'S'),
+                    b'0'..=b'9' => 0xf0 + (c - b'0'),
+                    b'(' => 0x4d,
+                    b')' => 0x5d,
+                    _ => 0x40,
+                };
+            }
+            records.extend(record);
+        }
+        assert_eq!(evaluate(Style::Normal, &records, b"").pass, 2);
+        records.pop();
+        assert_eq!(evaluate(Style::Normal, &records, b"").total, 0);
+        assert_eq!(evaluate(Style::Normal, b"", b"").total, 0);
+        assert_eq!(normalize(b"ASCII\n"), b"ASCII\n");
+    }
 
     #[test]
     fn normal_report() {

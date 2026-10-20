@@ -40,6 +40,10 @@ fn usage() -> ExitCode {
 }
 
 fn main() -> ExitCode {
+    if std::env::args().nth(1).as_deref() == Some("--version") {
+        println!("zpli {}", env!("CARGO_PKG_VERSION"));
+        return ExitCode::SUCCESS;
+    }
     if cli_help::show(
         include_str!("../../../docs/help/zpli.txt"),
         &[
@@ -75,7 +79,7 @@ fn main() -> ExitCode {
     let mut it = args.into_iter();
     while let Some(a) = it.next() {
         match a.as_str() {
-            "compile" | "run" if cmd.is_none() && files.is_empty() => cmd = Some(a),
+            "compile" | "run" | "run-hlasm" if cmd.is_none() && files.is_empty() => cmd = Some(a),
             "-I" => opts
                 .include_dirs
                 .push(it.next().map(PathBuf::from).unwrap_or_default()),
@@ -127,61 +131,65 @@ fn main() -> ExitCode {
     let [file] = files.as_slice() else {
         return usage();
     };
-    let module = if cmd.as_deref() == Some("run") {
-        match zeus_pli::load_module(file) {
-            Ok(m) => m,
-            Err(e) => {
-                eprintln!("zpli: {}: {e}", file.display());
-                return ExitCode::from(16);
-            }
-        }
+    let module = if cmd.as_deref() == Some("run-hlasm") {
+        None
     } else {
-        let (rc, c) = zeus_pli::compile_file(file, &opts);
-        for m in &c.messages {
-            eprintln!("{m}");
-        }
-        let Some(m) = c.module else {
-            return ExitCode::from(rc.clamp(0, 255) as u8);
-        };
-        if cmd.as_deref() == Some("compile") && native {
-            let out = out.unwrap_or_else(|| file.with_extension(""));
-            let r = (|| -> Result<(), String> {
-                let mut image = zeus_cobol::image::Image::default();
-                let bytes = zeus_pli::module_bytes(&m).map_err(|e| e.to_string())?;
-                image.members.push((m.name.clone(), bytes));
-                for w in &with {
-                    let data = std::fs::read(w).map_err(|e| format!("{}: {e}", w.display()))?;
+        Some(if cmd.as_deref() == Some("run") {
+            match zeus_pli::load_module(file) {
+                Ok(m) => m,
+                Err(e) => {
+                    eprintln!("zpli: {}: {e}", file.display());
+                    return ExitCode::from(16);
+                }
+            }
+        } else {
+            let (rc, c) = zeus_pli::compile_file(file, &opts);
+            for m in &c.messages {
+                eprintln!("{m}");
+            }
+            let Some(m) = c.module else {
+                return ExitCode::from(rc.clamp(0, 255) as u8);
+            };
+            if cmd.as_deref() == Some("compile") && native {
+                let out = out.unwrap_or_else(|| file.with_extension(""));
+                let r = (|| -> Result<(), String> {
+                    let mut image = zeus_cobol::image::Image::default();
+                    let bytes = zeus_pli::module_bytes(&m).map_err(|e| e.to_string())?;
+                    image.members.push((m.name.clone(), bytes));
+                    for w in &with {
+                        let data = std::fs::read(w).map_err(|e| format!("{}: {e}", w.display()))?;
+                        image
+                            .members
+                            .push((zeus_cobol::image::member_name(w), data));
+                    }
+                    if !no_machine_code {
+                        // the COBOL subprograms' machine code
+                        let triple = target
+                            .clone()
+                            .unwrap_or_else(zeus_cobol::native::host_triple);
+                        image.add_machine_code(&triple)?;
+                    }
+                    let runtime = zeus_cobol::image::find_runtime(target.as_deref())?;
                     image
-                        .members
-                        .push((zeus_cobol::image::member_name(w), data));
+                        .write_executable(&runtime, &out)
+                        .map_err(|e| format!("{}: {e}", out.display()))
+                })();
+                if let Err(e) = r {
+                    eprintln!("zpli: {e}");
+                    return ExitCode::from(16);
                 }
-                if !no_machine_code {
-                    // the COBOL subprograms' machine code
-                    let triple = target
-                        .clone()
-                        .unwrap_or_else(zeus_cobol::native::host_triple);
-                    image.add_machine_code(&triple)?;
+                return ExitCode::from(rc.clamp(0, 255) as u8);
+            }
+            if cmd.as_deref() == Some("compile") {
+                let out = out.unwrap_or_else(|| file.with_extension("zo"));
+                if let Err(e) = zeus_pli::save_module(&m, &out) {
+                    eprintln!("zpli: {}: {e}", out.display());
+                    return ExitCode::from(16);
                 }
-                let runtime = zeus_cobol::image::find_runtime(target.as_deref())?;
-                image
-                    .write_executable(&runtime, &out)
-                    .map_err(|e| format!("{}: {e}", out.display()))
-            })();
-            if let Err(e) = r {
-                eprintln!("zpli: {e}");
-                return ExitCode::from(16);
+                return ExitCode::from(rc.clamp(0, 255) as u8);
             }
-            return ExitCode::from(rc.clamp(0, 255) as u8);
-        }
-        if cmd.as_deref() == Some("compile") {
-            let out = out.unwrap_or_else(|| file.with_extension("zo"));
-            if let Err(e) = zeus_pli::save_module(&m, &out) {
-                eprintln!("zpli: {}: {e}", out.display());
-                return ExitCode::from(16);
-            }
-            return ExitCode::from(rc.clamp(0, 255) as u8);
-        }
-        m
+            m
+        })
     };
     if let Some(d) = file.parent() {
         libs.push(if d.as_os_str().is_empty() {
@@ -211,6 +219,10 @@ fn main() -> ExitCode {
         );
     }
     sys.set_stdout(Box::new(std::io::stdout()));
+    sys.set_step(zeus_cobol::vm::StepInfo {
+        parm: parm.clone(),
+        ..Default::default()
+    });
     if let Some(h) = &db2 {
         sys.set_exec_host(h.clone());
     }
@@ -238,7 +250,22 @@ fn main() -> ExitCode {
         linker: Some(linker.clone()),
         exec_host: host(&db2),
     };
-    let (end, mut sys) = zeus_pli::run_in(module, env, sys);
+    let (end, mut sys) = if let Some(module) = module {
+        zeus_pli::run_in(module, env, sys)
+    } else {
+        let result = std::fs::read(file)
+            .map_err(|e| e.to_string())
+            .and_then(|bytes| zeus_cobol::hlasm::load_module(&bytes))
+            .and_then(|module| sys.run_hlasm_main(module));
+        let end = match result {
+            Ok(rc) => RunEnd::Rc(rc),
+            Err(error) => {
+                eprintln!("zpli: {error}");
+                RunEnd::Abend("U4038".into())
+            }
+        };
+        (end, sys)
+    };
     linker.finish();
     sys.finish();
     // the unit of work ends with the run: committed, or backed out

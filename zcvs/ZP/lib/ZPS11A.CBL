@@ -1,0 +1,22 @@
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZPS11A.
+       DATA DIVISION.
+       LINKAGE SECTION.
+       01  ARG-A PIC S9(9) COMP-5.
+       01  ARG-B PIC S9(9) COMP-5.
+       01  RESULT-NUM PIC S9(9) COMP-5.
+       PROCEDURE DIVISION USING ARG-A ARG-B RESULT-NUM.
+           COMPUTE RESULT-NUM = 100 + ARG-A + ARG-B.
+           ADD 1 TO ARG-A.
+           ADD 2 TO ARG-B.
+           GOBACK.
+       ENTRY 'ZPS11B' USING ARG-A RESULT-NUM.
+           COMPUTE RESULT-NUM = 200 + ARG-A.
+           ADD 10 TO ARG-A.
+           GOBACK.
+       ENTRY 'ZPS11C' USING BY VALUE ARG-B
+                           BY REFERENCE RESULT-NUM.
+           COMPUTE RESULT-NUM = 300 + ARG-B.
+           MOVE 999 TO ARG-B.
+           GOBACK.
+       END PROGRAM ZPS11A.

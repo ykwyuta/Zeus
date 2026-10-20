@@ -1,0 +1,6 @@
+ /* REFER automatic: one rule and its positive control. */
+ PE106N: PROC OPTIONS(MAIN);
+ DCL N FIXED BIN(31);
+ DCL 1 X, 2 CNT FIXED BIN(31), 2 A(N REFER(CNT)) CHAR(1);
+
+ END PE106N;

@@ -417,6 +417,9 @@ pub fn link_with_libraries(mut modules: Vec<Module>, dirs: &[PathBuf]) -> Result
                         }
                         let bytes =
                             std::fs::read(&path).map_err(|e| format!("{}: {e}", path.display()))?;
+                        if !super::is_module(&bytes) {
+                            continue;
+                        }
                         let module =
                             load_module(&bytes).map_err(|e| format!("{}: {e}", path.display()))?;
                         if !provides(&module, &symbol) {

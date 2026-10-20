@@ -1872,6 +1872,7 @@ impl Machine {
     /// positions).
     fn target_loc(&mut self, t: &Target, act: usize) -> R<TargetLoc> {
         Ok(match t {
+            Target::Condition(b) => TargetLoc::Condition(*b),
             Target::Ref(r) => TargetLoc::Loc(self.locate(r, act)?),
             Target::Substr(r, s, n) => {
                 let loc = self.locate(r, act)?;
@@ -1902,6 +1903,32 @@ impl Machine {
         act: usize,
     ) -> R<()> {
         match l {
+            TargetLoc::Condition(b) => {
+                let to = if b == crate::builtin::Bif::OnChar {
+                    Ty::char(1)
+                } else {
+                    crate::sema::expr::char_any()
+                };
+                let Value::Char(text) = self.convert(v, from, &to, act)? else {
+                    return err("condition repair requires characters");
+                };
+                PENDING_CONV.with(|pending| {
+                    let mut pending = pending.borrow_mut();
+                    let Some((source, bad)) = pending.as_mut() else {
+                        return err("condition repair outside CONVERSION");
+                    };
+                    if b == crate::builtin::Bif::OnChar {
+                        let Some(index) = source.iter().position(|c| c == bad) else {
+                            return err("ONCHAR has no invalid character");
+                        };
+                        source[index] = text[0];
+                        *bad = text[0];
+                    } else {
+                        *source = text;
+                    }
+                    Ok(())
+                })
+            }
             TargetLoc::Loc(loc) => self.assign_loc(&loc, v, from, act),
             TargetLoc::Substr(loc, s, n) => {
                 let cur = self.load(&loc)?;
@@ -2634,7 +2661,18 @@ impl Machine {
             {
                 self.raise(Cond::Error, code, act)
             }
-            Cond::Conversion if !signalled => self.raise(Cond::Error, code, act),
+            Cond::Conversion if !signalled => {
+                let repaired = PENDING_CONV.with(|p| {
+                    p.borrow().as_ref().is_some_and(|(source, _)| {
+                        value::parse_number(&zeus_cobol::ebcdic::decode(source)).is_some()
+                    })
+                });
+                if repaired {
+                    Ok(())
+                } else {
+                    self.raise(Cond::Error, code, act)
+                }
+            }
             _ => Ok(()),
         }
     }
@@ -2742,7 +2780,7 @@ impl Machine {
         // PARM: the first parameter (CHAR VARYING)
         let mut bindings = Vec::new();
         if let Some(&pv) = proc.params.first() {
-            let parm = if proc.main && !m.procs[main as usize].name.is_empty() {
+            let parm = if proc.main && !proc.noexecops {
                 // OPTIONS(MAIN) without NOEXECOPS: run-time options end
                 // with '/'
                 match self.env.parm.find('/') {
@@ -3056,6 +3094,14 @@ impl Machine {
 
     fn on_value(&self, b: crate::builtin::Bif, act: usize) -> Value {
         use crate::builtin::Bif::*;
+        if let Some((source, bad)) = PENDING_CONV.with(|p| p.borrow().clone()) {
+            if b == OnChar {
+                return Value::Char(vec![bad]);
+            }
+            if matches!(b, OnSource | DataField) {
+                return Value::Char(source);
+            }
+        }
         let mut a = Some(act);
         let mut info = None;
         while let Some(i) = a {
@@ -3082,6 +3128,7 @@ impl Machine {
 /// A target's evaluated location.
 #[derive(Debug, Clone)]
 pub enum TargetLoc {
+    Condition(crate::builtin::Bif),
     Loc(Loc),
     Substr(Loc, i64, Option<i64>),
     Bytes(Ref),

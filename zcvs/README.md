@@ -10,17 +10,17 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 
 | Module | Category | Programs |
 |--------|----------|----------|
-| `ZD` | Packed/zoned/binary storage, layout, ODO, edited PICTURE, figurative constants, collation | `ZD101A` .. `ZD110A` (10) |
-| `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA115A` (15) |
-| `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN107A`, including `ZN102B` and `ZN106M` (8) |
-| `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments | `ZP101A` .. `ZP108A` + 9 `lib/` subprograms (8 mains) |
-| `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF109A`, `ZF201M` (10) |
+| `ZD` | Packed/zoned/binary storage, layout, ODO, edited PICTURE, figurative constants, collation | `ZD101A` .. `ZD115A` (15) |
+| `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA121A` (21) |
+| `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN113A`, including `ZN102B` and `ZN106M` (14) |
+| `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments | `ZP101A` .. `ZP112A` + 16 `lib/` subprograms (12 mains) |
+| `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF114A`, `ZF201M`, `ZF202M` (16) |
 | `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS106A`, including `ZS103M` (6) |
-| `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX107A` (7) |
-| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE133N`, `ZE126P` .. `ZE133P` (41) |
+| `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX109A` (9) |
+| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE145N`, `ZE126P` .. `ZE145P` (65) |
 
-The suite contains 105 main programs: 64 runtime programs with 665 assertions,
-33 negative compile checks, and 8 successful-compilation controls. Cargo tests
+The suite contains 158 main programs: 93 runtime programs with 1,431 assertions,
+45 negative compile checks, and 20 successful-compilation controls. Cargo tests
 run both Zeus backends and require the exact program set, assertion IDs in
 report order, counts, and zero deleted/manual checks. They rebuild `zcobc` and
 `zeus-rt` through Cargo to avoid testing stale binaries:
@@ -39,6 +39,20 @@ NUMPROC/NUMCLS sign validation and normalization, pointer rebinding and ENTRY
 aliases, KSDS alternate-index creation/update/deletion/recovery and duplicate
 status `02`, tape HDR2 mismatches, REPLACE scope, INITIALIZE precedence, and
 TRIM/TEST-NUMVAL/ABS. See audit IDs D02, A07, P06, F05–F07, S01, X03–X05.
+
+The latest expansion adds 53 mains and 7 helpers: 29 runtime programs with
+766 assertions, 12 negative diagnostics and 12 matching positive controls.
+It covers packed/zoned byte matrices, ODO moving tails, nested SYNC strides,
+TRUNC aliases and width limits, independent arithmetic receivers, external
+floats, national categories and four Japanese CCSIDs, storage lifetime,
+recursive PERFORM frames, ENTRY arities, RETURNING groups/77 items, sparse
+RRDS, partial START, multiple alternate indexes, QSAM sequencing/EXTEND,
+four tape volumes, and national/decimal-comma intrinsic functions.
+
+The Rust harness additionally inspects all four `ZF202M` AWS images without
+the production decoder: label lengths/order, HDR2 format, EOV versus EOF,
+tape marks, raw payloads, physical block counts and previous-length chains.
+These physical checks are separate from the 1,431 COBOL assertions.
 
 `ZA111A`–`ZA114A` use Zeus's `CBL NUMCLS` selection to test both NUMCLS
 installation settings. On IBM z/OS, NUMCLS is an installation setting rather

@@ -37,6 +37,40 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
             .and_then(|n| nibble(u32::from(n)))
     };
     let op = i.op.as_str();
+    if op == "SRP" {
+        let len = nibble(i.length.checked_sub(1).ok_or("zero SRP length")?)?;
+        if i.immediate > 9 {
+            return Err("SRP rounding digit out of range".into());
+        }
+        let mut bytes = vec![0xf0, len << 4 | i.immediate as u8];
+        bytes.extend(address(i.address.as_ref(), false)?);
+        bytes.extend(address(i.source.as_ref(), false)?);
+        return Ok(bytes);
+    }
+    if let Some(opcode) = match op {
+        "CS" => Some(0xba),
+        "CDS" => Some(0xbb),
+        "CLM" => Some(0xbd),
+        "STCM" => Some(0xbe),
+        "ICM" => Some(0xbf),
+        _ => None,
+    } {
+        let mask = if matches!(op, "CS" | "CDS") {
+            r(1)?
+        } else {
+            nibble(i.immediate)?
+        };
+        let mut bytes = vec![opcode, r(0)? << 4 | mask];
+        bytes.extend(address(i.address.as_ref(), false)?);
+        return Ok(bytes);
+    }
+    if op == "TP" {
+        let len = i.length.checked_sub(1).ok_or("zero TP length")?;
+        let mut bytes = vec![0xeb, nibble(len)? << 4];
+        bytes.extend(address(i.address.as_ref(), false)?);
+        bytes.extend([0, 0xc0]);
+        return Ok(bytes);
+    }
     if let Some(bytes) = floating::encode(i)? {
         return Ok(bytes);
     }

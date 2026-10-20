@@ -1,0 +1,148 @@
+[suite]
+name = "ZHVS"
+language = "hlasm"
+required_modules = ["HA", "HM", "HI", "HD", "HF", "HS", "HE"]
+optional_modules = []
+
+[programs.HE101N]
+expect = "compile-error"
+diagnostic_contains = "register"
+
+[programs.HE101P]
+expect = "compile-only"
+
+[programs.HE102N]
+expect = "compile-error"
+diagnostic_contains = "displacement"
+
+[programs.HE102P]
+expect = "compile-only"
+
+[programs.HE103N]
+expect = "compile-error"
+diagnostic_contains = "displacement"
+
+[programs.HE103P]
+expect = "compile-only"
+
+[programs.HE104N]
+expect = "compile-error"
+diagnostic_contains = "even register"
+
+[programs.HE104P]
+expect = "compile-only"
+
+[programs.HE105N]
+expect = "compile-error"
+diagnostic_contains = "even register"
+
+[programs.HE105P]
+expect = "compile-only"
+
+[programs.HE106N]
+expect = "compile-error"
+diagnostic_contains = "immediate"
+
+[programs.HE106P]
+expect = "compile-only"
+
+[programs.HE107N]
+expect = "compile-error"
+diagnostic_contains = "immediate"
+
+[programs.HE107P]
+expect = "compile-only"
+
+[programs.HE108N]
+expect = "compile-error"
+diagnostic_contains = "lengths"
+
+[programs.HE108P]
+expect = "compile-only"
+
+[programs.HE109N]
+expect = "compile-error"
+diagnostic_contains = "TP requires"
+
+[programs.HE109P]
+expect = "compile-only"
+
+[programs.HE110N]
+expect = "compile-error"
+diagnostic_contains = "hex"
+
+[programs.HE110P]
+expect = "compile-only"
+
+[programs.HE111N]
+expect = "compile-error"
+diagnostic_contains = "binary"
+
+[programs.HE111P]
+expect = "compile-only"
+
+[programs.HE112N]
+expect = "compile-error"
+diagnostic_contains = "undefined"
+
+[programs.HE112P]
+expect = "compile-only"
+
+[programs.HE113N]
+expect = "compile-error"
+diagnostic_contains = "unsupported"
+
+[programs.HE113P]
+expect = "compile-only"
+
+[programs.HE114N]
+expect = "compile-error"
+diagnostic_contains = "operand"
+
+[programs.HE114P]
+expect = "compile-only"
+
+[programs.HE115N]
+expect = "compile-error"
+diagnostic_contains = "rounding"
+
+[programs.HE115P]
+expect = "compile-only"
+
+[programs.HE116N]
+expect = "compile-error"
+diagnostic_contains = "index"
+
+[programs.HE116P]
+expect = "compile-only"
+
+[programs.HE117N]
+expect = "compile-error"
+diagnostic_contains = "mask"
+
+[programs.HE117P]
+expect = "compile-only"
+
+[programs.HE118N]
+expect = "compile-error"
+diagnostic_contains = "USING"
+
+[programs.HE118P]
+expect = "compile-only"
+
+[programs.HE119N]
+expect = "compile-error"
+diagnostic_contains = "severity"
+
+[programs.HE119P]
+expect = "compile-only"
+
+[programs.HE120N]
+expect = "compile-error"
+diagnostic_contains = "undefined"
+
+[programs.HE120P]
+expect = "compile-only"
+
+[programs.HS103A]
+jcl = "HS103A.JCL"
