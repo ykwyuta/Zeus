@@ -26,7 +26,7 @@ COMMANDS = {
     "zdeps": ["analyze", "masters"],
     "zeus-rt": [],
     "zeus-ccvs": ["extract", "run", "report", "manifest"],
-    "zeus-hercdiff": ["run", "compare"],
+    "zeus-hercdiff": ["run", "compare", "zhvs", "zpvs"],
 }
 
 

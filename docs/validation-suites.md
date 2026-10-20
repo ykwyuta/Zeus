@@ -28,3 +28,27 @@ PL/Iは通常/ネイティブ、HLASMはZeus/OBJ/GOFFを `crates/zeus-ccvs/tests
 | QSAMの可変長/ロケートモード、DD優先、異常系 | HS103A | [hlasm_io.rs](../crates/zeus-cobol/tests/hlasm_io.rs) |
 | 記憶域の再利用/断片化/所有権/サブプール寿命 | HS102A | [hlasm_storage_services.rs](../crates/zeus-cobol/tests/hlasm_storage_services.rs) |
 | 機械語バイト、再配置、OBJ/GOFF再読込み | ZHVS全実行プログラムの3経路 | [OBJ出力](../crates/zeus-cobol/tests/hlasm_object_output.rs)、[GOFF出力](../crates/zeus-cobol/tests/hlasm_goff_output.rs) |
+
+## Hercules（Docker / ローカル）による検証の再現手順
+
+[tools/hercules/Dockerfile](../tools/hercules/Dockerfile) と [tools/hercules-suites.sh](../tools/hercules-suites.sh)（内部で `zeus-hercdiff zhvs` / `zeus-hercdiff zpvs` を呼び出し）により、[ZHVS](../zhvs/README.md)（ベアメタル `z/Arch`）および [ZPVS](../zpvs/README.md)（MVS 3.8j / OS/360 PL/I (F) V5.5 `PGM=IEMAA`）の Hercules 検証を再現できます。
+
+```sh
+# 1. Docker イメージ（rust + hercules）のビルド
+tools/hercules-suites.sh build
+
+# 2. ZHVS（HLASM）ベアメタル z/Arch 検証（28本・204判定）
+#    -> work/zhvs-hercules.json に結果を出力
+tools/hercules-suites.sh zhvs
+
+# 3. ZPVS（PL/I）MVS 3.8j バッチ検証
+#    ホスト側の MVS 3.8j DASD ディレクトリ（mvsres.140.cckd 等）を読み取り専用マウントし、
+#    CCKD シャドウファイル上で自動 IPL・JCL 投入・REPORT 回収を行います
+#    -> work/zpvs-hercules.json に結果を出力
+tools/hercules-suites.sh zpvs --mvs-dasd /path/to/MVSR38/Dasd
+
+# 4. ZHVS と ZPVS を一括実行
+tools/hercules-suites.sh all --mvs-dasd /path/to/MVSR38/Dasd
+```
+
+ホストに `hercules` がインストール済みの場合は、`ZEUS_HERCULES_LOCAL=1` を指定するか `cargo run --release -p zeus-hercdiff -- zhvs|zpvs ...` を直接実行できます。

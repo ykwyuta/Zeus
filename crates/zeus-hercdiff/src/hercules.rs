@@ -29,6 +29,18 @@ impl Hercules {
     /// IPLs `image` in ESA/390 mode and returns storage `0..=dump_end`
     /// together with the Hercules version line from the log.
     pub fn run(&self, dir: &Path, image: &[u8], dump_end: usize) -> Result<(Vec<u8>, String)> {
+        self.run_with_arch(dir, image, dump_end, "ESA/390")
+    }
+
+    /// IPLs `image` in `archmode` (`ESA/390` or `z/Arch`) and returns storage
+    /// `0..=dump_end` together with the Hercules version line from the log.
+    pub fn run_with_arch(
+        &self,
+        dir: &Path,
+        image: &[u8],
+        dump_end: usize,
+        archmode: &str,
+    ) -> Result<(Vec<u8>, String)> {
         fs::create_dir_all(dir)?;
         let mainsize_mb = (image.len().max(dump_end + 1)).div_ceil(1 << 20) + 1;
         fs::write(dir.join("core.bin"), image)?;
@@ -36,7 +48,7 @@ impl Hercules {
         fs::write(
             dir.join("hercules.cnf"),
             format!(
-                "ARCHMODE ESA/390\nMAINSIZE {mainsize_mb}\nNUMCPU 1\n\
+                "ARCHMODE {archmode}\nMAINSIZE {mainsize_mb}\nNUMCPU 1\n\
                  CPUSERIAL 000001\nCPUMODEL 9672\n\
                  # Hercules requires at least one device\n000E 1403 printer.txt\n"
             ),

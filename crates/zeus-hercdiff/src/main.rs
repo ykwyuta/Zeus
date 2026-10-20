@@ -15,13 +15,13 @@ use clap::Parser;
 use zeus_hercdiff::cases::{self, Op, Rng};
 use zeus_hercdiff::hercules::Hercules;
 use zeus_hercdiff::{OracleRun, Record};
-use zeus_hercdiff::{emulate, image};
+use zeus_hercdiff::{emulate, image, zhvs, zpvs};
 
 #[derive(Parser)]
 #[command(
     version,
     after_help = include_str!("../../../docs/help/zeus-hercdiff.txt"),
-    about = "Record Hercules results for packed-decimal instructions"
+    about = "Record Hercules results for packed-decimal instructions and validation suites"
 )]
 enum Cli {
     /// Generate cases, run them on Hercules and write the results.
@@ -55,6 +55,45 @@ enum Cli {
         /// Show at most this many mismatches.
         #[arg(long, default_value_t = 20)]
         show: usize,
+    },
+    /// Assemble, link and run ZHVS (HLASM Validation Suite) programs on bare-metal Hercules (z/Arch).
+    #[command(after_help = include_str!("../../../docs/help/zeus-hercdiff.txt"))]
+    Zhvs {
+        /// Path to the `zhvs` suite directory.
+        #[arg(long, default_value = "zhvs")]
+        suite: PathBuf,
+        #[arg(long, default_value = "hercules")]
+        hercules: PathBuf,
+        #[arg(long, default_value = "work/hercules-zhvs")]
+        work: PathBuf,
+        #[arg(long, default_value_t = 2)]
+        run_seconds: u32,
+        /// Comma-separated list of programs to run (default: all 28 bare-metal programs).
+        #[arg(long, value_delimiter = ',')]
+        programs: Vec<String>,
+        #[arg(long)]
+        out: PathBuf,
+    },
+    /// Compile, link and run ZPVS (PL/I Validation Suite) programs on MVS 3.8j (PGM=IEMAA) under Hercules.
+    #[command(after_help = include_str!("../../../docs/help/zeus-hercdiff.txt"))]
+    Zpvs {
+        /// Path to the `zpvs` suite directory.
+        #[arg(long, default_value = "zpvs")]
+        suite: PathBuf,
+        /// Directory containing MVS 3.8j `.cckd` DASD images (`mvsres.140.cckd`, etc.).
+        #[arg(long)]
+        mvs_dasd: PathBuf,
+        #[arg(long, default_value = "hercules")]
+        hercules: PathBuf,
+        #[arg(long, default_value = "work/hercules-zpvs")]
+        work: PathBuf,
+        #[arg(long, default_value_t = 6)]
+        run_seconds: u32,
+        /// Comma-separated list of programs to run (default: all PL/I (F)-compatible programs).
+        #[arg(long, value_delimiter = ',')]
+        programs: Vec<String>,
+        #[arg(long)]
+        out: PathBuf,
     },
 }
 
@@ -100,6 +139,60 @@ fn real_main() -> Result<bool> {
             Cli::Compare { oracle, show } => {
                 let run: OracleRun = serde_json::from_str(&fs::read_to_string(&oracle)?)?;
                 return Ok(report_compare(&run, show));
+            }
+            Cli::Zhvs {
+                suite,
+                hercules,
+                work,
+                run_seconds,
+                programs,
+                out,
+            } => {
+                let herc = Hercules {
+                    binary: hercules,
+                    run_seconds,
+                };
+                if !herc.available() {
+                    bail!("{} not found", herc.binary.display());
+                }
+                let res = zhvs::run_zhvs(&suite, &herc, &work, &programs)?;
+                fs::write(&out, serde_json::to_string_pretty(&res)? + "\n")?;
+                println!(
+                    "ZHVS: {}/{} programs completed, {}/{} checks passed -> {}",
+                    res.completed_programs,
+                    res.total_programs,
+                    res.passed_checks,
+                    res.total_checks,
+                    out.display()
+                );
+                return Ok(res.completed_programs == res.total_programs);
+            }
+            Cli::Zpvs {
+                suite,
+                mvs_dasd,
+                hercules,
+                work,
+                run_seconds,
+                programs,
+                out,
+            } => {
+                let herc = Hercules {
+                    binary: hercules,
+                    run_seconds,
+                };
+                if !herc.available() {
+                    bail!("{} not found", herc.binary.display());
+                }
+                let res = zpvs::run_zpvs(&suite, &mvs_dasd, &herc, &work, &programs)?;
+                fs::write(&out, serde_json::to_string_pretty(&res)? + "\n")?;
+                println!(
+                    "ZPVS: {} programs, {}/{} checks passed -> {}",
+                    res.total_programs,
+                    res.passed_checks,
+                    res.total_checks,
+                    out.display()
+                );
+                return Ok(res.passed_checks > 0);
             }
             Cli::Run {
                 count,

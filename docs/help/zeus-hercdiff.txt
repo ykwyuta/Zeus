@@ -25,10 +25,37 @@ COMPARE
   --show N       Maximum number of mismatches to print (default 20).
   Compare reuses recorded data and does not need to start Hercules.
 
+ZHVS
+  zeus-hercdiff zhvs --out zhvs-hercules.json [options]
+  --suite DIR        Path to the zhvs suite directory (default zhvs).
+  --hercules FILE    Hercules executable (default hercules).
+  --work DIR         Working directory (default work/hercules-zhvs).
+  --run-seconds N    Emulator run interval (default 2 seconds).
+  --programs LIST    Comma-separated programs (default: all 28 bare-metal).
+  --out FILE         Required JSON output file.
+  Assembles each ZHVS program into an 80-byte IBM OBJ deck, links it with a
+  bare-metal ZHVRPT adapter, boots the resulting z/Arch image on Hercules,
+  and records the 120-byte EBCDIC report lines.
+
+ZPVS
+  zeus-hercdiff zpvs --mvs-dasd DIR --out zpvs-hercules.json [options]
+  --suite DIR        Path to the zpvs suite directory (default zpvs).
+  --mvs-dasd DIR     Directory containing MVS 3.8j CCKD DASD images.
+  --hercules FILE    Hercules executable (default hercules).
+  --work DIR         Working directory (default work/hercules-zpvs).
+  --run-seconds N    MVS batch execution interval (default 6 seconds).
+  --programs LIST    Comma-separated programs (default: all PL/I (F) runnable).
+  --out FILE         Required JSON output file.
+  Generates an 80-byte EBCDIC JCL card deck, boots MVS 3.8j with CCKD shadow
+  files (never modifying the base DASDs), compiles and runs ZPVS programs
+  using OS/360 PL/I (F) V5.5 (PGM=IEMAA), and records the REPORT output.
+
 EXAMPLES
   zeus-hercdiff run --count 2000 --seed 1 --out decimal-oracle.json
   zeus-hercdiff run --hercules hercules --out decimal-oracle.json --compare
   zeus-hercdiff compare --oracle decimal-oracle.json --show 50
+  zeus-hercdiff zhvs --out work/zhvs-hercules.json
+  zeus-hercdiff zpvs --mvs-dasd .cache/mvs38/Dasd --out work/zpvs-hercules.json
 
 EXIT STATUS
   0 success/agreement; 1 comparison mismatch; 2 invalid usage or execution/I/O

@@ -58,6 +58,25 @@ zeus-ccvs export-jcl --suite zhvs --out work/zhvs-zos --hlq USER.VALIDATE
 * **`HI103A` の `POPCNT-TOTAL`（`POPCNT 2,3,8` = `B9E18023`）**:
   z15（Miscellaneous-Instruction-Extensions Facility 3、SA22-7832-12）で追加された `M3=8`（全64ビットの1ビット数合算）を検査します。Hercules 3.13（z196世代相当）は `M3` フィールドを無視してバイト単位のカウント（`0801020400000107`）を返しますが、仕様上の期待値 `ZE002 = F'0',F'23'`（`0000000000000017`）が正しいため維持しています。
 
+### Docker / `zeus-hercdiff` による再実行手順
+
+Docker コンテナ（またはローカルの `hercules`）を使って、上記のベアメタル検証（全28本・204判定）を1コマンドで再現できます。
+
+```sh
+# Docker イメージのビルドと ZHVS ベアメタル検証の実行
+tools/hercules-suites.sh zhvs
+
+# 特定のプログラムのみを実行する場合
+tools/hercules-suites.sh zhvs --programs HA101A,HD101A,HF101A,HS101A
+
+# ホスト環境に hercules がインストール済みの場合（Docker なし）
+ZEUS_HERCULES_LOCAL=1 tools/hercules-suites.sh zhvs
+# または直接:
+cargo run --release -p zeus-hercdiff -- zhvs --out work/zhvs-hercules.json
+```
+
+実行結果は `work/zhvs-hercules.json` にプログラム別の PASS/FAIL 集計・120バイト EBCDIC レポート行・プログラム割込みコード（PIC）として出力されます。
+
 ## 範囲
 
 [提案](../docs/proposal/0021-zos-hlasm-test-suite.md) の7分野を実行可能なスイートにしました。既存の詳細なRust回帰試験と併用します。これはIBM言語/全命令/全OSサービスの完全網羅や実機認証の主張ではありません。ベアメタルの Hercules 3.13（`z/Arch`）で直接実行可能な28本（204判定）については実機エミュレーションで検証済みですが、IBM実機（z/OS環境）および他社処理系での差分実行は未実施です。全数の組合せを検査するのは明記した境界/変換マトリクスであり、例外条件の全組合せ、全丸めモード、全命令形式を総当たりするものではありません。

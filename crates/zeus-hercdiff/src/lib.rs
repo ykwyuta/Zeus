@@ -10,6 +10,8 @@ pub mod cases;
 pub mod emulate;
 pub mod hercules;
 pub mod image;
+pub mod zhvs;
+pub mod zpvs;
 
 use serde::{Deserialize, Serialize};
 

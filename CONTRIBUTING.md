@@ -101,6 +101,15 @@ sudo apt-get install hercules
 cargo run --release -p zeus-hercdiff -- run --count 300 --seed 1 --out work/decimal-oracle.json
 ```
 
+`zeus-hercdiff` also runs the bare-metal HLASM (`zhvs`) and MVS 3.8j PL/I (`zpvs`)
+validation suites on Hercules, either directly or inside the Docker image in
+`tools/hercules/Dockerfile`:
+
+```sh
+tools/hercules-suites.sh zhvs
+tools/hercules-suites.sh zpvs --mvs-dasd /path/to/MVSR38/Dasd
+```
+
 ## Db2
 
 Db2 is reached through DRDA, the protocol Db2 servers speak; `zeus-drda`
