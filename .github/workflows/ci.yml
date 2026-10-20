@@ -57,7 +57,7 @@ jobs:
   dist:
     # The Zeus commands for Linux and Windows (x86-64), downloadable as a
     # zip artifact of each run: zcobc, zcov, zpli, zjob, zcics, zbms, zims,
-    # zmq, zconn, zdeps, zlayout and the native run time zeus-rt. A program made a
+    # zmq, zconn, zdeps, zlayout, ztestgen, ztest and the native run time zeus-rt. A program made a
     # native executable with them runs as the check of each package.
     strategy:
       fail-fast: false
@@ -83,7 +83,7 @@ jobs:
         run: >
           cargo build --release --bins -p zeus-cobol -p zeus-pli -p zeus-jcl
           -p zeus-cics -p zeus-bms -p zeus-ims -p zeus-mq -p zeus-zconnect
-          -p zeus-deps -p zeus-layout -p zeus-native
+          -p zeus-deps -p zeus-layout -p zeus-testgen -p zeus-native
       - name: IMS regression tests on Windows
         if: runner.os == 'Windows'
         run: cargo test -p zeus-ims --all-targets
@@ -91,7 +91,7 @@ jobs:
         run: |
           d=dist/${{ matrix.name }}
           mkdir -p $d/bin
-          for b in zcobc zcov zas zpli zjob zcics zbms zims zmq zconn zdeps zlayout zeus-rt; do
+          for b in zcobc zcov zas zpli zjob zcics zbms zims zmq zconn zdeps zlayout ztestgen ztest zeus-rt; do
             cp target/release/$b${{ matrix.exe }} $d/bin/
           done
           cp README.md LICENSE $d/

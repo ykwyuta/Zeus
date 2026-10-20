@@ -99,12 +99,7 @@ fn parse_args(args: &[String]) -> Option<Args> {
     while let Some(arg) = it.next() {
         match arg.as_str() {
             "--source-encoding" => {
-                a.source_encoding = match it.next()?.to_ascii_lowercase().as_str() {
-                    "utf8" | "utf-8" => zeus_cobol::front::SourceEncoding::Utf8,
-                    "ebcdic" => zeus_cobol::front::SourceEncoding::Ebcdic,
-                    "ebcdic80" => zeus_cobol::front::SourceEncoding::Ebcdic80,
-                    _ => return None,
-                };
+                a.source_encoding = zeus_cobol::front::SourceEncoding::parse(it.next()?)?;
             }
             "--options" => {
                 if !a.compiler_options.is_empty() {

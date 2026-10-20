@@ -1822,6 +1822,20 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
 
 impl DataModel {
     /// The OCCURS DEPENDING ON table ending a group, if any.
+    /// The smallest length of a record: with its OCCURS DEPENDING ON
+    /// table at the minimum number of occurrences.
+    pub(crate) fn min_record_len(&self, id: usize) -> u32 {
+        let item = &self.items[id];
+        match self.find_odo(id) {
+            Some(t) => {
+                let table = &self.items[t];
+                let min = table.occurs.as_ref().map_or(0, |o| o.min);
+                table.offset - item.offset + min * table.len
+            }
+            None => item.len,
+        }
+    }
+
     fn find_odo(&self, id: usize) -> Option<usize> {
         let last = *self.items[id]
             .children

@@ -80,7 +80,42 @@ impl Machine {
             data[i] = 0xF0 | (data[i] & 0x0F);
             z
         });
+        let counts = self.inspect_data(cur, &mut data, steps)?;
+        if let (Some(i), Some(z)) = (sign_at, saved_zone)
+            && (0xF0..=0xF9).contains(&data[i])
+        {
+            data[i] = z | (data[i] & 0x0F);
+        }
+        self.mem[a..a + l].copy_from_slice(&data);
+        for (c, n) in counts {
+            self.add_to(cur, &c, n)?;
+        }
+        Ok(())
+    }
 
+    /// INSPECT ... TALLYING of a value that is not a data item (a function
+    /// result).
+    pub(super) fn inspect_value(
+        &mut self,
+        cur: usize,
+        value: &Src,
+        steps: &[InspectStep],
+    ) -> RResult<()> {
+        let mut data = self.operand_bytes(cur, value, 0)?;
+        for (c, n) in self.inspect_data(cur, &mut data, steps)? {
+            self.add_to(cur, &c, n)?;
+        }
+        Ok(())
+    }
+
+    /// Applies the INSPECT steps to `data`; returns the TALLYING counters
+    /// and their increments.
+    fn inspect_data(
+        &mut self,
+        cur: usize,
+        data: &mut [u8],
+        steps: &[InspectStep],
+    ) -> RResult<Vec<(Loc, i64)>> {
         // Resolve the operands of each step.
         struct S {
             kind: u8, // 0 chars, 1 all, 2 leading, 3 first, 4 convert
@@ -121,7 +156,7 @@ impl Machine {
                 Some(s) => Some(self.operand_bytes(cur, s, 1)?),
                 None => None,
             };
-            let (start, end) = region(&data, before_b.as_deref(), after_b.as_deref());
+            let (start, end) = region(data, before_b.as_deref(), after_b.as_deref());
             let (k, pat) = match kind {
                 Some(InspectKind::Characters) => (0, vec![]),
                 Some(InspectKind::All(p)) => (1, self.operand_bytes(cur, p, 1)?),
@@ -167,7 +202,7 @@ impl Machine {
                 }
             }
         } else {
-            let original = data.clone();
+            let original = data.to_vec();
             let mut pos = 0;
             while pos < original.len() {
                 let mut advanced = 0;
@@ -219,18 +254,10 @@ impl Machine {
                 }
             }
         }
-        if let (Some(i), Some(z)) = (sign_at, saved_zone)
-            && (0xF0..=0xF9).contains(&data[i])
-        {
-            data[i] = z | (data[i] & 0x0F);
-        }
-        self.mem[a..a + l].copy_from_slice(&data);
-        for s in &ss {
-            if let Some(c) = &s.counter {
-                self.add_to(cur, c, s.count)?;
-            }
-        }
-        Ok(())
+        Ok(ss
+            .into_iter()
+            .filter_map(|s| s.counter.map(|c| (c, s.count)))
+            .collect())
     }
 
     fn pointer_value(&mut self, cur: usize, p: Option<&Loc>) -> RResult<i64> {

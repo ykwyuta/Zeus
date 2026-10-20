@@ -104,7 +104,7 @@ pub fn parse(toks: Vec<Token>) -> Result<Vec<Program>> {
 pub fn data_entries_from(text: &str) -> Result<Vec<DataEntry>> {
     let stream: Vec<(char, Pos)> = text.chars().map(|c| (c, Pos::default())).collect();
     let mut p = Parser {
-        toks: super::lexer::lex(&stream, false)?,
+        toks: super::lexer::join_suffixes(super::lexer::lex(&stream, false)?),
         i: 0,
         class_names: HashSet::new(),
         mnemonics: HashSet::new(),

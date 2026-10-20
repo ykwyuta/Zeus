@@ -135,14 +135,26 @@ pub fn inventory(paths: &[&Path], opts: &FrontOptions) -> (Inventory, Vec<(Strin
             .file_stem()
             .map(|s| s.to_string_lossy().to_ascii_uppercase())
             .unwrap_or_default();
-        let mut files = FileTable::default();
-        let tokens = match front::source_tokens(p, opts, &mut files) {
-            Ok((t, _)) => t,
-            Err(d) => {
-                failed.push((name, d.message));
-                continue;
+        // the programs of a batch compilation
+        let mut tokens = Vec::new();
+        let mut unit = 0;
+        let read = loop {
+            let mut files = FileTable::default();
+            match front::source_unit_tokens(p, opts, &mut files, unit) {
+                Ok((t, _, units)) => {
+                    tokens.extend(t);
+                    unit += 1;
+                    if unit >= units {
+                        break Ok(());
+                    }
+                }
+                Err(d) => break Err(d),
             }
         };
+        if let Err(d) = read {
+            failed.push((name, d.message));
+            continue;
+        }
         let module = match crate::compile_file(p, opts) {
             Ok(m) => Some(m),
             Err(d) => {

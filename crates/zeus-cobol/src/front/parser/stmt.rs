@@ -24,6 +24,15 @@ impl Parser {
             || (self.is("NEXT") && self.is_at(1, "SENTENCE"))
     }
 
+    /// ELSE, WHEN or a scope terminator: the end of a list of file names.
+    fn ends_statement(&self) -> bool {
+        self.is_any(&["ELSE", "WHEN"])
+            || self
+                .peek()
+                .and_then(|t| t.word())
+                .is_some_and(|w| w.starts_with("END-"))
+    }
+
     /// Directives at a procedure boundary have no executable statement.
     pub(super) fn call_interfaces(&mut self) {
         while let Some(Tok::CallInterface(mode)) = self.peek().map(|t| &t.tok) {
@@ -379,10 +388,10 @@ impl Parser {
             }
             "CLOSE" => {
                 let mut files = Vec::new();
-                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_))) && !self.is_verb() {
-                    if self.is_any(&["END-CLOSE"]) {
-                        break;
-                    }
+                while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
+                    && !self.is_verb()
+                    && !self.ends_statement()
+                {
                     let f = self.name()?;
                     let mut opt = None;
                     if self.accept("REEL") || self.accept("UNIT") {
@@ -673,6 +682,7 @@ impl Parser {
                     while matches!(self.peek().map(|t| &t.tok), Some(Tok::Word(_)))
                         && !self.is_verb()
                         && !self.is_any(&["INPUT", "OUTPUT", "I-O", "EXTEND"])
+                        && !self.ends_statement()
                     {
                         let name = self.name()?;
                         let reversed = self.accept("REVERSED");
@@ -1270,7 +1280,15 @@ impl Parser {
     }
 
     fn inspect(&mut self) -> Result<Stmt> {
-        let target = self.data_ref()?;
+        let value = if self.is("FUNCTION") {
+            Some(self.operand()?)
+        } else {
+            None
+        };
+        let target = match value {
+            Some(_) => None,
+            None => Some(self.data_ref()?),
+        };
         let mut ops = Vec::new();
         loop {
             if self.accept("TALLYING") {
@@ -1347,7 +1365,16 @@ impl Parser {
                 break;
             }
         }
-        Ok(Stmt::Inspect { target, ops })
+        match (target, value) {
+            (Some(target), _) => Ok(Stmt::Inspect { target, ops }),
+            (None, Some(value)) => {
+                if !ops.iter().all(|op| matches!(op, InspectOp::Tallying(_))) {
+                    return self.err("a function result can be inspected only with TALLYING");
+                }
+                Ok(Stmt::InspectValue { value, ops })
+            }
+            (None, None) => unreachable!(),
+        }
     }
 
     /// An operand inside INSPECT that is not the start of another phrase.

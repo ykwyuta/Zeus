@@ -4,6 +4,7 @@ pub mod ast;
 pub mod cics;
 mod conditional;
 pub mod copy;
+mod cvda;
 pub mod input;
 pub mod lexer;
 mod options;
@@ -229,6 +230,41 @@ fn replace_partial(text: &str, partial: &[(String, String)]) -> String {
     out
 }
 
+/// The options of a CBL / PROCESS statement line, or None for other lines.
+fn process_statement(line: &str) -> Option<String> {
+    let ind = line.chars().nth(6).unwrap_or(' ');
+    if ind == '*' || ind == '/' {
+        return None;
+    }
+    let body: String = line.chars().take(72).collect();
+    let t = body.trim_start().to_ascii_uppercase();
+    let statement = if t.starts_with("CBL ") || t.starts_with("PROCESS ") || t == "CBL" {
+        body.trim_start().to_string()
+    } else {
+        // sequence-numbered lines: the statement starts after column 7
+        let t7: String = body.chars().skip(7).collect::<String>();
+        let t7 = t7.trim_start();
+        let upper = t7.to_ascii_uppercase();
+        if !(upper.starts_with("CBL ") || upper.starts_with("PROCESS ")) {
+            return None;
+        }
+        t7.to_string()
+    };
+    Some(
+        statement
+            .split_once(' ')
+            .map_or("", |(_, rest)| rest)
+            .to_string(),
+    )
+}
+
+/// Comment and blank lines do not start a program.
+fn is_program_text(line: &str) -> bool {
+    let ind = line.chars().nth(6).unwrap_or(' ');
+    let body: String = line.chars().take(72).collect();
+    !(body.trim().is_empty() || ind == '*' || ind == '/')
+}
+
 /// Takes the CBL / PROCESS statements (compiler options) off the start of
 /// a source; returns the remaining text and the option text.
 fn process_statements(text: &str) -> (String, String) {
@@ -237,45 +273,63 @@ fn process_statements(text: &str) -> (String, String) {
     let mut leading = true;
     for line in text.split_inclusive('\n') {
         if leading {
-            let ind = line.chars().nth(6).unwrap_or(' ');
-            let body: String = line.chars().take(72).collect();
-            let t = body.trim_start().to_ascii_uppercase();
-            let is_process = (t.starts_with("CBL ") || t.starts_with("PROCESS ") || t == "CBL")
-                && ind != '*'
-                && ind != '/';
-            // sequence-numbered lines: the statement starts after column 7
-            let t7: String = body
-                .chars()
-                .skip(7)
-                .collect::<String>()
-                .trim_start()
-                .to_ascii_uppercase();
-            let is_process = (is_process || t7.starts_with("CBL ") || t7.starts_with("PROCESS "))
-                && ind != '*'
-                && ind != '/';
-            if is_process {
-                let statement = if t.starts_with("CBL ") || t.starts_with("PROCESS ") || t == "CBL"
-                {
-                    body.trim_start().to_string()
-                } else {
-                    body.chars()
-                        .skip(7)
-                        .collect::<String>()
-                        .trim_start()
-                        .to_string()
-                };
-                options.push_str(statement.split_once(' ').map_or("", |(_, rest)| rest));
+            if let Some(statement) = process_statement(line) {
+                options.push_str(&statement);
                 options.push(' ');
                 out.push('\n');
                 continue;
             }
-            if !(body.trim().is_empty() || ind == '*' || ind == '/') {
+            if is_program_text(line) {
                 leading = false;
             }
         }
         out.push_str(line);
     }
     (out, options)
+}
+
+/// The line ranges of the compilation units of a batch compilation: a
+/// CBL / PROCESS statement after the END PROGRAM marker of a program starts
+/// the next program.
+fn batch_units(text: &str) -> Vec<std::ops::Range<usize>> {
+    let mut units = Vec::new();
+    let (mut start, mut ended) = (0, false);
+    let mut count = 0;
+    for (n, line) in text.split_inclusive('\n').enumerate() {
+        count = n + 1;
+        if ended && process_statement(line).is_some() {
+            units.push(start..n);
+            start = n;
+            ended = false;
+        } else if is_program_text(line) {
+            let body: String = line.chars().take(72).collect();
+            let words: Vec<String> = body
+                .to_ascii_uppercase()
+                .split_whitespace()
+                .map(str::to_string)
+                .collect();
+            ended = words.windows(2).any(|w| w[0] == "END" && w[1] == "PROGRAM");
+        }
+    }
+    units.push(start..count);
+    units
+}
+
+/// The text of one compilation unit; the lines of the others are blank so
+/// that line numbers stay those of the file.
+fn unit_text(text: &str, unit: &std::ops::Range<usize>) -> String {
+    text.split_inclusive('\n')
+        .enumerate()
+        .map(|(n, line)| {
+            if unit.contains(&n) {
+                line
+            } else if line.ends_with('\n') {
+                "\n"
+            } else {
+                ""
+            }
+        })
+        .collect()
 }
 
 /// Reads, preprocesses and parses a source file.
@@ -322,6 +376,18 @@ pub fn source_tokens(
     opts: &FrontOptions,
     files: &mut FileTable,
 ) -> Result<(Vec<Token>, bool)> {
+    source_unit_tokens(path, opts, files, 0).map(|(tokens, cics, _)| (tokens, cics))
+}
+
+/// [`source_tokens`] of one program of a batch compilation (several
+/// programs, each after its own CBL / PROCESS statements, in one file);
+/// also returns the number of programs.
+pub fn source_unit_tokens(
+    path: &Path,
+    opts: &FrontOptions,
+    files: &mut FileTable,
+    unit: usize,
+) -> Result<(Vec<Token>, bool, usize)> {
     LISTING.set(opts.listing.clone());
     OPTIMIZE.set(opts.optimize);
     let invocation = options::parse(&opts.compiler_options, opts)
@@ -349,13 +415,26 @@ pub fn source_tokens(
         .codepage
         .unwrap_or_else(|| crate::codepage::active().ccsid);
     let bootstrap = input::decode(&bytes, opts.source_encoding, initial_ccsid, 0, false)?;
-    let (_, option_text) = process_statements(&bootstrap);
+    let units = batch_units(&bootstrap);
+    let range = units.get(unit).cloned().ok_or_else(|| {
+        Diag::error(
+            Default::default(),
+            "no such program in the batch compilation",
+        )
+        .during(crate::diag::Phase::Options)
+    })?;
+    let (_, option_text) = process_statements(&unit_text(&bootstrap, &range));
     let settings = options::parse(&clean_options(option_text), &invocation)
         .map_err(|d| d.during(crate::diag::Phase::Options))?;
     let ccsid = settings
         .codepage
         .unwrap_or_else(|| crate::codepage::active().ccsid);
     let decoded = input::decode(&bytes, opts.source_encoding, ccsid, 0, true)?;
+    let decoded = if units.len() > 1 {
+        unit_text(&decoded, &range)
+    } else {
+        decoded
+    };
     files.text.insert(
         path.display().to_string(),
         if opts.source_encoding.padded() {
@@ -424,7 +503,7 @@ pub fn source_tokens(
             "EXEC SQLIMS requires SQLIMS and LP(32) compiler options",
         ));
     }
-    Ok((tokens, cics_option))
+    Ok((tokens, cics_option, units.len()))
 }
 
 fn preprocess(
@@ -452,7 +531,7 @@ fn preprocess(
     )?;
     let tokens =
         copy::apply_replace(tokens).map_err(|d| d.during(crate::diag::Phase::Preprocess))?;
-    cics::translate(tokens)
+    cics::translate(lexer::join_suffixes(tokens))
 }
 
 #[allow(clippy::too_many_arguments)]

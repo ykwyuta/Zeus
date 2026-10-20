@@ -861,7 +861,7 @@ impl Machine {
 
     /// Length an operand contributes to an alphanumeric comparison
     /// (0 for figurative constants, which adapt to the other operand).
-    fn alnum_len(&self, v: &Val) -> usize {
+    pub(super) fn alnum_len(&self, v: &Val) -> usize {
         match v {
             Val::Fig(_) | Val::All(_) => 0,
             Val::Item(DataType::Numeric(t), _) => t.digits as usize,
@@ -1014,10 +1014,7 @@ impl Machine {
 
 /// Current date/time values for ACCEPT ... FROM.
 fn date_value(from: AcceptFrom) -> i128 {
-    let now = std::time::SystemTime::now()
-        .duration_since(std::time::UNIX_EPOCH)
-        .map(|d| d.as_secs_f64())
-        .unwrap_or(0.0);
+    let now = crate::clock::now().as_secs_f64();
     let days = (now / 86400.0).floor() as i64;
     let secs = now - (days as f64) * 86400.0;
     let (y, m, dd) = civil_from_days(days);
