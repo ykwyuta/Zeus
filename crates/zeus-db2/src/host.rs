@@ -9,17 +9,17 @@
 use std::cell::RefCell;
 use std::collections::HashMap;
 
+use rust_db2_driver::sql::{Column, Rows, SqlCa, Value};
 use zeus_cobol::ebcdic;
 use zeus_cobol::vm::exec::{Area, ExecArg, ExecCall, ExecHost, ExecOutcome};
 use zeus_cobol::vm::{Machine, RResult, RunError, data};
 use zeus_cobol::zir::{DataType, ExecKind, NumType, NumUsage, SignPos};
 use zeus_decimal::Dec;
-use zeus_drda::sql::{Column, Rows, SqlCa, Value};
 
 /// The database server: Db2 (DRDA) or PostgreSQL.
 #[derive(Clone)]
 pub enum Server {
-    Db2(zeus_drda::Params),
+    Db2(rust_db2_driver::Params),
     Postgres(zeus_pg::Params),
 }
 
@@ -29,7 +29,7 @@ impl Server {
         if url.starts_with("postgres://") || url.starts_with("postgresql://") {
             zeus_pg::Params::from_url(url).map(Server::Postgres)
         } else {
-            zeus_drda::Params::from_url(url)
+            rust_db2_driver::Params::from_url(url)
                 .map(Server::Db2)
                 .map_err(|e| e.0)
         }
@@ -38,7 +38,7 @@ impl Server {
 
 /// A connection to the server.
 enum Connection {
-    Db2(zeus_drda::Connection),
+    Db2(rust_db2_driver::Connection),
     Postgres(crate::pg::Session),
 }
 
@@ -46,7 +46,10 @@ impl Connection {
     fn connect(s: &Server, schema: Option<&str>) -> Result<Connection, String> {
         Ok(match s {
             Server::Db2(p) => {
-                let mut c = zeus_drda::Connection::connect(p).map_err(|e| e.0)?;
+                let mut c = rust_db2_driver::Connection::connect(p).map_err(|e| e.0)?;
+                // Keep Zeus's existing trace switch; the driver also supports
+                // DB2_DRDA_TRACE and excludes authentication from its trace.
+                c.trace |= std::env::var_os("ZEUS_DRDA_TRACE").is_some();
                 if let Some(s) = schema {
                     c.execute(&format!("SET CURRENT SCHEMA = '{s}'"))
                         .map_err(|e| e.0)?;
@@ -210,12 +213,12 @@ impl Db2Host {
                     rows.push(
                         row.iter()
                             .map(|v| match v {
-                                zeus_drda::sql::Value::Null => "-".to_string(),
-                                zeus_drda::sql::Value::Int(i) => i.to_string(),
-                                zeus_drda::sql::Value::Dec(d) => d.clone(),
-                                zeus_drda::sql::Value::Float(f) => f.to_string(),
-                                zeus_drda::sql::Value::Str(s) => s.clone(),
-                                zeus_drda::sql::Value::Bytes(b) => {
+                                rust_db2_driver::sql::Value::Null => "-".to_string(),
+                                rust_db2_driver::sql::Value::Int(i) => i.to_string(),
+                                rust_db2_driver::sql::Value::Dec(d) => d.clone(),
+                                rust_db2_driver::sql::Value::Float(f) => f.to_string(),
+                                rust_db2_driver::sql::Value::Str(s) => s.clone(),
+                                rust_db2_driver::sql::Value::Bytes(b) => {
                                     b.iter().map(|x| format!("{x:02X}")).collect()
                                 }
                             })

@@ -112,20 +112,26 @@ tools/hercules-suites.sh zpvs --mvs-dasd /path/to/MVSR38/Dasd
 
 ## Db2
 
-Db2 is reached through DRDA, the protocol Db2 servers speak; `zeus-drda`
-implements it from the Open Group DRDA / DDM specifications, so Zeus links no
-IBM client library. The server is Db2 Community Edition in a container
+Db2 is reached through DRDA using the standalone
+[`rust-db2-driver`](https://github.com/ykwyuta/rust-db2-driver) crate, pinned
+to a Git revision in `crates/zeus-db2/Cargo.toml`. The driver was extracted from
+Zeus's DRDA / DDM implementation; it requires no ODBC or IBM client library.
+`zeus-db2` provides the EXEC SQL, host-variable, SQLCA, and dialect compatibility
+layer above it. The server is Db2 Community Edition in a container
 (Docker), which users install themselves; it is not redistributed:
 
 ```sh
 export ZEUS_DB2=$(tools/db2ce.sh start)   # db2://db2inst1:zeuspass@localhost:50000/ZEUSDB
-cargo test -p zeus-drda -p zeus-db2       # the Db2 tests are skipped without ZEUS_DB2
+cargo test -p zeus-db2                   # the Db2 tests are skipped without ZEUS_DB2
 tools/carddemo.sh setup
 tools/carddemo-db2.sh test                # CardDemo's Db2 module, batch and online
 ```
 
-`ZEUS_DB2_SCHEMA` sets the default schema; `ZEUS_DRDA_TRACE=1` prints the
-DRDA flows.
+`ZEUS_DB2_SCHEMA` sets the default schema; `ZEUS_DRDA_TRACE=1` (or the driver's
+`DB2_DRDA_TRACE=1`) prints DRDA flows after authentication. The trace can contain
+SQL text and row data. DDM control strings use CCSID 37 independently of
+`ZEUS_CCSID`; the Zeus compatibility layer converts application host variables
+using the application's code page.
 
 ## 3270 terminals
 
