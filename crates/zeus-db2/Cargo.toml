@@ -10,7 +10,7 @@ repository.workspace = true
 [dependencies]
 zeus-cobol = { path = "../zeus-cobol" }
 zeus-decimal = { path = "../zeus-decimal" }
-zeus-drda = { path = "../zeus-drda" }
+rust-db2-driver = { git = "https://github.com/ykwyuta/rust-db2-driver.git", rev = "5abdfcbf3ccc9200e2c4a277123fd663f2f40b6f" }
 zeus-pg = { path = "../zeus-pg" }
 
 [dev-dependencies]

@@ -1,8 +1,8 @@
 //! Against a Db2 server named by ZEUS_DB2 (`db2://user:password@host:port/DB`,
 //! see tools/db2ce.sh); skipped when it is not set.
 
-use zeus_drda::sql::Value;
-use zeus_drda::{Connection, Params};
+use rust_db2_driver::sql::Value;
+use rust_db2_driver::{Connection, Params};
 
 fn params() -> Option<Params> {
     let url = std::env::var("ZEUS_DB2").ok()?;

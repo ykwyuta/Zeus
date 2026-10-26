@@ -1,7 +1,7 @@
 //! Db2 for z/OS SQL on Db2 for Linux, UNIX and Windows: statements and
 //! clauses that only describe z/OS storage are dropped or rewritten.
 
-use zeus_drda::sql::SqlCa;
+use rust_db2_driver::sql::SqlCa;
 
 /// Splits an SQL script (DSNTIAD / SPUFI input) into statements at `;`
 /// outside literals; `--` and `/* */` comments are removed.

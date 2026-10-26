@@ -213,7 +213,9 @@ COBOL コンパイラ側の細目 (C0〜C7) は [0003](0003-cobol-compiler.md) �
 - バッチ用 Db2 ユーティリティ相当 (DDL 実行、DSNTEP2/DSNTIAUL 相当、ロード)。
 - **完了条件**: GenApp の顧客・保険契約の登録/照会/更新/削除の全シナリオが合格。
   CardDemo の取引種別管理モジュール (Db2) も合格。
-- 進捗 (2026-10): DRDA クライアント `zeus-drda` (Open Group の DRDA 仕様から実装。EXCSAT/ACCSEC/
+- 進捗 (2026-10): DRDA クライアント (旧 `zeus-drda`。独立した MIT ライセンスの
+  [`rust-db2-driver`](https://github.com/ykwyuta/rust-db2-driver) に移植し、Zeus は Git リビジョンを固定して利用。
+  Open Group の DRDA 仕様から実装。EXCSAT/ACCSEC/
   SECCHK/ACCRDB による接続、NULLID.SYSSH200 パッケージでの動的 SQL 実行・問い合わせ・コミット) と
   EXEC SQL 実行時 `zeus-db2` (ホスト変数を EBCDIC から変換してリテラルとして束縛、VARCHAR の
   level-49 対、標識変数、SELECT INTO・SET・カーソル、プログラムの SQLCA への SQLCODE/SQLSTATE 書き

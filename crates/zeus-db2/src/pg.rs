@@ -6,7 +6,7 @@
 //! work starts with the first statement) behind a savepoint, so that a
 //! failing statement does not end the unit of work, as on Db2.
 
-use zeus_drda::sql::{Rows, SqlCa, Value};
+use rust_db2_driver::sql::{Rows, SqlCa, Value};
 use zeus_pg::{Connection, Error, Params, ServerError, Statement, oid};
 
 // ---- tokens ---------------------------------------------------------------
@@ -621,7 +621,7 @@ fn translate_part(t: &[Tok]) -> String {
 
 /// A PostgreSQL value in the form Db2 gives it.
 /// A result column described in DRDA terms (type code, length).
-fn column(c: &zeus_pg::Column, nullable: bool) -> zeus_drda::sql::Column {
+fn column(c: &zeus_pg::Column, nullable: bool) -> rust_db2_driver::sql::Column {
     let m = c.type_mod;
     let (t, len) = match c.type_oid {
         oid::INT2 | oid::BOOL => (0x04, 2),
@@ -642,7 +642,7 @@ fn column(c: &zeus_pg::Column, nullable: bool) -> zeus_drda::sql::Column {
         oid::BYTEA => (0x28, 32704),
         _ => (0x32, 32704),
     };
-    zeus_drda::sql::Column {
+    rust_db2_driver::sql::Column {
         drda_type: t,
         nullable,
         len,
