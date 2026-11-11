@@ -19,6 +19,7 @@
        01  WS-Q PIC S9(3) COMP-3.
        01  WS-R PIC S9(3) COMP-3.
        01  WS-D PIC S9(3)V99 COMP-3.
+       01  WS-D-ED PIC -9(3).99.
        01  WS-F PIC X.
        01  WS-Z PIC 9 VALUE 0.
        PROCEDURE DIVISION.
@@ -183,7 +184,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '12.34' TO ZCVS-EXPECTED
-               MOVE WS-D TO ZCVS-ACTUAL
+               MOVE WS-D TO WS-D-ED
+               MOVE WS-D-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -193,7 +195,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '12.35' TO ZCVS-EXPECTED
-               MOVE WS-D TO ZCVS-ACTUAL
+               MOVE WS-D TO WS-D-ED
+               MOVE WS-D-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -203,7 +206,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '12.35' TO ZCVS-EXPECTED
-               MOVE WS-D TO ZCVS-ACTUAL
+               MOVE WS-D TO WS-D-ED
+               MOVE WS-D-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -213,7 +217,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '-12.34' TO ZCVS-EXPECTED
-               MOVE WS-D TO ZCVS-ACTUAL
+               MOVE WS-D TO WS-D-ED
+               MOVE WS-D-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -223,7 +228,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '-12.35' TO ZCVS-EXPECTED
-               MOVE WS-D TO ZCVS-ACTUAL
+               MOVE WS-D TO WS-D-ED
+               MOVE WS-D-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -233,7 +239,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '-12.35' TO ZCVS-EXPECTED
-               MOVE WS-D TO ZCVS-ACTUAL
+               MOVE WS-D TO WS-D-ED
+               MOVE WS-D-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
