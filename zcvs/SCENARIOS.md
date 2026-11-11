@@ -96,7 +96,7 @@
 | F04 CODE-SET | `ZF103A` のASCII片方向/往復 | 部分 | STANDARD-1/2、英数/記号/空白/LOW/HIGH、F/V、RDW非変換、符号分離数値 |
 | F05 VSAM主キー | `ZF104A/107A/108A`、`ZF110A/111A` 49検査 | 部分 | RRDS欠番/重複/REWRITE/DELETE/再挿入/START/NEXT/EOF復帰、KSDS =/>/>= の一致/間隙/前後境界・部分キー・失敗後復帰を追加。ACCESSモード別の直積は残る |
 | F06 VSAM代替キー・ESDS | `ZF107A/108A`、`ZF112A` 26検査 | 部分 | 重複許可/一意の2代替キー、書込み順の重複検索、主キーREAD00、更新拒否の原データ/旧索引保持、両キー変更・削除・永続化を追加。ESDSは未実装、代替キー側の部分STARTは残る |
-| F07 属性不一致39 | `ZF102A`、`ZF109A` 6検査 | 部分 | 同じ標準ラベルテープのLRECL/RECFMを別FDで不一致にして39、正常FDで再OPENして内容不変を追加。DD/DCB属性、VSAMキー長/位置、ラベル不一致は残る |
+| F07 属性不一致39 | `ZF109A` 6検査 | 部分 | 同じ標準ラベルテープのLRECL/RECFMを別FDで不一致にして39、正常FDで再OPENして内容不変を追加。DD/DCB属性、VSAMキー長/位置、ラベル不一致は残る |
 | F08 SAME AREA | `ZF105A` のSAME RECORD AREA | 部分 | 複数FDの交互OPENと上書き、VSAM SAME AREA、異なる長さ、コンパイル負系との対応 |
 | F09 テープラベル | `ZF201M/202M` とRust物理画像検査 | 部分 | 4巻全体で80-byte VOL1/HDR1/HDR2/EOV1/EOV2/EOF1/EOF2の順、HDR2 F/BLKSIZE/LRECL、区切りマーク、部分データ、巻別block数を外部検査。全ラベル属性・ユーザーラベルは残る |
 | F10 テープ位置 | `ZF201M`、`ZF202M` 18検査 | 部分 | CLOSE REEL/UNIT FOR REMOVAL後もOPENを維持、空巻を跨ぐ自動継続/明示巻移動、再OPEN/最終UNIT後EOFを追加。同一巻に2論理ファイル・MULTIPLE FILE位置指定は残る |

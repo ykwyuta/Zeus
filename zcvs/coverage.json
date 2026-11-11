@@ -1424,8 +1424,7 @@
   "ZF102A": {
     "expect": "run",
     "tests": [
-      "QSAM-MODE-S-SPAN",
-      "QSAM-MODE-U-FS39"
+      "QSAM-MODE-S-SPAN"
     ]
   },
   "ZF103A": {
