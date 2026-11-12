@@ -41,6 +41,54 @@
   "PC109A": {
     "basis": "spec"
   },
+  "PC110A": {
+    "basis": "zos",
+    "note": "ONCODE values are the current Zeus values; the HFP range conditions follow the Language Reference.",
+    "tests": {
+      "OVERFLOW-HFP-RANGE": {
+        "basis": "spec"
+      },
+      "UNDERFLOW-HFP-RANGE": {
+        "basis": "spec"
+      },
+      "ONCODE-OVERFLOW": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-UNDERFLOW": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-ZERODIVIDE": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-CONVERSION": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-STRINGRANGE": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-SUBSCRIPTRNG": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-SIZE": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-SIGNAL-ERROR": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      },
+      "ONCODE-CONDITION": {
+        "basis": "zos",
+        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec"
   },
@@ -64,6 +112,88 @@
   },
   "PD108A": {
     "basis": "spec"
+  },
+  "PD109A": {
+    "basis": "zos",
+    "note": "Implementation-defined representations; expected values are the current Zeus behavior.",
+    "tests": {
+      "HFP-SHORT-TENTH": {
+        "basis": "zos",
+        "note": "Decimal 0.1 to short HFP: Zeus truncates (X40199999); Enterprise COBOL in Zeus rounds (X4019999A). Record which the PL/I compiler does."
+      },
+      "HFP-LONG-TENTH": {
+        "basis": "zos",
+        "note": "Decimal 0.1 to long HFP: Zeus X401999999999999A."
+      },
+      "HFP-BIN21-TENTH": {
+        "basis": "zos",
+        "note": "FLOAT BIN(21) maps to short HFP; same truncation question as HFP-SHORT-TENTH."
+      },
+      "TENTH-TO-FIXED-DEC": {
+        "basis": "zos",
+        "note": "Short HFP 0.1 (truncated, below 0.1) to FIXED DEC(5,2) truncates to 0.09 in Zeus. If z/OS gives 0.10 the HFP constant is rounded or the conversion rounds."
+      },
+      "FLOAT-TO-CHAR": {
+        "basis": "zos",
+        "note": "FLOAT DEC(6) to CHAR: Zeus gives a leading blank and a four-digit exponent ( 1.00000E-0001)."
+      },
+      "STG-ENTRY-VARIABLE": {
+        "basis": "zos",
+        "note": "STORAGE of an ENTRY variable: Zeus 8 (entry point and environment)."
+      },
+      "STG-LABEL-VARIABLE": {
+        "basis": "zos",
+        "note": "STORAGE of a LABEL variable: Zeus 8."
+      },
+      "STG-FILE-VARIABLE": {
+        "basis": "zos",
+        "note": "STORAGE of a FILE variable: Zeus 4."
+      },
+      "STG-HANDLE-OFFSET": {
+        "basis": "zos",
+        "note": "STORAGE of HANDLE and OFFSET: Zeus 4 each."
+      },
+      "STG-AREA": {
+        "basis": "zos",
+        "note": "STORAGE of AREA(100) and the default AREA(1000): Zeus adds a 16-byte header (116, 1016)."
+      },
+      "NULL-VALUE": {
+        "basis": "zos",
+        "note": "NULL(): Zeus XFF000000 (the NULL370 form). Record the DEFAULT(NULLSYS/NULL370) setting used on z/OS."
+      },
+      "SYSNULL-VALUE": {
+        "basis": "zos",
+        "note": "SYSNULL(): Zeus X00000000."
+      },
+      "AREA-EMPTY-HEADER": {
+        "basis": "zos",
+        "note": "The 16-byte header of an empty AREA is not published; Zeus has all zeros."
+      },
+      "OVERLAP-SUBSTR-RIGHT": {
+        "basis": "zos",
+        "note": "Overlapping SUBSTR assignment to the right: Zeus copies byte by byte from the left (propagation)."
+      },
+      "OVERLAP-SUBSTR-LEFT": {
+        "basis": "zos",
+        "note": "Overlapping SUBSTR assignment to the left: Zeus value."
+      },
+      "DEC-OVER-NO-SIZE": {
+        "basis": "zos",
+        "note": "FIXED DEC(3) assigned 1000 with SIZE disabled: the result is undefined in the Language Reference; Zeus keeps the low-order digits (X000C)."
+      },
+      "STATIC-NO-INIT": {
+        "basis": "zos",
+        "note": "STATIC without INITIAL: Zeus gives binary zeros for both FIXED BIN and CHAR."
+      },
+      "RANDOM-SEED-ONE": {
+        "basis": "zos",
+        "note": "RANDOM(1): the generator is not published; Zeus value."
+      },
+      "RANDOM-NEXT": {
+        "basis": "zos",
+        "note": "RANDOM() after RANDOM(1): Zeus value."
+      }
+    }
   },
   "PE101N": {
     "basis": "spec"

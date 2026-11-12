@@ -156,6 +156,22 @@
       "STATIC-INIT-ONCE"
     ]
   },
+  "PC110A": {
+    "expect": "run",
+    "tests": [
+      "OVERFLOW-HFP-RANGE",
+      "ONCODE-OVERFLOW",
+      "UNDERFLOW-HFP-RANGE",
+      "ONCODE-UNDERFLOW",
+      "ONCODE-ZERODIVIDE",
+      "ONCODE-CONVERSION",
+      "ONCODE-STRINGRANGE",
+      "ONCODE-SUBSCRIPTRNG",
+      "ONCODE-SIZE",
+      "ONCODE-SIGNAL-ERROR",
+      "ONCODE-CONDITION"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [
@@ -333,6 +349,30 @@
       "ATTRIBUTE-ORDER",
       "VALUE-CONSTANT",
       "BUILTIN-NOT-VARIABLE"
+    ]
+  },
+  "PD109A": {
+    "expect": "run",
+    "tests": [
+      "HFP-SHORT-TENTH",
+      "HFP-LONG-TENTH",
+      "HFP-BIN21-TENTH",
+      "TENTH-TO-FIXED-DEC",
+      "FLOAT-TO-CHAR",
+      "STG-ENTRY-VARIABLE",
+      "STG-LABEL-VARIABLE",
+      "STG-FILE-VARIABLE",
+      "STG-HANDLE-OFFSET",
+      "STG-AREA",
+      "NULL-VALUE",
+      "SYSNULL-VALUE",
+      "AREA-EMPTY-HEADER",
+      "OVERLAP-SUBSTR-RIGHT",
+      "OVERLAP-SUBSTR-LEFT",
+      "DEC-OVER-NO-SIZE",
+      "STATIC-NO-INIT",
+      "RANDOM-SEED-ONE",
+      "RANDOM-NEXT"
     ]
   },
   "PE101N": {

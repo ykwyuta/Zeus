@@ -488,8 +488,20 @@ impl Machine {
                         }
                     }
                 };
-                if !r.is_finite() && self.enabled_now(act, cond::OVERFLOW) {
+                // Floating point is hexadecimal (HFP): a normalized value is below
+                // 16**63 and at least 16**-65 in magnitude (Principles of Operation).
+                // The arithmetic runs in f64, so the HFP range is checked here; the
+                // f64 range alone would let 1E70*1E70 pass without OVERFLOW.
+                if (!r.is_finite() || r.abs() >= 16f64.powi(63))
+                    && self.enabled_now(act, cond::OVERFLOW)
+                {
                     self.raise(Cond::Overflow, 300, act)?;
+                }
+                if r != 0.0 && r.abs() < 16f64.powi(-65) && self.enabled_now(act, cond::UNDERFLOW)
+                {
+                    // LRM UNDERFLOW: the result is set to zero
+                    self.raise(Cond::Underflow, 330, act)?;
+                    return Ok(Value::Float(0.0));
                 }
                 Ok(Value::Float(r))
             }
