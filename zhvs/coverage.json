@@ -79,6 +79,23 @@
       "LOCTR-ORDER"
     ]
   },
+  "HA108A": {
+    "expect": "run",
+    "tests": [
+      "AMODE31-LA",
+      "COPY-MEMBER"
+    ]
+  },
+  "HA109A": {
+    "expect": "run",
+    "tests": [
+      "DXD-CXD-COVERS",
+      "DXD-Q-ALIGNED",
+      "RSECT-DATA",
+      "RSECT-SYSSTYP",
+      "ENTRY-VCON"
+    ]
+  },
   "HD101A": {
     "expect": "run",
     "tests": [

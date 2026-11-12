@@ -27,6 +27,10 @@ pub struct ProgramConfig {
     pub jcl: Option<String>,
     pub expect: ExpectKind,
     pub diagnostic_contains: Option<String>,
+    /// HLASM: the object formats ("zeus", "obj", "goff") Zeus can write this
+    /// program in. Under another format the run records that Zeus cannot
+    /// write it, instead of failing (z/OS assembles it as usual).
+    pub object_formats: Option<Vec<String>>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -127,6 +131,16 @@ impl Manifest {
                                 "compile-error" => ExpectKind::CompileError,
                                 _ => bail!("line {}: unknown expect value '{s}'", lineno + 1),
                             };
+                        }
+                        "object_formats" => {
+                            let v = parse_str_array(val, lineno + 1)?;
+                            if let Some(f) = v
+                                .iter()
+                                .find(|f| !matches!(f.as_str(), "zeus" | "obj" | "goff"))
+                            {
+                                bail!("line {}: unknown object format '{f}'", lineno + 1);
+                            }
+                            cfg.object_formats = Some(v);
                         }
                         "diagnostic_contains" => {
                             cfg.diagnostic_contains = Some(parse_str(val, lineno + 1)?);

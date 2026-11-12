@@ -150,3 +150,6 @@ expect = "compile-only"
 
 [programs.HS103A]
 jcl = "HS103A.JCL"
+
+[programs.HA109A]
+object_formats = ["zeus"]

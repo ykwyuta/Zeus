@@ -308,6 +308,65 @@
       }
     }
   },
+  "HA108A": {
+    "basis": "spec",
+    "tests": {
+      "AMODE31-LA": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AMODE instruction | Specifies that 31 bit addressing mode is to be associated with a control section, or entry point.",
+          "HLASM-LR: RMODE instruction | The RMODE instruction specifies the residence mode to be associated with control sections in the object deck.",
+          "POP: LOAD ADDRESS | mode, the address is placed in bit positions 33-63, bit"
+        ]
+      },
+      "COPY-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: COPY instruction | You can also use the COPY instruction to copy complete macro definitions into a source module."
+        ]
+      }
+    }
+  },
+  "HA109A": {
+    "basis": "spec",
+    "tests": {
+      "DXD-CXD-COVERS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Using external dummy sections | Use the CXD instruction to reserve a fullword area into which the linker or loader inserts the total length of all the external dummy sections",
+          "HLASM-LR: CXD instruction | the total length of storage required for all the external dummy sections specified in a program."
+        ]
+      },
+      "DXD-Q-ALIGNED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Using external dummy sections | Use the CXD instruction to reserve a fullword area into which the linker or loader inserts the total length of all the external dummy sections",
+          "HLASM-LR: Using external dummy sections | The linker merges this definition with other definitions of the same name, assigning the longest length and strictest alignment.",
+          "HLASM-LR: Offset constant—Q | Use this constant to reserve storage for the offset into a storage area of an external dummy section"
+        ]
+      },
+      "RSECT-DATA": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: RSECT instruction | The RSECT instruction initiates a read-only executable control section or indicates the continuation of a read-only executable control section."
+        ]
+      },
+      "RSECT-SYSSTYP": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: RSECT instruction | The RSECT instruction initiates a read-only executable control section or indicates the continuation of a read-only executable control section.",
+          "HLASM-LR: &SYSSTYP System Variable Symbol | Use &SYSSTYP in a macro definition to generate the type of the current control section.",
+          "HLASM-LR: &SYSSTYP System Variable Symbol | the value assigned to &SYSSTYP is either CSECT, RSECT, DSECT, or COM."
+        ]
+      },
+      "ENTRY-VCON": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ENTRY instruction | The ENTRY instruction identifies symbols defined in this source module as “external” so that they can be referred to by another source module."
+        ]
+      }
+    }
+  },
   "HD101A": {
     "basis": "spec",
     "refs": [

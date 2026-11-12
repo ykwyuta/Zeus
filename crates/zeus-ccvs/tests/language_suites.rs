@@ -108,9 +108,9 @@ fn inventories_pair_diagnostics_and_cover_every_source_in_report_order() {
                     // (&SYSSEQF reads it), not source text
                     let sequence = ext == "ASM"
                         && line.len() <= 80
-                        && line.get(72..).is_some_and(|f| {
-                            f.bytes().all(|b| b.is_ascii_alphanumeric())
-                        });
+                        && line
+                            .get(72..)
+                            .is_some_and(|f| f.bytes().all(|b| b.is_ascii_alphanumeric()));
                     assert!(
                         line.len() <= 72 || sequence,
                         "{}:{} exceeds margins",
@@ -253,6 +253,8 @@ fn check(suite: &str, native: bool, format: AsmFormat) {
             );
             match (program.outcome, spec.expect.as_str()) {
                 (Outcome::Compiled, "compile-only") => {}
+                // the manifest's object_formats: never the Zeus format itself
+                (Outcome::NotWritable { format }, _) => assert_ne!(format, "zeus"),
                 (Outcome::Ran { counts }, "compile-error") => {
                     assert_eq!((counts.total, counts.pass), (1, 1))
                 }

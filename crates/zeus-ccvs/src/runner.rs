@@ -36,6 +36,11 @@ pub enum Outcome {
         code: Option<i32>,
     },
     Timeout,
+    /// Zeus cannot write the program in this object format (the manifest's
+    /// object_formats); nothing was run.
+    NotWritable {
+        format: String,
+    },
 }
 
 impl Outcome {
@@ -55,7 +60,7 @@ impl Outcome {
                     && counts.fail == 0
                     && counts.pass + counts.deleted + counts.inspect == counts.total
             }
-            Outcome::Compiled => true,
+            Outcome::Compiled | Outcome::NotWritable { .. } => true,
             _ => false,
         }
     }
@@ -263,6 +268,18 @@ fn run_program(
     cfg: &ProgramConfig,
     ibm_std: bool,
 ) -> Result<Outcome> {
+    if let (Toolchain::Zas { format, .. }, Some(formats)) = (tc, &cfg.object_formats) {
+        let name = match format {
+            crate::toolchain::AsmFormat::Zeus => "zeus",
+            crate::toolchain::AsmFormat::Obj => "obj",
+            crate::toolchain::AsmFormat::Goff => "goff",
+        };
+        if !formats.iter().any(|f| f == name) {
+            return Ok(Outcome::NotWritable {
+                format: name.into(),
+            });
+        }
+    }
     let sp = special(program);
     for a in tc.artifacts(program) {
         let _ = fs::remove_file(dir.join(a));
