@@ -723,6 +723,22 @@
       "POWER-FRACTION"
     ]
   },
+  "ZA122A": {
+    "expect": "run",
+    "tests": [
+      "ROUND-CARRY-DISPLAY",
+      "ROUND-CARRY-PACKED",
+      "ROUND-NO-CARRY",
+      "ROUND-NEGATIVE-HALF",
+      "ROUND-CARRY-TRUNCATE",
+      "SIGN-LEAD-SEP-HEX",
+      "SIGN-TRAIL-SEP-HEX",
+      "SIGN-LEAD-OVER-HEX",
+      "SIGN-TRAIL-OVER-HEX",
+      "SIGN-SEP-ARITH",
+      "SIGN-SEP-MOVE"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [
@@ -1982,6 +1998,18 @@
       "RECURSIVE-CANCEL"
     ]
   },
+  "ZP113A": {
+    "expect": "run",
+    "tests": [
+      "ALIAS-SAME-ITEM",
+      "CONTENT-CALLER-KEPT",
+      "CONTENT-COPY-CHANGED",
+      "RETURN-CODE-PASSED",
+      "GLOBAL-SHADOWED",
+      "GLOBAL-MAIN-KEPT",
+      "GLOBAL-COND-NAME"
+    ]
+  },
   "ZS101A": {
     "expect": "run",
     "tests": [
@@ -2041,6 +2069,20 @@
       "OPEN-CLOSE-ELSE",
       "INSPECT-FUNCTION",
       "BATCH-OPTIONS"
+    ]
+  },
+  "ZS107A": {
+    "expect": "run",
+    "tests": [
+      "WINDOW-LOW-EDGE",
+      "WINDOW-HIGH-EDGE",
+      "WINDOW-DEFAULT-50",
+      "WINDOW-DATE",
+      "WINDOW-DAY",
+      "NATIONAL-LEAD-SEP",
+      "NATIONAL-TRAIL-SEP",
+      "INIT-SKIPS-REDEFINES",
+      "NATIONAL-SET-FALSE"
     ]
   },
   "ZX101A": {
@@ -2152,6 +2194,18 @@
       "COMMA-TEST-1",
       "COMMA-TEST-2",
       "COMMA-TEST-3"
+    ]
+  },
+  "ZX110A": {
+    "expect": "run",
+    "tests": [
+      "VARYING-AFTER-FINAL",
+      "VARYING-AFTER-DEPEND",
+      "VARYING-AFTER-ORDER",
+      "SET-FALSE-MULTIPLE",
+      "SET-FALSE-SIBLING",
+      "SET-TRUE-RANGE-FIRST",
+      "SET-FALSE-RANGE"
     ]
   }
 }

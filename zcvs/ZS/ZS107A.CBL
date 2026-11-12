@@ -1,0 +1,157 @@
+      * ZS107A: century windows, national separate signs, INITIALIZE
+      * SPEC: YEAR-TO-YYYY/DATE-TO-YYYYMMDD/DAY-TO-YYYYDDD (ENTERPRISE
+      * COBOL TAKES AT MOST TWO ARGUMENTS; THE WINDOW ENDS AT THE
+      * CURRENT YEAR PLUS ARGUMENT-2, SO THE EDGES ARE COMPUTED FROM
+      * CURRENT-DATE); SIGN SEPARATE FOR NATIONAL; INITIALIZE; SET
+      * FALSE. AUDIT S04, N03, X03, X02. INITIALIZE SKIPS A REDEFINES
+      * ITEM AND INITIALIZES THE REDEFINED ONE.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZS107A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  WS-Y PIC 9(4).
+       01  WS-CUR PIC 9(4).
+       01  WS-HI PIC 9(4).
+       01  WS-LO PIC 9(4).
+       01  WS-YLO PIC 99.
+       01  WS-YHI PIC 99.
+       01  WS-EXP PIC 9(8).
+       01  WS-D PIC 9(8).
+       01  WS-J PIC 9(7).
+       01  WS-NS-G.
+           05  WS-NS PIC S99 USAGE NATIONAL SIGN LEADING SEPARATE.
+       01  WS-NT-G.
+           05  WS-NT PIC S99 USAGE NATIONAL SIGN TRAILING SEPARATE.
+       01  WS-REC.
+           05  WS-NUM PIC 9(4) VALUE 1234.
+           05  WS-TXT REDEFINES WS-NUM PIC X(4).
+           05  WS-TAIL PIC X(2) VALUE 'ZZ'.
+       01  WS-NFLAG-G.
+           05  WS-NFLAG PIC N VALUE N'Y' USAGE NATIONAL.
+               88  N-YES VALUE N'Y' FALSE N'N'.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZS107A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'WINDOW-LOW-EDGE' TO ZCVS-TEST-NAME.
+           MOVE FUNCTION CURRENT-DATE(1:4) TO WS-CUR.
+           COMPUTE WS-HI = WS-CUR + 50.
+           COMPUTE WS-LO = WS-HI - 99.
+           COMPUTE WS-YLO = FUNCTION MOD(WS-LO, 100).
+           COMPUTE WS-YHI = FUNCTION MOD(WS-HI, 100).
+           COMPUTE WS-Y = FUNCTION YEAR-TO-YYYY(WS-YLO, 50).
+           IF WS-Y = WS-LO
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'LOW YEAR' TO ZCVS-EXPECTED
+               MOVE WS-Y TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'WINDOW-HIGH-EDGE' TO ZCVS-TEST-NAME.
+           COMPUTE WS-Y = FUNCTION YEAR-TO-YYYY(WS-YHI, 50).
+           IF WS-Y = WS-HI
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'HIGH YEAR' TO ZCVS-EXPECTED
+               MOVE WS-Y TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'WINDOW-DEFAULT-50' TO ZCVS-TEST-NAME.
+           COMPUTE WS-Y = FUNCTION YEAR-TO-YYYY(WS-YHI).
+           IF WS-Y = WS-HI
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'HIGH YEAR' TO ZCVS-EXPECTED
+               MOVE WS-Y TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'WINDOW-DATE' TO ZCVS-TEST-NAME.
+           COMPUTE WS-D = FUNCTION DATE-TO-YYYYMMDD(
+               WS-YLO * 10000 + 101, 50).
+           COMPUTE WS-EXP = WS-LO * 10000 + 101.
+           IF WS-D = WS-EXP
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'LOW 0101' TO ZCVS-EXPECTED
+               MOVE WS-D TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'WINDOW-DAY' TO ZCVS-TEST-NAME.
+           COMPUTE WS-J = FUNCTION DAY-TO-YYYYDDD(
+               WS-YHI * 1000 + 365, 50).
+           COMPUTE WS-EXP = WS-HI * 1000 + 365.
+           IF WS-J = WS-EXP
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'HIGH 365' TO ZCVS-EXPECTED
+               MOVE WS-J TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NATIONAL-LEAD-SEP' TO ZCVS-TEST-NAME.
+           MOVE -12 TO WS-NS.
+           MOVE WS-NS-G TO ZCVS-HEX-IN.
+           MOVE 6 TO ZCVS-HEX-LEN.
+           PERFORM ZCVS-TO-HEX.
+           IF ZCVS-HEX-OUT(1:12) = '002D00310032'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '002D00310032' TO ZCVS-EXPECTED
+               MOVE ZCVS-HEX-OUT(1:12) TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NATIONAL-TRAIL-SEP' TO ZCVS-TEST-NAME.
+           MOVE 12 TO WS-NT.
+           MOVE WS-NT-G TO ZCVS-HEX-IN.
+           MOVE 6 TO ZCVS-HEX-LEN.
+           PERFORM ZCVS-TO-HEX.
+           IF ZCVS-HEX-OUT(1:12) = '00310032002B'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '00310032002B' TO ZCVS-EXPECTED
+               MOVE ZCVS-HEX-OUT(1:12) TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'INIT-SKIPS-REDEFINES' TO ZCVS-TEST-NAME.
+           INITIALIZE WS-REC.
+           IF WS-NUM = 0 AND WS-TAIL = SPACES
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '0000' TO ZCVS-EXPECTED
+               MOVE WS-TXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'NATIONAL-SET-FALSE' TO ZCVS-TEST-NAME.
+           SET N-YES TO FALSE.
+           IF WS-NFLAG = N'N' AND NOT N-YES
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'N' TO ZCVS-EXPECTED
+               MOVE WS-NFLAG-G TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.
