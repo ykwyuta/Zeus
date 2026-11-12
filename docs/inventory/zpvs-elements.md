@@ -1,6 +1,6 @@
 # ZPVS 網羅台帳 (Enterprise PL/I for z/OS)
 
-Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 411、使用あり 317、対象外 14、未網羅 80。
+Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 664、使用あり 309、対象外 9、未網羅 346。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -176,28 +176,52 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | ADDR | 使用あり | PD110A, PM109A, PM111A, PS101A | - |  |
 | Built-in functions | ADDRDATA | 使用あり | PM111A | - |  |
 | Built-in functions | ALL | 使用あり | PM109A | - |  |
+| Built-in functions | ALLCOMPARE | 未網羅 |  | - |  |
+| Built-in functions | ALLOC31 | 未網羅 |  | - |  |
+| Built-in functions | ALLOCATE | 未網羅 |  | - |  |
 | Built-in functions | ALLOCATION | 使用あり | PS102A | - |  |
+| Built-in functions | ALLOCNEXT | 未網羅 |  | - |  |
 | Built-in functions | ALLOCSIZE | 未網羅 |  | - |  |
 | Built-in functions | ANY | 使用あり | PM109A | - |  |
 | Built-in functions | ASIN | 使用あり | PM110A | - |  |
 | Built-in functions | ATAN | 使用あり | PM109A | - |  |
 | Built-in functions | ATAND | 使用あり | PM109A | - |  |
 | Built-in functions | ATANH | 使用あり | PM109A | - |  |
+| Built-in functions | AUTOMATIC | 使用あり | PC109A | - |  |
+| Built-in functions | AVAILABLEAREA | 未網羅 |  | - |  |
+| Built-in functions | BASE64DECODE | 未網羅 |  | - |  |
+| Built-in functions | BASE64DECODE8 | 未網羅 |  | - |  |
+| Built-in functions | BASE64DECODE16 | 未網羅 |  | - |  |
+| Built-in functions | BASE64ENCODE | 未網羅 |  | - |  |
+| Built-in functions | BASE64ENCODE8 | 未網羅 |  | - |  |
+| Built-in functions | BASE64ENCODE16 | 未網羅 |  | - |  |
+| Built-in functions | BETWEEN | 未網羅 |  | - |  |
+| Built-in functions | BETWEENEXCLUSIVE | 未網羅 |  | - |  |
+| Built-in functions | BETWEENLEFTEXCLUSIVE | 未網羅 |  | - |  |
+| Built-in functions | BETWEENRIGHTEXCLUSIVE | 未網羅 |  | - |  |
 | Built-in functions | BINARY | 使用あり | PA101A, PA102A, PA104A, PC101A, PC102A, PC103A ほか 46 | - |  |
 | Built-in functions | BINARYVALUE | 使用あり | PM110A, PM111A | - |  |
-| Built-in functions | BINVALUE | 使用あり | PD105A | - |  |
+| Built-in functions | BINSEARCH | 未網羅 |  | - |  |
+| Built-in functions | BINSEARCHX | 未網羅 |  | - |  |
 | Built-in functions | BIT | 使用あり | PA102A, PC110A, PC111A, PD102A, PD110A, PF103A ほか 4 | - |  |
 | Built-in functions | BITLOCATION | 使用あり | PM111A | - |  |
 | Built-in functions | BOOL | 使用あり | PA102A | - |  |
 | Built-in functions | BYTE | 使用あり | PM109A | - |  |
+| Built-in functions | BYTELENGTH | 未網羅 |  | - |  |
 | Built-in functions | CDS | 使用あり | PM111A | - |  |
 | Built-in functions | CEIL | 使用あり | PM103A | - |  |
-| Built-in functions | CENTER | 使用あり | PM103A | - |  |
-| Built-in functions | CENTRE | 使用あり | PM110A | - |  |
+| Built-in functions | CENTERLEFT | 使用あり | PM103A, PM110A | - |  |
+| Built-in functions | CENTERRIGHT | 未網羅 |  | - |  |
+| Built-in functions | CENTRELEFT | 使用あり | PM103A, PM110A | - |  |
+| Built-in functions | CENTRERIGHT | 未網羅 |  | - |  |
 | Built-in functions | CHARACTER | 使用あり | PA102A, PA104A, PC103A, PC107A, PC108A, PC110A ほか 33 | - |  |
 | Built-in functions | CHARGRAPHIC | 未網羅 |  | - |  |
 | Built-in functions | CHARVAL | 使用あり | PM109A | - |  |
+| Built-in functions | CHECKSTG | 未網羅 |  | - |  |
+| Built-in functions | CHECKSUM | 未網羅 |  | - |  |
+| Built-in functions | CODEPAGE | 未網羅 |  | - |  |
 | Built-in functions | COLLATE | 使用あり | PM109A | - |  |
+| Built-in functions | COLLAPSE | 未網羅 |  | - |  |
 | Built-in functions | COMPARE | 未網羅 |  | - |  |
 | Built-in functions | COMPLEX | 使用あり | PM110A | - |  |
 | Built-in functions | CONJG | 使用あり | PD106A | - |  |
@@ -214,6 +238,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | DATETIME | 使用あり | PM110A | - |  |
 | Built-in functions | DAYS | 使用あり | PM105A | - |  |
 | Built-in functions | DAYSTODATE | 使用あり | PM105A | - |  |
+| Built-in functions | DAYSTOMICROSECS | 未網羅 |  | - |  |
 | Built-in functions | DAYSTOSECS | 使用あり | PM109A | - |  |
 | Built-in functions | DECIMAL | 使用あり | PA101A, PA102A, PA105A, PC102A, PC106A, PC107A ほか 17 | - |  |
 | Built-in functions | DIMENSION | 使用あり | PA104A, PS102A, PS104A | - |  |
@@ -227,156 +252,384 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | ERFC | 未網羅 |  | - |  |
 | Built-in functions | EXP | 使用あり | PM109A | - |  |
 | Built-in functions | EXPONENT | 使用あり | PM111A | - |  |
+| Built-in functions | FILEDDINT | 未網羅 |  | - |  |
+| Built-in functions | FILEDDTEST | 未網羅 |  | - |  |
+| Built-in functions | FILEDDWORD | 未網羅 |  | - |  |
+| Built-in functions | FILEID | 未網羅 |  | - |  |
+| Built-in functions | FILENEW | 未網羅 |  | - |  |
+| Built-in functions | FILEOPEN | 未網羅 |  | - |  |
+| Built-in functions | FILEREAD | 未網羅 |  | - |  |
+| Built-in functions | FILESEEK | 未網羅 |  | - |  |
+| Built-in functions | FILETELL | 未網羅 |  | - |  |
+| Built-in functions | FILEWRITE | 未網羅 |  | - |  |
 | Built-in functions | FIXED | 使用あり | PD108A | - |  |
+| Built-in functions | FIXEDBIN | 未網羅 |  | - |  |
+| Built-in functions | FIXEDDEC | 未網羅 |  | - |  |
 | Built-in functions | FLOAT | 使用あり | PM110A | - |  |
+| Built-in functions | FLOATBIN | 未網羅 |  | - |  |
+| Built-in functions | FLOATDEC | 未網羅 |  | - |  |
 | Built-in functions | FLOOR | 使用あり | PM103A | - |  |
+| Built-in functions | FOLDEDFULLMATCH | 未網羅 |  | - |  |
+| Built-in functions | FOLDEDSIMPLEMATCH | 未網羅 |  | - |  |
 | Built-in functions | GAMMA | 未網羅 |  | - |  |
 | Built-in functions | GETENV | 未網羅 |  | - |  |
+| Built-in functions | GETJCLSYMBOL | 未網羅 |  | - |  |
+| Built-in functions | GETSYSINT | 未網羅 |  | - |  |
+| Built-in functions | GETSYSWORD | 未網羅 |  | - |  |
 | Built-in functions | GRAPHIC | 使用あり | PD106A | - |  |
+| Built-in functions | GTCA | 未網羅 |  | - |  |
 | Built-in functions | HANDLE | 使用あり | PS106A | - |  |
 | Built-in functions | HBOUND | 使用あり | PM109A | - |  |
+| Built-in functions | HBOUNDACROSS | 未網羅 |  | - |  |
 | Built-in functions | HEX | 使用あり | PA103A, PA105A, PD101A, PD102A, PD103A, PD106A ほか 3 | - |  |
+| Built-in functions | HEX8 | 未網羅 |  | - |  |
+| Built-in functions | HEXDECODE | 未網羅 |  | - |  |
+| Built-in functions | HEXDECODE8 | 未網羅 |  | - |  |
+| Built-in functions | HEXENCODE | 未網羅 |  | - |  |
+| Built-in functions | HEXENCODE8 | 未網羅 |  | - |  |
 | Built-in functions | HEXIMAGE | 未網羅 |  | - |  |
+| Built-in functions | HEXIMAGE8 | 未網羅 |  | - |  |
 | Built-in functions | HIGH | 使用あり | PM109A | - |  |
 | Built-in functions | HUGE | 使用あり | PM109A | - |  |
 | Built-in functions | IAND | 使用あり | PM109A | - |  |
+| Built-in functions | ICLZ | 未網羅 |  | - |  |
 | Built-in functions | IEOR | 使用あり | PM109A | - |  |
+| Built-in functions | IFTHENELSE | 未網羅 |  | - |  |
 | Built-in functions | IMAG | 使用あり | PD106A, PM110A | - |  |
+| Built-in functions | INARRAY | 未網羅 |  | - |  |
 | Built-in functions | INDEX | 使用あり | PF101A, PM103A | - |  |
+| Built-in functions | INDEXR | 未網羅 |  | - |  |
+| Built-in functions | INDICATORS | 未網羅 |  | - |  |
+| Built-in functions | INLIST | 未網羅 |  | - |  |
 | Built-in functions | INOT | 使用あり | PM109A | - |  |
 | Built-in functions | IOR | 使用あり | PM109A | - |  |
+| Built-in functions | IRLL | 未網羅 |  | - |  |
+| Built-in functions | IRRL | 未網羅 |  | - |  |
+| Built-in functions | ISFINITE | 未網羅 |  | - |  |
 | Built-in functions | ISIGNED | 未網羅 |  | - |  |
+| Built-in functions | ISINF | 未網羅 |  | - |  |
+| Built-in functions | ISJCLSYMBOL | 未網羅 |  | - |  |
 | Built-in functions | ISLL | 使用あり | PM109A | - |  |
+| Built-in functions | ISMAIN | 未網羅 |  | - |  |
+| Built-in functions | ISNAN | 未網羅 |  | - |  |
+| Built-in functions | ISNORMAL | 未網羅 |  | - |  |
 | Built-in functions | ISRL | 使用あり | PM109A | - |  |
+| Built-in functions | ISZERO | 未網羅 |  | - |  |
 | Built-in functions | IUNSIGNED | 未網羅 |  | - |  |
-| Built-in functions | JULIANTOSECS | 未網羅 |  | - |  |
+| Built-in functions | JSONGETARRAYEND | 未網羅 |  | - |  |
+| Built-in functions | JSONGETARRAYSTART | 未網羅 |  | - |  |
+| Built-in functions | JSONGETCOLON | 未網羅 |  | - |  |
+| Built-in functions | JSONGETCOMMA | 未網羅 |  | - |  |
+| Built-in functions | JSONGETMEMBER | 未網羅 |  | - |  |
+| Built-in functions | JSONGETOBJECTEND | 未網羅 |  | - |  |
+| Built-in functions | JSONGETOBJECTSTART | 未網羅 |  | - |  |
+| Built-in functions | JSONGETVALUE | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTARRAYEND | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTARRAYSTART | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTCOLON | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTCOMMA | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTMEMBER | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTOBJECTEND | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTOBJECTSTART | 未網羅 |  | - |  |
+| Built-in functions | JSONPUTVALUE | 未網羅 |  | - |  |
+| Built-in functions | JSONVALID | 未網羅 |  | - |  |
+| Built-in functions | JULIANTOSMF | 未網羅 |  | - |  |
 | Built-in functions | LBOUND | 使用あり | PM109A | - |  |
+| Built-in functions | LBOUNDACROSS | 未網羅 |  | - |  |
 | Built-in functions | LEFT | 使用あり | PM103A | - |  |
 | Built-in functions | LENGTH | 使用あり | PC103A, PD102A, PD110A, PM103A, PM107A, PM108A ほか 2 | - |  |
 | Built-in functions | LINENO | 使用あり | PF102A, PF106A | - |  |
 | Built-in functions | LOCATION | 未網羅 |  | - |  |
+| Built-in functions | LOCNEWSPACE | 未網羅 |  | - |  |
+| Built-in functions | LOCNEWVALUE | 未網羅 |  | - |  |
+| Built-in functions | LOCSTG | 未網羅 |  | - |  |
+| Built-in functions | LOCVAL | 未網羅 |  | - |  |
 | Built-in functions | LOG | 使用あり | PM105A | - |  |
-| Built-in functions | LOG10 | 使用あり | PM109A | - |  |
-| Built-in functions | LOG2 | 使用あり | PM109A | - |  |
 | Built-in functions | LOGGAMMA | 未網羅 |  | - |  |
+| Built-in functions | LOG2 | 使用あり | PM109A | - |  |
+| Built-in functions | LOG10 | 使用あり | PM109A | - |  |
 | Built-in functions | LOW | 使用あり | PD110A, PM109A | - |  |
+| Built-in functions | LOWERASCII | 未網羅 |  | - |  |
 | Built-in functions | LOWERCASE | 使用あり | PM103A | - |  |
+| Built-in functions | LOWERLATIN1 | 未網羅 |  | - |  |
 | Built-in functions | LOWER2 | 未網羅 |  | - |  |
+| Built-in functions | MAINNAME | 未網羅 |  | - |  |
 | Built-in functions | MAX | 使用あり | PM105A | - |  |
+| Built-in functions | MAXDATE | 未網羅 |  | - |  |
 | Built-in functions | MAXEXP | 使用あり | PM109A | - |  |
 | Built-in functions | MAXLENGTH | 使用あり | PD102A | - |  |
+| Built-in functions | MAXVAL | 未網羅 |  | - |  |
+| Built-in functions | MEMCOLLAPSE | 未網羅 |  | - |  |
+| Built-in functions | MEMCONVERT | 未網羅 |  | - |  |
+| Built-in functions | MEMCU12 | 未網羅 |  | - |  |
+| Built-in functions | MEMCU14 | 未網羅 |  | - |  |
+| Built-in functions | MEMCU21 | 未網羅 |  | - |  |
+| Built-in functions | MEMCU24 | 未網羅 |  | - |  |
+| Built-in functions | MEMCU41 | 未網羅 |  | - |  |
+| Built-in functions | MEMCU42 | 未網羅 |  | - |  |
+| Built-in functions | MEMINDEX | 未網羅 |  | - |  |
+| Built-in functions | MEMREPLACE | 未網羅 |  | - |  |
+| Built-in functions | MEMSEARCH | 未網羅 |  | - |  |
+| Built-in functions | MEMSEARCHR | 未網羅 |  | - |  |
+| Built-in functions | MEMSQUEEZE | 未網羅 |  | - |  |
+| Built-in functions | MEMUVALID8 | 未網羅 |  | - |  |
+| Built-in functions | MEMUVALID16 | 未網羅 |  | - |  |
+| Built-in functions | MEMVERIFY | 未網羅 |  | - |  |
+| Built-in functions | MEMVERIFYR | 未網羅 |  | - |  |
+| Built-in functions | MICROSECS | 未網羅 |  | - |  |
+| Built-in functions | MICROSECSTODATE | 未網羅 |  | - |  |
+| Built-in functions | MICROSECSTODAYS | 未網羅 |  | - |  |
 | Built-in functions | MIN | 使用あり | PM105A | - |  |
+| Built-in functions | MINDATE | 未網羅 |  | - |  |
 | Built-in functions | MINEXP | 使用あり | PM109A | - |  |
+| Built-in functions | MINVAL | 未網羅 |  | - |  |
 | Built-in functions | MOD | 使用あり | PC101A, PM103A | - |  |
+| Built-in functions | MPSTR | 未網羅 |  | - |  |
 | Built-in functions | MULTIPLY | 使用あり | PA101A | - |  |
-| Built-in functions | NEW | 使用あり | PS106A | - |  |
 | Built-in functions | NULL | 使用あり | PD109A, PS101A | - |  |
+| Built-in functions | NULLENTRY | 未網羅 |  | - |  |
 | Built-in functions | OFFSET | 使用あり | PD109A, PE115N, PE115P, PM111A, PS103A | - |  |
 | Built-in functions | OFFSETADD | 使用あり | PM111A | - |  |
 | Built-in functions | OFFSETDIFF | 使用あり | PM111A | - |  |
 | Built-in functions | OFFSETSUBTRACT | 使用あり | PM111A | - |  |
 | Built-in functions | OFFSETVALUE | 使用あり | PM111A | - |  |
 | Built-in functions | OMITTED | 使用あり | PD110A | - |  |
+| Built-in functions | ONACTUAL | 未網羅 |  | - |  |
+| Built-in functions | ONAREA | 未網羅 |  | - |  |
 | Built-in functions | ONCHAR | 使用あり | PC107A | - |  |
 | Built-in functions | ONCODE | 使用あり | PC104A, PC106A, PC110A, PC111A, PF104M, PF106A | - |  |
 | Built-in functions | ONCONDCOND | 未網羅 |  | - |  |
 | Built-in functions | ONCONDID | 未網羅 |  | - |  |
 | Built-in functions | ONCOUNT | 使用あり | PM110A | - |  |
+| Built-in functions | ONEXPECTED | 未網羅 |  | - |  |
 | Built-in functions | ONFILE | 未網羅 |  | - |  |
+| Built-in functions | ONGSOURCE | 未網羅 |  | - |  |
+| Built-in functions | ONHBOUND | 未網羅 |  | - |  |
+| Built-in functions | ONJSONNAME | 未網羅 |  | - |  |
 | Built-in functions | ONKEY | 未網羅 |  | - |  |
+| Built-in functions | ONLBOUND | 未網羅 |  | - |  |
+| Built-in functions | ONLINE | 未網羅 |  | - |  |
 | Built-in functions | ONLOC | 未網羅 |  | - |  |
+| Built-in functions | ONOFFSET | 未網羅 |  | - |  |
+| Built-in functions | ONOPERATOR | 未網羅 |  | - |  |
+| Built-in functions | ONPACKAGE | 未網羅 |  | - |  |
+| Built-in functions | ONPROCEDURE | 未網羅 |  | - |  |
 | Built-in functions | ONSOURCE | 使用あり | PC108A | - |  |
+| Built-in functions | ONSUBCODE | 未網羅 |  | - |  |
+| Built-in functions | ONSUBCODE2 | 未網羅 |  | - |  |
+| Built-in functions | ONSUBSCRIPT | 未網羅 |  | - |  |
+| Built-in functions | ONTEXT | 未網羅 |  | - |  |
+| Built-in functions | ONUCHAR | 未網羅 |  | - |  |
+| Built-in functions | ONUSOURCE | 未網羅 |  | - |  |
 | Built-in functions | ONWCHAR | 未網羅 |  | - |  |
+| Built-in functions | ONWSOURCE | 未網羅 |  | - |  |
 | Built-in functions | ORDINALNAME | 使用あり | PD105A | - |  |
 | Built-in functions | ORDINALPRED | 使用あり | PD105A | - |  |
 | Built-in functions | ORDINALSUCC | 使用あり | PD105A | - |  |
+| Built-in functions | PACKAGENAME | 未網羅 |  | - |  |
 | Built-in functions | PAGENO | 使用あり | PF102A, PF106A | - |  |
+| Built-in functions | PICSPEC | 未網羅 |  | - |  |
+| Built-in functions | PLACES | 未網羅 |  | - |  |
+| Built-in functions | PLIASCII | 未網羅 |  | - |  |
+| Built-in functions | PLIATTN | 未網羅 |  | - |  |
+| Built-in functions | PLICANC | 未網羅 |  | - |  |
+| Built-in functions | PLICKPT | 未網羅 |  | - |  |
+| Built-in functions | PLIDELETE | 未網羅 |  | - |  |
+| Built-in functions | PLIDUMP | 未網羅 |  | - |  |
+| Built-in functions | PLIEBCDIC | 未網羅 |  | - |  |
+| Built-in functions | PLIFILL | 未網羅 |  | - |  |
+| Built-in functions | PLIFREE | 使用あり | PS106A | - |  |
+| Built-in functions | PLIMOVE | 未網羅 |  | - |  |
+| Built-in functions | PLIOVER | 未網羅 |  | - |  |
+| Built-in functions | PLIPARSE | 未網羅 |  | - |  |
+| Built-in functions | PLIREST | 未網羅 |  | - |  |
+| Built-in functions | PLIRETC | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PC101A ほか 43 | - |  |
 | Built-in functions | PLIRETV | 使用あり | PM104M, PM107A, PM108A | - |  |
+| Built-in functions | PLISAXA | 未網羅 |  | - |  |
+| Built-in functions | PLISAXB | 未網羅 |  | - |  |
+| Built-in functions | PLISAXC | 未網羅 |  | - |  |
+| Built-in functions | PLISAXD | 未網羅 |  | - |  |
+| Built-in functions | PLISRTA | 未網羅 |  | - |  |
+| Built-in functions | PLISRTB | 未網羅 |  | - |  |
+| Built-in functions | PLISRTC | 未網羅 |  | - |  |
+| Built-in functions | PLISRTD | 未網羅 |  | - |  |
+| Built-in functions | PLISTCK | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKE | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKELOCAL | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKEUTC | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKF | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKLOCAL | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKP | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKPLOCAL | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKPUTC | 未網羅 |  | - |  |
+| Built-in functions | PLISTCKUTC | 未網羅 |  | - |  |
+| Built-in functions | PLITRAN11 | 未網羅 |  | - |  |
+| Built-in functions | PLITRAN12 | 未網羅 |  | - |  |
+| Built-in functions | PLITRAN21 | 未網羅 |  | - |  |
+| Built-in functions | PLITRAN22 | 未網羅 |  | - |  |
 | Built-in functions | POINTER | 使用あり | PM110A, PM111A, PS101A, PS103A, PS104A | - |  |
 | Built-in functions | POINTERADD | 使用あり | PS101A | - |  |
 | Built-in functions | POINTERDIFF | 使用あり | PM109A | - |  |
 | Built-in functions | POINTERSUBTRACT | 使用あり | PM111A | - |  |
 | Built-in functions | POINTERVALUE | 使用あり | PM110A, PM111A | - |  |
+| Built-in functions | POLY | 未網羅 |  | - |  |
 | Built-in functions | POPCNT | 未網羅 |  | - |  |
 | Built-in functions | PRECISION | 使用あり | PM110A | - |  |
+| Built-in functions | PRECVAL | 未網羅 |  | - |  |
+| Built-in functions | PRED | 未網羅 |  | - |  |
 | Built-in functions | PRESENT | 使用あり | PD110A | - |  |
+| Built-in functions | PROCEDURENAME | 未網羅 |  | - |  |
 | Built-in functions | PROD | 使用あり | PM109A | - |  |
+| Built-in functions | PUTENV | 未網羅 |  | - |  |
+| Built-in functions | QUICKSORT | 未網羅 |  | - |  |
+| Built-in functions | QUICKSORTX | 未網羅 |  | - |  |
 | Built-in functions | RADIX | 使用あり | PM109A | - |  |
 | Built-in functions | RAISE2 | 使用あり | PM109A | - |  |
 | Built-in functions | RANDOM | 使用あり | PD109A | - |  |
 | Built-in functions | RANK | 使用あり | PM111A | - |  |
 | Built-in functions | REAL | 使用あり | PD106A, PM110A | - |  |
+| Built-in functions | REGEX | 未網羅 |  | - |  |
 | Built-in functions | REM | 使用あり | PM103A | - |  |
+| Built-in functions | REPATTERN | 未網羅 |  | - |  |
 | Built-in functions | REPEAT | 使用あり | PD109A | - |  |
+| Built-in functions | REPLACE | 未網羅 |  | - |  |
 | Built-in functions | REPLACEBY2 | 未網羅 |  | - |  |
 | Built-in functions | REVERSE | 使用あり | PM103A | - |  |
 | Built-in functions | RIGHT | 使用あり | PM103A | - |  |
 | Built-in functions | ROUND | 使用あり | PM103A | - |  |
-| Built-in functions | ROUNDDEC | 未網羅 |  | - |  |
+| Built-in functions | ROUNDAWAYFROMZERO | 未網羅 |  | - |  |
+| Built-in functions | ROUNDTOEVEN | 未網羅 |  | - |  |
 | Built-in functions | SAMEKEY | 未網羅 |  | - |  |
 | Built-in functions | SCALE | 使用あり | PM111A | - |  |
+| Built-in functions | SCALEVAL | 未網羅 |  | - |  |
+| Built-in functions | SCRUBOUT | 未網羅 |  | - |  |
 | Built-in functions | SEARCH | 使用あり | PM103A | - |  |
 | Built-in functions | SEARCHR | 使用あり | PM109A | - |  |
 | Built-in functions | SECS | 未網羅 |  | - |  |
 | Built-in functions | SECSTODATE | 使用あり | PM111A | - |  |
 | Built-in functions | SECSTODAYS | 使用あり | PM109A | - |  |
+| Built-in functions | SHA1DIGEST | 未網羅 |  | - |  |
+| Built-in functions | SHA1FINAL | 未網羅 |  | - |  |
+| Built-in functions | SHA1INIT | 未網羅 |  | - |  |
+| Built-in functions | SHA1UPDATE | 未網羅 |  | - |  |
+| Built-in functions | SHA2DIGEST224 | 未網羅 |  | - |  |
+| Built-in functions | SHA2DIGEST256 | 未網羅 |  | - |  |
+| Built-in functions | SHA2DIGEST384 | 未網羅 |  | - |  |
+| Built-in functions | SHA2DIGEST512 | 未網羅 |  | - |  |
+| Built-in functions | SHA2FINAL224 | 未網羅 |  | - |  |
+| Built-in functions | SHA2FINAL256 | 未網羅 |  | - |  |
+| Built-in functions | SHA2FINAL384 | 未網羅 |  | - |  |
+| Built-in functions | SHA2FINAL512 | 未網羅 |  | - |  |
+| Built-in functions | SHA2INIT224 | 未網羅 |  | - |  |
+| Built-in functions | SHA2INIT256 | 未網羅 |  | - |  |
+| Built-in functions | SHA2INIT384 | 未網羅 |  | - |  |
+| Built-in functions | SHA2INIT512 | 未網羅 |  | - |  |
+| Built-in functions | SHA2UPDATE224 | 未網羅 |  | - |  |
+| Built-in functions | SHA2UPDATE256 | 未網羅 |  | - |  |
+| Built-in functions | SHA2UPDATE384 | 未網羅 |  | - |  |
+| Built-in functions | SHA2UPDATE512 | 未網羅 |  | - |  |
+| Built-in functions | SHA3DIGEST224 | 未網羅 |  | - |  |
+| Built-in functions | SHA3DIGEST256 | 未網羅 |  | - |  |
+| Built-in functions | SHA3DIGEST384 | 未網羅 |  | - |  |
+| Built-in functions | SHA3DIGEST512 | 未網羅 |  | - |  |
+| Built-in functions | SHA3FINAL224 | 未網羅 |  | - |  |
+| Built-in functions | SHA3FINAL256 | 未網羅 |  | - |  |
+| Built-in functions | SHA3FINAL384 | 未網羅 |  | - |  |
+| Built-in functions | SHA3FINAL512 | 未網羅 |  | - |  |
+| Built-in functions | SHA3INIT224 | 未網羅 |  | - |  |
+| Built-in functions | SHA3INIT256 | 未網羅 |  | - |  |
+| Built-in functions | SHA3INIT384 | 未網羅 |  | - |  |
+| Built-in functions | SHA3INIT512 | 未網羅 |  | - |  |
+| Built-in functions | SHA3UPDATE224 | 未網羅 |  | - |  |
+| Built-in functions | SHA3UPDATE256 | 未網羅 |  | - |  |
+| Built-in functions | SHA3UPDATE384 | 未網羅 |  | - |  |
+| Built-in functions | SHA3UPDATE512 | 未網羅 |  | - |  |
 | Built-in functions | SIGN | 使用あり | PM109A | - |  |
+| Built-in functions | SIGNED | 未網羅 |  | - |  |
 | Built-in functions | SIN | 使用あり | PM105A | - |  |
 | Built-in functions | SIND | 使用あり | PM109A | - |  |
 | Built-in functions | SINH | 使用あり | PM109A | - |  |
 | Built-in functions | SIZE | 使用あり | PM109A | - |  |
+| Built-in functions | SMFTOJULIAN | 未網羅 |  | - |  |
+| Built-in functions | SOURCEFILE | 未網羅 |  | - |  |
+| Built-in functions | SOURCELINE | 未網羅 |  | - |  |
 | Built-in functions | SQRT | 使用あり | PM105A | - |  |
-| Built-in functions | STG | 使用あり | PD103A, PD104A, PD105A, PD106A, PD108A, PD109A ほか 2 | - |  |
+| Built-in functions | SQRTF | 未網羅 |  | - |  |
+| Built-in functions | SQUEEZE | 未網羅 |  | - |  |
+| Built-in functions | STACKADDR | 未網羅 |  | - |  |
+| Built-in functions | STCKETODATE | 未網羅 |  | - |  |
+| Built-in functions | STCKTODATE | 未網羅 |  | - |  |
 | Built-in functions | STORAGE | 使用あり | PD103A, PD104A, PD105A, PD106A, PD108A, PD109A ほか 2 | - |  |
 | Built-in functions | STRING | 使用あり | PF101A, PM110A | - |  |
 | Built-in functions | SUBSTR | 使用あり | PA104A, PC110A, PD102A, PD108A, PD109A, PD110A ほか 2 | - |  |
+| Built-in functions | SUBTO | 未網羅 |  | - |  |
 | Built-in functions | SUBTRACT | 使用あり | PM110A | - |  |
 | Built-in functions | SUCC | 未網羅 |  | - |  |
 | Built-in functions | SUM | 使用あり | PA104A, PS102A, PS105A | - |  |
 | Built-in functions | SYSNULL | 使用あり | PD109A, PS101A | - |  |
+| Built-in functions | SYSTEM | 未網羅 |  | - |  |
 | Built-in functions | TALLY | 使用あり | PM103A | - |  |
 | Built-in functions | TAN | 使用あり | PM110A | - |  |
 | Built-in functions | TAND | 使用あり | PM109A | - |  |
 | Built-in functions | TANH | 使用あり | PM109A | - |  |
+| Built-in functions | THREADID | 未網羅 |  | - |  |
 | Built-in functions | TIME | 使用あり | PM110A | - |  |
+| Built-in functions | TIMESTAMP | 未網羅 |  | - |  |
 | Built-in functions | TINY | 使用あり | PM109A | - |  |
 | Built-in functions | TRANSLATE | 使用あり | PM103A | - |  |
 | Built-in functions | TRIM | 使用あり | PA102A, PM103A | - |  |
 | Built-in functions | TRUNC | 使用あり | PM109A | - |  |
 | Built-in functions | TYPE | 未網羅 |  | - |  |
+| Built-in functions | UHIGH | 未網羅 |  | - |  |
+| Built-in functions | ULENGTH | 未網羅 |  | - |  |
+| Built-in functions | ULENGTH8 | 未網羅 |  | - |  |
+| Built-in functions | ULENGTH16 | 未網羅 |  | - |  |
+| Built-in functions | ULOW | 未網羅 |  | - |  |
+| Built-in functions | UNALLOCATED | 未網羅 |  | - |  |
+| Built-in functions | UNHEX | 未網羅 |  | - |  |
+| Built-in functions | UNSIGNED | 未網羅 |  | - |  |
 | Built-in functions | UNSPEC | 使用あり | PA103A, PA104A, PA105A, PD101A, PD102A, PD103A ほか 6 | - |  |
+| Built-in functions | UPOS | 未網羅 |  | - |  |
+| Built-in functions | UPPERASCII | 未網羅 |  | - |  |
 | Built-in functions | UPPERCASE | 使用あり | PM103A | - |  |
+| Built-in functions | UPPERLATIN1 | 未網羅 |  | - |  |
+| Built-in functions | USUBSTR | 未網羅 |  | - |  |
+| Built-in functions | USUPPLEMENTARY | 未網羅 |  | - |  |
 | Built-in functions | UTCDATETIME | 未網羅 |  | - |  |
+| Built-in functions | UTCMICROSECS | 未網羅 |  | - |  |
+| Built-in functions | UTCSECS | 未網羅 |  | - |  |
+| Built-in functions | UTF8 | 未網羅 |  | - |  |
+| Built-in functions | UTF8STG | 未網羅 |  | - |  |
+| Built-in functions | UTF8TOCHAR | 未網羅 |  | - |  |
+| Built-in functions | UTF8TOWCHAR | 未網羅 |  | - |  |
+| Built-in functions | UUID | 未網羅 |  | - |  |
+| Built-in functions | UUID4 | 未網羅 |  | - |  |
+| Built-in functions | UVALID | 未網羅 |  | - |  |
+| Built-in functions | UWIDTH | 未網羅 |  | - |  |
 | Built-in functions | VALID | 未網羅 |  | - |  |
 | Built-in functions | VALIDDATE | 使用あり | PM109A | - |  |
+| Built-in functions | VALIDVALUE | 未網羅 |  | - |  |
 | Built-in functions | VARGLIST | 未網羅 |  | - |  |
+| Built-in functions | VARGSIZE | 未網羅 |  | - |  |
 | Built-in functions | VERIFY | 使用あり | PM103A, PM110A | - |  |
 | Built-in functions | VERIFYR | 使用あり | PM109A | - |  |
+| Built-in functions | WCHARVAL | 未網羅 |  | - |  |
 | Built-in functions | WEEKDAY | 使用あり | PM109A | - |  |
-| Built-in functions | WHITESPACECOLLAPSE | 未網羅 |  | - |  |
+| Built-in functions | WHIGH | 未網羅 |  | - |  |
+| Built-in functions | WHEREDIFF | 未網羅 |  | - |  |
+| Built-in functions | WIDECHAR | 使用あり | PD106A | - |  |
+| Built-in functions | WLOW | 未網羅 |  | - |  |
+| Built-in functions | WSCOLLAPSE | 未網羅 |  | - |  |
+| Built-in functions | WSCOLLAPSE16 | 未網羅 |  | - |  |
+| Built-in functions | WSREPLACE | 未網羅 |  | - |  |
+| Built-in functions | WSREPLACE16 | 未網羅 |  | - |  |
 | Built-in functions | XMLCHAR | 未網羅 |  | - |  |
+| Built-in functions | XMLSCRUB | 未網羅 |  | - |  |
+| Built-in functions | XMLSCRUB16 | 未網羅 |  | - |  |
+| Built-in functions | XMLUCHAR | 未網羅 |  | - |  |
 | Built-in functions | Y4DATE | 未網羅 |  | - |  |
 | Built-in functions | Y4JULIAN | 未網羅 |  | - |  |
 | Built-in functions | Y4YEAR | 未網羅 |  | - |  |
-| Pseudovariables | ONCHAR | 使用あり | PC107A | - |  |
-| Pseudovariables | ONSOURCE | 使用あり | PC108A | - |  |
-| Pseudovariables | REAL | 使用あり | PD106A, PM110A | - |  |
-| Pseudovariables | IMAG | 使用あり | PD106A, PM110A | - |  |
-| Pseudovariables | STRING | 使用あり | PF101A, PM110A | - |  |
-| Pseudovariables | SUBSTR | 使用あり | PA104A, PC110A, PD102A, PD108A, PD109A, PD110A ほか 2 | - |  |
-| Pseudovariables | UNSPEC | 使用あり | PA103A, PA104A, PA105A, PD101A, PD102A, PD103A ほか 6 | - |  |
-| Pseudovariables | ENTRYADDR | 未網羅 |  | - |  |
-| Built-in subroutines | PLIRETC | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PC101A ほか 43 | - |  |
-| Built-in subroutines | PLIFREE | 使用あり | PS106A | - |  |
-| Built-in subroutines | PLISRTA | 未網羅 |  | - |  |
-| Built-in subroutines | PLISRTB | 未網羅 |  | - |  |
-| Built-in subroutines | PLISRTC | 未網羅 |  | - |  |
-| Built-in subroutines | PLISRTD | 未網羅 |  | - |  |
-| Built-in subroutines | PLIDUMP | 対象外 |  | - | 対象外: ダンプと Debug Tool の起動で、実行時の値に出ない |
-| Built-in subroutines | PLITEST | 対象外 |  | - | 対象外: ダンプと Debug Tool の起動で、実行時の値に出ない |
-| Built-in subroutines | PLICANC | 対象外 |  | - | 対象外: チェックポイント/再始動 (システムの再始動データセットが要る) |
-| Built-in subroutines | PLICKPT | 対象外 |  | - | 対象外: チェックポイント/再始動 (システムの再始動データセットが要る) |
-| Built-in subroutines | PLIREST | 対象外 |  | - | 対象外: チェックポイント/再始動 (システムの再始動データセットが要る) |
 | Preprocessor | %ACTIVATE | 使用あり | PM102A, PM106A | - |  |
 | Preprocessor | %DEACTIVATE | 使用あり | PM101A | - |  |
 | Preprocessor | %DECLARE | 使用あり | PM101A, PM102A, PM106A, PM110A | - |  |
