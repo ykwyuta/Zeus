@@ -497,8 +497,7 @@ impl Machine {
                 {
                     self.raise(Cond::Overflow, 300, act)?;
                 }
-                if r != 0.0 && r.abs() < 16f64.powi(-65) && self.enabled_now(act, cond::UNDERFLOW)
-                {
+                if r != 0.0 && r.abs() < 16f64.powi(-65) && self.enabled_now(act, cond::UNDERFLOW) {
                     // LRM UNDERFLOW: the result is set to zero
                     self.raise(Cond::Underflow, 330, act)?;
                     return Ok(Value::Float(0.0));
