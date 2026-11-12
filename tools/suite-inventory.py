@@ -418,7 +418,8 @@ def hlasm_pattern(category, name):
     if name == 'NOT':
         return r'\(\s*NOT\s|\(\s*[^)]*\sNOT\s'
     if name in ('INDEX', 'FIND', 'BYTE', 'UPPER', 'LOWER', 'DOUBLE', 'SIGNED') or name[1:2] == '2' or \
-            name.startswith('IS') or name in ('DCLEN', 'DCVAL', 'DEQUOTE'):
+            name.startswith('IS') or name in ('DCLEN', 'DCVAL', 'DEQUOTE', 'ESYM', 'SYSATTRA',
+                                              'SYSATTRP'):
         return r'\b' + name + r"\s*\(|\(\s*" + name + r'\s'
     return r'^\S*\s+' + re.escape(name) + r'(\s|$)'
 

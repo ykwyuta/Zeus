@@ -1,6 +1,6 @@
 # ZHVS 網羅台帳 (HLASM と z/Architecture)
 
-HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 659、使用あり 592、対象外 16、未網羅 51。
+HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 659、使用あり 594、対象外 16、未網羅 49。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -213,8 +213,8 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Conditional assembly | &SYSTIME | 使用あり | HM107A | - |  |
 | Conditional assembly | &SYSVER | 使用あり | HM109A | - |  |
 | Conditional assembly | ESYM | 未網羅 |  | - |  |
-| Conditional assembly | SYSATTRA | 未網羅 |  | - |  |
-| Conditional assembly | SYSATTRP | 未網羅 |  | - |  |
+| Conditional assembly | SYSATTRA | 使用あり | HM108A | - |  |
+| Conditional assembly | SYSATTRP | 使用あり | HM108A | - |  |
 | Machine instructions | A | 使用あり | HE101N, HE101P, HE102N, HE102P, HE103N, HE103P ほか 36 | - |  |
 | Machine instructions | AD | 使用あり | HF101A, HM108A | - |  |
 | Machine instructions | ADB | 使用あり | HI129A | - |  |
