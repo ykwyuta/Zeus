@@ -2,9 +2,10 @@
 * Reference does not pin down to the bit: rounding of decimal
 * values into HFP, fixed-point constants with a fraction,
 * scale modifiers, the decimal point in P constants, and the
-* contents of DS storage. Every check has basis zos in basis.json:
-* the expected bytes are the current Zeus assembler, and a run on
-* z/OS confirms or corrects them.
+* contents of DS storage. Fixed-point fractions are rounded to a
+* whole number, P ignores the decimal point and Z puts the sign in
+* the zone (Language Reference, basis spec); the HFP rounding of
+* E/D/L and DS storage are basis zos (current Zeus assembler).
 HD107A CSECT
          ZHVSHDR
 * E-TENTH

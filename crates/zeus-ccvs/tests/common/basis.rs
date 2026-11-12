@@ -13,8 +13,8 @@
 //! A program entry gives the default; `tests` overrides single checks.
 //! `zos` and `zeus` need a `note` that says what must be confirmed or adapted.
 //!
-//! `refs` cite the published documents (`docs/sources.json`) that decide the
-//! value, or, for `zos`, the place that leaves it open: `"DOC: heading"` or
+//! Every check cites the published documents (`docs/sources.json`) that
+//! decide its value, or, for `zos`, the place that leaves it open, in `refs`: `"DOC: heading"` or
 //! `"DOC: heading | quotation"`. A check's refs are its own, else its
 //! program's. `tools/basis-refs.py check` confirms the headings and the
 //! quotations against the documents themselves, which the repository does
@@ -112,15 +112,17 @@ pub fn verify(
             let basis = test.map_or(&entry.basis, |t| &t.basis);
             *counts.entry(basis.clone()).or_insert(0) += 1;
             let cited = test.is_some_and(|t| !t.refs.is_empty()) || !entry.refs.is_empty();
-            if cited {
-                *counts.entry("cited".into()).or_insert(0) += 1;
-            }
+            assert!(
+                cited,
+                "{suite}/basis.json: {program} {id} has no reference to a published document"
+            );
         }
         if tests.is_empty() {
             *counts.entry(entry.basis.clone()).or_insert(0) += 1;
-            if !entry.refs.is_empty() {
-                *counts.entry("cited".into()).or_insert(0) += 1;
-            }
+            assert!(
+                !entry.refs.is_empty(),
+                "{suite}/basis.json: {program} has no reference to a published document"
+            );
         }
     }
     counts

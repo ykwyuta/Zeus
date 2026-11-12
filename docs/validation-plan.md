@@ -52,6 +52,20 @@
   `tools/basis-refs.py check --docs DIR` で見出しが文書にあること、引用がその見出しの
   あとの本文にそのままあることを確かめる。`report` は出典の付いた検査を数える。
 - 照合で文書と食い違った検査は、文書に合わせて検査と Zeus を直す (例: `ZA118A`)。
+- 出典の無い検査は `cargo test -p zeus-ccvs` が落とす (`crates/zeus-ccvs/tests/common/basis.rs`)。
+
+台帳の文書 (`docs/sources.json`): Enterprise COBOL 6.4 LRM/PG と 4.2 PG、
+Enterprise PL/I 6.1 LRM/PG/Messages and Codes、HLASM 1.6 LR/PG、
+z/Architecture Principles of Operation、z/OS 3.1 LE Programming Reference・
+DFSMS Macro Instructions for Data Sets・MVS Assembler Services Reference 第 1/2 巻。
+
+| スイート | 検査 | 出典あり | spec | zos | zeus |
+| --- | --- | --- | --- | --- | --- |
+| ZCVS | 1,620 | 1,620 | 1,343 | 53 | 224 |
+| ZPVS | 547 | 547 | 534 | 13 | 0 |
+| ZHVS | 1,032 | 1,032 | 1,027 | 5 | 0 |
+
+(負系・正常対照はプログラムを 1 検査と数える。)
 
 ## 網羅台帳
 
@@ -153,3 +167,4 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | 2026-11-12 | 出典の仕組み (`docs/sources.json`・`tools/basis-refs.py`・`refs`)。ZA/ZD の 41 本を文書と照合。`ZA118A` は LRM「SIZE ERROR phrases」(BINARY/COMP-5 の上限は TRUNC に依らず PICTURE) と食い違っていたので検査と Zeus を直した。`ZA120A` の表示形 (仮数の桁の置き方は文書に無い)、`ZA113A`/`ZA114A` の +0 を `zos`/注記つきにした | 169 本 / 1,555 | | |
 | 2026-11-12 | ZCVS の全 170 本を文書と照合し、全 1,620 検査に出典を付けた。`ZN114A` (国別→英数字の MOVE) は LRM 表 51 で無効と決まるので負系 `ZE146N/P` に移し、Zeus に表 51 の MOVE の可否の診断を足した。VSAM の戻りコードは DFSMS Macro Instructions を台帳に足して裏付けた。DBCS の符号位置 (CCSID の変換表) と、COBOL が VSAM を呼ばずに出す 47 のときの VSAM 状態は文書に無いので `zos` にした | 170 本 / 1,553 | | |
 | 2026-11-12 | ZPVS の全 81 本を LRM・PG・Messages and Codes と照合し、全 547 検査に出典を付けた。ONCODE は Messages and Codes の条件コード表で決まるので `PC110A`・`PC111A`・`PF106A` を `spec` に移し、食い違った 3 つ (CONVERSION 612、DD 無しの UNDEFINEDFILE 84、見つからない FETCH 9250) は Zeus と検査を直した。`PD109A` の STORAGE と NULL も LRM の表 84 と PG の既定で決まった | | 81 本 / 547 | |
+| 2026-11-12 | ZHVS の全 154 本を HLASM LR/PG・Principles of Operation・DFSMS・MVS Assembler Services と照合し、全 1,032 検査に出典を付けた。機械命令は POP の命令一覧で記号から命令名に引いた。`HD107A` の固定小数点の端数 (整数に丸める)、P の小数点 (無視)、Z の符号 (ゾーン) は LR で決まるので `spec` に移した。出典の無い検査を cargo test で落とすようにした | | | 154 本 / 1,032 |

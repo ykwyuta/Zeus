@@ -64,5 +64,17 @@
     "form": "SC23-6852-60",
     "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/idad500_v3r1.pdf",
     "sha256": "26ffbffe3ceae015bfa3799ed7f6234aadab5d47ac3ddeaafd5d8a5090d0c5b1"
+  },
+  "MVS-ASR1": {
+    "title": "z/OS 3.1 MVS Programming: Assembler Services Reference, Volume 1 (ABE-HSP)",
+    "form": "SA23-1369-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaa700_v3r1.pdf",
+    "sha256": "5a13fac375a1f0d475ffa85c1d2a786ffc366f54bef91b953465f058b999e89a"
+  },
+  "MVS-ASR2": {
+    "title": "z/OS 3.1 MVS Programming: Assembler Services Reference, Volume 2 (IAR-XCT)",
+    "form": "SA23-1370-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaa900_v3r1.pdf",
+    "sha256": "b0b0021798eafaf91683ccae25660a9d3521c7bc83ebafb8ae114fb107ff280e"
   }
 }
