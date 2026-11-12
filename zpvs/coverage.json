@@ -642,6 +642,16 @@
       "KEY-MISSING-ONCODE"
     ]
   },
+  "PF107A": {
+    "expect": "run",
+    "tests": [
+      "KEYTO-SEQUENTIAL",
+      "SAMEKEY-UNIQUE",
+      "SAMEKEY-CLOSED",
+      "KEY-THEN-NEXT",
+      "ONKEY-MISSING"
+    ]
+  },
   "PM101A": {
     "expect": "run",
     "tests": [

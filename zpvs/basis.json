@@ -1463,6 +1463,49 @@
       }
     }
   },
+  "PF107A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: BUFFERED and UNBUFFERED attributes | BUFFERED is the default for SEQUENTIAL files."
+    ],
+    "tests": {
+      "KEYTO-SEQUENTIAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SEQUENTIAL and DIRECT attributes | records in an indexed data set are accessed in key sequence order.",
+          "PLI-LRM: KEYTO option | For indexed data sets, the record key is padded or truncated on the right to the declared length of the character variable."
+        ]
+      },
+      "SAMEKEY-UNIQUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SAMEKEY | the value accessed by SAMEKEY is set to '1'B if the record processed is followed by another record with the same key, and set to '0'B if it is not."
+        ]
+      },
+      "SAMEKEY-CLOSED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SAMEKEY | the value accessed by SAMEKEY is set to '1'B if the record processed is followed by another record with the same key, and set to '0'B if it is not.",
+          "PLI-LRM: SAMEKEY | The file is not open"
+        ]
+      },
+      "KEY-THEN-NEXT": {
+        "basis": "zos",
+        "note": "KEY 付きの READ のあとの KEY なしの READ が、その次のキーのレコードを読むことは文書に明記が無い。実機で確かめる",
+        "refs": [
+          "PLI-LRM: SEQUENTIAL and DIRECT attributes | a file with the SEQUENTIAL attribute can also be used for direct access or for a mixture of random and sequential access.",
+          "PLI-LRM: KEY option | The KEY option is required if the file has the DIRECT attribute, and is optional if the file has the SEQUENTIAL and KEYED attributes."
+        ]
+      },
+      "ONKEY-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONKEY | ONKEY returns a character string whose value is the key of the record that raised an input/output condition.",
+          "PLI-MC: Condition codes 1 through 500 | Key specified cannot be found."
+        ]
+      }
+    }
+  },
   "PM101A": {
     "basis": "spec",
     "refs": [

@@ -1289,6 +1289,15 @@ impl Machine {
                 }
                 _ => return err("COUNT requires a file"),
             },
+            // SAMEKEY: whether the record is followed by one with the same
+            // key. Zeus keyed data sets (KSDS, RRDS, REGIONAL(1)) hold unique
+            // keys and Zeus has no alternate indexes with nonunique keys, so
+            // it is '0'B, as it is for a file that is not open (Language
+            // Reference, SAMEKEY).
+            SameKey => match &v[0] {
+                Value::File(_) => Value::bit1(false),
+                _ => return err("SAMEKEY requires a file"),
+            },
             GetEnv => {
                 let name = zeus_cobol::ebcdic::decode(&chars(&v[0]));
                 let name = name.trim();

@@ -317,6 +317,7 @@ pub enum Bif {
     LineNo,
     PageNo,
     Count,
+    SameKey,
     Random,
 }
 
@@ -453,6 +454,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "LINENO" => LineNo,
         "PAGENO" => PageNo,
         "COUNT" => Count,
+        "SAMEKEY" => SameKey,
         "RANDOM" => Random,
         "DAYSTOSECS" => DaysToSecs,
         "SECSTODAYS" => SecsToDays,
@@ -729,6 +731,7 @@ impl Bif {
                 | LineNo
                 | PageNo
                 | Count
+                | SameKey
                 | MaxLength
                 | Poly
                 | Valid
@@ -973,6 +976,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         Sign | Index | Search | Verify | Tally | Length | MaxLength | Dim | Lbound | Hbound
         | Size | CurrentSize | Allocation | OnCode | OnCount | PliRetV | Days | Weekday
         | LineNo | PageNo | Count => fixed_bin31(),
+        SameKey => Ty::bit(1),
         Add | Subtract | Multiply | Divide => {
             let a = operand_arith(&arg(0)?);
             let c = operand_arith(&arg(1)?);

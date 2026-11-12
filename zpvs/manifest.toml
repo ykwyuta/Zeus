@@ -134,3 +134,6 @@ expect_exit_code = 4
 
 [programs.PF106A]
 jcl = "PF106A.JCL"
+
+[programs.PF107A]
+jcl = "PF107A.JCL"
