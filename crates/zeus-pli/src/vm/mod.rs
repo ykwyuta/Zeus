@@ -110,6 +110,32 @@ struct CondInfo {
     onkey: Vec<u8>,
     onfile: String,
     onloc: String,
+    /// ASSERTION: TEXT, COMPARE operands and operator, package
+    ontext: Vec<u8>,
+    onactual: Vec<u8>,
+    onexpected: Vec<u8>,
+    onoperator: String,
+    onpackage: String,
+    /// SUBSCRIPTRANGE: the subscript and the bounds
+    onsub: (i64, i64, i64),
+    online: u32,
+    onarea: String,
+}
+
+/// Information of the condition being raised that only its raising
+/// statement knows (ASSERTION, SUBSCRIPTRANGE, AREA).
+#[derive(Default, Clone)]
+struct OnExtra {
+    text: Vec<u8>,
+    actual: Vec<u8>,
+    expected: Vec<u8>,
+    operator: String,
+    sub: (i64, i64, i64),
+    area: String,
+}
+
+thread_local! {
+    static ON_EXTRA: std::cell::RefCell<OnExtra> = std::cell::RefCell::new(OnExtra::default());
 }
 
 struct Act {
@@ -315,6 +341,8 @@ impl Machine {
         // doubleword boundaries within the area
         let at = used.div_ceil(8) * 8;
         if at + size > cap {
+            let name = self.module.vars[area.var as usize].name.clone();
+            ON_EXTRA.with(|e| e.borrow_mut().area = name);
             self.raise(Cond::Area, 360, act)?;
             return Ok(None);
         }
@@ -972,6 +1000,7 @@ impl Machine {
             };
             if enabled && (i < lb || i > ub) {
                 if self.enabled_now(act, cond::SUBSCRIPTRANGE) {
+                    ON_EXTRA.with(|e| e.borrow_mut().sub = (i, lb, ub));
                     self.raise(Cond::SubscriptRange, 520, act)?;
                     self.raise(Cond::Error, 520, act)?;
                 }
@@ -1576,6 +1605,47 @@ impl Machine {
             Stmt::Revert(conds) => {
                 self.acts[act].on.retain(|x| !conds.contains(&x.0));
                 Ok(())
+            }
+            Stmt::Assert {
+                kind,
+                test,
+                text,
+                actual,
+                expected,
+                op,
+                code,
+            } => {
+                use crate::ast::AssertKind as K;
+                let bits = |v: Value| match v {
+                    Value::Bit(b) => b,
+                    v => vec![v.as_f64() != 0.0],
+                };
+                let ok = match (kind, test) {
+                    (K::False, Some(t)) => !bits(self.eval(t, act)?).iter().any(|x| *x),
+                    (_, Some(t)) => bits(self.eval(t, act)?).iter().any(|x| *x),
+                    _ => false,
+                };
+                if ok {
+                    return Ok(());
+                }
+                let chars = |me: &mut Self, e: &Option<Expr>| -> R<Vec<u8>> {
+                    Ok(match e {
+                        Some(e) => match me.eval(e, act)? {
+                            Value::Char(c) => c,
+                            _ => Vec::new(),
+                        },
+                        None => Vec::new(),
+                    })
+                };
+                let extra = OnExtra {
+                    text: chars(self, text)?,
+                    actual: chars(self, actual)?,
+                    expected: chars(self, expected)?,
+                    operator: op.clone(),
+                    ..Default::default()
+                };
+                ON_EXTRA.with(|e| *e.borrow_mut() = extra);
+                self.signal(Cond::Assertion, *code, act, false)
             }
             Stmt::Signal(c) => {
                 let code = signal_code(c);
@@ -2669,7 +2739,29 @@ impl Machine {
             info.onchar = x.1;
         }
         info.onloc = self.proc_name(act);
+        info.online = CUR_LINE.with(|l| l.get());
+        let extra = ON_EXTRA.with(|e| e.borrow().clone());
+        if matches!(c, Cond::Assertion) {
+            info.ontext = extra.text;
+            info.onactual = extra.actual;
+            info.onexpected = extra.expected;
+            info.onoperator = extra.operator;
+            // no PACKAGE statement: the outermost procedure
+            info.onpackage = self
+                .module
+                .main
+                .or_else(|| self.module.procs.first().map(|_| 0))
+                .map(|p| self.module.procs[p as usize].name.clone())
+                .unwrap_or_default();
+        }
+        if matches!(c, Cond::SubscriptRange) {
+            info.onsub = extra.sub;
+        }
+        if matches!(c, Cond::Area) {
+            info.onarea = extra.area;
+        }
         info.condid = match c {
+            Cond::Assertion => 24,
             Cond::Area => 1,
             Cond::Attention => 2,
             Cond::Condition(_) => 3,
@@ -2730,6 +2822,7 @@ impl Machine {
             {
                 self.raise(Cond::Error, code, act)
             }
+            // 正常な戻りは次の文から続ける (Language Reference, ASSERTION condition)
             Cond::Conversion if !signalled => {
                 let repaired = PENDING_CONV.with(|p| {
                     p.borrow().as_ref().is_some_and(|(source, _)| {
@@ -3191,6 +3284,19 @@ impl Machine {
             OnLoc => Value::Char(zeus_cobol::ebcdic::encode(&info.onloc)),
             OnCondId => Value::int(i64::from(info.condid)),
             OnCondCond => Value::Char(zeus_cobol::ebcdic::encode(&info.condname)),
+            OnText => Value::Char(info.ontext),
+            OnActual => Value::Char(info.onactual),
+            OnExpected => Value::Char(info.onexpected),
+            OnOperator => Value::Char(zeus_cobol::ebcdic::encode(&format!(
+                "{:2}",
+                info.onoperator
+            ))),
+            OnPackage => Value::Char(zeus_cobol::ebcdic::encode(&info.onpackage)),
+            OnSubscript => Value::int(info.onsub.0),
+            OnLbound => Value::int(info.onsub.1),
+            OnHbound => Value::int(info.onsub.2),
+            OnLine => Value::int(i64::from(info.online)),
+            OnArea => Value::Char(zeus_cobol::ebcdic::encode(&info.onarea)),
             _ => Value::int(0),
         }
     }
@@ -3248,6 +3354,7 @@ fn signal_code(c: &Cond) -> i32 {
         Cond::Attention => 400,
         Cond::InvalidOp => 290,
         Cond::AnyCondition => 0,
+        Cond::Assertion => 430,
     }
 }
 

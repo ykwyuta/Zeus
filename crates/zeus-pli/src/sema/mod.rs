@@ -106,6 +106,8 @@ pub struct Compiler {
     /// Nesting depth of aggregate-index placeholders.
     pub index_rank: u8,
     pub in_select_subject: Option<Ty>,
+    /// The ASSERT(CONDITION) compiler option (*PROCESS).
+    pub assert_condition: bool,
 }
 
 impl Compiler {
@@ -155,6 +157,7 @@ impl Compiler {
             outer: 0,
             index_rank: 0,
             in_select_subject: None,
+            assert_condition: false,
         }
     }
 
@@ -663,7 +666,18 @@ pub fn compile(
     ccsid: u32,
     sources: Vec<String>,
 ) -> (Option<Module>, Vec<Diag>) {
+    compile_with(stmts, ccsid, sources, false)
+}
+
+/// Compiles with ASSERT(CONDITION) in effect or not.
+pub fn compile_with(
+    stmts: &[ast::Stmt],
+    ccsid: u32,
+    sources: Vec<String>,
+    assert_condition: bool,
+) -> (Option<Module>, Vec<Diag>) {
     let mut c = Compiler::new(ccsid);
+    c.assert_condition = assert_condition;
     c.m.source_paths = sources
         .iter()
         .map(|n| {

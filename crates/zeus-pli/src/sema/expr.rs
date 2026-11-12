@@ -1326,8 +1326,9 @@ impl Compiler {
             ProcedureName | PackageName | SourceFile | SourceLine | IsMain | MainName => {
                 return self.program_info(b, pos);
             }
-            OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField
-            | OnCondCond | OnCondId => {
+            OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField | OnText
+            | OnActual | OnExpected | OnOperator | OnPackage | OnSubscript | OnLbound
+            | OnHbound | OnLine | OnArea | OnCondCond | OnCondId => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
                 return Ok(mk(Ek::OnValue(b), ty));
             }

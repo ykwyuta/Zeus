@@ -121,7 +121,15 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
         add_eib(&mut stmts);
     }
     let ccsid = zeus_cobol::codepage::active().ccsid;
-    let (module, sema_diags) = sema::compile(&stmts, ccsid, files.names.clone());
+    // ASSERT(CONDITION) among the *PROCESS / %PROCESS options at the top
+    let assert_condition = std::fs::read_to_string(path).is_ok_and(|text| {
+        text.lines()
+            .map(|l| l.trim_start().to_ascii_uppercase())
+            .take_while(|l| l.starts_with("*PROCESS") || l.starts_with("%PROCESS"))
+            .any(|l| l.contains("ASSERT(CONDITION)"))
+    });
+    let (module, sema_diags) =
+        sema::compile_with(&stmts, ccsid, files.names.clone(), assert_condition);
     let mut diags = pp_diags;
     diags.extend(sema_diags);
     let msgs = messages(&diags, &files.names);

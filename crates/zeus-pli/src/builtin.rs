@@ -174,6 +174,16 @@ pub enum Bif {
     PrecVal,
     ScaleVal,
     Y4Date,
+    OnText,
+    OnActual,
+    OnExpected,
+    OnOperator,
+    OnPackage,
+    OnSubscript,
+    OnLbound,
+    OnHbound,
+    OnLine,
+    OnArea,
     /// SHAnDIGEST/INIT/UPDATE/FINAL: family 1, 2 or 3, digest bits, and
     /// the operation (0 digest, 1 init, 2 update, 3 final).
     Sha(u8, u16, u8),
@@ -482,6 +492,16 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "PRECVAL" => PrecVal,
         "SCALEVAL" => ScaleVal,
         "Y4DATE" => Y4Date,
+        "ONTEXT" => OnText,
+        "ONACTUAL" => OnActual,
+        "ONEXPECTED" => OnExpected,
+        "ONOPERATOR" => OnOperator,
+        "ONPACKAGE" => OnPackage,
+        "ONSUBSCRIPT" => OnSubscript,
+        "ONLBOUND" => OnLbound,
+        "ONHBOUND" => OnHbound,
+        "ONLINE" => OnLine,
+        "ONAREA" => OnArea,
         "WHIGH" => WHigh,
         "WLOW" => WLow,
         "SUBTO" => SubTo,
@@ -620,6 +640,16 @@ impl Bif {
                 | Days
                 | Weekday
                 | Microsecs
+                | OnText
+                | OnActual
+                | OnExpected
+                | OnOperator
+                | OnPackage
+                | OnSubscript
+                | OnLbound
+                | OnHbound
+                | OnLine
+                | OnArea
                 | MainName
                 | ProcedureName
                 | PackageName
@@ -807,6 +837,10 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             _ => return Err(format!("{b:?} requires a REAL FLOAT argument")),
         },
         Y4Date => Ty::char(8),
+        OnText | OnActual | OnExpected | OnPackage | OnArea => Ty::char_var(32767),
+        OnOperator => Ty::char(2),
+        OnSubscript | OnLbound | OnHbound => Ty::fixed_bin(63, 0),
+        OnLine => fixed_bin31(),
         Sha(_, bits, 0 | 3) => Ty::char(u32::from(bits) / 8),
         Sha(..) => Ty::Pointer,
         WHigh | WLow => match cint(0) {

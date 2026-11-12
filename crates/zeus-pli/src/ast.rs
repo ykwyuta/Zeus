@@ -379,6 +379,14 @@ pub enum StmtKind {
         unit: Option<Box<Stmt>>,
     },
     Signal(CondName),
+    /// ASSERT TRUE/FALSE(x), COMPARE(a, b [, op]) or UNREACHABLE, with an
+    /// optional TEXT(x).
+    Assert {
+        kind: AssertKind,
+        args: Vec<Expr>,
+        op: Option<String>,
+        text: Option<Expr>,
+    },
     Revert(Vec<CondName>),
     Resignal,
     Stop,
@@ -419,4 +427,13 @@ pub struct Stmt {
     pub prefixes: Vec<(String, bool)>,
     pub kind: StmtKind,
     pub pos: Pos,
+}
+
+/// The kinds of the ASSERT statement.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum AssertKind {
+    True,
+    False,
+    Compare,
+    Unreachable,
 }

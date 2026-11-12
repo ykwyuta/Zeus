@@ -73,6 +73,7 @@ impl Compiler {
             "ATTENTION" => Cond::Attention,
             "INVALIDOP" => Cond::InvalidOp,
             "ANYCONDITION" | "ANYCOND" => Cond::AnyCondition,
+            "ASSERTION" => Cond::Assertion,
             "ENDFILE" => Cond::EndFile(file(self)?),
             "ENDPAGE" => Cond::EndPage(file(self)?),
             "KEY" => Cond::Key(file(self)?),
@@ -730,6 +731,80 @@ impl Compiler {
                 Stmt::On(cs, block, *snap)
             }
             StmtKind::Signal(c) => Stmt::Signal(self.cond_of(c, pos)?),
+            StmtKind::Assert {
+                kind,
+                args,
+                op,
+                text,
+            } => {
+                use crate::ast::AssertKind as K;
+                // the ASSERT(ENTRY) default calls user routines IBMPAST,
+                // IBMPASC and IBMPASU; Zeus implements ASSERT(CONDITION)
+                if !self.assert_condition {
+                    return Err(self.err(
+                        pos,
+                        "ASSERT needs the ASSERT(CONDITION) compiler option (ASSERT(ENTRY) is not supported)",
+                    ));
+                }
+                let text = match text {
+                    Some(t) => {
+                        let t = self.expr(t)?;
+                        Some(self.to_char(t))
+                    }
+                    None => None,
+                };
+                let (test, actual, expected, op) = match kind {
+                    K::True | K::False => {
+                        let a = args
+                            .first()
+                            .ok_or_else(|| self.err(pos, "ASSERT needs a test expression"))?;
+                        let x = self.expr(a)?;
+                        (Some(self.to_bit(x)), None, None, String::new())
+                    }
+                    K::Compare => {
+                        if args.len() != 2 {
+                            return Err(self.err(pos, "ASSERT COMPARE needs two operands"));
+                        }
+                        let op = op.clone().unwrap_or_else(|| "EQ".into());
+                        let sym = match op.as_str() {
+                            "EQ" => "=",
+                            "NE" => "¬=",
+                            "LT" => "<",
+                            "LE" => "<=",
+                            "GT" => ">",
+                            "GE" => ">=",
+                            _ => return Err(self.err(pos, format!("invalid ASSERT operator {op}"))),
+                        };
+                        let cmp = ast::Expr::Binary(
+                            sym,
+                            Box::new(args[0].clone()),
+                            Box::new(args[1].clone()),
+                            pos,
+                        );
+                        let test = self.expr(&cmp)?;
+                        let a = self.expr(&args[0])?;
+                        let b = self.expr(&args[1])?;
+                        (Some(test), Some(self.to_char(a)), Some(self.to_char(b)), op)
+                    }
+                    K::Unreachable => (None, None, None, String::new()),
+                };
+                // Messages and Codes: 431/432 TRUE and FALSE, 433/434
+                // UNREACHABLE, 435/436 COMPARE, the second with TEXT
+                let code = match kind {
+                    K::True | K::False => 431,
+                    K::Unreachable => 433,
+                    K::Compare => 435,
+                } + i32::from(text.is_some());
+                Stmt::Assert {
+                    kind: *kind,
+                    test,
+                    text,
+                    actual,
+                    expected,
+                    op,
+                    code,
+                }
+            }
             StmtKind::Revert(cs) => {
                 let mut v = Vec::new();
                 for c in cs {

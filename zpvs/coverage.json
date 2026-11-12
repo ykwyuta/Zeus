@@ -184,6 +184,27 @@
       "UNDEFINEDFILE-ONCODE"
     ]
   },
+  "PC112A": {
+    "expect": "run",
+    "tests": [
+      "ASSERT-TRUE-PASS",
+      "ASSERT-TRUE-TEXT",
+      "ASSERT-FALSE-PASS",
+      "ASSERT-FALSE-FAIL",
+      "ASSERT-COMPARE-EQ",
+      "ASSERT-COMPARE-PASS",
+      "ASSERT-COMPARE-OP",
+      "ASSERT-UNREACHABLE",
+      "SIGNAL-ASSERTION",
+      "ONPACKAGE",
+      "ONSUBSCRIPT-BOUNDS",
+      "ONLINE",
+      "ONAREA",
+      "ANYCONDITION",
+      "FINISH-SIGNAL",
+      "INVALIDOP-SIGNAL"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

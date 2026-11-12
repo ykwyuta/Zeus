@@ -1770,6 +1770,46 @@ impl Parser {
                     }
                 }
             }
+            "ASSERT" => {
+                let w = match self.tok() {
+                    Tok::Ident(w) => w.clone(),
+                    _ => return Err(self.unexpected("TRUE, FALSE, COMPARE or UNREACHABLE")),
+                };
+                self.bump();
+                let kind = match w.as_str() {
+                    "TRUE" => AssertKind::True,
+                    "FALSE" => AssertKind::False,
+                    "COMPARE" => AssertKind::Compare,
+                    "UNREACHABLE" => AssertKind::Unreachable,
+                    _ => return Err(self.unexpected("TRUE, FALSE, COMPARE or UNREACHABLE")),
+                };
+                let mut args = Vec::new();
+                let mut op = None;
+                if kind != AssertKind::Unreachable {
+                    if !self.eat_op("(") {
+                        return Err(self.unexpected("("));
+                    }
+                    args = self.args()?;
+                    if kind == AssertKind::Compare && args.len() == 3 {
+                        match args.pop() {
+                            Some(Expr::Str { text, .. }) => op = Some(text.to_ascii_uppercase()),
+                            _ => return Err(self.unexpected("an operator constant")),
+                        }
+                    }
+                }
+                let text = if self.eat_word("TEXT") {
+                    Some(self.paren_expr()?)
+                } else {
+                    None
+                };
+                self.semi()?;
+                StmtKind::Assert {
+                    kind,
+                    args,
+                    op,
+                    text,
+                }
+            }
             "SIGNAL" => {
                 let c = self.cond_name()?;
                 self.semi()?;

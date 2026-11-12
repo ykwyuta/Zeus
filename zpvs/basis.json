@@ -448,6 +448,133 @@
       }
     }
   },
+  "PC112A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: ASSERT | The default is ASSERT(ENTRY).",
+      "PLI-LRM: ASSERT statement | Under the ASSERT(CONDITION) compiler option, the ASSERTION condition will be raised.",
+      "PLI-LRM: ASSERTION condition | On return from an ASSERTION ON-unit, processing is resumed at the next statement immediately following the statement that raised the condition."
+    ],
+    "tests": {
+      "ASSERT-TRUE-PASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B."
+        ]
+      },
+      "ASSERT-TRUE-TEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT TRUE/FALSE statement with a TEXT clause failed.",
+          "PLI-LRM: ONTEXT | If the ASSERT statement had no TEXT clause, a null string is returned.",
+          "PLI-LRM: ONCONDID | condid_assertion value(24),"
+        ]
+      },
+      "ASSERT-FALSE-PASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B."
+        ]
+      },
+      "ASSERT-FALSE-FAIL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT TRUE/FALSE statement with a TEXT clause failed.",
+          "PLI-LRM: ONTEXT | If the ASSERT statement had no TEXT clause, a null string is returned."
+        ]
+      },
+      "ASSERT-COMPARE-EQ": {
+        "basis": "zos",
+        "note": "ONACTUAL/ONEXPECTED の文字列は数の値を CHAR に変換した形とみなし、TRIM して比べる。変換の形は文書に書かれていない",
+        "refs": [
+          "PLI-LRM: ASSERT statement | If you do not specify operator, EQ is the default value.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT COMPARE statement with a TEXT clause failed.",
+          "PLI-LRM: ONACTUAL | ONACTUAL returns a nonvarying character string whose value is the \"actual\" value",
+          "PLI-LRM: ONEXPECTED | ONEXPECTED returns a nonvarying character string whose value is the \"expected\" value",
+          "PLI-LRM: ONOPERATOR | ONOPERATOR returns a CHAR(2) string whose value is the operator"
+        ]
+      },
+      "ASSERT-COMPARE-PASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | If you do not specify operator, EQ is the default value."
+        ]
+      },
+      "ASSERT-COMPARE-OP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | If you do not specify operator, EQ is the default value.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT COMPARE statement with a TEXT clause failed.",
+          "PLI-LRM: ONOPERATOR | ONOPERATOR returns a CHAR(2) string whose value is the operator",
+          "PLI-LRM: ASSERT statement | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      },
+      "ASSERT-UNREACHABLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT UNREACHABLE statement without a TEXT clause failed."
+        ]
+      },
+      "SIGNAL-ASSERTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | SIGNAL ASSERTION.",
+          "PLI-LRM: ASSERTION condition | The condition can also be raised by a SIGNAL ASSERTION statement."
+        ]
+      },
+      "ONPACKAGE": {
+        "basis": "zos",
+        "note": "パッケージ文の無いプログラムのパッケージ名は外側の手続きの名前とみなす",
+        "refs": [
+          "PLI-LRM: ONPACKAGE | ONPACKAGE returns a nonvarying character string containing the name of the package"
+        ]
+      },
+      "ONSUBSCRIPT-BOUNDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONSUBSCRIPT | ONSUBSCRIPT returns a REAL FIXED BIN(63) value that specifies the invalid array index",
+          "PLI-LRM: ONLBOUND | ONLBOUND returns a REAL FIXED BIN(63) value that specifies the lower bound",
+          "PLI-LRM: ONHBOUND | ONHBOUND returns a REAL FIXED BIN(63) value that specifies the upper bound"
+        ]
+      },
+      "ONLINE": {
+        "basis": "zos",
+        "note": "GONUMBER で翻訳したときの値。行番号の数え方 (SOURCELINE と同じ) は実機で確かめる",
+        "refs": [
+          "PLI-LRM: ONLINE | ONLINE returns a FIXED BIN(31) value which is the line number in the source in which a condition was raised."
+        ]
+      },
+      "ONAREA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONAREA | ONAREA returns a character string whose value is the name of the AREA reference",
+          "PLI-MC: Condition codes 1 through 500 | Attempt to allocate a based variable within an area that contains insufficient free storage"
+        ]
+      },
+      "ANYCONDITION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ANYCONDITION condition | establish (and cancel) an ON-unit that will trap any condition, including the CONDITION condition",
+          "PLI-LRM: ONCONDID | condid_condition value(3),"
+        ]
+      },
+      "FINISH-SIGNAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | SIGNAL FINISH, or STOP statement executed.",
+          "PLI-LRM: FINISH condition | Control passes to the FINISH ON-unit and processing continues."
+        ]
+      },
+      "INVALIDOP-SIGNAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | SIGNAL INVALIDOP statement was executed or INVALIDOP exception occurred."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
