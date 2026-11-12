@@ -184,6 +184,9 @@ pub struct Machine {
     pub env: RunEnv,
     files: Vec<stream::FileState>,
     rc: i32,
+    /// Heap allocations of ALLOCATE (address, size), each followed by
+    /// eight 'FF'X bytes (CHECKSTG, ALLOCSIZE, UNALLOCATED).
+    pub(crate) allocs: std::collections::BTreeMap<u32, u32>,
     random: u64,
     depth: usize,
     /// The program's instance for the CICS host (its HANDLE CONDITION
@@ -242,6 +245,7 @@ impl Machine {
             env,
             files,
             rc: 0,
+            allocs: std::collections::BTreeMap::new(),
             random: 0x2545_F491_4F6C_DD1D,
             depth: 0,
             cics_instance: 0,
@@ -351,6 +355,51 @@ impl Machine {
         let p = addr + AREA_HEADER + at;
         self.write(p, &vec![0u8; size as usize])?;
         Ok(Some(p))
+    }
+
+    /// Heap storage of an ALLOCATE statement or built-in: recorded, and
+    /// followed by eight 'FF'X bytes that CHECKSTG looks at (Language
+    /// Reference, CHECKSTG).
+    pub(crate) fn heap_allocate(&mut self, size: u32) -> R<u32> {
+        let p = self.heap_alloc(size + 8);
+        self.write(p + size, &[0xFF; 8])?;
+        self.allocs.insert(p, size);
+        Ok(p)
+    }
+
+    /// The allocation whose start is p, both rounded down to a doubleword.
+    pub(crate) fn allocation_at(&self, p: u32) -> Option<(u32, u32)> {
+        self.allocs
+            .iter()
+            .find(|(a, _)| **a & !7 == p & !7)
+            .map(|(a, n)| (*a, *n))
+    }
+
+    /// AREA built-ins: allocate n bytes (rounded up to 8) in an area;
+    /// `quiet` gives None instead of raising AREA (ALLOCNEXT).
+    pub(crate) fn area_allocate(
+        &mut self,
+        area: &Ref,
+        n: u32,
+        quiet: bool,
+        act: usize,
+    ) -> R<Option<u32>> {
+        let n = n.div_ceil(8) * 8;
+        if quiet && self.area_available(area, act)? < n {
+            return Ok(None);
+        }
+        self.area_alloc(area, n, act)
+    }
+
+    /// The largest single allocation the area can still give.
+    pub(crate) fn area_available(&mut self, area: &Ref, act: usize) -> R<u32> {
+        let l = self.locate(area, act)?;
+        let Ty::Area(cap) = l.ty else {
+            return err("not an AREA");
+        };
+        let h = self.read((l.bit / 8) as u32, 8)?;
+        let used = u32::from_be_bytes([h[4], h[5], h[6], h[7]]);
+        Ok(cap.saturating_sub(used.div_ceil(8) * 8))
     }
 
     fn heap_alloc(&mut self, size: u32) -> u32 {
@@ -1724,7 +1773,7 @@ impl Machine {
                             Some(p) => p,
                             None => continue,
                         },
-                        None => self.heap_alloc(size as u32),
+                        None => self.heap_allocate(size as u32)?,
                     };
                     for &n in &refers {
                         let obj = &m.vars[m.refers[n].object as usize];
@@ -1807,8 +1856,19 @@ impl Machine {
                 Ok(())
             }
             Stmt::Free(items) => {
-                for (v, _) in items {
+                for (v, loc) in items {
                     let root = self.module.vars[*v as usize].root;
+                    // a BASED generation: no longer allocated (UNALLOCATED)
+                    if let Storage::Based(..) = self.module.vars[root as usize].storage {
+                        let r = Ref {
+                            var: *v,
+                            subs: Vec::new(),
+                            locator: loc.clone().map(Box::new),
+                        };
+                        if let Ok(l) = self.locate(&r, act) {
+                            self.allocs.remove(&((l.bit / 8) as u32));
+                        }
+                    }
                     if let Storage::Controlled(..) = self.module.vars[root as usize].storage {
                         let anchor = self.anchor_addr(root, act)?;
                         let g = self.generation(anchor)?;

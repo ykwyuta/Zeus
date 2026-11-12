@@ -1197,6 +1197,32 @@ impl Machine {
                 Value::Char(ebcdic(&format!("{}{yy}{ddd}", 19 + cent)))
             }
             // WIDECHAR strings of n highest (FFFF) or lowest (0000) characters
+            Allocate | Alloc31 => {
+                Value::Ptr(self.heap_allocate(int(0).unwrap_or(0).max(0) as u32)?)
+            }
+            // the size of the allocation that starts at p (0 if none)
+            AllocSize => match &v[0] {
+                Value::Ptr(p) => Value::int(self.allocation_at(*p).map_or(0, |a| i64::from(a.1))),
+                _ => Value::int(0),
+            },
+            Unallocated => match &v[0] {
+                Value::Ptr(p) => Value::bit1(self.allocation_at(*p).is_none()),
+                _ => Value::bit1(true),
+            },
+            // uncorrupted: the eight 'FF'X bytes after the allocation of p
+            // (or of every allocation) are unchanged
+            CheckStg => {
+                let all: Vec<(u32, u32)> = match v.first() {
+                    Some(Value::Ptr(p)) => self.allocation_at(*p).into_iter().collect(),
+                    Some(_) => Vec::new(),
+                    None => self.allocs.iter().map(|(a, n)| (*a, *n)).collect(),
+                };
+                let mut ok = v.is_empty() || !all.is_empty();
+                for (a, n) in all {
+                    ok &= self.read(a + n, 8)? == [0xFF; 8];
+                }
+                Value::bit1(ok)
+            }
             // WCHARVAL(n): the widechar whose bits are UNSIGNED FIXED BIN(16) n
             WcharVal => Value::Char((v[0].as_i64() as u16).to_be_bytes().to_vec()),
             WHigh | WLow => {
@@ -1754,6 +1780,14 @@ impl Machine {
             None => 1,
         };
         Ok(match b {
+            Allocate | AllocNext => {
+                let n = self.eval(&args[0], act)?.as_i64().max(0) as u32;
+                match self.area_allocate(r, n, b == AllocNext, act)? {
+                    Some(p) => Value::Ptr(p),
+                    None => Value::Ptr(0),
+                }
+            }
+            AvailableArea => Value::int(i64::from(self.area_available(r, act)?)),
             // the elements n .. n+m-1 (n defaults to LBOUND, m to the rest)
             QuickSort | BinSearch | QuickSortX | BinSearchX => {
                 let fb31 = Ty::fixed_bin(31, 0);

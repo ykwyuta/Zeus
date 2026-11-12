@@ -1042,6 +1042,101 @@
       }
     }
   },
+  "PD111A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLOCSIZE | To use this built-in function, you must also specify the CHECK(STORAGE) compile-time option."
+    ],
+    "tests": {
+      "AVAILABLEAREA-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: AVAILABLEAREA | SizeAfter = availablearea(Uarea); /* returns 896 */"
+        ]
+      },
+      "AVAILABLEAREA-FULL": {
+        "basis": "zos",
+        "note": "LRM の例は 896 バイトの割り当てで終わり、そのあとの値を書いていない。Zeus は 0 を返す",
+        "refs": [
+          "PLI-LRM: AVAILABLEAREA | SizeAfter = availablearea(Uarea); /* returns 896 */"
+        ]
+      },
+      "ALLOCATE-AREA-ROUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCATE | When you specify ALLOCATE(n, x), the specified number of bytes n is allocated within that area. The number is rounded up to a multiple of 8."
+        ]
+      },
+      "ALLOCATE-AREA-COND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCATE | When you specify ALLOCATE(n, x), the specified number of bytes n is allocated within that area. The number is rounded up to a multiple of 8.",
+          "PLI-LRM: ALLOCATE | If there is insufficient space within the specified area, the AREA condition is raised."
+        ]
+      },
+      "ALLOCNEXT-NULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCNEXT | It is rounded up to the nearest multiple of 8.",
+          "PLI-LRM: ALLOCNEXT | If the first available chunk is not large enough, sysnull is returned. Unlike the ALLOCATE built-in function, neither the STORAGE nor the AREA condition is raised."
+        ]
+      },
+      "ALLOCNEXT-FITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCNEXT | It is rounded up to the nearest multiple of 8."
+        ]
+      },
+      "ALLOCSIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCSIZE | ALLOCSIZE returns 0 if the pointer does not point to the start of a piece of allocated storage."
+        ]
+      },
+      "ALLOC31": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCSIZE | ALLOCSIZE returns 0 if the pointer does not point to the start of a piece of allocated storage.",
+          "PLI-LRM: ALLOC31 | ALLOC31 allocates storage of size n in heap storage below the bar and returns the pointer to the allocated storage.",
+          "PLI-LRM: CHECKSTG | When an allocation is made, it is followed by eight extra bytes which are set to 'ff'x. The allocation is considered uncorrupted if those bytes have not been altered."
+        ]
+      },
+      "ALLOCATE-STMT": {
+        "basis": "zos",
+        "note": "ALLOCATE 文で取った CHAR(99) VARYINGZ の大きさを 100 (データの大きさ) とみなす。端数の丸めがあるかは実機で確かめる",
+        "refs": [
+          "PLI-LRM: ALLOCSIZE | ALLOCSIZE returns 0 if the pointer does not point to the start of a piece of allocated storage.",
+          "PLI-LRM: UNALLOCATED | UNALLOCATED returns the BIT(1) value '1'b if the specified pointer value is not the start of a piece of storage that is obtained with the ALLOCATE statement or the ALLOCATE built-in function."
+        ]
+      },
+      "UNALLOCATED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNALLOCATED | UNALLOCATED returns the BIT(1) value '1'b if the specified pointer value is not the start of a piece of storage that is obtained with the ALLOCATE statement or the ALLOCATE built-in function."
+        ]
+      },
+      "FREE-UNALLOCATED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNALLOCATED | UNALLOCATED returns the BIT(1) value '1'b if the specified pointer value is not the start of a piece of storage that is obtained with the ALLOCATE statement or the ALLOCATE built-in function."
+        ]
+      },
+      "CHECKSTG-CLEAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHECKSTG | When an allocation is made, it is followed by eight extra bytes which are set to 'ff'x. The allocation is considered uncorrupted if those bytes have not been altered.",
+          "PLI-LRM: CHECKSTG | If no pointer value is supplied, CHECKSTG determines whether all allocated storage is uncorrupted."
+        ]
+      },
+      "CHECKSTG-CORRUPT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHECKSTG | When an allocation is made, it is followed by eight extra bytes which are set to 'ff'x. The allocation is considered uncorrupted if those bytes have not been altered.",
+          "PLI-LRM: CHECKSTG | If no pointer value is supplied, CHECKSTG determines whether all allocated storage is uncorrupted."
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [

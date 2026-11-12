@@ -1393,6 +1393,31 @@ impl Compiler {
             QuickSort | QuickSortX => {
                 return Err(self.err(pos, format!("{b:?} is invoked with the CALL statement")));
             }
+            // ALLOCATE(n [,x]), ALLOCNEXT(n, x), AVAILABLEAREA(x): x is an
+            // AREA reference
+            Allocate | AllocNext | AvailableArea => {
+                let (n, area) = match (b, args) {
+                    (Allocate, [n]) => (Some(n), None),
+                    (Allocate | AllocNext, [n, ast::Expr::Ref(x)]) => (Some(n), Some(x)),
+                    (AvailableArea, [ast::Expr::Ref(x)]) => (None, Some(x)),
+                    _ => return Err(self.err(pos, format!("{b:?}: wrong arguments"))),
+                };
+                let mut rest = Vec::new();
+                if let Some(n) = n {
+                    let n = self.expr(n)?;
+                    let n = self.to_arith(n);
+                    rest.push(self.conv(n, &Ty::fixed_bin(31, 0)));
+                }
+                let rt = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
+                let Some(x) = area else {
+                    return Ok(mk(Ek::Builtin(b, rest), rt));
+                };
+                let ar = self.reference(x, true)?;
+                if !matches!(self.m.vars[ar.var as usize].ty, Some(Ty::Area(_))) {
+                    return Err(self.err(pos, format!("{b:?}: the area argument is not an AREA")));
+                }
+                return Ok(mk(Ek::RefBuiltin(b, ar, rest), rt));
+            }
             // INARRAY(x, y): x compared with each element of the array y
             InArray => {
                 let [x, ast::Expr::Ref(arr)] = args else {
@@ -1579,7 +1604,7 @@ impl Compiler {
                 v.extend(it.map(|x| int(self, x)));
                 v
             }
-            WHigh | WLow | WcharVal => xs.into_iter().map(|x| int(self, x)).collect(),
+            WHigh | WLow | WcharVal | Alloc31 => xs.into_iter().map(|x| int(self, x)).collect(),
             SubTo => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];
@@ -1623,6 +1648,9 @@ impl Compiler {
             | ReplaceBy2
             | Y4Date
             | Sha(..)
+            | AllocSize
+            | CheckStg
+            | Unallocated
             | WsCollapse16
             | WsReplace16
             | Base64Encode16

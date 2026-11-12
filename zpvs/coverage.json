@@ -440,6 +440,24 @@
       "NONASSIGNABLE-READ"
     ]
   },
+  "PD111A": {
+    "expect": "run",
+    "tests": [
+      "AVAILABLEAREA-LRM",
+      "AVAILABLEAREA-FULL",
+      "ALLOCATE-AREA-ROUND",
+      "ALLOCNEXT-NULL",
+      "ALLOCNEXT-FITS",
+      "ALLOCATE-AREA-COND",
+      "ALLOCSIZE",
+      "UNALLOCATED",
+      "CHECKSTG-CLEAN",
+      "CHECKSTG-CORRUPT",
+      "ALLOC31",
+      "ALLOCATE-STMT",
+      "FREE-UNALLOCATED"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []

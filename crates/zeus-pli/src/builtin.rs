@@ -190,6 +190,13 @@ pub enum Bif {
     WHigh,
     WLow,
     InArray,
+    Allocate,
+    Alloc31,
+    AllocNext,
+    AllocSize,
+    AvailableArea,
+    CheckStg,
+    Unallocated,
     QuickSort,
     BinSearch,
     QuickSortX,
@@ -512,6 +519,13 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "ONAREA" => OnArea,
         "WHIGH" => WHigh,
         "INARRAY" => InArray,
+        "ALLOCATE" | "ALLOC" => Allocate,
+        "ALLOC31" => Alloc31,
+        "ALLOCNEXT" => AllocNext,
+        "ALLOCSIZE" => AllocSize,
+        "AVAILABLEAREA" => AvailableArea,
+        "CHECKSTG" => CheckStg,
+        "UNALLOCATED" => Unallocated,
         "QUICKSORT" => QuickSort,
         "BINSEARCH" => BinSearch,
         "QUICKSORTX" => QuickSortX,
@@ -673,6 +687,7 @@ impl Bif {
                 | SourceLine
                 | IsMain
                 | CodePage
+                | CheckStg
                 | Uuid4
                 | Secs
                 | Timestamp
@@ -891,7 +906,10 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         WsCollapse16 | WsReplace16 | Base64Encode16 | Base64Decode16 => Ty::fixed_bin(63, 0),
         MainName | ProcedureName | PackageName | SourceFile => Ty::char_var(255),
         SourceLine | CodePage => fixed_bin31(),
-        InArray => Ty::bit(1),
+        InArray | CheckStg | Unallocated => Ty::bit(1),
+        Allocate | Alloc31 | AllocNext => Ty::Pointer,
+        // size_t under LP(32)
+        AllocSize | AvailableArea => fixed_bin31(),
         // size_t under LP(32)
         QuickSort | BinSearch | QuickSortX | BinSearchX => fixed_bin31(),
         PicSpec => Ty::char(1),
