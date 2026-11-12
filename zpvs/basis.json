@@ -181,6 +181,91 @@
       }
     }
   },
+  "PA106A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: QUICKSORT | QUICKSORT performs a quick-sort of an array by using a simple compare."
+    ],
+    "tests": {
+      "QUICKSORT-ALL": {
+        "basis": "zos",
+        "note": "LRM は QUICKSORT/QUICKSORTX を組込み関数の表に挙げるが値を書いていない。Zeus は CALL 文で呼ぶ形だけを受ける。その形が通ることを実機で確かめる",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements."
+        ]
+      },
+      "QUICKSORT-N-M": {
+        "basis": "zos",
+        "note": "QUICKSORT-ALL と同じ (CALL 文で呼ぶ形)",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements.",
+          "PLI-LRM: QUICKSORT | An expression that specifies the number of to-be-examined array elements. The counting starts with the nth and defaults to HBOUND(x) – n + 1."
+        ]
+      },
+      "QUICKSORT-CHAR": {
+        "basis": "zos",
+        "note": "QUICKSORT-ALL と同じ (CALL 文で呼ぶ形)",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements."
+        ]
+      },
+      "QUICKSORTX-DOWN": {
+        "basis": "zos",
+        "note": "QUICKSORT-ALL と同じ (CALL 文で呼ぶ形)",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements.",
+          "PLI-LRM: QUICKSORTX | The function f must have the OPTLINK linkage and it is passed 2 POINTER BYVALUE arguments",
+          "PLI-LRM: QUICKSORTX | You can sort in reverse order by reversing the greater than and less than logic in the comparison function."
+        ]
+      },
+      "BINSEARCH-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero."
+        ]
+      },
+      "BINSEARCH-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero."
+        ]
+      },
+      "BINSEARCH-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero."
+        ]
+      },
+      "BINSEARCH-RELATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero.",
+          "PLI-LRM: BINSEARCH | the true index would be calculated as: the returned value + LBOUND(x) – 1."
+        ]
+      },
+      "BINSEARCH-N-M": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero.",
+          "PLI-LRM: BINSEARCH | An expression that specifies the index of the first array element to be examined. It defaults to LBOUND(x)."
+        ]
+      },
+      "BINSEARCHX-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCHX | The address of the key value to be searched for (the value of p).",
+          "PLI-LRM: BINSEARCHX | If the value of the array element is less than the value of the key element, then the returned value must be -1."
+        ]
+      },
+      "BINSEARCHX-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCHX | The address of the key value to be searched for (the value of p).",
+          "PLI-LRM: BINSEARCHX | If the value of the array element is less than the value of the key element, then the returned value must be -1."
+        ]
+      }
+    }
+  },
   "PC101A": {
     "basis": "spec",
     "refs": [

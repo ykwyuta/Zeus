@@ -2619,6 +2619,9 @@ impl Machine {
                 self.rc = self.eval(&args[0], act)?.as_i64() as i32;
             }
             PliDump => {}
+            QuickSort | QuickSortX => {
+                self.eval(&args[0], act)?;
+            }
             PliFill => {
                 let p = self.eval(&args[0], act)?;
                 let c = self.eval(&args[1], act)?;

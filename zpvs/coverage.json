@@ -62,6 +62,22 @@
       "PIC-EDITED-VALUE"
     ]
   },
+  "PA106A": {
+    "expect": "run",
+    "tests": [
+      "QUICKSORT-ALL",
+      "QUICKSORT-N-M",
+      "QUICKSORT-CHAR",
+      "QUICKSORTX-DOWN",
+      "BINSEARCH-FOUND",
+      "BINSEARCH-MISSING",
+      "BINSEARCH-CHAR",
+      "BINSEARCH-RELATIVE",
+      "BINSEARCH-N-M",
+      "BINSEARCHX-FOUND",
+      "BINSEARCHX-MISSING"
+    ]
+  },
   "PC101A": {
     "expect": "run",
     "tests": [

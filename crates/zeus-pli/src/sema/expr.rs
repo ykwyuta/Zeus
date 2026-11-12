@@ -1159,6 +1159,11 @@ impl Compiler {
                 }
                 Ok(Stmt::CallBuiltin(PliDump, Vec::new()))
             }
+            // CALL QUICKSORT(x [,n [,m]]): sorts x in place
+            QuickSort | QuickSortX => {
+                let e = self.array_search(b, args, pos)?;
+                Ok(Stmt::CallBuiltin(b, vec![e]))
+            }
             PliFill | PliMove => {
                 let mut v = Vec::new();
                 for a in args {
@@ -1168,6 +1173,55 @@ impl Compiler {
             }
             _ => Err(self.err(pos, format!("built-in subroutine {b:?} is not supported"))),
         }
+    }
+
+    /// QUICKSORT(x [,n [,m]]) and BINSEARCH(x, y [,n [,m]]) on a
+    /// one-dimensional array x: the key y keeps its type, n and m are
+    /// FIXED BIN(31).
+    fn array_search(&mut self, b: Bif, args: &[ast::Expr], pos: Pos) -> Result<Expr> {
+        let Some(ast::Expr::Ref(arr)) = args.first() else {
+            return Err(self.err(pos, format!("{b:?} needs an array")));
+        };
+        let ar = self.reference(arr, true)?;
+        let v = &self.m.vars[ar.var as usize];
+        let free = ar.subs.iter().filter(|s| s.is_none()).count();
+        let rank = if ar.subs.is_empty() {
+            v.dims.len()
+        } else {
+            free
+        };
+        if rank != 1 || v.ty.is_none() {
+            return Err(self.err(
+                pos,
+                format!("{b:?} needs a one-dimensional array of scalars"),
+            ));
+        }
+        let mut rest = Vec::new();
+        let mut it = args[1..].iter();
+        // the key (BINSEARCH), the key's address (BINSEARCHX) and the
+        // compare function (the X forms) keep their types
+        let fixed = match b {
+            Bif::BinSearch | Bif::QuickSortX => 1,
+            Bif::BinSearchX => 2,
+            _ => 0,
+        };
+        for k in 0..fixed {
+            let y = it
+                .next()
+                .ok_or_else(|| self.err(pos, format!("{b:?} needs more arguments")))?;
+            // the compare function is an entry value, not invoked here
+            let last = k + 1 == fixed && matches!(b, Bif::QuickSortX | Bif::BinSearchX);
+            match self.entry_constant(y).filter(|_| last) {
+                Some(e) => rest.push(e),
+                None => rest.push(self.expr(y)?),
+            }
+        }
+        for a in it {
+            let x = self.expr(a)?;
+            let x = self.to_arith(x);
+            rest.push(self.conv(x, &Ty::fixed_bin(31, 0)));
+        }
+        Ok(mk(Ek::RefBuiltin(b, ar, rest), Ty::fixed_bin(31, 0)))
     }
 
     /// A built-in function reference.
@@ -1333,6 +1387,11 @@ impl Compiler {
                     Ek::Fixed(i128::from(self.m.ccsid), 0),
                     Ty::fixed_bin(31, 0),
                 ));
+            }
+            // BINSEARCH(x, y [,n [,m]]): the relative index of y in x, or 0
+            BinSearch | BinSearchX => return self.array_search(b, args, pos),
+            QuickSort | QuickSortX => {
+                return Err(self.err(pos, format!("{b:?} is invoked with the CALL statement")));
             }
             // INARRAY(x, y): x compared with each element of the array y
             InArray => {

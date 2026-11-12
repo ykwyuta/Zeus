@@ -1754,6 +1754,114 @@ impl Machine {
             None => 1,
         };
         Ok(match b {
+            // the elements n .. n+m-1 (n defaults to LBOUND, m to the rest)
+            QuickSort | BinSearch | QuickSortX | BinSearchX => {
+                let fb31 = Ty::fixed_bin(31, 0);
+                let lb = self.ref_builtin(Lbound, r, &[], &fb31, act)?.as_i64();
+                let locs = self.elements(r, act)?;
+                let fixed = match b {
+                    BinSearch | QuickSortX => 1,
+                    BinSearchX => 2,
+                    _ => 0,
+                };
+                let mut opt = Vec::new();
+                for e in &args[fixed..] {
+                    opt.push(self.eval(e, act)?.as_i64());
+                }
+                let start = opt
+                    .first()
+                    .map_or(0, |n| n - lb)
+                    .clamp(0, locs.len() as i64) as usize;
+                let count = opt
+                    .get(1)
+                    .map_or((locs.len() - start) as i64, |m| *m)
+                    .clamp(0, (locs.len() - start) as i64) as usize;
+                let part: Vec<Loc> = locs[start..start + count].to_vec();
+                // the compare function of the X forms: f(element, other)
+                // with two POINTER BYVALUE arguments, returning -1, 0 or +1
+                let f = match b {
+                    QuickSortX => Some(args[0].clone()),
+                    BinSearchX => Some(args[1].clone()),
+                    _ => None,
+                };
+                let ptr = |bit: u64| {
+                    crate::ir::Arg::Dummy(crate::sema::expr::mk(
+                        Ek::Builtin(
+                            PointerValue,
+                            vec![crate::sema::expr::mk(
+                                Ek::Fixed(i128::from(bit / 8), 0),
+                                Ty::fixed_bin(31, 0),
+                            )],
+                        ),
+                        Ty::Pointer,
+                    ))
+                };
+                let cmp = |me: &mut Self,
+                           a: &Loc,
+                           other: Result<&Loc, (&Value, &Ty)>|
+                 -> R<std::cmp::Ordering> {
+                    if let Some(f) = &f {
+                        let pb = match other {
+                            Ok(l) => ptr(l.bit),
+                            Err((Value::Ptr(p), _)) => ptr(u64::from(*p) * 8),
+                            Err(_) => return err("BINSEARCHX needs the address of the key"),
+                        };
+                        let callee = crate::ir::Callee::Var(f.clone());
+                        let v = me.call(&callee, &[ptr(a.bit), pb], act, Some(&fb31))?;
+                        return Ok(v.map_or(0, |v| v.as_i64()).cmp(&0));
+                    }
+                    let av = me.load(a)?;
+                    match other {
+                        Ok(l) => {
+                            let bv = me.load(l)?;
+                            me.compare(&av, &a.ty, &bv, &l.ty)
+                        }
+                        Err((v, t)) => me.compare(&av, &a.ty, v, t),
+                    }
+                };
+                if matches!(b, BinSearch | BinSearchX) {
+                    let key = &args[0];
+                    let kv = self.eval(key, act)?;
+                    let (mut lo, mut hi) = (0usize, part.len());
+                    let mut found = 0i64;
+                    while lo < hi {
+                        let mid = (lo + hi) / 2;
+                        match cmp(self, &part[mid], Err((&kv, &key.ty)))? {
+                            std::cmp::Ordering::Less => lo = mid + 1,
+                            std::cmp::Ordering::Greater => hi = mid,
+                            std::cmp::Ordering::Equal => {
+                                found = (start + mid) as i64 + 1;
+                                break;
+                            }
+                        }
+                    }
+                    Value::int(found)
+                } else {
+                    // sort the positions (memory is unchanged meanwhile),
+                    // then store; the order of equal elements is
+                    // unspecified (Language Reference)
+                    let mut idx: Vec<usize> = (0..part.len()).collect();
+                    let mut failure = None;
+                    idx.sort_by(|&i, &j| match cmp(self, &part[i], Ok(&part[j])) {
+                        Ok(o) => o,
+                        Err(e) => {
+                            failure.get_or_insert(e);
+                            std::cmp::Ordering::Equal
+                        }
+                    });
+                    if let Some(e) = failure {
+                        return Err(e);
+                    }
+                    let mut vals = Vec::new();
+                    for &i in &idx {
+                        vals.push(self.load(&part[i])?);
+                    }
+                    for (l, v) in part.iter().zip(&vals) {
+                        self.store(l, v)?;
+                    }
+                    Value::int(0)
+                }
+            }
             InArray => {
                 let x = &args[0];
                 let xv = self.eval(x, act)?;
