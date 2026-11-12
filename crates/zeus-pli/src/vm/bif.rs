@@ -1,6 +1,7 @@
 //! Built-in functions.
 
 use super::conv::cmp_num;
+use super::datefmt;
 use super::value::{self, SPACE, Value};
 use super::*;
 use crate::builtin::Bif;
@@ -802,26 +803,24 @@ impl Machine {
             Days => match v.first() {
                 Some(x) => {
                     let t = zeus_cobol::ebcdic::decode(&chars(x));
-                    let p = v
-                        .get(1)
-                        .map(|p| zeus_cobol::ebcdic::decode(&chars(p)))
-                        .unwrap_or_else(|| "YYYYMMDDHHMISS999".into());
-                    let (y, m, d) = parse_date(&t, &p);
-                    Value::int(lilian(y, m, d))
+                    let p = pattern(&v, 1, "YYYYMMDDHHMISS999");
+                    match datefmt::parse(&t, &p, window(int(2))) {
+                        Some(st) => Value::int(datefmt::lilian_day(st.y, st.m, st.d)),
+                        None => {
+                            self.raise(Cond::Error, 2512, act)?;
+                            Value::int(0)
+                        }
+                    }
                 }
                 None => {
-                    let (y, m, d, ..) = now_parts();
-                    Value::int(lilian(y, m, d))
+                    let st = now_stamp();
+                    Value::int(datefmt::lilian_day(st.y, st.m, st.d))
                 }
             },
             DaysToDate => {
-                let n = int(0).unwrap_or(1);
-                let (y, m, d) = civil(n - 141_428);
-                let p = v
-                    .get(1)
-                    .map(|p| zeus_cobol::ebcdic::decode(&chars(p)))
-                    .unwrap_or_else(|| "YYYYMMDDHHMISS999".into());
-                Value::Char(ebcdic(&format_date(y, m, d, &p)))
+                let p = pattern(&v, 1, "YYYYMMDDHHMISS999");
+                let st = datefmt::Stamp::from_micros(int(0).unwrap_or(1) * 86_400_000_000);
+                Value::Char(ebcdic(&datefmt::format(&st, &p)))
             }
             Iand | Ior | Ieor => {
                 let mut acc = int(0).unwrap_or(0);
@@ -945,26 +944,12 @@ impl Machine {
             }
             // seconds since 00:00:00 14 October 1582 (DAYSTOSECS(1) = 86400)
             SecsToDate => {
-                let s = int(0).unwrap_or(0);
-                let day = s.div_euclid(86_400);
-                let (y, m, d) = civil(day - 141_428);
-                let p = v
-                    .get(1)
-                    .map(|p| zeus_cobol::ebcdic::decode(&chars(p)))
-                    .unwrap_or_else(|| "YYYYMMDDHHMISS999".into());
-                let rem = s.rem_euclid(86_400);
-                let mut out = format_date(y, m, d, &p);
-                for (k, val) in [
-                    ("HH", format!("{:02}", rem / 3600)),
-                    ("MI", format!("{:02}", rem / 60 % 60)),
-                    ("SS", format!("{:02}", rem % 60)),
-                ] {
-                    // format_date put zeros where the time fields were
-                    if let Some(at) = p.find(k) {
-                        out.replace_range(at..at + 2, &val);
-                    }
-                }
-                Value::Char(ebcdic(&out))
+                let p = pattern(&v, 1, "YYYYMMDDHHMISS999");
+                let us = (v[0].as_f64() * 1e6).round() as i64;
+                Value::Char(ebcdic(&datefmt::format(
+                    &datefmt::Stamp::from_micros(us),
+                    &p,
+                )))
             }
             // COMPARE AND SWAP: the word (CS) or doubleword (CDS) at p against
             // the one at q; equal: store x at p, 0; otherwise copy p to q, 1
@@ -1105,6 +1090,108 @@ impl Machine {
                 }
                 _ => return err(format!("{b:?} requires a numeric argument")),
             },
+            // date/time built-ins on the Lilian form (Language Reference,
+            // "Date/time built-in functions"; patterns of Table 65)
+            Microsecs | Secs => {
+                let default = if b == Microsecs {
+                    "YYYY-MM-DD-HH.MI.SS.999999"
+                } else {
+                    "YYYYMMDDHHMISS999"
+                };
+                let us = match v.first() {
+                    Some(d) => {
+                        let text = zeus_cobol::ebcdic::decode(&chars(d));
+                        let p = pattern(&v, 1, default);
+                        match datefmt::parse(&text, &p, window(int(2))) {
+                            Some(t) => t.micros(),
+                            None => {
+                                self.raise(Cond::Error, 2512, act)?;
+                                0
+                            }
+                        }
+                    }
+                    None => now_stamp().micros(),
+                };
+                if b == Microsecs {
+                    Value::int(us)
+                } else {
+                    Value::Float(us as f64 / 1e6)
+                }
+            }
+            MicrosecsToDate => {
+                let p = pattern(&v, 1, "YYYY-MM-DD-HH.MI.SS.999999");
+                let t = datefmt::Stamp::from_micros(int(0).unwrap_or(0));
+                Value::Char(ebcdic(&datefmt::format(&t, &p)))
+            }
+            DaysToMicrosecs => Value::int(int(0).unwrap_or(0) * 86_400_000_000),
+            MicrosecsToDays => Value::int(int(0).unwrap_or(0).div_euclid(86_400_000_000)),
+            Timestamp => Value::Char(ebcdic(&datefmt::format(
+                &now_stamp(),
+                "YYYY-MM-DD-HH.MI.SS.999999",
+            ))),
+            // Zeus keeps the system clock in UTC, so local time and UTC agree
+            UtcDatetime => Value::Char(ebcdic(&datefmt::format(&now_stamp(), "YYYYMMDDHHMISS999"))),
+            UtcSecs => Value::Float(now_stamp().micros() as f64 / 1e6),
+            UtcMicrosecs => Value::int(now_stamp().micros()),
+            // the latest and the earliest value of the pattern (NONULLDATE:
+            // the earliest date is 14 October 1582, Lilian day 0)
+            MaxDate | MinDate => {
+                let p = pattern(&v, 0, "YYYY-MM-DD-HH.MI.SS.999999");
+                let t = if b == MaxDate {
+                    datefmt::Stamp {
+                        y: 9999,
+                        m: 12,
+                        d: 31,
+                        h: 23,
+                        mi: 59,
+                        s: 59,
+                        micro: 999_999,
+                    }
+                } else {
+                    datefmt::Stamp::from_micros(0)
+                };
+                Value::Char(ebcdic(&datefmt::format(&t, &p)))
+            }
+            // a STCK value counts 2**-12 microseconds since 1 January 1900;
+            // a STCKE value has an epoch byte and then the same bits
+            StckToDate | StckeToDate => {
+                let tod = if b == StckToDate {
+                    match &v[0] {
+                        Value::Fixed { m, q: 0, .. } => *m as u64,
+                        x => x.as_i64() as u64,
+                    }
+                } else {
+                    let c = chars(&v[0]);
+                    let mut w = [0u8; 8];
+                    for (i, x) in c.iter().skip(1).take(8).enumerate() {
+                        w[i] = *x;
+                    }
+                    u64::from_be_bytes(w)
+                };
+                let p = pattern(&v, 1, "YYYY-MM-DD-HH.MI.SS.999999");
+                let us = (tod >> 12) as i64 + datefmt::lilian_day(1900, 1, 1) * 86_400_000_000;
+                Value::Char(ebcdic(&datefmt::format(
+                    &datefmt::Stamp::from_micros(us),
+                    &p,
+                )))
+            }
+            // the SMF date X'0cyydddF': c is the century (0 = 19xx, 1 = 20xx)
+            JulianToSmf => {
+                let d = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let y: u32 = d.get(0..4).and_then(|x| x.parse().ok()).unwrap_or(1900);
+                let ddd: u32 = d.get(4..7).and_then(|x| x.parse().ok()).unwrap_or(1);
+                let c = y.saturating_sub(1900) / 100;
+                let digits = format!("0{c}{:02}{ddd:03}F", y % 100);
+                Value::Char(hex_decode(digits.as_bytes()).unwrap_or_default())
+            }
+            SmfToJulian => {
+                let c = chars(&v[0]);
+                let h: std::string::String = c.iter().map(|b| format!("{b:02X}")).collect();
+                let cent: u32 = h.get(1..2).and_then(|x| x.parse().ok()).unwrap_or(0);
+                let yy = h.get(2..4).unwrap_or("00");
+                let ddd = h.get(4..7).unwrap_or("001");
+                Value::Char(ebcdic(&format!("{}{yy}{ddd}", 19 + cent)))
+            }
             Y4Date | Y4Julian | Y4Year => {
                 let d = zeus_cobol::ebcdic::decode(&chars(&v[0]));
                 let w = int(1).unwrap_or(1950);
@@ -1499,6 +1586,26 @@ impl Machine {
             None => 1,
         };
         Ok(match b {
+            // the store-clock instructions: set the reference and return the
+            // condition code 0 (clock in the set state)
+            PliStck | PliStckE | PliStckF | PliStckLocal | PliStckUtc | PliStckELocal
+            | PliStckEUtc | PliStckP | PliStckPLocal | PliStckPUtc => {
+                let us = now_stamp().micros() - datefmt::lilian_day(1900, 1, 1) * 86_400_000_000;
+                let tod = (us as u64) << 12;
+                let value = if matches!(b, PliStckE | PliStckELocal | PliStckEUtc) {
+                    let mut c = vec![0u8; 16];
+                    c[1..9].copy_from_slice(&tod.to_be_bytes());
+                    Value::Char(c)
+                } else {
+                    Value::fixed(i128::from(tod), 0, false)
+                };
+                let locs = self.elements(r, act)?;
+                for l in locs {
+                    let v = self.convert(value.clone(), &arg_ty(b), &l.ty, act)?;
+                    self.store(&l, &v)?;
+                }
+                Value::int(0)
+            }
             New => {
                 let size = self.var_size(r.var, act, None)?;
                 Value::Ptr(self.heap_alloc(size as u32))
@@ -1675,34 +1782,43 @@ impl Machine {
     }
 }
 
-fn parse_date(t: &str, p: &str) -> (i64, u32, u32) {
-    let get = |key: &str| -> Option<i64> {
-        let i = p.find(key)?;
-        t.get(i..i + key.len())?.trim().parse().ok()
-    };
-    let y = get("YYYY")
-        .or_else(|| get("YY").map(|y| if y < 50 { 2000 + y } else { 1900 + y }))
-        .unwrap_or(1970);
-    let m = get("MM").unwrap_or(1) as u32;
-    let d = get("DD").unwrap_or(1) as u32;
-    (y, m, d)
+/// The pattern argument `i`, or the default pattern.
+fn pattern(v: &[Value], i: usize, default: &str) -> String {
+    v.get(i)
+        .map(|p| zeus_cobol::ebcdic::decode(&chars(p)).trim_end().to_string())
+        .unwrap_or_else(|| default.to_string())
 }
 
-fn format_date(y: i64, m: u32, d: u32, p: &str) -> String {
-    let mut out = p.to_string();
-    for (k, v) in [
-        ("YYYY", format!("{y:04}")),
-        ("YY", format!("{:02}", y % 100)),
-        ("MM", format!("{m:02}")),
-        ("DD", format!("{d:02}")),
-        ("HH", "00".into()),
-        ("MI", "00".into()),
-        ("SS", "00".into()),
-        ("999", "000".into()),
-    ] {
-        out = out.replacen(k, &v, 1);
+/// The century window: a year such as 1950, or (zero or negative) an offset
+/// from the current year; WINDOW(1950) when omitted.
+fn window(w: Option<i64>) -> i64 {
+    match w {
+        Some(w) if w > 0 => w,
+        Some(w) => now_stamp().y + w,
+        None => 1950,
     }
-    out
+}
+
+/// The current date and time (UTC; see now_parts).
+fn now_stamp() -> datefmt::Stamp {
+    let d = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let us = d.as_micros() as i64 + datefmt::LILIAN_1970 * 86_400_000_000;
+    datefmt::Stamp::from_micros(us)
+}
+
+/// The attributes of the value a PLISTCK built-in stores.
+fn arg_ty(b: Bif) -> Ty {
+    match b {
+        Bif::PliStckE | Bif::PliStckELocal | Bif::PliStckEUtc => Ty::char(16),
+        _ => Ty::Fixed {
+            dec: false,
+            p: 64,
+            q: 0,
+            unsigned: true,
+        },
+    }
 }
 
 #[cfg(test)]

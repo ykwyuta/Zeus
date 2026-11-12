@@ -174,6 +174,31 @@ pub enum Bif {
     PrecVal,
     ScaleVal,
     Y4Date,
+    Microsecs,
+    Secs,
+    MicrosecsToDate,
+    DaysToMicrosecs,
+    MicrosecsToDays,
+    Timestamp,
+    UtcDatetime,
+    UtcSecs,
+    UtcMicrosecs,
+    MaxDate,
+    MinDate,
+    StckToDate,
+    StckeToDate,
+    JulianToSmf,
+    SmfToJulian,
+    PliStck,
+    PliStckE,
+    PliStckF,
+    PliStckLocal,
+    PliStckUtc,
+    PliStckELocal,
+    PliStckEUtc,
+    PliStckP,
+    PliStckPLocal,
+    PliStckPUtc,
     Y4Julian,
     Y4Year,
     ReplaceBy2,
@@ -436,6 +461,31 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "PRECVAL" => PrecVal,
         "SCALEVAL" => ScaleVal,
         "Y4DATE" => Y4Date,
+        "MICROSECS" => Microsecs,
+        "SECS" => Secs,
+        "MICROSECSTODATE" => MicrosecsToDate,
+        "DAYSTOMICROSECS" => DaysToMicrosecs,
+        "MICROSECSTODAYS" => MicrosecsToDays,
+        "TIMESTAMP" => Timestamp,
+        "UTCDATETIME" => UtcDatetime,
+        "UTCSECS" => UtcSecs,
+        "UTCMICROSECS" => UtcMicrosecs,
+        "MAXDATE" => MaxDate,
+        "MINDATE" => MinDate,
+        "STCKTODATE" => StckToDate,
+        "STCKETODATE" => StckeToDate,
+        "JULIANTOSMF" => JulianToSmf,
+        "SMFTOJULIAN" => SmfToJulian,
+        "PLISTCK" => PliStck,
+        "PLISTCKE" => PliStckE,
+        "PLISTCKF" => PliStckF,
+        "PLISTCKLOCAL" => PliStckLocal,
+        "PLISTCKUTC" => PliStckUtc,
+        "PLISTCKELOCAL" => PliStckELocal,
+        "PLISTCKEUTC" => PliStckEUtc,
+        "PLISTCKP" => PliStckP,
+        "PLISTCKPLOCAL" => PliStckPLocal,
+        "PLISTCKPUTC" => PliStckPUtc,
         "Y4JULIAN" => Y4Julian,
         "Y4YEAR" => Y4Year,
         "REPLACEBY2" => ReplaceBy2,
@@ -503,6 +553,12 @@ impl Bif {
                 | Empty
                 | Days
                 | Weekday
+                | Microsecs
+                | Secs
+                | Timestamp
+                | UtcDatetime
+                | UtcSecs
+                | UtcMicrosecs
                 | Random
         )
     }
@@ -533,6 +589,16 @@ impl Bif {
                 | PageNo
                 | Count
                 | MaxLength
+                | PliStck
+                | PliStckE
+                | PliStckF
+                | PliStckLocal
+                | PliStckUtc
+                | PliStckELocal
+                | PliStckEUtc
+                | PliStckP
+                | PliStckPLocal
+                | PliStckPUtc
         )
     }
 }
@@ -666,6 +732,16 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             _ => return Err(format!("{b:?} requires a REAL FLOAT argument")),
         },
         Y4Date => Ty::char(8),
+        Microsecs | DaysToMicrosecs | UtcMicrosecs => Ty::fixed_bin(63, 0),
+        MicrosecsToDays => fixed_bin31(),
+        Secs | UtcSecs => Ty::Float { dec: false, p: 53 },
+        Timestamp => Ty::char(26),
+        UtcDatetime => Ty::char(17),
+        MicrosecsToDate | MaxDate | MinDate | StckToDate | StckeToDate => Ty::char_var(32),
+        JulianToSmf => Ty::char(4),
+        SmfToJulian => Ty::char(7),
+        PliStck | PliStckE | PliStckF | PliStckLocal | PliStckUtc | PliStckELocal | PliStckEUtc
+        | PliStckP | PliStckPLocal | PliStckPUtc => fixed_bin31(),
         Y4Julian => Ty::char(7),
         Y4Year => Ty::char(4),
         ReplaceBy2 | HexImage => Ty::char_var(65_535),

@@ -2225,6 +2225,192 @@
       }
     }
   },
+  "PM114A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Date/time built-in functions",
+      "PLI-LRM: Table 65. Date/time patterns"
+    ],
+    "tests": {
+      "MAXDATE-TIMESTAMP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAXDATE | MAXDATE('YYYY-MM-DD-HH.MI.SS.999999') returns the value '9999-12-31-23.59.59.999999'."
+        ]
+      },
+      "MAXDATE-JULIAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAXDATE | MAXDATE('YYYY-MM-DD-HH.MI.SS.999999') returns the value '9999-12-31-23.59.59.999999'."
+        ]
+      },
+      "MINDATE-NONULLDATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MINDATE | MINDATE('YYYY-MM-DD-HH.MI.SS.999999') returns the value '1582-10-14-00.00.00.000000' under the NONULLDATE compiler option"
+        ]
+      },
+      "DAYSTOMICROSECS-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYSTOMICROSECS | DAYSTOMICROSECS(x) is the same as x*(24*60*60*1_000_000)."
+        ]
+      },
+      "MICROSECSTODAYS-DROP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECSTODAYS | MICROSECSTODAYS returns a FIXED BINARY(31) value that represents the number of microseconds x converted to days, ignoring incomplete days."
+        ]
+      },
+      "MICROSECS-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECS"
+        ]
+      },
+      "MICROSECS-ROUNDTRIP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECS",
+          "PLI-LRM: MICROSECSTODATE | If p is omitted, it is assumed to be the TIMESTAMP pattern, namely 'YYYY-MM-DD-HH.MI.SS.999999'."
+        ]
+      },
+      "MICROSECSTODATE-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECSTODATE | If p is omitted, it is assumed to be the TIMESTAMP pattern, namely 'YYYY-MM-DD-HH.MI.SS.999999'."
+        ]
+      },
+      "MICROSECSTODATE-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECSTODATE | If p is omitted, it is assumed to be the TIMESTAMP pattern, namely 'YYYY-MM-DD-HH.MI.SS.999999'."
+        ]
+      },
+      "SECS-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SECS"
+        ]
+      },
+      "PATTERN-MMM-MIXED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYSTODATE"
+        ]
+      },
+      "PATTERN-MMM-UPPER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYSTODATE"
+        ]
+      },
+      "PATTERN-WINDOW-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYS"
+        ]
+      },
+      "PATTERN-WINDOW-LOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYS"
+        ]
+      },
+      "STCKTODATE-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STCKTODATE",
+          "POP: Time-of-Day Clock and Epoch | Bit 51 of the TOD clock represents 1 microsecond"
+        ]
+      },
+      "STCKETODATE-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STCKETODATE",
+          "POP: Time-of-Day Clock and Epoch | Bit 51 of the TOD clock represents 1 microsecond"
+        ]
+      },
+      "JULIANTOSMF-20XX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: JULIANTOSMF",
+          "SMF: Standard and extended SMF record headers | form 0cyydddF (where c is 0 for 19xx or 1 for 20xx, yy is the"
+        ]
+      },
+      "SMFTOJULIAN-19XX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SMFTOJULIAN",
+          "SMF: Standard and extended SMF record headers | form 0cyydddF (where c is 0 for 19xx or 1 for 20xx, yy is the"
+        ]
+      },
+      "TIMESTAMP-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TIMESTAMP | TIMESTAMP returns a CHAR(26) character string that gives the current date and time in the format YYYY-MM-DD-HH.MI.SS.999999."
+        ]
+      },
+      "UTCDATETIME-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTCDATETIME"
+        ]
+      },
+      "UTCSECS-AFTER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTCSECS"
+        ]
+      },
+      "UTCMICROSECS-AFTER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTCMICROSECS"
+        ]
+      },
+      "PLISTCK-CC-DATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCK",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCKE-CC-DATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKE",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCK-FORMS-CC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKF",
+          "PLI-LRM: PLISTCKLOCAL",
+          "PLI-LRM: PLISTCKUTC",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCKE-FORMS-CC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKELOCAL",
+          "PLI-LRM: PLISTCKEUTC",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCKP-FORMS-CC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKP",
+          "PLI-LRM: PLISTCKPLOCAL",
+          "PLI-LRM: PLISTCKPUTC",
+          "POP: TOD Clock"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

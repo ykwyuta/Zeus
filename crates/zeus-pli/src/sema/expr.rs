@@ -1332,6 +1332,16 @@ impl Compiler {
                             | Present
                             | Omitted
                             | Unspec
+                            | PliStck
+                            | PliStckE
+                            | PliStckF
+                            | PliStckLocal
+                            | PliStckUtc
+                            | PliStckELocal
+                            | PliStckEUtc
+                            | PliStckP
+                            | PliStckPLocal
+                            | PliStckPUtc
                     ) || aggregate
                     {
                         return Ok(mk(Ek::RefBuiltin(b, rr, rest), ty));
@@ -1447,6 +1457,17 @@ impl Compiler {
             | IUnsigned
             | ReplaceBy2
             | Y4Date
+            | Microsecs
+            | Secs
+            | MicrosecsToDate
+            | DaysToMicrosecs
+            | MicrosecsToDays
+            | MaxDate
+            | MinDate
+            | StckToDate
+            | StckeToDate
+            | JulianToSmf
+            | SmfToJulian
             | Y4Julian
             | Y4Year
             | Collapse

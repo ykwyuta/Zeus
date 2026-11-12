@@ -826,6 +826,38 @@
       "WHEREDIFF"
     ]
   },
+  "PM114A": {
+    "expect": "run",
+    "tests": [
+      "MAXDATE-TIMESTAMP",
+      "MINDATE-NONULLDATE",
+      "MAXDATE-JULIAN",
+      "DAYSTOMICROSECS-ONE",
+      "MICROSECSTODAYS-DROP",
+      "MICROSECS-DAY-ONE",
+      "MICROSECSTODATE-DAY-ONE",
+      "MICROSECSTODATE-DEFAULT",
+      "SECS-DAY-ONE",
+      "MICROSECS-ROUNDTRIP",
+      "PATTERN-MMM-MIXED",
+      "PATTERN-MMM-UPPER",
+      "PATTERN-WINDOW-HIGH",
+      "PATTERN-WINDOW-LOW",
+      "STCKTODATE-2000",
+      "STCKETODATE-2000",
+      "JULIANTOSMF-20XX",
+      "SMFTOJULIAN-19XX",
+      "TIMESTAMP-FORM",
+      "UTCDATETIME-FORM",
+      "UTCSECS-AFTER",
+      "UTCMICROSECS-AFTER",
+      "PLISTCK-CC-DATE",
+      "PLISTCKE-CC-DATE",
+      "PLISTCK-FORMS-CC",
+      "PLISTCKE-FORMS-CC",
+      "PLISTCKP-FORMS-CC"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

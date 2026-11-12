@@ -276,7 +276,14 @@ impl Compiler {
                 Some((p, q)) => (p, q.unwrap_or(0)),
                 None => (if dec { 5 } else { 15 }, 0),
             };
-            let max = if dec { 31 } else { 63 };
+            // Language Reference, Table 39: UNSIGNED FIXED BINARY goes to 64
+            let max = if dec {
+                31
+            } else if unsigned {
+                64
+            } else {
+                63
+            };
             if p < 1 || p > max {
                 return Err(self.err(pos, format!("precision {p} is out of range")));
             }

@@ -76,5 +76,11 @@
     "form": "SA23-1370-60",
     "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaa900_v3r1.pdf",
     "sha256": "b0b0021798eafaf91683ccae25660a9d3521c7bc83ebafb8ae114fb107ff280e"
+  },
+  "SMF": {
+    "title": "z/OS 3.1 MVS System Management Facilities (SMF)",
+    "form": "SA38-0667-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf",
+    "sha256": "383e0248e8da04b3b9c50d5a19c66b788f859b7968c9dc29e8dcd88585fd127a"
   }
 }
