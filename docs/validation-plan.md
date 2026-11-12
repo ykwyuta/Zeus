@@ -117,3 +117,4 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | 2026-11-12 | `ZS108A` (指示文・PACKED-DECIMAL・UPSI・VOLATILE・SECONDS-PAST-MIDNIGHT、spec 11 検査)。Zeus に VOLATILE と SECONDS-PAST-MIDNIGHT を実装。未網羅 106 → 100 | 167 本 / 1,528 | | |
 | 2026-11-12 | `PM109A` (組込み関数 spec 36 判定)。Zeus に IAND 等 20 個を実装。道具が DCL/PROC/STG/CSTG の略記を数えるようにした。未網羅 193 → 144 | | 75 本 / 406 | |
 | 2026-11-12 | `HA106A`・`HM106A`・`HM107A` (DC 型・CCW・条件付きアセンブリの関数とシステム変数、spec 53 判定)。Zeus に CCW/CCW0/CCW1 を実装。道具がアドレス定数を数えるようにした。未網羅 443 → 390 | | | 133 本 / 647 |
+| 2026-11-12 | 機械命令 `HI112A`–`HI116A` (加減算・論理加減算・比較・乗除算・ロード、spec 90 検査)。Zeus に MS/MSY を実装。道具から STORAGE/STIMER/XCTL (マクロ) を外した | | | 138 本 / 737 |

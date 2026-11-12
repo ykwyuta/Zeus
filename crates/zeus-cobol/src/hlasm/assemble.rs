@@ -285,6 +285,7 @@ pub(super) fn canonical_operation(op: &str) -> &str {
         "STCY" => "STC",
         "AY" => "A",
         "SY" => "S",
+        "MSY" => "MS",
         "CY" => "C",
         "CLY" => "CL",
         "ALY" => "AL",
@@ -438,10 +439,10 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         | "BASR" | "BASSM" | "BSM" | "SAM24" | "SAM31" | "SAM64" | "SPM" | "NOPR" => 2,
         "EX" | "L" | "ST" | "LA" | "STM" | "LM" | "BXH" | "BXLE" | "CLI" | "MVI" | "B" | "BE"
         | "BNE" | "BH" | "BL" | "BCT" | "AHI" | "A" | "S" | "C" | "CL" | "AL" | "SL" | "N"
-        | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "M" | "D" | "LH" | "STH" | "IC" | "STC"
-        | "SLL" | "SRL" | "SLA" | "SRA" | "NI" | "OI" | "XI" | "TM" | "BC" | "BAL" | "BAS"
-        | "NOP" | "BNH" | "BNL" | "BO" | "BNO" | "BP" | "BM" | "BZ" | "BNZ" | "BNP" | "BNM"
-        | "CVB" | "CVD" => 4,
+        | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "MS" | "M" | "D" | "LH" | "STH" | "IC"
+        | "STC" | "SLL" | "SRL" | "SLA" | "SRA" | "NI" | "OI" | "XI" | "TM" | "BC" | "BAL"
+        | "BAS" | "NOP" | "BNH" | "BNL" | "BO" | "BNO" | "BP" | "BM" | "BZ" | "BNZ" | "BNP"
+        | "BNM" | "CVB" | "CVD" => 4,
         "MVC" | "CLC" | "XC" | "NC" | "OC" | "MVN" | "MVZ" | "TR" | "ZAP" | "AP" | "SP" | "CP"
         | "MP" | "DP" | "PACK" | "UNPK" | "MVO" | "TRT" | "TRTR" | "SRP" | "TP" | "ED" | "EDMK" => {
             6
@@ -3288,8 +3289,8 @@ fn compile_layout(
                     1
                 }
                 "EX" | "L" | "ST" | "LA" | "BCT" | "A" | "S" | "C" | "CL" | "AL" | "SL" | "N"
-                | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "M" | "D" | "LH" | "STH" | "IC"
-                | "STC" | "SLL" | "SRL" | "SLA" | "SRA" | "BAL" | "BAS" | "CVB" | "CVD" => {
+                | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "MS" | "M" | "D" | "LH" | "STH"
+                | "IC" | "STC" | "SLL" | "SRL" | "SLA" | "SRA" | "BAL" | "BAS" | "CVB" | "CVD" => {
                     i.registers = vec![reg(0)?];
                     i.address = Some(addr(1, false)?.0);
                     2

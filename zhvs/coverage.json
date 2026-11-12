@@ -1128,6 +1128,121 @@
       "SRDA-NEGATIVE-CC"
     ]
   },
+  "HI112A": {
+    "expect": "run",
+    "tests": [
+      "A-OVERFLOW",
+      "AH-SIGN-EXTEND",
+      "AHY-NEGATIVE",
+      "AY-ZERO",
+      "AGF-SIGN-EXTEND",
+      "AGFI-OVERFLOW",
+      "AGR-NEGATIVE",
+      "S-NEGATIVE",
+      "S-OVERFLOW",
+      "SH-SIGN-EXTEND",
+      "SHY",
+      "SY-ZERO",
+      "SGF-SIGN-EXTEND",
+      "SGR-OVERFLOW"
+    ]
+  },
+  "HI113A": {
+    "expect": "run",
+    "tests": [
+      "AL-ZERO-CARRY",
+      "ALR-NO-CARRY",
+      "ALY-NONZERO-CARRY",
+      "ALG-ZERO-CARRY",
+      "ALC-CARRY-IN",
+      "ALCR-NO-CARRY-IN",
+      "ALCG-CARRY-OUT",
+      "SL-BORROW",
+      "SLR-ZERO",
+      "SLY-NO-BORROW",
+      "SLG-BORROW",
+      "SLGR",
+      "SLB-BORROW-IN",
+      "SLBR-NO-BORROW-IN",
+      "SLBG-ZERO-BORROW",
+      "SLBGR"
+    ]
+  },
+  "HI114A": {
+    "expect": "run",
+    "tests": [
+      "C-SIGNED-HIGH",
+      "CR-LOW",
+      "CY-EQUAL",
+      "CH-SIGN-EXTEND",
+      "CHY",
+      "CHI-LOW",
+      "CG-64",
+      "CGF-SIGN-EXTEND",
+      "CGFI",
+      "CGFR",
+      "CGHI",
+      "CL-LOGICAL",
+      "CLR-HIGH",
+      "CLY",
+      "CLG",
+      "CLGR",
+      "CLI-LOW",
+      "CLIY-EQUAL",
+      "CLMH-HIGH-HALF",
+      "CLMY"
+    ]
+  },
+  "HI115A": {
+    "expect": "run",
+    "tests": [
+      "M-SIGNED-PAIR",
+      "MH-LOW-WORD",
+      "MHI-TRUNCATED",
+      "ML-LOGICAL",
+      "MLR",
+      "MLG-128",
+      "MLGR-128",
+      "MSG",
+      "MSGR-LOW-64",
+      "MSY",
+      "MGHI",
+      "D-NEGATIVE-DIVIDEND",
+      "DL-LOGICAL",
+      "DLR",
+      "DLG-128",
+      "DLGR",
+      "DSG",
+      "DSGF-SIGN-EXTEND",
+      "DSGFR",
+      "DSGR"
+    ]
+  },
+  "HI116A": {
+    "expect": "run",
+    "tests": [
+      "LH-SIGN-EXTEND",
+      "LHY",
+      "LB-SIGN-EXTEND",
+      "LBR",
+      "LGB",
+      "LGBR",
+      "LGFI",
+      "LLC-ZERO-EXTEND",
+      "LLH-ZERO-EXTEND",
+      "LLIHF",
+      "LLIHH-LLIHL",
+      "LLILF-LLILH-LLILL",
+      "LCR-OVERFLOW",
+      "LCR-NEGATIVE",
+      "LNR",
+      "LNR-ZERO",
+      "LPR",
+      "LPR-OVERFLOW",
+      "LTR",
+      "LTGR"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [

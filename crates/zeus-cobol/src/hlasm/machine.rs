@@ -186,6 +186,7 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
                 0x4a => "AH",
                 0x4b => "SH",
                 0x4c => "MH",
+                0x71 => "MS",
                 0x4d => "BAS",
                 0x4e => "CVD",
                 0x4f => "CVB",

@@ -862,7 +862,7 @@ pub(crate) fn execute_entry_with_host(
                             }
                         }
                     }
-                    "MH" | "M" | "MR" | "D" | "DR" => {
+                    "MH" | "MS" | "M" | "MR" | "D" | "DR" => {
                         let r = reg(0)?;
                         let v = if op == "MR" || op == "DR" {
                             registers[reg(1)?] as i32
@@ -873,7 +873,8 @@ pub(crate) fn execute_entry_with_host(
                         } else {
                             word(mem, ea()?)? as i32
                         };
-                        if op == "MH" {
+                        if op == "MH" || op == "MS" {
+                            // MULTIPLY SINGLE: the low 32 bits, no overflow indication
                             registers[r] = (registers[r] as i32).wrapping_mul(v) as u32;
                         } else {
                             if !r.is_multiple_of(2) {

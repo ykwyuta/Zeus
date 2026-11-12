@@ -310,7 +310,9 @@ def hlasm_instructions():
         path = os.path.join(base, rel)
         if os.path.exists(path):
             names |= set(re.findall(r'"([A-Z][A-Z0-9]{0,7})"', open(path).read()))
-    return sorted(n for n in names if n not in HLASM_ASM)
+    # names in the decoder files that are system macros, not instructions
+    macros = {'STORAGE', 'STIMER', 'XCTL'}
+    return sorted(n for n in names if n not in HLASM_ASM and n not in macros)
 
 
 def hlasm_text(path):
