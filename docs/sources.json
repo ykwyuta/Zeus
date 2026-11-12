@@ -52,5 +52,11 @@
     "form": "SA38-0683-60",
     "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ceea300_v3r1.pdf",
     "sha256": "2dd8b4f44146875470f101012d29f165d57936b6c8ec2a99c677cac228185774"
+  },
+  "DFSMS-MAC": {
+    "title": "z/OS 3.1 DFSMS Macro Instructions for Data Sets",
+    "form": "SC23-6852-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/idad500_v3r1.pdf",
+    "sha256": "26ffbffe3ceae015bfa3799ed7f6234aadab5d47ac3ddeaafd5d8a5090d0c5b1"
   }
 }

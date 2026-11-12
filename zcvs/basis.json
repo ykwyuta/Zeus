@@ -1243,247 +1243,607 @@
     ]
   },
   "ZE101N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: END PROGRAM program-name | program-name must be identical to a program-name declared in a preceding program-ID paragraph."
+    ]
   },
   "ZE102N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: END PROGRAM program-name | An end program marker is optional for the last program in the sequence only if that program does not contain any nested source programs."
+    ]
   },
   "ZE103N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SET statement",
+      "COB-LRM: WHEN SET TO FALSE"
+    ]
   },
   "ZE104N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: WHEN SET TO FALSE"
+    ]
   },
   "ZE105N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: PERFORM with UNTIL phrase | The UNTIL EXIT phrase must not be specified with the TEST BEFORE or TEST AFTER phrase nor with the"
+    ]
   },
   "ZE106N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: INITIALIZE statement | The same category cannot be repeated in a REPLACING phrase."
+    ]
   },
   "ZE107N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: INITIALIZE statement"
+    ]
   },
   "ZE108N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: INITIALIZE statement rules | Any identifiers that are not valid receiving operands of a MOVE statement."
+    ]
   },
   "ZE109N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: EXTERNAL clause | It cannot be specified in LINKAGE SECTION, LOCAL-STORAGE SECTION, or FILE SECTION data description entries."
+    ]
   },
   "ZE110N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECURSIVE",
+      "COB-LRM: PROGRAM-ID paragraph"
+    ]
   },
   "ZE111N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECURSIVE",
+      "COB-LRM: PROGRAM-ID paragraph"
+    ]
   },
   "ZE112N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RETURNING phrase"
+    ]
   },
   "ZE113N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ENTRY statement"
+    ]
   },
   "ZE114N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIGN clause",
+      "COB-LRM: NATIONAL phrase"
+    ]
   },
   "ZE115N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: GROUP-USAGE clause"
+    ]
   },
   "ZE116N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: PROCEDURE-POINTER phrase",
+      "COB-LRM: VALUE clause"
+    ]
   },
   "ZE117N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECORDING MODE clause",
+      "COB-LRM: BLOCK CONTAINS clause"
+    ]
   },
   "ZE118N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECORDING MODE clause",
+      "COB-LRM: BLOCK CONTAINS clause"
+    ]
   },
   "ZE119N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIGN clause | If you specify the CODE-SET clause in an FD entry, any signed numeric data description entries associated with that file description entry must be described with the SIGN IS SEPARATE clause."
+    ]
   },
   "ZE120N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: FILE STATUS clause"
+    ]
   },
   "ZE121N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: PADDING CHARACTER clause"
+    ]
   },
   "ZE122N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RERUN clause"
+    ]
   },
   "ZE123N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: LABEL RECORDS clause"
+    ]
   },
   "ZE124N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DATA DIVISION overview"
+    ]
   },
   "ZE125N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: ARITH | Default is: ARITH(COMPAT)"
+    ]
   },
   "ZE126N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Format 2: condition-name value",
+      "COB-LRM: WHEN SET TO FALSE"
+    ]
   },
   "ZE126P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Format 2: condition-name value",
+      "COB-LRM: WHEN SET TO FALSE"
+    ]
   },
   "ZE127N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REPLACE statement",
+      "COB-LRM: Pseudo-text"
+    ]
   },
   "ZE127P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REPLACE statement"
+    ]
   },
   "ZE128N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REPLACE statement",
+      "COB-LRM: Pseudo-text"
+    ]
   },
   "ZE128P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REPLACE statement"
+    ]
   },
   "ZE129N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECURSIVE"
+    ]
   },
   "ZE129P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECURSIVE"
+    ]
   },
   "ZE130N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: ARITH | The maximum number of digit positions that you can specify in the PICTURE clause for packed-decimal, external-decimal, and numeric-edited data items is raised from 18 to 31."
+    ]
   },
   "ZE130P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: ARITH"
+    ]
   },
   "ZE131N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: ARITH | The maximum number of digit positions that you can specify in the PICTURE clause for packed-decimal, external-decimal, and numeric-edited data items is raised from 18 to 31."
+    ]
   },
   "ZE131P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: ARITH"
+    ]
   },
   "ZE132N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: PERFORM with UNTIL phrase | The UNTIL EXIT phrase must not be specified with the TEST BEFORE or TEST AFTER phrase nor with the PERFORM with VARYING phrase."
+    ]
   },
   "ZE132P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: PERFORM with UNTIL phrase"
+    ]
   },
   "ZE133N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REPLACE statement",
+      "COB-LRM: Pseudo-text"
+    ]
   },
   "ZE133P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REPLACE statement"
+    ]
   },
   "ZE134N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: JUSTIFIED clause"
+    ]
   },
   "ZE134P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: JUSTIFIED clause"
+    ]
   },
   "ZE135N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: BLANK WHEN ZERO clause"
+    ]
   },
   "ZE135P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: BLANK WHEN ZERO clause"
+    ]
   },
   "ZE136N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIGN clause"
+    ]
   },
   "ZE136P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIGN clause"
+    ]
   },
   "ZE137N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: POINTER phrase"
+    ]
   },
   "ZE137P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: POINTER phrase"
+    ]
   },
   "ZE138N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: POINTER phrase",
+      "COB-LRM: VALUE clause"
+    ]
   },
   "ZE138P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: POINTER phrase"
+    ]
   },
   "ZE139N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: NATIONAL phrase"
+    ]
   },
   "ZE139P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: NATIONAL phrase"
+    ]
   },
   "ZE140N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: External floating-point items | The following clauses are invalid with external floating-point items:"
+    ]
   },
   "ZE140P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: External floating-point items"
+    ]
   },
   "ZE141N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: External floating-point items | The following clauses are invalid with external floating-point items:"
+    ]
   },
   "ZE141P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: External floating-point items"
+    ]
   },
   "ZE142N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: External floating-point items | The DISPLAY phrase or the NATIONAL phrase of the USAGE clause must be specified or implied."
+    ]
   },
   "ZE142P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: External floating-point items"
+    ]
   },
   "ZE143N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: BLANK WHEN ZERO clause"
+    ]
   },
   "ZE143P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: BLANK WHEN ZERO clause"
+    ]
   },
   "ZE144N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: OCCURS DEPENDING ON clause"
+    ]
   },
   "ZE144P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: OCCURS DEPENDING ON clause"
+    ]
   },
   "ZE145N": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: EXTERNAL clause | It cannot be specified in LINKAGE SECTION, LOCAL-STORAGE SECTION, or FILE SECTION data description entries."
+    ]
   },
   "ZE145P": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: LOCAL-STORAGE SECTION"
+    ]
   },
   "ZF101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECORDING MODE clause",
+      "COB-LRM: RECORD clause",
+      "COB-PG: Logical records | Fixed-length records are in format F. Use RECORDING MODE F to explicitly request this format."
+    ],
+    "tests": {
+      "QSAM-MODE-V-EOF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Table 34. File status key values and meanings"
+        ]
+      }
+    }
   },
   "ZF102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: Logical records | Spanned records are in format S. A spanned record is a QSAM logical record that can be contained in one",
+      "COB-LRM: RECORDING MODE clause"
+    ]
   },
   "ZF103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: CODE-SET clause",
+      "COB-LRM: SPECIAL-NAMES paragraph",
+      "COB-LRM: SIGN clause | If you specify the CODE-SET clause in an FD entry, any signed numeric data description entries associated with that file description entry must be described with the SIGN IS SEPARATE clause."
+    ]
   },
   "ZF104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: Using VSAM status codes (VSAM files only) | The data item data-name-8 specifies the VSAM status code, which you define as a 6-byte alphanumeric group data item that has three subordinate 2-byte binary fields.",
+      "COB-LRM: Table 34. File status key values and meanings",
+      "DFSMS-MAC: Reason code (logical errors) | The return code in register 15 indicates a logical error (8), and the RPL feedback area contains a reason code identifying the error.",
+      "DFSMS-MAC: Reason code (logical errors) | You attempted to store a record with a duplicate key, or there is a duplicate"
+    ],
+    "tests": {
+      "VSAM-KSDS-NF-23": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Reason code (logical errors) | Record not found, or the RBA is not found in the buffer pool."
+        ]
+      },
+      "VSAM-KSDS-CL-47": {
+        "basis": "zos",
+        "note": "File status 47 is detected by COBOL before any VSAM request, so no VSAM return, function or feedback code is produced. The Programming Guide says the VSAM status code is meaningful only when VSAM supplies it; the zeros are the current Zeus value.",
+        "refs": [
+          "COB-PG: Using VSAM status codes (VSAM files only) | The VSAM status code contains meaningful values when the COBOL file status key is not 0."
+        ]
+      }
+    }
   },
   "ZF105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SAME RECORD AREA clause",
+      "COB-LRM: APPLY WRITE-ONLY clause"
+    ]
   },
   "ZF106A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECORD clause",
+      "COB-PG: Logical records",
+      "COB-LRM: Table 34. File status key values and meanings"
+    ]
   },
   "ZF107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ALTERNATE RECORD KEY clause",
+      "COB-LRM: Table 34. File status key values and meanings",
+      "COB-PG: Using VSAM status codes (VSAM files only)",
+      "DFSMS-MAC: Component codes (RPLCMPON) | 2(X'2') Alternate index Correct",
+      "DFSMS-MAC: Reason code (logical errors) | You attempted to store a record with a duplicate key, or there is a duplicate"
+    ],
+    "tests": {
+      "KS-NOT-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Reason code (logical errors) | Record not found, or the RBA is not found in the buffer pool."
+        ]
+      },
+      "AK-OLD-REMOVED": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Reason code (logical errors) | Record not found, or the RBA is not found in the buffer pool."
+        ]
+      },
+      "AK-DELETE-REMOVED": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Reason code (logical errors) | Record not found, or the RBA is not found in the buffer pool."
+        ]
+      },
+      "KS-DELETE-REMOVED": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Reason code (logical errors) | Record not found, or the RBA is not found in the buffer pool."
+        ]
+      },
+      "AK-END": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Reason code (logical errors) | End of data set found (during sequential or skip sequential retrieval)"
+        ]
+      }
+    }
   },
   "ZF108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ALTERNATE RECORD KEY clause | In random access, only the first record written in a series of records with duplicate keys can be retrieved.",
+      "COB-LRM: Table 34. File status key values and meanings",
+      "DFSMS-MAC: Component codes (RPLCMPON)"
+    ],
+    "tests": {
+      "DUP-NEXT-FIRST": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALTERNATE RECORD KEY clause | In sequential access, the records with duplicate keys are retrieved in the order in which they were placed in the file."
+        ]
+      },
+      "DUP-NEXT-SECOND": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALTERNATE RECORD KEY clause | In sequential access, the records with duplicate keys are retrieved in the order in which they were placed in the file."
+        ]
+      },
+      "DUP-NEXT-THIRD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALTERNATE RECORD KEY clause | In sequential access, the records with duplicate keys are retrieved in the order in which they were placed in the file."
+        ]
+      }
+    }
   },
   "ZF109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Table 34. File status key values and meanings",
+      "COB-LRM: OPEN statement notes"
+    ]
   },
   "ZF110A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Table 34. File status key values and meanings",
+      "COB-LRM: START statement",
+      "DFSMS-MAC: Reason code (logical errors)"
+    ]
   },
   "ZF111A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: START statement",
+      "COB-LRM: Table 34. File status key values and meanings"
+    ]
   },
   "ZF112A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ALTERNATE RECORD KEY clause | In random access, only the first record written in a series of records with duplicate keys can be retrieved.",
+      "COB-LRM: REWRITE statement",
+      "COB-LRM: DELETE statement",
+      "COB-LRM: Table 34. File status key values and meanings"
+    ]
   },
   "ZF113A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Table 34. File status key values and meanings",
+      "COB-LRM: OPEN statement notes",
+      "COB-LRM: CLOSE statement"
+    ]
   },
   "ZF114A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: OPEN statement notes",
+      "COB-PG: Logical records"
+    ]
   },
   "ZF201M": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REVERSED | When REVERSED is specified, OPEN statement execution positions the QSAM file at its end.",
+      "COB-LRM: RECORDING MODE clause"
+    ]
   },
   "ZF202M": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: CLOSE statement",
+      "COB-LRM: Table 34. File status key values and meanings"
+    ]
   },
   "ZN101A": {
     "basis": "spec",
@@ -2035,61 +2395,571 @@
     }
   },
   "ZS101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "SR-TALLY-RC": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: RETURN-CODE"
+        ]
+      },
+      "SR-WHEN-COMPILED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: WHEN-COMPILED",
+          "COB-LRM: WHEN-COMPILED"
+        ]
+      },
+      "FN-INT-DATE-DAY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INTEGER-OF-DATE",
+          "COB-LRM: DATE-OF-INTEGER",
+          "COB-LRM: DAY-OF-INTEGER"
+        ]
+      },
+      "FN-Y2K-WINDOW": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: YEAR-TO-YYYY",
+          "COB-LRM: DATE-TO-YYYYMMDD",
+          "COB-LRM: DAY-TO-YYYYDDD"
+        ]
+      }
+    }
   },
   "ZS102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "LE-CEEDAYS-EPOCH": {
+        "basis": "spec",
+        "refs": [
+          "LE-PR: CEEDAYS—Convert date to Lilian format | A 32-bit binary integer representing the Lilian date, the number of days since 14 October 1582."
+        ]
+      },
+      "LE-CEEDATE-FMT": {
+        "basis": "spec",
+        "refs": [
+          "LE-PR: CEEDAYS—Convert date to Lilian format",
+          "LE-PR: CEEDATE—Convert Lilian date to character format"
+        ]
+      },
+      "LE-CEESECS-DATM": {
+        "basis": "spec",
+        "refs": [
+          "LE-PR: CEESECS—Convert timestamp to seconds",
+          "LE-PR: CEEDATM—Convert seconds to character timestamp"
+        ]
+      },
+      "LE-CEEDAYS-BAD": {
+        "basis": "spec",
+        "refs": [
+          "LE-PR: CEEDAYS—Convert date to Lilian format | CEE2EC 3 2508 The date value that was passed to CEEDAYS or CEESECS was"
+        ]
+      },
+      "LE-CEENCOD-DCOD": {
+        "basis": "spec",
+        "refs": [
+          "LE-PR: CEENCOD—Construct a condition token",
+          "LE-PR: CEEDCOD—Decompose a condition token"
+        ]
+      }
+    }
   },
   "ZS103M": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: Accessing main program parameters under z/OS",
+      "COB-LRM: RETURN-CODE | If control returns to the operating system, the value of the RETURN-CODE special register is passed to"
+    ]
   },
   "ZS104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: INTEGER-OF-DATE",
+      "COB-LRM: DATE-OF-INTEGER",
+      "COB-LRM: DAY-OF-INTEGER"
+    ]
   },
   "ZS105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: REPLACE statement"
+    ]
   },
   "ZS106A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "COPY-LITERAL-WORD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: COPY statement"
+        ]
+      },
+      "REPLACE-TAG-WORD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: REPLACE statement"
+        ]
+      },
+      "OPEN-CLOSE-ELSE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: OPEN statement notes",
+          "COB-LRM: CLOSE statement"
+        ]
+      },
+      "INSPECT-FUNCTION": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INSPECT statement",
+          "COB-LRM: REVERSE"
+        ]
+      },
+      "BATCH-OPTIONS": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Specifying compiler options in a batch compilation",
+          "COB-PG: TRUNC"
+        ]
+      }
+    }
   },
   "ZS107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "WINDOW-LOW-EDGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: YEAR-TO-YYYY"
+        ]
+      },
+      "WINDOW-HIGH-EDGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: YEAR-TO-YYYY"
+        ]
+      },
+      "WINDOW-DEFAULT-50": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: YEAR-TO-YYYY"
+        ]
+      },
+      "WINDOW-DATE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DATE-TO-YYYYMMDD"
+        ]
+      },
+      "WINDOW-DAY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DAY-TO-YYYYDDD"
+        ]
+      },
+      "NATIONAL-LEAD-SEP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | When SIGN IS SEPARATE is specified, either USAGE DISPLAY or USAGE NATIONAL can be specified."
+        ]
+      },
+      "NATIONAL-TRAIL-SEP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | When SIGN IS SEPARATE is specified, either USAGE DISPLAY or USAGE NATIONAL can be specified."
+        ]
+      },
+      "INIT-SKIPS-REDEFINES": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      },
+      "NATIONAL-SET-FALSE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SET statement"
+        ]
+      }
+    }
   },
   "ZS108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "DIR-IF-TRUE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: >>IF, >>ELSE, >>END-IF",
+          "COB-LRM: >>DEFINE"
+        ]
+      },
+      "DIR-IF-ELSE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: >>IF, >>ELSE, >>END-IF"
+        ]
+      },
+      "DIR-NOT-DEFINED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: >>IF, >>ELSE, >>END-IF",
+          "COB-LRM: >>DEFINE"
+        ]
+      },
+      "DIR-REDEFINE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: >>DEFINE"
+        ]
+      },
+      "DIR-EVALUATE-WHEN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: >>EVALUATE"
+        ]
+      },
+      "DIR-EVALUATE-OTHER": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: >>EVALUATE"
+        ]
+      },
+      "PACKED-DECIMAL-SIGN": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMPROC | Internal decimal, unsigned: Low-order 4 bits of the low-order byte contain X'F'."
+        ]
+      },
+      "PACKED-DECIMAL-NOSGN": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMPROC | Internal decimal, unsigned: Low-order 4 bits of the low-order byte contain X'F'."
+        ]
+      },
+      "UPSI-DEFAULT-OFF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SPECIAL-NAMES paragraph",
+          "COB-PG: UPSI"
+        ]
+      },
+      "VOLATILE-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: VOLATILE clause"
+        ]
+      },
+      "SECONDS-PAST-MIDNT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SECONDS-PAST-MIDNIGHT"
+        ]
+      }
+    }
   },
   "ZS109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "SHIFT-OUT-IN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DBCS notation | The single-byte EBCDIC codes for the shift-out and shift-in delimiters are X'0E' and X'0F', respectively."
+        ]
+      },
+      "SORT-RETURN-INITIAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SORT-RETURN"
+        ]
+      },
+      "SORT-CONTROL-INITIAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SORT-CONTROL | 01 SORT-CONTROL GLOBAL PICTURE X(8) USAGE DISPLAY VALUE \"IGZSRTCD\"."
+        ]
+      },
+      "SORT-CORE-SIZE-INIT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SORT-CORE-SIZE"
+        ]
+      },
+      "SORT-FILE-SIZE-INIT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SORT-FILE-SIZE"
+        ]
+      },
+      "SORT-MODE-SIZE-INIT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SORT-MODE-SIZE"
+        ]
+      },
+      "SORT-MESSAGE-INITIAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SORT-MESSAGE"
+        ]
+      },
+      "ZWB-DEFAULT-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: ZWB | Default is: ZWB"
+        ]
+      },
+      "ZWB-DEFAULT-POSITIVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: ZWB | Default is: ZWB"
+        ]
+      },
+      "FMT-CURRENT-DATE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FORMATTED-CURRENT-DATE",
+          "COB-LRM: TEST-FORMATTED-DATETIME"
+        ]
+      }
+    }
   },
   "ZX101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: EXIT statement",
+      "COB-LRM: PERFORM statement"
+    ]
   },
   "ZX102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "COND-SET-TRUE-FALSE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SET statement"
+        ]
+      },
+      "COND-SUBSCRIPT-SET": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SET statement"
+        ]
+      },
+      "INIT-VALUE-PRECED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules | The VALUE phrase is specified, the category of the elementary data item is one of the categories specified or implied in the VALUE phrase"
+        ]
+      }
+    }
   },
   "ZX103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: COPY statement",
+      "COB-LRM: REPLACE statement"
+    ]
   },
   "ZX104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: EJECT statement",
+      "COB-LRM: SKIP statements",
+      "COB-LRM: TITLE statement"
+    ]
   },
   "ZX105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: EXIT statement",
+      "COB-LRM: Varying phrase rules"
+    ]
   },
   "ZX106A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: INITIALIZE statement rules | Elementary data items that have an explicit or implicit FILLER clause if the FILLER phrase is not specified."
+    ],
+    "tests": {
+      "INIT-JUST-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: JUSTIFIED clause"
+        ]
+      },
+      "INIT-JUST-REPLACE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: JUSTIFIED clause"
+        ]
+      }
+    }
   },
   "ZX107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "TRIM-BOTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "TRIM-LEADING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "TRIM-TRAILING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "TRIM-INTERNAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "TRIM-LEAD-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "TRIM-BOTH-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "TRIM-EMPTY-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM | If argument-1 contains all spaces or argument-1 is of length zero, the returned value is of length zero."
+        ]
+      },
+      "NUMVAL-VALID": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL | If one or more characters are in error, the returned value is the position of the first character in error."
+        ]
+      },
+      "NUMVAL-BAD-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL | If one or more characters are in error, the returned value is the position of the first character in error."
+        ]
+      },
+      "NUMVAL-TWO-DOTS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL | If one or more characters are in error, the returned value is the position of the first character in error."
+        ]
+      },
+      "NUMVAL-EMPTY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL | argument-1 contains only spaces."
+        ]
+      },
+      "NUMVAL-C-VALID": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL-C"
+        ]
+      },
+      "NUMVAL-C-BAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL-C"
+        ]
+      },
+      "ABS-0": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ABS"
+        ]
+      },
+      "ABS-1": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ABS"
+        ]
+      },
+      "ABS-2": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ABS"
+        ]
+      }
+    }
   },
   "ZX108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: TRIM | If argument-1 contains all spaces or argument-1 is of length zero, the returned value is of length zero.",
+      "COB-LRM: TEST-NUMVAL",
+      "COB-LRM: NUMVAL"
+    ]
   },
   "ZX109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: NUMVAL",
+      "COB-LRM: TEST-NUMVAL",
+      "COB-LRM: TEST-NUMVAL-C",
+      "COB-LRM: DECIMAL-POINT IS COMMA"
+    ]
   },
   "ZX110A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "VARYING-AFTER-FINAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Varying phrase rules"
+        ]
+      },
+      "VARYING-AFTER-DEPEND": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Varying phrase rules"
+        ]
+      },
+      "VARYING-AFTER-ORDER": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Varying phrase rules"
+        ]
+      },
+      "SET-FALSE-MULTIPLE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SET statement"
+        ]
+      },
+      "SET-FALSE-SIBLING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SET statement"
+        ]
+      },
+      "SET-TRUE-RANGE-FIRST": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SET statement"
+        ]
+      },
+      "SET-FALSE-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SET statement"
+        ]
+      }
+    }
   },
   "ZE146N": {
     "basis": "spec",
