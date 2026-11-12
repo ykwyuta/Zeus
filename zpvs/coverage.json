@@ -1022,6 +1022,19 @@
       "CODEPAGE-OPTION"
     ]
   },
+  "PM119A": {
+    "expect": "run",
+    "tests": [
+      "XMLCHAR-LRM-LENGTH",
+      "XMLCHAR-LRM-TEXT",
+      "XMLCHAR-TRUNCATED",
+      "XMLCHAR-STAR-BIT",
+      "XMLSCRUB-SIZE",
+      "XMLSCRUB-TEXT",
+      "XMLSCRUB-SMALL",
+      "XMLSCRUB16"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

@@ -1331,6 +1331,30 @@ impl Machine {
             }
             // buffer functions on UTF-16: whitespace \t \f \v \n \r, base 64
             // digits as UTF-16 characters
+            // XMLSCRUB(p, m, q, n), XMLSCRUB16: the scrubbed source, its
+            // length when p is 0, -1 when it does not fit (Language Reference)
+            XmlScrub | XmlScrub16 => {
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[2]) else {
+                    return err(format!("{b:?} requires locators"));
+                };
+                let (p, q) = (*p, *q);
+                let m = int(1).unwrap_or(0).max(0) as usize;
+                let n = int(3).unwrap_or(0).max(0) as usize;
+                let src = self.read(q, n)?.to_vec();
+                let out = if b == XmlScrub {
+                    xml_scrub(&src)
+                } else {
+                    xml_scrub16(&src)
+                };
+                if p == 0 {
+                    Value::int(out.len() as i64)
+                } else if out.len() > m {
+                    Value::int(-1)
+                } else {
+                    self.write(p, &out)?;
+                    Value::int(out.len() as i64)
+                }
+            }
             WsCollapse16 | WsReplace16 | Base64Encode16 | Base64Decode16 => {
                 let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[2]) else {
                     return err(format!("{b:?} requires locators"));
@@ -1780,6 +1804,19 @@ impl Machine {
             None => 1,
         };
         Ok(match b {
+            // XMLCHAR(x, p, n): the bytes written, or the bytes needed when
+            // the buffer is too small (the text is then truncated)
+            XmlChar => {
+                let Value::Ptr(p) = self.eval(&args[0], act)? else {
+                    return err("XMLCHAR requires a locator");
+                };
+                let n = self.eval(&args[1], act)?.as_i64().max(0) as usize;
+                let mut out = Vec::new();
+                self.xml_of(r, act, &mut out)?;
+                let k = out.len().min(n);
+                self.write(p, &out[..k])?;
+                Value::int(out.len() as i64)
+            }
             Allocate | AllocNext => {
                 let n = self.eval(&args[0], act)?.as_i64().max(0) as u32;
                 match self.area_allocate(r, n, b == AllocNext, act)? {
@@ -2191,6 +2228,74 @@ fn now_stamp() -> datefmt::Stamp {
 }
 
 /// The attributes of the value a PLISTCK built-in stores.
+/// XMLSCRUB on EBCDIC text: characters below a blank other than tab
+/// (05), NL (15) and LF (25) become blanks, carriage return (0D) becomes
+/// &#xD;, and " ' & < > become entity references.
+fn xml_scrub(src: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for &c in src {
+        let rep = match c {
+            0x0D => "&#xD;",
+            0x7F => "&quot;",
+            0x7D => "&apos;",
+            0x50 => "&amp;",
+            0x4C => "&lt;",
+            0x6E => "&gt;",
+            0x05 | 0x15 | 0x25 => {
+                out.push(c);
+                continue;
+            }
+            c if c < 0x40 => " ",
+            _ => {
+                out.push(c);
+                continue;
+            }
+        };
+        out.extend(zeus_cobol::ebcdic::encode(rep));
+    }
+    out
+}
+
+/// XMLSCRUB16 on UTF-16 (big-endian): an invalid unit (an unpaired
+/// surrogate) becomes a blank, carriage return becomes &#xD;, and " ' & < >
+/// become entity references.
+fn xml_scrub16(src: &[u8]) -> Vec<u8> {
+    let units: Vec<u16> = src
+        .chunks(2)
+        .map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)]))
+        .collect();
+    let mut out: Vec<u16> = Vec::new();
+    let mut i = 0;
+    while i < units.len() {
+        let u = units[i];
+        let rep = match u {
+            0x0D => Some("&#xD;"),
+            0x22 => Some("&quot;"),
+            0x27 => Some("&apos;"),
+            0x26 => Some("&amp;"),
+            0x3C => Some("&lt;"),
+            0x3E => Some("&gt;"),
+            _ => None,
+        };
+        if let Some(r) = rep {
+            out.extend(r.encode_utf16());
+        } else if (0xD800..0xDC00).contains(&u)
+            && units
+                .get(i + 1)
+                .is_some_and(|n| (0xDC00..0xE000).contains(n))
+        {
+            out.extend([u, units[i + 1]]);
+            i += 1;
+        } else if (0xD800..0xE000).contains(&u) {
+            out.push(0x20);
+        } else {
+            out.push(u);
+        }
+        i += 1;
+    }
+    out.iter().flat_map(|x| x.to_be_bytes()).collect()
+}
+
 fn arg_ty(b: Bif) -> Ty {
     match b {
         Bif::PliStckE | Bif::PliStckELocal | Bif::PliStckEUtc => Ty::char(16),

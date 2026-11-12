@@ -1418,6 +1418,22 @@ impl Compiler {
                 }
                 return Ok(mk(Ek::RefBuiltin(b, ar, rest), rt));
             }
+            // XMLCHAR(x, p, n): x is a structure reference
+            XmlChar => {
+                let [ast::Expr::Ref(x), p, n] = args else {
+                    return Err(self.err(pos, "XMLCHAR needs a structure, an address and a length"));
+                };
+                let xr = self.reference(x, true)?;
+                if self.m.vars[xr.var as usize].ty.is_some() {
+                    return Err(self.err(pos, "XMLCHAR: the first argument is not a structure"));
+                }
+                let p = self.expr(p)?;
+                let p = self.conv(p, &Ty::Pointer);
+                let n = self.expr(n)?;
+                let n = self.to_arith(n);
+                let n = self.conv(n, &Ty::fixed_bin(31, 0));
+                return Ok(mk(Ek::RefBuiltin(b, xr, vec![p, n]), Ty::fixed_bin(31, 0)));
+            }
             // INARRAY(x, y): x compared with each element of the array y
             InArray => {
                 let [x, ast::Expr::Ref(arr)] = args else {
@@ -1652,6 +1668,8 @@ impl Compiler {
             | CheckStg
             | Unallocated
             | WsCollapse16
+            | XmlScrub
+            | XmlScrub16
             | WsReplace16
             | Base64Encode16
             | Base64Decode16

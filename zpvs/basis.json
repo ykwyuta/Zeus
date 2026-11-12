@@ -3319,6 +3319,69 @@
       }
     }
   },
+  "PM119A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: XMLCHAR | XMLCHAR dumps data from a structure as XML into a buffer."
+    ],
+    "tests": {
+      "XMLCHAR-LRM-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | The following bytes would be written to the buffer, and written would be set equal to 72."
+        ]
+      },
+      "XMLCHAR-LRM-TEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | The following bytes would be written to the buffer, and written would be set equal to 72.",
+          "PLI-LRM: XMLCHAR | Leading and trailing blanks are trimmed wherever possible."
+        ]
+      },
+      "XMLCHAR-STAR-BIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | Leading and trailing blanks are trimmed wherever possible.",
+          "PLI-LRM: XMLCHAR | However, an asterisk may be used as the name of a base element, but in that case, the unnamed element will not be written to the target buffer.",
+          "PLI-LRM: XMLCHAR | Numeric and bit data is converted to character."
+        ]
+      },
+      "XMLCHAR-TRUNCATED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | If the buffer is too small, the structure data is truncated and the number of bytes needed for the buffer to contain the structure is returned."
+        ]
+      },
+      "XMLSCRUB-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing each character less than a blank except for \\t, \\n, \\r with a blank.",
+          "PLI-LRM: XMLSCRUB | If the address of the target buffer is zero, the number of bytes to be written is returned."
+        ]
+      },
+      "XMLSCRUB-TEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing each character less than a blank except for \\t, \\n, \\r with a blank.",
+          "PLI-LRM: XMLSCRUB | Replacing carriage returns with &#xD;."
+        ]
+      },
+      "XMLSCRUB-SMALL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing each character less than a blank except for \\t, \\n, \\r with a blank.",
+          "PLI-LRM: XMLSCRUB | If the target buffer is not large enough, a value of -1 is returned."
+        ]
+      },
+      "XMLSCRUB16": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing carriage returns with &#xD;.",
+          "PLI-LRM: XMLSCRUB16 | Replacing each invalid UTF-16 with a UTF-16 blank."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

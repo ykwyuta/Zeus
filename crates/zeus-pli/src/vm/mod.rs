@@ -402,6 +402,68 @@ impl Machine {
         Ok(cap.saturating_sub(used.div_ceil(8) * 8))
     }
 
+    /// XMLCHAR text of a structure or a member: each name in upper case
+    /// between < > and </ >, members in order, leaves converted to
+    /// character and trimmed of blanks (Language Reference, XMLCHAR). An
+    /// element named * is not written. Zeus escapes & < > " ' in values as
+    /// XMLSCRUB does; that has not been compared with z/OS.
+    pub(crate) fn xml_of(&mut self, r: &Ref, act: usize, out: &mut Vec<u8>) -> R<()> {
+        let m = self.module.clone();
+        let var = &m.vars[r.var as usize];
+        let name = zeus_cobol::ebcdic::encode(&var.name.to_ascii_uppercase());
+        let tag = |out: &mut Vec<u8>, close: bool| {
+            out.extend(zeus_cobol::ebcdic::encode(if close { "</" } else { "<" }));
+            out.extend(&name);
+            out.extend(zeus_cobol::ebcdic::encode(">"));
+        };
+        if var.ty.is_none() {
+            if var.dims.len() > r.subs.len() {
+                return err(format!(
+                    "XMLCHAR of the structure array {} is not supported",
+                    var.name
+                ));
+            }
+            tag(out, false);
+            for &mem in &var.members {
+                let mut subs = r.subs.clone();
+                subs.resize(m.vars[mem as usize].dims.len(), None);
+                let mr = Ref {
+                    var: mem,
+                    subs,
+                    locator: r.locator.clone(),
+                };
+                self.xml_of(&mr, act, out)?;
+            }
+            tag(out, true);
+            return Ok(());
+        }
+        if var.name.starts_with('*') {
+            return Ok(());
+        }
+        for l in self.elements(r, act)? {
+            let v = self.load(&l)?;
+            let Value::Char(c) = self.convert(v, &l.ty, &crate::sema::expr::char_any(), act)?
+            else {
+                return err("XMLCHAR: a value is not computational");
+            };
+            let a = c.iter().position(|b| *b != 0x40).unwrap_or(c.len());
+            let z = c.iter().rposition(|b| *b != 0x40).map_or(a, |k| k + 1);
+            tag(out, false);
+            for &ch in &c[a..z] {
+                match ch {
+                    0x7F => out.extend(zeus_cobol::ebcdic::encode("&quot;")),
+                    0x7D => out.extend(zeus_cobol::ebcdic::encode("&apos;")),
+                    0x50 => out.extend(zeus_cobol::ebcdic::encode("&amp;")),
+                    0x4C => out.extend(zeus_cobol::ebcdic::encode("&lt;")),
+                    0x6E => out.extend(zeus_cobol::ebcdic::encode("&gt;")),
+                    _ => out.push(ch),
+                }
+            }
+            tag(out, true);
+        }
+        Ok(())
+    }
+
     fn heap_alloc(&mut self, size: u32) -> u32 {
         self.sys().getmain(size.max(1) as usize, 0) as u32
     }
