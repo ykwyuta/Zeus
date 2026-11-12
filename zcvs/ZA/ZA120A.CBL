@@ -31,7 +31,7 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '+00.00E+00' TO ZCVS-EXPECTED
-               MOVE EXT-DISPLAY TO ZCVS-ACTUAL
+               MOVE EXT-DISPLAY(1:) TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -62,7 +62,7 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '+12.50E-01' TO ZCVS-EXPECTED
-               MOVE EXT-DISPLAY TO ZCVS-ACTUAL
+               MOVE EXT-DISPLAY(1:) TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -93,7 +93,7 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '-12.50E-01' TO ZCVS-EXPECTED
-               MOVE EXT-DISPLAY TO ZCVS-ACTUAL
+               MOVE EXT-DISPLAY(1:) TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -124,7 +124,7 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '+12.34E+02' TO ZCVS-EXPECTED
-               MOVE EXT-DISPLAY TO ZCVS-ACTUAL
+               MOVE EXT-DISPLAY(1:) TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -155,7 +155,7 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '-12.34E+02' TO ZCVS-EXPECTED
-               MOVE EXT-DISPLAY TO ZCVS-ACTUAL
+               MOVE EXT-DISPLAY(1:) TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -186,7 +186,7 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '+12.50E-04' TO ZCVS-EXPECTED
-               MOVE EXT-DISPLAY TO ZCVS-ACTUAL
+               MOVE EXT-DISPLAY(1:) TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -217,7 +217,7 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '+10.00E+05' TO ZCVS-EXPECTED
-               MOVE EXT-DISPLAY TO ZCVS-ACTUAL
+               MOVE EXT-DISPLAY(1:) TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 

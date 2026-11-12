@@ -12,15 +12,15 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 |--------|----------|----------|
 | `ZD` | Packed/zoned/binary storage, layout, ODO, edited PICTURE, figurative constants, collation | `ZD101A` .. `ZD115A` (15) |
 | `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA126A` (26) |
-| `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN114A`, including `ZN102B` and `ZN106M` (15) |
+| `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN113A`, including `ZN102B` and `ZN106M` (14) |
 | `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments | `ZP101A` .. `ZP113A` + 17 `lib/` subprograms (13 mains) |
 | `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF114A`, `ZF201M`, `ZF202M` (16) |
 | `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS109A`, including `ZS103M` (9) |
 | `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX110A` (10) |
-| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE145N`, `ZE126P` .. `ZE145P` (65) |
+| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE146N`, `ZE126P` .. `ZE146P` (67) |
 
-The suite contains 169 main programs: 104 runtime programs with 1,555 assertions,
-45 negative compile checks, and 20 successful-compilation controls. Cargo tests
+The suite contains 170 main programs: 103 runtime programs with 1,553 assertions,
+46 negative compile checks, and 21 successful-compilation controls. Cargo tests
 run both Zeus backends and require the exact program set, assertion IDs in
 report order, counts, and zero deleted/manual checks. They rebuild `zcobc` and
 `zeus-rt` through Cargo to avoid testing stale binaries:

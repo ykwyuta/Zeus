@@ -1486,89 +1486,553 @@
     "basis": "spec"
   },
   "ZN101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Character sets and code pages | The encoding for national literals and data items described with usage NATIONAL is UTF-16BE (big endian), CCSID 1200.",
+      "COB-LRM: Figurative constants | the national space character has the value NX'0020'",
+      "COB-PG: NSYMBOL | Literals of the form N\". . .\" or N'. . .' are treated as national literals."
+    ],
+    "tests": {
+      "NAT-REFMOD-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Reference modification"
+        ]
+      },
+      "NAT-GROUP-USAGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: GROUP-USAGE clause"
+        ]
+      },
+      "NAT-FROM-ALNUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Valid and invalid elementary moves"
+        ]
+      }
+    }
   },
   "ZN102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Character sets and code pages | The encoding for national literals and data items described with usage NATIONAL is UTF-16BE (big endian), CCSID 1200.",
+      "COB-LRM: PICTURE clause editing"
+    ],
+    "tests": {
+      "NDEC-BYTE-LEN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | When SIGN IS SEPARATE is specified, either USAGE DISPLAY or USAGE NATIONAL can be specified."
+        ]
+      },
+      "NDEC-UTF16-HEX": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | When SIGN IS SEPARATE is specified, either USAGE DISPLAY or USAGE NATIONAL can be specified."
+        ]
+      },
+      "NDEC-ARITH-NUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | When SIGN IS SEPARATE is specified, either USAGE DISPLAY or USAGE NATIONAL can be specified."
+        ]
+      }
+    }
   },
   "ZN102B": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: NSYMBOL",
+      "COB-LRM: Figurative constants | The EBCDIC DBCS space character has the value X'4040'"
+    ],
+    "tests": {
+      "NSDBCS-LIT-HEX": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      }
+    }
   },
   "ZN103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DBCS literals",
+      "COB-LRM: Alphanumeric literals with DBCS characters",
+      "COB-LRM: DBCS notation | The single-byte EBCDIC codes for the shift-out and shift-in delimiters are X'0E' and X'0F', respectively."
+    ],
+    "tests": {
+      "DBCS-G-NO-SOSI": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-SOSI-HEX": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "DBCS-TO-NAT": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "DBCS-EGCS-INIT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      }
+    }
   },
   "ZN104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: NATIONAL-OF",
+      "COB-LRM: DISPLAY-OF"
+    ],
+    "tests": {
+      "NATOF-MIXED-939": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "NATOF-DBCS-G": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "DISPOF-939-SOSI": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      }
+    }
   },
   "ZN105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Character encoding units | A surrogate pair consists of two encoding units (4 bytes)."
+    ],
+    "tests": {
+      "UTF16-CMP-PAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Comparison of two national operands | padded on the right with the default national space character (NX'0020')"
+        ]
+      },
+      "UTF16-INIT-REPL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      },
+      "UTF16-INIT-DEF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      }
+    }
   },
   "ZN106M": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: User-defined words with DBCS characters",
+      "COB-LRM: Alphanumeric literals with DBCS characters"
+    ],
+    "tests": {
+      "JP939-LATIN-LOW": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "JP939-MIXED-HEX": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      }
+    }
   },
   "ZN107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Reference modification | For usages DISPLAY-1 and NATIONAL, each character position occupies 2 bytes.",
+      "COB-LRM: Character encoding units | A surrogate pair consists of two encoding units (4 bytes)."
+    ],
+    "tests": {
+      "NAT-INIT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      }
+    }
   },
   "ZN108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: INITIALIZE statement rules"
+    ]
   },
   "ZN109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: GROUP-USAGE clause",
+      "COB-LRM: Reference modification"
+    ],
+    "tests": {
+      "NAT-GROUP-INIT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      },
+      "NAT-GROUP-SELECT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      }
+    }
   },
   "ZN110A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DISPLAY-OF",
+      "COB-LRM: NATIONAL-OF"
+    ],
+    "tests": {
+      "DBCS-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "DBCS-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      }
+    }
   },
   "ZN111A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DISPLAY-OF",
+      "COB-LRM: NATIONAL-OF"
+    ],
+    "tests": {
+      "DBCS-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "DBCS-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      }
+    }
   },
   "ZN112A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DISPLAY-OF",
+      "COB-LRM: NATIONAL-OF"
+    ],
+    "tests": {
+      "DBCS-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "DBCS-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      }
+    }
   },
   "ZN113A": {
-    "basis": "spec"
-  },
-  "ZN114A": {
-    "basis": "zos",
-    "note": "MOVE from a national item to an alphanumeric item: the Programming Guide documents national receivers and DISPLAY-OF for the reverse conversion, but no table stating that this MOVE is invalid was confirmed. Zeus accepts it, converts each character to the program CCSID and pads or truncates on the right. If z/OS rejects it at compile time, record the message and make this a ZE negative check instead."
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DISPLAY-OF",
+      "COB-LRM: NATIONAL-OF"
+    ],
+    "tests": {
+      "DBCS-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "DBCS-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-ENCODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      },
+      "MIXED-DECODE": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of the CCSID (日 X'4562', 本 X'4566', ideographic space U+3000 for X'4040'); the Language Reference and Programming Guide do not list code points. Expected bytes are the current Zeus table (ICU ibm-939/930/1390/1399)."
+      }
+    }
   },
   "ZP101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: LOCAL-STORAGE SECTION",
+      "COB-LRM: WORKING-STORAGE SECTION"
+    ],
+    "tests": {
+      "LS-AFTER-CANCEL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CANCEL statement | The CANCEL statement ensures that the referenced subprogram is entered in initial state the next time that it is called."
+        ]
+      }
+    }
   },
   "ZP102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECURSIVE",
+      "COB-LRM: LOCAL-STORAGE SECTION"
+    ]
   },
   "ZP103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RETURNING phrase | The RETURN-CODE special register is not set by execution of CALL statements that include the RETURNING phrase."
+    ],
+    "tests": {
+      "RET-ON-EXCEPTION": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: RETURNING phrase | If an EXCEPTION or OVERFLOW occurs, identifier-5 is not changed.",
+          "COB-LRM: ON EXCEPTION phrase"
+        ]
+      }
+    }
   },
   "ZP104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: BY CONTENT phrase",
+      "COB-LRM: BY VALUE phrase"
+    ],
+    "tests": {
+      "CALL-OMITTED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: OMITTED"
+        ]
+      },
+      "CALL-ENTRY-BIND": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ENTRY statement"
+        ]
+      }
+    }
   },
   "ZP105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "PTR-SIZES-NULL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: PROCEDURE-POINTER phrase | A procedure-pointer data item is an 8-byte elementary item regardless of the LP compiler option setting.",
+          "COB-LRM: FUNCTION-POINTER phrase | A function-pointer is a 4-byte elementary item or an 8-byte elementary item depending on whether the LP(32) or LP(64) is in effect.",
+          "COB-LRM: POINTER phrase"
+        ]
+      },
+      "PTR-ADDR-LINKAGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ADDRESS OF"
+        ]
+      },
+      "PROCPTR-CALL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Format 6: SET for procedure-pointer and function-pointer data items | When this format of the SET statement is executed, the current value of the receiving field is replaced by the address value specified by the sending field."
+        ]
+      },
+      "FUNCPTR-CALL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Format 6: SET for procedure-pointer and function-pointer data items | When this format of the SET statement is executed, the current value of the receiving field is replaced by the address value specified by the sending field."
+        ]
+      }
+    }
   },
   "ZP106A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Nested programs",
+      "COB-LRM: GLOBAL clause",
+      "COB-LRM: COMMON"
+    ],
+    "tests": {
+      "EXTERNAL-SHARED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: EXTERNAL clause"
+        ]
+      }
+    }
   },
   "ZP107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: BY CONTENT phrase",
+      "COB-LRM: BY VALUE phrase",
+      "COB-LRM: OMITTED"
+    ]
   },
   "ZP108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Format 6: SET for procedure-pointer and function-pointer data items | When this format of the SET statement is executed, the current value of the receiving field is replaced by the address value specified by the sending field."
+    ],
+    "tests": {
+      "DATA-PTR-COPY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ADDRESS OF"
+        ]
+      },
+      "DATA-PTR-REBIND": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ADDRESS OF"
+        ]
+      },
+      "PROC-ALIAS-DYNAMIC": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ENTRY statement"
+        ]
+      }
+    }
   },
   "ZP109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: WORKING-STORAGE SECTION",
+      "COB-LRM: INITIAL | Specifies that when program-name is called, program-name and any programs contained (nested) within it are placed in their initial state."
+    ]
   },
   "ZP110A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RETURNING phrase | The RETURN-CODE special register is not set by execution of CALL statements that include the RETURNING phrase.",
+      "COB-LRM: RETURNING phrase | must have the same PICTURE, USAGE, SIGN, SYNCHRONIZE, JUSTIFIED, and BLANK WHEN ZERO clauses"
+    ],
+    "tests": {
+      "FAIL-RESULT-GROUP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: RETURNING phrase | If an EXCEPTION or OVERFLOW occurs, identifier-5 is not changed."
+        ]
+      },
+      "FAIL-NUMBER-OUT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: RETURNING phrase | If an EXCEPTION or OVERFLOW occurs, identifier-5 is not changed."
+        ]
+      }
+    }
   },
   "ZP111A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ENTRY statement",
+      "COB-LRM: BY VALUE phrase"
+    ],
+    "tests": {
+      "ENTRY-POINTER": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Format 6: SET for procedure-pointer and function-pointer data items"
+        ]
+      }
+    }
   },
   "ZP112A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: RECURSIVE",
+      "COB-LRM: LOCAL-STORAGE SECTION"
+    ],
+    "tests": {
+      "RECURSIVE-CANCEL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CANCEL statement | The CANCEL statement ensures that the referenced subprogram is entered in initial state the next time that it is called."
+        ]
+      }
+    }
   },
   "ZP113A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "ALIAS-SAME-ITEM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BY CONTENT phrase"
+        ]
+      },
+      "CONTENT-CALLER-KEPT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BY CONTENT phrase"
+        ]
+      },
+      "CONTENT-COPY-CHANGED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BY CONTENT phrase"
+        ]
+      },
+      "RETURN-CODE-PASSED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: RETURN-CODE | If the calling program is a COBOL program, the RETURN-CODE special register in the calling program is set to the value of the RETURN-CODE special register in the called program."
+        ]
+      },
+      "GLOBAL-SHADOWED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: GLOBAL clause",
+          "COB-LRM: Nested programs"
+        ]
+      },
+      "GLOBAL-MAIN-KEPT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: GLOBAL clause",
+          "COB-LRM: Nested programs"
+        ]
+      },
+      "GLOBAL-COND-NAME": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: GLOBAL clause",
+          "COB-LRM: Nested programs"
+        ]
+      }
+    }
   },
   "ZS101A": {
     "basis": "spec"
@@ -1626,5 +2090,17 @@
   },
   "ZX110A": {
     "basis": "spec"
+  },
+  "ZE146N": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Valid and invalid elementary moves | Table 51. Valid and invalid elementary moves"
+    ]
+  },
+  "ZE146P": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DISPLAY-OF"
+    ]
   }
 }

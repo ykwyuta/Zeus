@@ -2489,6 +2489,77 @@ impl<'a> Gen<'a> {
     }
 
     /// Pairs of corresponding elementary items of two groups.
+    /// The category of an elementary MOVE operand (Language Reference,
+    /// "Valid and invalid elementary moves", Table 51). None when the table
+    /// does not apply or the category is not known here: groups, reference
+    /// modification, figurative constants, pointers and indexes.
+    fn move_category(&self, src: &Src) -> Option<MoveCat> {
+        let ty = match src {
+            Src::National(_) => return Some(MoveCat::National),
+            Src::NumLit(v, _) => {
+                return Some(if v.scale == 0 {
+                    MoveCat::Integer
+                } else {
+                    MoveCat::Noninteger
+                });
+            }
+            Src::Float(_) => return Some(MoveCat::Floating),
+            Src::Loc(l) if l.refmod.is_none() => &self.dm.descs[l.desc as usize].ty,
+            _ => return None,
+        };
+        Some(match ty {
+            DataType::Alphabetic { .. } => MoveCat::Alphabetic,
+            DataType::Alphanumeric { .. } => MoveCat::Alphanumeric,
+            DataType::AlphanumericEdited {
+                national: false, ..
+            } => MoveCat::AlphanumericEdited,
+            DataType::AlphanumericEdited { national: true, .. } => MoveCat::NationalEdited,
+            // numeric-edited with USAGE NATIONAL is still numeric-edited;
+            // national-edited is PICTURE N with editing symbols
+            DataType::NumericEdited { .. } => MoveCat::NumericEdited,
+            DataType::Numeric(t) if t.scale > 0 => MoveCat::Noninteger,
+            DataType::Numeric(_) => MoveCat::Integer,
+            DataType::Float { .. } | DataType::ExternalFloat { .. } => MoveCat::Floating,
+            DataType::Dbcs => MoveCat::Dbcs,
+            DataType::National => MoveCat::National,
+            _ => return None,
+        })
+    }
+
+    /// Rejects the elementary moves Table 51 of the Language Reference marks
+    /// "No". Numeric-edited is listed with numeric, as a receiver of the same
+    /// senders.
+    fn check_move(&self, src: &Src, dst: &Loc, pos: Pos) -> Result<()> {
+        use MoveCat::*;
+        let Some(from) = self.move_category(src) else {
+            return Ok(());
+        };
+        let Some(to) = self.move_category(&Src::Loc(dst.clone())) else {
+            return Ok(());
+        };
+        let to_numeric = matches!(to, Integer | Noninteger | NumericEdited | Floating);
+        let to_alpha = matches!(to, Alphabetic | Alphanumeric | AlphanumericEdited);
+        let to_national = matches!(to, National | NationalEdited);
+        let valid = match from {
+            Alphabetic | AlphanumericEdited => !to_numeric && to != Dbcs,
+            Alphanumeric => to != Dbcs,
+            Integer => to != Alphabetic && to != Dbcs,
+            Noninteger | Floating => to_numeric,
+            NumericEdited => to != Alphabetic && to != Dbcs,
+            Dbcs => to == Dbcs || to_national,
+            National => !to_alpha && to != Dbcs,
+            NationalEdited => to_national,
+        };
+        if valid {
+            Ok(())
+        } else {
+            Err(Diag::error(
+                pos,
+                format!("invalid elementary MOVE: {from} sending item, {to} receiving item"),
+            ))
+        }
+    }
+
     fn corresponding(&mut self, a: &DataRef, b: &DataRef) -> Result<Vec<(DataRef, DataRef)>> {
         let ia = self.dm.resolve(a)?;
         let ib = self.dm.resolve(b)?;
@@ -2736,6 +2807,7 @@ impl<'a> Gen<'a> {
                     let src = self.src(from)?;
                     for t in to {
                         let d = self.loc(t)?;
+                        self.check_move(&src, &d, *pos)?;
                         self.emit(Instr::Move(src.clone(), d));
                     }
                 }
@@ -5027,4 +5099,36 @@ fn cursor_query(decl: &str) -> Option<String> {
     let words: Vec<&str> = decl.split_whitespace().collect();
     let at = words.iter().position(|w| w.eq_ignore_ascii_case("FOR"))?;
     Some(words[at + 1..].join(" "))
+}
+
+/// The categories of Table 51, "Valid and invalid elementary moves".
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum MoveCat {
+    Alphabetic,
+    Alphanumeric,
+    AlphanumericEdited,
+    Integer,
+    Noninteger,
+    NumericEdited,
+    Floating,
+    Dbcs,
+    National,
+    NationalEdited,
+}
+
+impl std::fmt::Display for MoveCat {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Alphabetic => "alphabetic",
+            Self::Alphanumeric => "alphanumeric",
+            Self::AlphanumericEdited => "alphanumeric-edited",
+            Self::Integer => "numeric integer",
+            Self::Noninteger => "numeric noninteger",
+            Self::NumericEdited => "numeric-edited",
+            Self::Floating => "floating-point",
+            Self::Dbcs => "DBCS",
+            Self::National => "national",
+            Self::NationalEdited => "national-edited",
+        })
+    }
 }

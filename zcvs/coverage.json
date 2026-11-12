@@ -1958,13 +1958,6 @@
       "MIXED-DECODE"
     ]
   },
-  "ZN114A": {
-    "expect": "run",
-    "tests": [
-      "NAT-TO-ALNUM-SAME",
-      "NAT-TO-ALNUM-SHORT"
-    ]
-  },
   "ZP101A": {
     "expect": "run",
     "tests": [
@@ -2333,5 +2326,13 @@
       "SET-TRUE-RANGE-FIRST",
       "SET-FALSE-RANGE"
     ]
+  },
+  "ZE146N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE146P": {
+    "expect": "compile-only",
+    "tests": []
   }
 }

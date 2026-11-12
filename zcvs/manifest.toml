@@ -286,3 +286,10 @@ diagnostic_contains = "LOCAL-STORAGE cannot specify EXTERNAL"
 
 [programs.ZE145P]
 expect = "compile-only"
+
+[programs.ZE146N]
+expect = "compile-error"
+diagnostic_contains = "invalid elementary MOVE: national sending item, alphanumeric receiving item"
+
+[programs.ZE146P]
+expect = "compile-only"
