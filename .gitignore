@@ -3,3 +3,4 @@
 /.cache
 # CCVS85 working directories
 /work
+__pycache__/
