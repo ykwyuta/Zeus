@@ -83,10 +83,16 @@ fn zos_results_sorts_failures_by_basis() {
         .arg(&results)
         .output()
         .expect("run python3");
-    assert_eq!(out.status.code(), Some(1), "failures must give a nonzero exit");
+    assert_eq!(
+        out.status.code(),
+        Some(1),
+        "failures must give a nonzero exit"
+    );
     let text = String::from_utf8(out.stdout).unwrap();
     let section = |head: &str| {
-        let start = text.find(head).unwrap_or_else(|| panic!("no {head} in\n{text}"));
+        let start = text
+            .find(head)
+            .unwrap_or_else(|| panic!("no {head} in\n{text}"));
         let rest = &text[start..];
         rest[..rest.find("\n\n").unwrap_or(rest.len())].to_string()
     };
