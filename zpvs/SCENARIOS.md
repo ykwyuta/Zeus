@@ -93,7 +93,7 @@
 
 | プログラム | 内容 | 実機で記録すること |
 |---|---|---|
-| `PD109A` 19判定 | 10進 0.1 の短/長 HFP (Zeus は短形式を切り捨て)、HFP から FIXED DEC と CHAR への変換、ENTRY/LABEL/FILE/HANDLE/OFFSET/AREA の STORAGE、NULL と SYSNULL、空の AREA の管理域、重なりの SUBSTR 代入、SIZE 無効での FIXED DEC 桁あふれ、INITIAL 無しの STATIC、RANDOM | コンパイラーの版と DEFAULT オプション (NULLSYS/NULL370、HEXADEC) |
+| `PD109A` 19判定 (zos 12) | 10進 0.1 の短/長 HFP (Zeus は短形式を切り捨て)、HFP から FIXED DEC と CHAR への変換、空の AREA の管理域の中身、重なりの SUBSTR 代入、SIZE 無効での FIXED DEC 桁あふれ、INITIAL 無しの STATIC、RANDOM。ENTRY/LABEL/FILE/HANDLE/OFFSET/AREA の STORAGE と NULL/SYSNULL は LRM の表 84 (UNSPEC の長さ)・AREA の 16 バイトの管理域・PG の DEFAULT(NULL370) で決まるので `spec` に移した | コンパイラーの版と DEFAULT オプション (HEXADEC) |
 
 2026-11-12: Enterprise PL/I Messages and Codes (GC31-5717) の条件コードの表で ONCODE を
 照合した。`PC110A` の 11 判定と `PC111A`・`PF106A` の ONCODE は文書で決まるので `spec` に移した。
