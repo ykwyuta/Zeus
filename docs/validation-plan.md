@@ -115,3 +115,4 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | 2026-11-12 | z/OS の結果を記録・突き合わせる道具 `tools/zos-results.py`。Zeus の実行を記録して `spec`/`zos` の FAIL 0 件を確認 | 165 本 / 1,481 | 74 本 / 370 | 130 本 / 594 |
 | 2026-11-12 | Enterprise COBOL 5/6 の組込み関数 22 個を `ZA125A` (spec 36 検査) で測り、Zeus に実装。未網羅 128 → 106 | 166 本 / 1,517 | | |
 | 2026-11-12 | `ZS108A` (指示文・PACKED-DECIMAL・UPSI・VOLATILE・SECONDS-PAST-MIDNIGHT、spec 11 検査)。Zeus に VOLATILE と SECONDS-PAST-MIDNIGHT を実装。未網羅 106 → 100 | 167 本 / 1,528 | | |
+| 2026-11-12 | `PM109A` (組込み関数 spec 36 判定)。Zeus に IAND 等 20 個を実装。道具が DCL/PROC/STG/CSTG の略記を数えるようにした。未網羅 193 → 144 | | 75 本 / 406 | |

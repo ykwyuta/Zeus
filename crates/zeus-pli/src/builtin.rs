@@ -117,6 +117,27 @@ pub enum Bif {
     Days,
     DaysToDate,
     Weekday,
+    DaysToSecs,
+    SecsToDays,
+    ValidDate,
+    // Enterprise PL/I integer, string and floating-point inquiry built-ins
+    Iand,
+    Ior,
+    Ieor,
+    Inot,
+    Isll,
+    Isrl,
+    Raise2,
+    SearchR,
+    VerifyR,
+    CharVal,
+    Huge,
+    Tiny,
+    Epsilon,
+    MaxExp,
+    MinExp,
+    Radix,
+    PointerDiff,
     // conditions
     OnCode,
     OnChar,
@@ -284,6 +305,26 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "PAGENO" => PageNo,
         "COUNT" => Count,
         "RANDOM" => Random,
+        "DAYSTOSECS" => DaysToSecs,
+        "SECSTODAYS" => SecsToDays,
+        "VALIDDATE" => ValidDate,
+        "IAND" => Iand,
+        "IOR" => Ior,
+        "IEOR" => Ieor,
+        "INOT" => Inot,
+        "ISLL" => Isll,
+        "ISRL" => Isrl,
+        "RAISE2" => Raise2,
+        "SEARCHR" => SearchR,
+        "VERIFYR" => VerifyR,
+        "CHARVAL" | "BYTE" => CharVal,
+        "HUGE" => Huge,
+        "TINY" => Tiny,
+        "EPSILON" => Epsilon,
+        "MAXEXP" => MaxExp,
+        "MINEXP" => MinExp,
+        "RADIX" => Radix,
+        "POINTERDIFF" => PointerDiff,
         _ => return None,
     })
 }
@@ -423,6 +464,21 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
     };
     Ok(match b {
         Abs => operand_arith(&arg(0)?),
+        // the integer built-ins keep FIXED BIN(31) unless an argument needs 63 bits
+        Iand | Ior | Ieor | Inot | Isll | Isrl | Raise2 => {
+            let wide = args
+                .iter()
+                .any(|t| t.arith().is_some_and(|a| a.precision().0 > 31));
+            Ty::fixed_bin(if wide { 63 } else { BIFPREC }, 0)
+        }
+        SearchR | VerifyR | MaxExp | MinExp | Radix | PointerDiff | SecsToDays => fixed_bin31(),
+        CharVal => Ty::char(1),
+        ValidDate => Ty::bit(1),
+        DaysToSecs => Ty::Float { dec: true, p: 16 },
+        Huge | Tiny | Epsilon => match operand_arith(&arg(0)?) {
+            t @ Ty::Float { .. } => t,
+            _ => return Err(format!("{b:?} requires a floating-point argument")),
+        },
         Sign | Index | Search | Verify | Tally | Length | MaxLength | Dim | Lbound | Hbound
         | Size | CurrentSize | Allocation | OnCode | OnCount | PliRetV | Days | Weekday
         | LineNo | PageNo | Count => fixed_bin31(),

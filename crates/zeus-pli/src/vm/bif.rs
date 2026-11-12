@@ -63,6 +63,44 @@ fn lilian(y: i64, m: u32, d: u32) -> i64 {
     days1970 + 141_428
 }
 
+/// VALIDDATE: whether `text` is a valid date in `pattern` (YYYY, MM, DD,
+/// DDD and any other characters taken literally).
+fn valid_date(text: &str, pattern: &str) -> bool {
+    let text = text.trim_end();
+    if text.len() != pattern.len() {
+        return false;
+    }
+    let field = |name: &str| -> Option<Option<i64>> {
+        let at = pattern.find(name)?;
+        Some(text.get(at..at + name.len()).and_then(|s| s.parse().ok()))
+    };
+    let year = match field("YYYY") {
+        Some(Some(y)) if (1..=9999).contains(&y) => y,
+        Some(_) => return false,
+        None => 2000,
+    };
+    let leap = (year % 4 == 0 && year % 100 != 0) || year % 400 == 0;
+    if let Some(d) = field("DDD") {
+        return matches!(d, Some(d) if (1..=if leap { 366 } else { 365 }).contains(&d));
+    }
+    let month = match field("MM") {
+        Some(Some(m)) if (1..=12).contains(&m) => m,
+        Some(_) => return false,
+        None => 1,
+    };
+    let days = match month {
+        2 if leap => 29,
+        2 => 28,
+        4 | 6 | 9 | 11 => 30,
+        _ => 31,
+    };
+    match field("DD") {
+        Some(Some(d)) => (1..=days).contains(&d),
+        Some(None) => false,
+        None => true,
+    }
+}
+
 fn ebcdic(s: &str) -> Vec<u8> {
     zeus_cobol::ebcdic::encode(s)
 }
@@ -539,6 +577,94 @@ impl Machine {
                     .unwrap_or_else(|| "YYYYMMDDHHMISS999".into());
                 Value::Char(ebcdic(&format_date(y, m, d, &p)))
             }
+            Iand | Ior | Ieor => {
+                let mut acc = int(0).unwrap_or(0);
+                for i in 1..v.len() {
+                    let x = int(i).unwrap_or(0);
+                    acc = match b {
+                        Iand => acc & x,
+                        Ior => acc | x,
+                        _ => acc ^ x,
+                    };
+                }
+                Value::int(acc)
+            }
+            // INOT, ISLL and ISRL work on the bits of the result precision:
+            // 32 bits for FIXED BIN(31), 64 for FIXED BIN(63)
+            Inot | Isll | Isrl => {
+                let wide = matches!(rt, Ty::Fixed { p, .. } if *p > 31);
+                let x = int(0).unwrap_or(0);
+                let n = int(1).unwrap_or(0).clamp(0, 64) as u32;
+                Value::int(if wide {
+                    let u = x as u64;
+                    (match b {
+                        Inot => !u,
+                        Isll => u.checked_shl(n).unwrap_or(0),
+                        _ => u.checked_shr(n).unwrap_or(0),
+                    }) as i64
+                } else {
+                    let u = x as u32;
+                    i64::from(
+                        (match b {
+                            Inot => !u,
+                            Isll => u.checked_shl(n).unwrap_or(0),
+                            _ => u.checked_shr(n).unwrap_or(0),
+                        }) as i32,
+                    )
+                })
+            }
+            Raise2 => Value::int(1i64.checked_shl(int(0).unwrap_or(0) as u32).unwrap_or(0)),
+            // SEARCHR / VERIFYR scan from position n (default the last) toward
+            // the start and return the position found, 0 if none
+            SearchR | VerifyR => {
+                let (x, y) = (chars(&v[0]), chars(&v[1]));
+                let start = int(2).unwrap_or(x.len() as i64);
+                if x.is_empty() || start < 1 {
+                    return Ok(Value::int(0));
+                }
+                let end = (start as usize).min(x.len());
+                Value::int(
+                    x[..end]
+                        .iter()
+                        .rposition(|c| y.contains(c) == (b == SearchR))
+                        .map_or(0, |p| p as i64 + 1),
+                )
+            }
+            CharVal => Value::Char(vec![int(0).unwrap_or(0).clamp(0, 255) as u8]),
+            DaysToSecs => Value::Float(int(0).unwrap_or(0) as f64 * 86_400.0),
+            SecsToDays => Value::int(v[0].as_f64().div_euclid(86_400.0) as i64),
+            ValidDate => {
+                let text = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let pattern = v
+                    .get(1)
+                    .map(|p| zeus_cobol::ebcdic::decode(&chars(p)))
+                    .unwrap_or_else(|| "YYYYMMDD".into());
+                Value::Bit(vec![valid_date(&text, &pattern)])
+            }
+            // the hexadecimal floating-point model: radix 16, fraction digits h
+            // (6 short, 14 long, 28 extended), exponents -64..63
+            Huge | Tiny | Epsilon | MaxExp | MinExp | Radix => {
+                let ty = args[0].ty.arith().unwrap_or_else(|| args[0].ty.clone());
+                let h = match &ty {
+                    Ty::Float { dec: true, p } if *p <= 6 => 6,
+                    Ty::Float { dec: false, p } if *p <= 21 => 6,
+                    Ty::Float { dec: true, p } if *p <= 16 => 14,
+                    Ty::Float { dec: false, p } if *p <= 53 => 14,
+                    _ => 28,
+                };
+                match b {
+                    Huge => Value::Float((1.0 - 16f64.powi(-h)) * 16f64.powi(63)),
+                    Tiny => Value::Float(16f64.powi(-65)),
+                    Epsilon => Value::Float(16f64.powi(1 - h)),
+                    MaxExp => Value::int(63),
+                    MinExp => Value::int(-64),
+                    _ => Value::int(16),
+                }
+            }
+            PointerDiff => match (&v[0], &v[1]) {
+                (Value::Ptr(p), Value::Ptr(q)) => Value::int(i64::from(*p) - i64::from(*q)),
+                _ => return err("POINTERDIFF requires two pointers"),
+            },
             Weekday => {
                 let n = match v.first() {
                     Some(x) => x.as_i64(),

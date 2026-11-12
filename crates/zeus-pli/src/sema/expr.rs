@@ -1415,6 +1415,9 @@ impl Compiler {
                     self.conv(x, &rt)
                 })
                 .collect(),
+            // the floating-point inquiry functions look only at the attributes
+            // of their argument; converting it could raise a condition
+            Huge | Tiny | Epsilon | MaxExp | MinExp | Radix => xs,
             Substr | Index | Search | Verify | Tally | Copy | Repeat | Left | Right | Center
             | CenterRight | Trim | Translate | Lowercase | Uppercase | Reverse | Length
             | MaxLength | Hex | Bool | High | Low | Unspec => {

@@ -252,6 +252,9 @@ PLI_PATTERNS = {
     'CONDITION': r'\bCOND(ITION)?\b', 'OPTIONS(MAIN)': r'\bOPTIONS\s*\([^)]*\bMAIN\b',
     'STATEMENT': r'%\s*[A-Z0-9_]+\s*:\s*PROC[^;]*\bSTATEMENT\b',
     'CENTRE': r'\bCENTRE\s*\(', 'CENTER': r'\bCENTER\s*\(',
+    # abbreviations the Language Reference allows
+    'DECLARE': r'\bDECLARE\b|\bDCL\b', 'PROCEDURE': r'\bPROC(EDURE)?\b',
+    'STORAGE': r'\b(STORAGE|STG)\s*\(', 'CURRENTSTORAGE': r'\b(CURRENTSTORAGE|CSTG)\s*\(',
 }
 for p in ['%ACTIVATE', '%DEACTIVATE', '%DECLARE', '%DO', '%END', '%IF', '%INCLUDE', '%XINCLUDE',
           '%INSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%PAGE', '%POP', '%PRINT', '%PROCEDURE', '%PUSH',

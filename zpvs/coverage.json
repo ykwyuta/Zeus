@@ -644,6 +644,47 @@
       "PLIRETC-VALUE"
     ]
   },
+  "PM109A": {
+    "expect": "run",
+    "tests": [
+      "ATAN-ONE",
+      "ATAN-TWO-ARGS",
+      "ATAND-ONE",
+      "COSD-60",
+      "SIND-30",
+      "TAND-45",
+      "COSH-ONE",
+      "SINH-ONE",
+      "TANH-ONE",
+      "ATANH-HALF",
+      "EXP-ONE",
+      "LOG10-1000",
+      "LOG2-8",
+      "SIGN-VALUES",
+      "TRUNC-TOWARD-ZERO",
+      "HIGH-LOW",
+      "COLLATE-ORDER",
+      "PROD-ARRAY",
+      "BOUNDS",
+      "ALL-ANY",
+      "WEEKDAY-LILIAN-ONE",
+      "SIZE-CSTG-VARYING",
+      "IAND-IOR-IEOR",
+      "INOT-ZERO",
+      "ISLL-ISRL",
+      "RAISE2",
+      "SEARCHR",
+      "VERIFYR",
+      "CHARVAL-BYTE",
+      "VALIDDATE",
+      "DAYSTOSECS-SECSTODAYS",
+      "FLOAT-MODEL-INTS",
+      "HUGE-SHORT",
+      "TINY-SHORT",
+      "EPSILON-SHORT",
+      "POINTERDIFF"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [
