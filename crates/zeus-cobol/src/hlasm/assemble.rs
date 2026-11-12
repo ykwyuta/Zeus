@@ -390,6 +390,8 @@ fn wide_memory(op: &str) -> bool {
             | "STMG"
             | "LPQ"
             | "STPQ"
+            | "CVBG"
+            | "CVDG"
     )
 }
 
@@ -440,6 +442,7 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         "MVCL" | "CLCL" | "BCTR" | "LR" | "SR" | "AR" | "CR" | "LTR" | "BR" | "BCR" | "XR"
         | "NR" | "OR" | "CLR" | "ALR" | "SLR" | "LCR" | "LPR" | "LNR" | "MR" | "DR" | "BALR"
         | "BASR" | "BASSM" | "BSM" | "SAM24" | "SAM31" | "SAM64" | "SPM" | "NOPR" => 2,
+        "LAM" | "STAM" => 4,
         "EX" | "L" | "ST" | "LA" | "STM" | "LM" | "BXH" | "BXLE" | "CLI" | "MVI" | "B" | "BE"
         | "BNE" | "BH" | "BL" | "BCT" | "AHI" | "A" | "S" | "C" | "CL" | "AL" | "SL" | "N"
         | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "MS" | "M" | "D" | "LH" | "STH" | "IC"
@@ -3298,7 +3301,7 @@ fn compile_layout(
                     i.address = Some(addr(1, false)?.0);
                     2
                 }
-                "STM" | "LM" | "BXH" | "BXLE" => {
+                "STM" | "LM" | "BXH" | "BXLE" | "LAM" | "STAM" => {
                     i.registers = vec![reg(0)?, reg(1)?];
                     i.address = Some(addr(2, false)?.0);
                     3
@@ -3434,7 +3437,17 @@ fn compile_layout(
             }
             if matches!(
                 canonical_operation(&s.op),
-                "LM" | "STM" | "BXH" | "BXLE" | "CLI" | "MVI" | "NI" | "OI" | "XI" | "TM"
+                "LM" | "STM"
+                    | "LAM"
+                    | "STAM"
+                    | "BXH"
+                    | "BXLE"
+                    | "CLI"
+                    | "MVI"
+                    | "NI"
+                    | "OI"
+                    | "XI"
+                    | "TM"
             ) && i.address.as_ref().is_some_and(|a| a.index != 0)
             {
                 return Err("index not permitted for RS/SI instruction".into());

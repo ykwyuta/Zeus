@@ -232,7 +232,18 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             }
             op
         }
-        0x86..=0x8f | 0x90 | 0x98 | 0x9a | 0x9b | 0xba | 0xbb | 0xbd | 0xbe | 0xbf => {
+        0x86..=0x8f
+        | 0x90
+        | 0x98
+        | 0x9a
+        | 0x9b
+        | 0xa8
+        | 0xa9
+        | 0xba
+        | 0xbb
+        | 0xbd
+        | 0xbe
+        | 0xbf => {
             let op = match b[0] {
                 0x86 => "BXH",
                 0x87 => "BXLE",
@@ -248,6 +259,8 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
                 0x98 => "LM",
                 0x9a => "LAM",
                 0x9b => "STAM",
+                0xa8 => "MVCLE",
+                0xa9 => "CLCLE",
                 0xba => "CS",
                 0xbb => "CDS",
                 0xbd => "CLM",
@@ -524,8 +537,9 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             }
             op
         }
-        0xd1..=0xd7 | 0xdc..=0xdf | 0xf0..=0xf3 | 0xf8..=0xfd => {
+        0xd0..=0xd7 | 0xdc..=0xdf | 0xf0..=0xf3 | 0xf8..=0xfd => {
             let op = match b[0] {
+                0xd0 => "TRTR",
                 0xd1 => "MVN",
                 0xd2 => "MVC",
                 0xd3 => "MVZ",

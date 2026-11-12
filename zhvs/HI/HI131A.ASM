@@ -1,0 +1,179 @@
+* HI131A: decimal floating point conversions, shifts and data class
+* (Principles of Operation). Values are written as DD/DE/DX constants.
+* CDPT/CXPT convert signed packed and CDZT/CXZT zoned decimal to an
+* integer DFP value (M3 8: signed, 0: all digits); CPDT/CPXT convert
+* the coefficient back to signed packed (minus sign D) and CZDT/CZXT
+* to unsigned zoned (M3 0, zones F);
+* SLDT/SRDT/SLXT/SRXT shift the coefficient by digits and keep the
+* exponent; TDCxT sets CC 1 when the class bit of the mask is one
+* (X800 +zero, X400 -zero).
+HI131A CSECT
+         ZHVSHDR
+* CDPT
+         XC ACTUAL(16),ACTUAL
+         CDPT 0,PK(3),8
+         STD 0,ACTUAL
+         ZHVSCHK CDPT,ACTUAL,ZE000,8
+* CXPT-NEGATIVE
+         XC ACTUAL(16),ACTUAL
+         CXPT 0,PKN(13),8
+         STD 0,ACTUAL
+         STD 2,ACTUAL+8
+         ZHVSCHK CXPT-NEGATIVE,ACTUAL,ZE001,16
+* CPDT-NEGATIVE
+         XC ACTUAL(16),ACTUAL
+         LD 0,DDM
+         CPDT 0,ACTUAL(3),8
+         ZHVSCHK CPDT-NEGATIVE,ACTUAL,ZE002,3
+* CPXT-NEGATIVE
+         XC ACTUAL(16),ACTUAL
+         LD 0,XX12345
+         LD 2,XX12345+8
+         CPXT 0,ACTUAL(3),8
+         ZHVSCHK CPXT-NEGATIVE,ACTUAL,ZE003,3
+* CDZT
+         XC ACTUAL(16),ACTUAL
+         CDZT 0,ZN(5),0
+         STD 0,ACTUAL
+         ZHVSCHK CDZT,ACTUAL,ZE004,8
+* CXZT
+         XC ACTUAL(16),ACTUAL
+         CXZT 0,ZN(5),0
+         LD 4,XX12345
+         LCDFR 4,4
+         LD 6,XX12345+8
+         CXTR 0,4
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK CXZT,ACTUAL,ZE005,16
+* CZDT-UNSIGNED
+         XC ACTUAL(16),ACTUAL
+         LD 0,XD12345
+         CZDT 0,ACTUAL(5),0
+         ZHVSCHK CZDT-UNSIGNED,ACTUAL,ZE006,5
+* CZXT-UNSIGNED
+         XC ACTUAL(16),ACTUAL
+         LD 0,XX12345
+         LCDFR 0,0
+         LD 2,XX12345+8
+         CZXT 0,ACTUAL(5),0
+         ZHVSCHK CZXT-UNSIGNED,ACTUAL,ZE007,5
+* SLDT
+         XC ACTUAL(16),ACTUAL
+         LD 2,DD1
+         SLDT 0,2,1
+         STD 0,ACTUAL
+         ZHVSCHK SLDT,ACTUAL,ZE008,8
+* SRDT
+         XC ACTUAL(16),ACTUAL
+         LD 2,DD1
+         SRDT 0,2,1
+         STD 0,ACTUAL
+         ZHVSCHK SRDT,ACTUAL,ZE009,8
+* SLXT
+         XC ACTUAL(16),ACTUAL
+         LD 4,DX1
+         LD 6,DX1+8
+         SLXT 0,4,1
+         STD 0,ACTUAL
+         STD 2,ACTUAL+8
+         ZHVSCHK SLXT,ACTUAL,ZE010,16
+* SRXT
+         XC ACTUAL(16),ACTUAL
+         LD 4,DX1
+         LD 6,DX1+8
+         SRXT 0,4,1
+         STD 0,ACTUAL
+         STD 2,ACTUAL+8
+         ZHVSCHK SRXT,ACTUAL,ZE011,16
+* TDCDT-PLUS-ZERO
+         XC ACTUAL(16),ACTUAL
+         LD 0,DZ
+         TDCDT 0,X'800'
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK TDCDT-PLUS-ZERO,ACTUAL,ZE012,16
+* TDCDT-MINUS-ZERO
+         XC ACTUAL(16),ACTUAL
+         LD 0,DMZ
+         TDCDT 0,X'800'
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK TDCDT-MINUS-ZERO,ACTUAL,ZE013,16
+* TDCDT-MINUS-ZERO-BIT
+         XC ACTUAL(16),ACTUAL
+         LD 0,DMZ
+         TDCDT 0,X'400'
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK TDCDT-MINUS-ZERO-BIT,ACTUAL,ZE014,16
+* TDCET-PLUS-ZERO
+         XC ACTUAL(16),ACTUAL
+         LE 0,DE0
+         TDCET 0,X'800'
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK TDCET-PLUS-ZERO,ACTUAL,ZE015,16
+* TDCXT-PLUS-ZERO
+         XC ACTUAL(16),ACTUAL
+         LD 0,DXZ
+         LD 2,DXZ+8
+         TDCXT 0,X'800'
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK TDCXT-PLUS-ZERO,ACTUAL,ZE016,16
+* TDCDT-NONZERO
+         XC ACTUAL(16),ACTUAL
+         LD 0,DD1
+         TDCDT 0,X'C00'
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK TDCDT-NONZERO,ACTUAL,ZE017,16
+         ZHVSSUM
+ACTUAL DS 2D
+ZE000 DC DD'12345'
+ZE001 DC LD'-12345'
+ZE002 DC X'12345D'
+ZE003 DC X'12345D'
+ZE004 DC DD'12345'
+ZE005 DC XL16'00000000000000000000000000000000'
+ZE006 DC C'12345'
+ZE007 DC C'12345'
+ZE008 DC DD'1230'
+ZE009 DC DD'12'
+ZE010 DC LD'1230'
+ZE011 DC LD'12'
+ZE012 DC XL16'00000000000000000000000000000001'
+ZE013 DC XL16'00000000000000000000000000000000'
+ZE014 DC XL16'00000000000000000000000000000001'
+ZE015 DC XL16'00000000000000000000000000000001'
+ZE016 DC XL16'00000000000000000000000000000001'
+ZE017 DC XL16'00000000000000000000000000000000'
+PK DC X'12345C'
+PKN DC X'0000000000000000000012345D'
+ZN DC C'12345'
+DD1 DC DD'123'
+DDM DC DD'-12345'
+DX1 DC LD'123'
+DE0 DC ED'0'
+DZ DC DD'0'
+DMZ DC DD'-0'
+DXZ DC LD'0'
+XD12345 DC DD'12345'
+XX12345 DC LD'-12345'
+XD1230 DC DD'1230'
+XD12 DC DD'12'
+XX1230 DC LD'1230'
+XX12 DC LD'12'
+XP DC X'12345D'
+XZ DC C'12345'
+
+         LTORG
+         END

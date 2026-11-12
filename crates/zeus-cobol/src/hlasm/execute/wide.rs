@@ -78,6 +78,8 @@ pub(super) fn execute(
             | "STMG"
             | "LPQ"
             | "STPQ"
+            | "CVBG"
+            | "CVDG"
     ) {
         return Ok(false);
     }
@@ -107,6 +109,20 @@ pub(super) fn execute(
                 mem[addr + n * 8..addr + (n + 1) * 8]
                     .copy_from_slice(&read(low, high, target).to_be_bytes());
             }
+        }
+        return Ok(true);
+    }
+    if matches!(op, "CVBG" | "CVDG") {
+        // CONVERT TO BINARY / TO DECIMAL on 64 bits: a 16-byte packed operand
+        let addr = ea()?;
+        let dest = range(mem, addr, 16)?;
+        if op == "CVBG" {
+            let n = i64::try_from(super::packed(&mem[dest])?)
+                .map_err(|_| "CVBG fixed-point divide exception")?;
+            write(low, high, r, n as u64);
+        } else {
+            storage.check_write(addr, 16)?;
+            super::store_packed(&mut mem[dest], i128::from(a as i64))?;
         }
         return Ok(true);
     }

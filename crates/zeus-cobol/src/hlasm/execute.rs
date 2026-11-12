@@ -183,6 +183,9 @@ pub(crate) fn execute_entry_with_host(
     let frame = storage.invocation(mem, frame_length, amode)?;
     let mut registers = initial.as_ref().map_or([0; 16], |r| r.low);
     let mut high = initial.as_ref().map_or([0; 16], |r| r.high);
+    // Access registers: only LAM/STAM use them here (primary-space mode),
+    // so they are kept as plain state of this execution.
+    let mut access = [0u32; 16];
     let mut cc = initial.as_ref().map_or(0, |r| r.cc);
     let mut floating = initial.as_ref().map_or_else(
         || call_state.as_deref().cloned().unwrap_or_default(),
@@ -956,17 +959,22 @@ pub(crate) fn execute_entry_with_host(
                         registers[r] = v as u32;
                         cc = if of { 3 } else { signed_cc(v as u32) };
                     }
-                    "STM" | "LM" => {
+                    "STM" | "LM" | "STAM" | "LAM" => {
                         let (first, last, a) = (reg(0)?, reg(1)?, ea()?);
                         let count = (last + 16 - first) % 16 + 1;
                         range(mem, a, count * 4)?;
                         for i in 0..count {
                             let r = (first + i) % 16;
-                            if op == "STM" {
-                                storage.check_write(a + i * 4, 4)?;
-                                put_word(mem, a + i * 4, registers[r])?;
+                            let regs = if op.ends_with("AM") {
+                                &mut access
                             } else {
-                                registers[r] = word(mem, a + i * 4)?;
+                                &mut registers
+                            };
+                            if op.starts_with("ST") {
+                                storage.check_write(a + i * 4, 4)?;
+                                put_word(mem, a + i * 4, regs[r])?;
+                            } else {
+                                regs[r] = word(mem, a + i * 4)?;
                             }
                         }
                     }

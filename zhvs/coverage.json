@@ -1416,6 +1416,154 @@
       "LPQ-STPQ"
     ]
   },
+  "HI125A": {
+    "expect": "run",
+    "tests": [
+      "CVBY",
+      "CVBG",
+      "CVDY",
+      "CVDG",
+      "MVCLE-PAD",
+      "MVCLE-TRUNCATE",
+      "CLCLE-HIGH",
+      "CLCLE-PAD-EQUAL",
+      "MVIY",
+      "TRTR-RIGHTMOST",
+      "LAM-STAM",
+      "SPM-SETS-CC",
+      "MS",
+      "BSM-RECORD-MODE",
+      "BASSM-LINK-31",
+      "SAM64-LA-64BIT"
+    ]
+  },
+  "HI126A": {
+    "expect": "run",
+    "tests": [
+      "AE-NORMALIZED",
+      "AER-NEGATIVE",
+      "AU-UNNORMALIZED",
+      "AUR-CARRY",
+      "CE-LOW",
+      "CER-EQUAL",
+      "DE",
+      "DER-NEGATIVE",
+      "HER",
+      "LCER",
+      "LNER",
+      "LPER",
+      "LTER-ZERO",
+      "LER",
+      "ME-LONG-PRODUCT",
+      "MER",
+      "SE-NEGATIVE",
+      "SER-ZERO",
+      "SU-UNNORMALIZED",
+      "SUR"
+    ]
+  },
+  "HI127A": {
+    "expect": "run",
+    "tests": [
+      "ADR",
+      "AW-UNNORMALIZED",
+      "AWR-CARRY",
+      "CD-HIGH",
+      "CDR-EQUAL",
+      "DDR",
+      "HDR",
+      "LCDR",
+      "LNDR",
+      "LPDR",
+      "LTDR-NEGATIVE",
+      "LDR",
+      "LEDR-ROUND-UP",
+      "LEDR-NO-ROUND",
+      "LRDR-ROUND-UP",
+      "MDR",
+      "SD-NEGATIVE",
+      "SDR-ZERO",
+      "SW-UNNORMALIZED",
+      "SWR"
+    ]
+  },
+  "HI128A": {
+    "expect": "run",
+    "tests": [
+      "AXR",
+      "AXR-CC",
+      "SXR",
+      "SXR-CC-ZERO",
+      "LXR",
+      "MXR",
+      "MXD",
+      "MXDR"
+    ]
+  },
+  "HI129A": {
+    "expect": "run",
+    "tests": [
+      "ADB",
+      "AEB-NEGATIVE",
+      "SDB-NEGATIVE",
+      "SEB-ZERO",
+      "MDB-ROUNDED",
+      "MEEB-ROUNDED",
+      "DDB-THIRD",
+      "DEB-THIRD",
+      "MADB",
+      "MAEB",
+      "MSDB",
+      "MSEB",
+      "CDB-LOW",
+      "CEB-EQUAL",
+      "KDB-HIGH",
+      "KEB-EQUAL"
+    ]
+  },
+  "HI130A": {
+    "expect": "run",
+    "tests": [
+      "LDEB-EXACT",
+      "LXDB",
+      "LXEB",
+      "MDEB-EXACT",
+      "MXDB",
+      "SQDB",
+      "SQEB",
+      "TCDB-POS-NORMAL",
+      "TCDB-NOT-ZERO",
+      "TCEB-NEG-NORMAL",
+      "TCXB-POS-ZERO",
+      "LFPC-EFPC",
+      "SRNM",
+      "SRNMB",
+      "SRNMT"
+    ]
+  },
+  "HI131A": {
+    "expect": "run",
+    "tests": [
+      "CDPT",
+      "CXPT-NEGATIVE",
+      "CPDT-NEGATIVE",
+      "CPXT-NEGATIVE",
+      "CDZT",
+      "CXZT",
+      "CZDT-UNSIGNED",
+      "CZXT-UNSIGNED",
+      "SLDT",
+      "SRDT",
+      "SLXT",
+      "SRXT",
+      "TDCDT-PLUS-ZERO",
+      "TDCDT-MINUS-ZERO",
+      "TDCDT-MINUS-ZERO-BIT",
+      "TDCET-PLUS-ZERO",
+      "TDCXT-PLUS-ZERO",
+      "TDCDT-NONZERO"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [

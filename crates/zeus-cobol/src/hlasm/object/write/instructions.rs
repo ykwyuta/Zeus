@@ -512,6 +512,8 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("AY", 0x5a),
         ("SY", 0x5b),
         ("STPQ", 0x8e),
+        ("CVBG", 0x0e),
+        ("CVDG", 0x2e),
         ("LPQ", 0x8f),
         ("MSY", 0x51),
         ("LAY", 0x71),
@@ -614,11 +616,18 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("SLDA", 0x8f),
         ("STM", 0x90),
         ("LM", 0x98),
+        ("LAM", 0x9a),
+        ("STAM", 0x9b),
+        ("MVCLE", 0xa8),
+        ("CLCLE", 0xa9),
         ("BXH", 0x86),
         ("BXLE", 0x87),
     ];
     if let Some((_, opcode)) = rs.iter().find(|(name, _)| *name == op) {
-        let second = if matches!(op, "STM" | "LM" | "BXH" | "BXLE") {
+        let second = if matches!(
+            op,
+            "STM" | "LM" | "LAM" | "STAM" | "MVCLE" | "CLCLE" | "BXH" | "BXLE"
+        ) {
             r(1)?
         } else {
             0
@@ -654,6 +663,7 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         return Ok(b);
     }
     let ss = [
+        ("TRTR", 0xd0),
         ("MVN", 0xd1),
         ("MVC", 0xd2),
         ("MVZ", 0xd3),
