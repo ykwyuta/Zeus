@@ -367,6 +367,28 @@
       }
     }
   },
+  "HA110A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: ICTL instruction | The ICTL instruction changes the begin, end, and continue columns that establish the coding format of the assembler language source statements.",
+      "HLASM-LR: ICTL instruction | Use the ICTL instruction only once, at the beginning of a source program."
+    ],
+    "tests": {
+      "ICTL-COLUMN1-IGNORED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ICTL instruction | By changing the begin column, you can even create a field before the begin column to contain identification or sequence numbers."
+        ]
+      },
+      "ICTL-LABEL-COLUMN2": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ICTL instruction | Specifies the begin column of the source statement.",
+          "HLASM-LR: ICTL instruction | The ICTL instruction does not affect the format of statements brought in by a COPY"
+        ]
+      }
+    }
+  },
   "HD101A": {
     "basis": "spec",
     "refs": [

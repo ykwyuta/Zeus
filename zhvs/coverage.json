@@ -96,6 +96,13 @@
       "ENTRY-VCON"
     ]
   },
+  "HA110A": {
+    "expect": "run",
+    "tests": [
+      "ICTL-COLUMN1-IGNORED",
+      "ICTL-LABEL-COLUMN2"
+    ]
+  },
   "HD101A": {
     "expect": "run",
     "tests": [
