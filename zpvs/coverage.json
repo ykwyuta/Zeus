@@ -172,6 +172,18 @@
       "ONCODE-CONDITION"
     ]
   },
+  "PC111A": {
+    "expect": "run",
+    "tests": [
+      "STRINGSIZE-RAISED",
+      "STRINGSIZE-DISABLED",
+      "STRINGSIZE-VAR-BIT",
+      "STRINGSIZE-FITS",
+      "FIXEDOVERFLOW-DEC",
+      "UNDEFINEDFILE-RAISED",
+      "UNDEFINEDFILE-ONCODE"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [
@@ -373,6 +385,22 @@
       "STATIC-NO-INIT",
       "RANDOM-SEED-ONE",
       "RANDOM-NEXT"
+    ]
+  },
+  "PD110A": {
+    "expect": "run",
+    "tests": [
+      "UNSIGNED-RANGE",
+      "SIGNED-RANGE",
+      "VARYINGZ-LENGTH",
+      "VARYINGZ-NULL",
+      "NONVARYING-PADDED",
+      "HEXADEC-DEFAULT",
+      "BIGENDIAN-DEFAULT",
+      "BYVALUE-COPY",
+      "OPTIONAL-PRESENT",
+      "OPTIONAL-OMITTED",
+      "NONASSIGNABLE-READ"
     ]
   },
   "PE101N": {
@@ -683,6 +711,29 @@
       "TINY-SHORT",
       "EPSILON-SHORT",
       "POINTERDIFF"
+    ]
+  },
+  "PM110A": {
+    "expect": "run",
+    "tests": [
+      "ACOS-ONE",
+      "ASIN-ONE",
+      "TAN-HALF",
+      "CENTRE-EVEN",
+      "COMPLEX",
+      "SUBTRACT",
+      "PRECISION-TRUNC",
+      "FLOAT",
+      "DATE-TIME-LENGTHS",
+      "DATETIME-PATTERN",
+      "POINTERVALUE",
+      "ONCOUNT-OUTSIDE",
+      "DO-LOOP-LEAVE",
+      "REMOTE-FORMAT",
+      "RESIGNAL",
+      "PP-ITERATE-LEAVE",
+      "PP-GO-TO",
+      "PP-REPLACE"
     ]
   },
   "PS101A": {

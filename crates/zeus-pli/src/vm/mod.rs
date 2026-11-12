@@ -1261,6 +1261,20 @@ impl Machine {
 
     /// Converts and stores a value of type `from` into a location.
     pub fn assign_loc(&mut self, loc: &Loc, v: Value, from: &Ty, act: usize) -> R<()> {
+        // STRINGSIZE (disabled by default): a string source longer than a
+        // fixed-length or VARYING target is truncated; the condition is raised
+        // first and a normal return completes the truncated assignment
+        // (Language Reference, "STRINGSIZE condition").
+        if let Some(crate::types::Ext::Const(max)) = loc.ty.str_len() {
+            let long = match &v {
+                Value::Char(s) if loc.ty.is_char() => s.len() > max as usize,
+                Value::Bit(b) if loc.ty.is_bit() => b.len() > max as usize,
+                _ => false,
+            };
+            if long && self.enabled_now(act, cond::STRINGSIZE) {
+                self.raise(Cond::StringSize, 150, act)?;
+            }
+        }
         let v = self.convert(v, from, &loc.ty, act)?;
         self.store(loc, &v)
     }
@@ -2097,6 +2111,19 @@ impl Machine {
     ) -> R<Option<Binding>> {
         let m = self.module.clone();
         let pvar = &m.vars[param as usize];
+        // BYVALUE: the procedure works on a copy, so its assignments do not
+        // reach the argument (Language Reference, BYVALUE attribute)
+        if pvar.byvalue
+            && let Arg::Ref(r) = a
+            && r.subs.iter().all(Option::is_some)
+            && let Some(ty) = m.vars[r.var as usize].ty.clone()
+        {
+            let copy = Expr {
+                k: Box::new(crate::ir::Ek::Load(r.clone())),
+                ty,
+            };
+            return self.bind_arg(&Arg::Dummy(copy), param, act, dummies);
+        }
         Ok(match a {
             Arg::Omitted => None,
             Arg::Ref(r) => {

@@ -726,9 +726,21 @@ impl Parser {
                     };
                     Attr::Type(t.trim().to_ascii_uppercase())
                 }
-                "NOINIT" | "NOINITIAL" | "NATIVE" | "NONNATIVE" | "HEXADEC" | "IEEE"
-                | "BIGENDIAN" | "LITTLEENDIAN" | "ASSEMBLER" | "LOCAL" | "RESERVED"
-                | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT" | "OUTONLY" => continue,
+                // IEEE and LITTLEENDIAN select another storage representation;
+                // Zeus stores HFP and big-endian binary only, so it refuses them
+                // instead of silently storing the default form
+                "IEEE" | "LITTLEENDIAN" | "NONNATIVE" => {
+                    return Err(Diag::error(
+                        self.pos(),
+                        format!(
+                            "the {w} attribute is not supported (Zeus stores hexadecimal \
+                             floating point and big-endian binary)"
+                        ),
+                    ));
+                }
+                "NOINIT" | "NOINITIAL" | "NATIVE" | "HEXADEC" | "BIGENDIAN" | "ASSEMBLER"
+                | "LOCAL" | "RESERVED" | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT"
+                | "OUTONLY" => continue,
                 _ => {
                     self.i -= 1;
                     return Ok(attrs);

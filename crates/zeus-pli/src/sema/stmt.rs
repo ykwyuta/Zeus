@@ -605,7 +605,11 @@ impl Compiler {
                     self.expr(&value)?
                 };
                 let ty = tys[0].clone().unwrap_or(char_any());
-                if ts.len() == 1 {
+                // a string assigned to a string of the same kind is fitted at
+                // run time, where a longer source can raise STRINGSIZE
+                let same_string =
+                    (ty.is_char() && x.ty.is_char()) || (ty.is_bit() && x.ty.is_bit());
+                if ts.len() == 1 && !same_string {
                     Stmt::Assign(ts, self.conv(x, &ty))
                 } else {
                     // multiple targets: each converts the value itself

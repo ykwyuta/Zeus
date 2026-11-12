@@ -1002,6 +1002,7 @@ impl Compiler {
             size: 0,
             level: it.level,
             packed_bits: false,
+            byvalue: has(attrs, |a| matches!(a, Attr::Byvalue)),
         });
         members.push(id);
         self.define(block, &it.name, Sym::Var(id));

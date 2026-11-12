@@ -150,6 +150,9 @@ pub struct Var {
     pub level: u32,
     /// Bit-packed (unaligned) bit string.
     pub packed_bits: bool,
+    /// A BYVALUE parameter: the procedure receives a copy of the argument.
+    #[serde(default)]
+    pub byvalue: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

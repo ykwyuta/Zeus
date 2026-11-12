@@ -89,6 +89,15 @@
       }
     }
   },
+  "PC111A": {
+    "basis": "spec",
+    "tests": {
+      "UNDEFINEDFILE-ONCODE": {
+        "basis": "zos",
+        "note": "ONCODE of UNDEFINEDFILE for a missing DD: Zeus 80. Record the z/OS value (PL/I Messages and Codes lists 80-89 by cause)."
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec"
   },
@@ -194,6 +203,9 @@
         "note": "RANDOM() after RANDOM(1): Zeus value."
       }
     }
+  },
+  "PD110A": {
+    "basis": "spec"
   },
   "PE101N": {
     "basis": "spec"
@@ -338,6 +350,9 @@
     "basis": "spec"
   },
   "PM109A": {
+    "basis": "spec"
+  },
+  "PM110A": {
     "basis": "spec"
   },
   "PS101A": {

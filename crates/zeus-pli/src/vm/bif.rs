@@ -829,8 +829,21 @@ impl Machine {
                 Value::int(n)
             }
             Allocation => Value::int(self.allocation(r.var, act)?),
-            Present => Value::bit1(true),
-            Omitted => Value::bit1(false),
+            // a parameter whose argument was written as * has no binding
+            // (Language Reference, PRESENT and OMITTED)
+            Present | Omitted => {
+                let var = &self.module.vars[r.var as usize];
+                let root = &self.module.vars[var.root as usize];
+                let present = match &root.storage {
+                    crate::ir::Storage::Param(k) => {
+                        let k = *k as usize;
+                        let a = self.act_of(act, root.block)?;
+                        self.acts[a].params.get(k).is_some_and(|b| b.is_some())
+                    }
+                    _ => true,
+                };
+                Value::bit1(present == (b == Present))
+            }
             String => {
                 let locs = self.elements(r, act)?;
                 let mut out: Vec<u8> = Vec::new();
