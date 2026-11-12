@@ -174,6 +174,9 @@ pub enum Bif {
     PrecVal,
     ScaleVal,
     Y4Date,
+    /// SHAnDIGEST/INIT/UPDATE/FINAL: family 1, 2 or 3, digest bits, and
+    /// the operation (0 digest, 1 init, 2 update, 3 final).
+    Sha(u8, u16, u8),
     WHigh,
     WLow,
     SubTo,
@@ -564,8 +567,33 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "HEX8" => Hex8,
         "HEXIMAGE8" => HexImage8,
         "ONCONDID" => OnCondId,
-        _ => return None,
+        _ => return sha_name(name),
     })
+}
+
+/// SHA1DIGEST, SHA2INIT256, SHA3FINAL512 ...
+fn sha_name(name: &str) -> Option<Bif> {
+    let rest = name.strip_prefix("SHA")?;
+    let family = rest
+        .get(0..1)?
+        .parse::<u8>()
+        .ok()
+        .filter(|f| (1..=3).contains(f))?;
+    let rest = &rest[1..];
+    let (op, bits) = [("DIGEST", 0u8), ("INIT", 1), ("UPDATE", 2), ("FINAL", 3)]
+        .iter()
+        .find_map(|(w, op)| rest.strip_prefix(w).map(|b| (*op, b)))?;
+    let bits: u16 = if family == 1 {
+        if !bits.is_empty() {
+            return None;
+        }
+        160
+    } else {
+        bits.parse()
+            .ok()
+            .filter(|b| matches!(b, 224 | 256 | 384 | 512))?
+    };
+    Some(Bif::Sha(family, bits, op))
 }
 
 impl Bif {
@@ -779,6 +807,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             _ => return Err(format!("{b:?} requires a REAL FLOAT argument")),
         },
         Y4Date => Ty::char(8),
+        Sha(_, bits, 0 | 3) => Ty::char(u32::from(bits) / 8),
+        Sha(..) => Ty::Pointer,
         WHigh | WLow => match cint(0) {
             Some(n) => Ty::Wchar {
                 len: crate::types::Ext::Const(n.max(0) as u32),

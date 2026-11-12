@@ -1522,6 +1522,7 @@ impl Compiler {
             | IUnsigned
             | ReplaceBy2
             | Y4Date
+            | Sha(..)
             | WsCollapse16
             | WsReplace16
             | Base64Encode16

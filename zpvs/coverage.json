@@ -898,6 +898,31 @@
       "VALID-FIXED-DEC"
     ]
   },
+  "PM116A": {
+    "expect": "run",
+    "tests": [
+      "SHA1-DIGEST",
+      "SHA1-STREAM",
+      "SHA2-224-DIGEST",
+      "SHA2-224-STREAM",
+      "SHA2-256-DIGEST",
+      "SHA2-256-STREAM",
+      "SHA2-384-DIGEST",
+      "SHA2-384-STREAM",
+      "SHA2-512-DIGEST",
+      "SHA2-512-STREAM",
+      "SHA3-224-DIGEST",
+      "SHA3-224-STREAM",
+      "SHA3-256-DIGEST",
+      "SHA3-256-STREAM",
+      "SHA3-384-DIGEST",
+      "SHA3-384-STREAM",
+      "SHA3-512-DIGEST",
+      "SHA3-512-STREAM",
+      "SHA2-256-EMPTY",
+      "DIGEST-LENGTHS"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

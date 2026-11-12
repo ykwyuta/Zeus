@@ -82,5 +82,17 @@
     "form": "SA38-0667-60",
     "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf",
     "sha256": "383e0248e8da04b3b9c50d5a19c66b788f859b7968c9dc29e8dcd88585fd127a"
+  },
+  "FIPS180": {
+    "title": "NIST FIPS 180-4 Secure Hash Standard (SHS)",
+    "form": "FIPS PUB 180-4",
+    "url": "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+    "sha256": "0455b406d89648d20cbde375561e19c245b9815e894164c2670772e3d54deb82"
+  },
+  "FIPS202": {
+    "title": "NIST FIPS 202 SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions",
+    "form": "FIPS PUB 202",
+    "url": "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+    "sha256": "1592607831ff0908cc590632ce371c6c95e94025bb1a0c8ae90a4d0ec1ed025e"
   }
 }

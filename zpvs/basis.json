@@ -2631,6 +2631,152 @@
       }
     }
   },
+  "PM116A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: SHA1DIGEST",
+      "PLI-LRM: SHA1FINAL | In the example, all the SHA function calls are in the same block of code."
+    ],
+    "tests": {
+      "SHA1-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.1 SHA-1"
+        ]
+      },
+      "SHA1-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.1 SHA-1"
+        ]
+      },
+      "SHA2-224-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.3 SHA-224",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-224-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.3 SHA-224",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-256-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.2 SHA-256",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-256-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.2 SHA-256",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-256-EMPTY": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.2 SHA-256",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-384-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.5 SHA-384",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-384-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.5 SHA-384",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-512-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.4 SHA-512",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-512-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.4 SHA-512",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "DIGEST-LENGTHS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA3-224-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-224-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      },
+      "SHA3-256-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-256-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      },
+      "SHA3-384-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-384-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      },
+      "SHA3-512-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-512-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

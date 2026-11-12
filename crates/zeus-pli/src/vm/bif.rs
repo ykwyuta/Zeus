@@ -1210,6 +1210,45 @@ impl Machine {
                 }
             }
             // PUTENV values are kept by the run unit and read first by GETENV
+            // the SHA built-ins: a token is a pointer to the text gathered so far
+            Sha(family, bits, op) => {
+                let take = |m: &mut Self, i: usize| -> R<Vec<u8>> {
+                    let n = v.get(i + 1).map_or(0, |x| x.as_i64()).max(0) as usize;
+                    match v.get(i) {
+                        Some(Value::Ptr(p)) if n > 0 => Ok(m.read(*p, n)?.to_vec()),
+                        _ => Ok(Vec::new()),
+                    }
+                };
+                match op {
+                    0 => Value::Char(super::digest::digest(family, bits, &take(self, 0)?)),
+                    1 => {
+                        let t = SHA.with(|s| {
+                            let mut s = s.borrow_mut();
+                            s.1 += 1;
+                            let t = 0x7E00_0000 + s.1;
+                            s.0.insert(t, Vec::new());
+                            t
+                        });
+                        Value::Ptr(t)
+                    }
+                    _ => {
+                        let Value::Ptr(t) = v[0] else {
+                            return err(format!("{b:?} requires a token"));
+                        };
+                        let more = take(self, 1)?;
+                        let text = SHA.with(|s| {
+                            let mut s = s.borrow_mut();
+                            let buf = s.0.entry(t).or_default();
+                            buf.extend(more);
+                            if op == 3 { s.0.remove(&t) } else { None }
+                        });
+                        match text {
+                            Some(text) => Value::Char(super::digest::digest(family, bits, &text)),
+                            None => Value::Ptr(t),
+                        }
+                    }
+                }
+            }
             // COUNT: the data items of the last GET or PUT on the file
             Count => match &v[0] {
                 Value::File(f) => {
@@ -1948,6 +1987,9 @@ impl Machine {
 }
 
 thread_local! {
+    /// The texts of the SHA tokens, and the last token handed out.
+    static SHA: std::cell::RefCell<(std::collections::HashMap<u32, Vec<u8>>, u32)> =
+        std::cell::RefCell::new((std::collections::HashMap::new(), 0));
     /// Environment variables set by PUTENV.
     static ENV: std::cell::RefCell<std::collections::HashMap<std::string::String, std::string::String>> =
         std::cell::RefCell::new(std::collections::HashMap::new());

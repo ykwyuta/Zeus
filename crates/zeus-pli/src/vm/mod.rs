@@ -5,6 +5,7 @@ mod bif;
 mod cics;
 mod conv;
 mod datefmt;
+mod digest;
 mod record;
 mod sql;
 mod stream;
