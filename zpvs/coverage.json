@@ -923,6 +923,32 @@
       "DIGEST-LENGTHS"
     ]
   },
+  "PM117A": {
+    "expect": "run",
+    "tests": [
+      "PP-TRIM",
+      "PP-COPY-REPEAT-SUBSTR",
+      "PP-INDEX-FROM",
+      "PP-VERIFY-FROM",
+      "PP-COLLATE",
+      "PP-MAX-MIN",
+      "PP-MARGINS",
+      "PP-SIZES",
+      "PP-COMPILE-DATE-TIME",
+      "PP-QUOTE",
+      "PP-COMMENT",
+      "PP-SYSVERSION",
+      "PP-SYSTEM-SYSPARM",
+      "PP-CASE-TRANSLATE",
+      "PP-COUNTER",
+      "PP-MACNAME",
+      "PP-PARMSET",
+      "PP-ANSWER",
+      "PP-CALL-ANSWER",
+      "PP-SELECT",
+      "PP-INSCAN-XINSCAN"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

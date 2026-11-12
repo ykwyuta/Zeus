@@ -273,7 +273,7 @@ PLI = {
         'Y4JULIAN', 'Y4YEAR',],
     # preprocessor statements, directives and built-in functions of the Enterprise PL/I
     # 6.1 Language Reference ("Preprocessor facilities"), checked 2026-11-12
-    'Preprocessor': ['%ACTIVATE', '%DEACTIVATE', '%DECLARE', '%DO', '%END', '%GO TO', '%IF', '%INCLUDE', '%INSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%REPLACE', '%SELECT', '%XINCLUDE', '%XINSCAN', '%PROCEDURE', '%RETURN', '%ANSWER', '%CALL', '%LINE', '%NOPRINT', '%PAGE', '%POP', '%PRINT', '%PROCESS', '%PROCINC', '%PUSH', '%SKIP', 'STATEMENT'],
+    'Preprocessor': ['%ACTIVATE', '%DEACTIVATE', '%DECLARE', '%DO', '%END', '%GO TO', '%IF', '%INCLUDE', '%INSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%REPLACE', '%SELECT', '%XINCLUDE', '%XINSCAN', '%PROCEDURE', 'RETURN (preprocessor)', 'ANSWER (preprocessor)', 'CALL (preprocessor)', '%LINE', '%NOPRINT', '%PAGE', '%POP', '%PRINT', '%PROCESS', '%PROCINC', '%PUSH', '%SKIP', 'STATEMENT'],
     'Preprocessor built-in functions': ['COLLATE', 'COMMENT', 'COMPILEDATE', 'COMPILETIME', 'COPY', 'COUNTER', 'DIMENSION', 'HBOUND', 'INDEX', 'LBOUND', 'LENGTH', 'LOWERCASE', 'MACCOL', 'MACLMAR', 'MACNAME', 'MACRMAR', 'MAX', 'MIN', 'PARMSET', 'QUOTE', 'REPEAT', 'SUBSTR', 'SYSDIMSIZE', 'SYSOFFSETSIZE', 'SYSPARM', 'SYSPOINTERSIZE', 'SYSTEM', 'SYSVERSION', 'TRANSLATE', 'TRIM', 'UPPERCASE', 'VERIFY'],
 
     'Procedure options': ['OPTIONS(MAIN)', 'NOEXECOPS', 'FETCHABLE', 'RECURSIVE', 'REORDER',
@@ -304,18 +304,30 @@ PLI_PATTERNS = {
 }
 for p in ['%ACTIVATE', '%DEACTIVATE', '%DECLARE', '%DO', '%END', '%IF', '%INCLUDE', '%XINCLUDE',
           '%INSCAN', '%XINSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%PAGE', '%POP', '%PRINT', '%PROCEDURE',
-          '%PUSH', '%REPLACE', '%SELECT', '%SKIP', '%RETURN', '%ANSWER', '%CALL', '%LINE', '%NOPRINT',
+          '%PUSH', '%REPLACE', '%SELECT', '%SKIP', '%LINE', '%NOPRINT',
           '%PROCESS', '%PROCINC']:
     word = p[1:]
     alt = {'DECLARE': 'DECLARE|DCL', 'PROCEDURE': 'PROCEDURE|PROC', 'ACTIVATE': 'ACTIVATE|ACT',
            'DEACTIVATE': 'DEACTIVATE|DEACT'}.get(word, word)
     PLI_PATTERNS[p] = r'%\s*([A-Z0-9_]+\s*:\s*)?(' + alt + r')\b'
 PLI_PATTERNS['%GO TO'] = r'%\s*GO\s*TO\b'
+# the RETURN, ANSWER and CALL statements of a preprocessor procedure have no
+# leading % (Language Reference, "Preprocessor procedures")
+for w, alt in [('RETURN', 'RETURN'), ('ANSWER', 'ANSWER|ANS'), ('CALL', 'CALL')]:
+    PLI_PATTERNS[w + ' (preprocessor)'] = r'%\s*[A-Z0-9_]+\s*:\s*PROC[^%]*\b(' + alt + r')\b'
+
+
+PP_NOARGS = {'COLLATE', 'COMPILEDATE', 'COMPILETIME', 'COUNTER', 'MACCOL', 'MACLMAR', 'MACNAME',
+             'MACRMAR', 'SYSDIMSIZE', 'SYSOFFSETSIZE', 'SYSPARM', 'SYSPOINTERSIZE', 'SYSTEM',
+             'SYSVERSION'}
 
 
 def pli_pattern(category, name):
     if category == 'Preprocessor built-in functions':
-        return r'^\s*%.*\b' + re.escape(name) + r'\s*\('
+        # in a %statement, or in the body of a preprocessor procedure; the
+        # functions without arguments are written without parentheses
+        word = r'\b' + re.escape(name) + (r'\b' if name in PP_NOARGS else r'\s*\(')
+        return r'(^[ \t]*%[^\n]*|%\s*[A-Z0-9_]+\s*:\s*PROC[^%]*)' + word
     if name in PLI_PATTERNS:
         return PLI_PATTERNS[name]
     if category == 'Built-in functions':

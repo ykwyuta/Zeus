@@ -2777,6 +2777,150 @@
       }
     }
   },
+  "PM117A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Preprocessor built-in functions | In preprocessor statements, the preprocessor built-in function names are always active as built-in functions unless they are declared with some other meaning."
+    ],
+    "tests": {
+      "PP-TRIM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TRIM"
+        ]
+      },
+      "PP-COPY-REPEAT-SUBSTR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPEAT | REPEAT returns a CHARACTER string consisting of (y + 1) concatenated copies of the string x.",
+          "PLI-LRM: COPY | COPY returns a CHARACTER string consisting of y concatenated copies of the string x."
+        ]
+      },
+      "PP-INDEX-FROM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INDEX | n specifies the location within x at which to begin processing."
+        ]
+      },
+      "PP-VERIFY-FROM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VERIFY"
+        ]
+      },
+      "PP-COLLATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COLLATE | COLLATE returns a CHARACTER string of length 256 comprising the 256 possible character values one time each in the collating order."
+        ]
+      },
+      "PP-MAX-MIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAX"
+        ]
+      },
+      "PP-MARGINS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACLMAR",
+          "PLI-LRM: MACRMAR",
+          "PLI-PG: MARGINS | The IBM-supplied default for fixed-length records is MARGINS(2,72)."
+        ]
+      },
+      "PP-SIZES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSDIMSIZE | 4 under CMPAT(V2) and CMPAT(LE)",
+          "PLI-LRM: SYSOFFSETSIZE | Currently, SYSOFFSETSIZE returns 4.",
+          "PLI-LRM: SYSPOINTERSIZE | Currently, SYSPOINTERSIZE returns 4."
+        ]
+      },
+      "PP-COMPILE-DATE-TIME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COMPILEDATE | COMPILEDATE returns a CHARACTER string of length 17 containing the date and the time of the compilation.",
+          "PLI-LRM: COMPILETIME | COMPILETIME returns a CHARACTER string of length 18 containing the date and the time of compilation."
+        ]
+      },
+      "PP-QUOTE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUOTE | If x contains single quotation marks, each is replaced by two consecutive single quotation marks."
+        ]
+      },
+      "PP-COMMENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COMMENT"
+        ]
+      },
+      "PP-SYSVERSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSVERSION | Each string is padded with blanks on the right to make it 22 in length."
+        ]
+      },
+      "PP-SYSTEM-SYSPARM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSTEM",
+          "PLI-LRM: SYSPARM",
+          "PLI-PG: Table 3. Compile-time options, abbreviations, and IBM-supplied defaults | SYSTEM(MVS)"
+        ]
+      },
+      "PP-CASE-TRANSLATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWERCASE",
+          "PLI-LRM: TRANSLATE"
+        ]
+      },
+      "PP-COUNTER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COUNTER | The returned number is 00001 for the first invocation, and increments by one on each successive invocation."
+        ]
+      },
+      "PP-MACNAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACNAME | MACNAME returns the name of the preprocessor procedure within which it is invoked."
+        ]
+      },
+      "PP-PARMSET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PARMSET"
+        ]
+      },
+      "PP-ANSWER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Preprocessor ANSWER statement | The answered text replaces the invocation of the preprocessor procedure in the source text."
+        ]
+      },
+      "PP-CALL-ANSWER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Preprocessor CALL statement | By using the preprocessor CALL statement, a MACRO procedure can call another MACRO procedure."
+        ]
+      },
+      "PP-SELECT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %SELECT statement"
+        ]
+      },
+      "PP-INSCAN-XINSCAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %INSCAN statement",
+          "PLI-LRM: %XINSCAN statement | The %XINSCAN statement is the same as the %INSCAN statement except that the file is not included if it already has been."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

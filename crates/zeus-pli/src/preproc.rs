@@ -80,6 +80,8 @@ enum Scan {
 #[derive(Debug, Clone)]
 struct Proc {
     params: Vec<String>,
+    /// RETURNS was given: a function (RETURN); otherwise ANSWER text.
+    returns: bool,
     returns_char: bool,
     /// The STATEMENT option: the statement form with keyword arguments.
     statement: bool,
@@ -110,6 +112,10 @@ struct Pp<'a> {
     counter: i64,
     /// %GO TO statements executed (a loop of them ends with an error).
     gotos: u32,
+    /// The preprocessor procedures being executed (MACNAME).
+    macros: Vec<String>,
+    /// The text answered by the procedures without RETURNS being executed.
+    answers: Vec<String>,
 }
 
 fn is_op(t: &Token, o: &str) -> bool {
@@ -656,6 +662,13 @@ impl Pp<'_> {
                 }
                 Ok((se + 1, Flow::Next))
             }
+            // %INSCAN / %XINSCAN: the file named by a preprocessor expression
+            "INSCAN" | "XINSCAN" => {
+                let e = self.parse_expr(&t[k + 1..se], pos)?;
+                let member = self.eval(&e, &mut HashMap::new())?.text();
+                self.include(member.trim(), kw == "XINSCAN", pos)?;
+                Ok((se + 1, Flow::Next))
+            }
             "IF" => {
                 let then = find_pct(t, k + 1, end, "THEN")
                     .ok_or_else(|| self.err(pos, "%THEN expected"))?;
@@ -780,6 +793,7 @@ impl Pp<'_> {
                     .ok_or_else(|| self.err(pos, "a preprocessor procedure needs a name"))?;
                 let mut params = Vec::new();
                 let mut returns_char = false;
+                let mut returns = false;
                 let mut statement = false;
                 let mut j = k + 1;
                 while j < se {
@@ -794,6 +808,7 @@ impl Pp<'_> {
                     } else if is_word(&t[j], "STATEMENT") {
                         statement = true;
                     } else if is_word(&t[j], "RETURNS") {
+                        returns = true;
                         returns_char = t
                             .get(j + 2)
                             .is_some_and(|x| is_word(x, "CHARACTER") || is_word(x, "CHAR"));
@@ -810,6 +825,7 @@ impl Pp<'_> {
                     name,
                     Proc {
                         params,
+                        returns,
                         returns_char,
                         statement,
                         body,
@@ -1105,7 +1121,10 @@ impl Pp<'_> {
                     return Ok(v.clone());
                 }
                 if let Some(p) = self.procs.get(&name).cloned() {
-                    return self.call(&p, args, r.pos);
+                    self.macros.push(name.clone());
+                    let v = self.call(&p, args, r.pos);
+                    self.macros.pop();
+                    return v;
                 }
                 if let Some(v) = builtin(&name, &args, self) {
                     return Ok(v);
@@ -1131,20 +1150,27 @@ impl Pp<'_> {
                 args.get(i).cloned().unwrap_or(Val::Char(String::new())),
             );
         }
-        let mut toks = p.body.clone();
+        let mut toks = answer_calls(&p.body);
         toks.push(Token { tok: Tok::Eof, pos });
         let mut parser = Parser::new(toks);
         let mut stmts = Vec::new();
         while !parser.at_end() {
             stmts.push(parser.statement()?);
         }
+        self.answers.push(String::new());
         let r = self.exec(&stmts, &mut locals);
+        let answered = self.answers.pop().unwrap_or_default();
         self.depth -= 1;
         let v = match r? {
             Flow::Return(v) => v,
             Flow::Goto(l) => return Err(self.err(pos, format!("GO TO {l}: no such label"))),
             _ => Val::Char(String::new()),
         };
+        // a procedure without RETURNS replaces its invocation with the text
+        // of its ANSWER statements (Language Reference, preprocessor ANSWER)
+        if !p.returns {
+            return Ok(Val::Char(answered));
+        }
         Ok(if p.returns_char {
             Val::Char(v.text())
         } else {
@@ -1335,9 +1361,91 @@ impl Pp<'_> {
             StmtKind::GoTo(Expr::Ref(r)) => Ok(Flow::Goto(r.name().to_string())),
             StmtKind::Iterate(l) => Ok(Flow::Iterate(l.clone())),
             StmtKind::Null => Ok(Flow::Next),
+            // ANSWER (rewritten as CALL ANSWER$) and the preprocessor CALL of
+            // another procedure without RETURNS: both add answered text
+            StmtKind::Call(r) => {
+                let name = r.name().to_string();
+                if name == "ANSWER$" {
+                    let list = r
+                        .parts
+                        .last()
+                        .and_then(|p| p.1.first())
+                        .cloned()
+                        .unwrap_or_default();
+                    let mut text = String::new();
+                    for a in &list {
+                        text.push_str(&self.eval(a, locals)?.text());
+                    }
+                    if let Some(b) = self.answers.last_mut() {
+                        b.push_str(&text);
+                    }
+                    return Ok(Flow::Next);
+                }
+                if !self.procs.contains_key(&name) {
+                    return Err(self.err(
+                        s.pos,
+                        format!("CALL {name}: no such preprocessor procedure"),
+                    ));
+                }
+                let v = self.eval(&Expr::Ref(r.clone()), locals)?;
+                if let Some(b) = self.answers.last_mut() {
+                    b.push_str(&v.text());
+                }
+                Ok(Flow::Next)
+            }
             _ => Err(self.err(s.pos, "statement not supported in a preprocessor procedure")),
         }
     }
+}
+
+/// Rewrites the ANSWER statements of a procedure body as CALL ANSWER$(...);
+/// so that the statement parser reads them. The PAGE, SKIP, COLUMN, MARGINS
+/// and scanning options only shape the listing and are dropped.
+fn answer_calls(body: &[Token]) -> Vec<Token> {
+    let mut out: Vec<Token> = Vec::new();
+    let mut i = 0;
+    while i < body.len() {
+        let starts = out.last().is_none_or(|t| {
+            is_op(t, ";") || is_op(t, ":") || is_word(t, "THEN") || is_word(t, "ELSE")
+        });
+        if starts
+            && (is_word(&body[i], "ANSWER") || is_word(&body[i], "ANS"))
+            && body.get(i + 1).is_some_and(|t| is_op(t, "("))
+        {
+            let pos = body[i].pos;
+            out.push(Token {
+                tok: Tok::Ident("CALL".into()),
+                pos,
+            });
+            out.push(Token {
+                tok: Tok::Ident("ANSWER$".into()),
+                pos,
+            });
+            // the parenthesized text
+            let mut depth = 0;
+            i += 1;
+            while i < body.len() {
+                if is_op(&body[i], "(") {
+                    depth += 1;
+                } else if is_op(&body[i], ")") {
+                    depth -= 1;
+                }
+                out.push(body[i].clone());
+                i += 1;
+                if depth == 0 {
+                    break;
+                }
+            }
+            // drop the options up to the semicolon
+            while i < body.len() && !is_op(&body[i], ";") {
+                i += 1;
+            }
+            continue;
+        }
+        out.push(body[i].clone());
+        i += 1;
+    }
+    out
 }
 
 fn compare(x: &Val, y: &Val) -> std::cmp::Ordering {
@@ -1348,6 +1456,39 @@ fn compare(x: &Val, y: &Val) -> std::cmp::Ordering {
         }
         _ => x.num().cmp(&y.num()),
     }
+}
+
+/// The 256 characters in collating (EBCDIC) order, as host characters.
+fn collate() -> String {
+    let all: Vec<u8> = (0..=255).collect();
+    zeus_cobol::ebcdic::decode(&all)
+}
+
+/// The current date and time (UTC).
+fn now() -> (i64, u32, u32, u32, u32, u32, u32) {
+    let t = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
+    let secs = t.as_secs() as i64;
+    let (days, rem) = (secs.div_euclid(86400), secs.rem_euclid(86400));
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z - era * 146_097;
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = (doy - (153 * mp + 2) / 5 + 1) as u32;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 } as u32;
+    let y = yoe + era * 400 + i64::from(m <= 2);
+    (
+        y,
+        m,
+        d,
+        (rem / 3600) as u32,
+        (rem / 60 % 60) as u32,
+        (rem % 60) as u32,
+        t.subsec_millis(),
+    )
 }
 
 /// Preprocessor built-in functions.
@@ -1362,23 +1503,54 @@ fn builtin(name: &str, a: &[Val], pp: &mut Pp) -> Option<Val> {
             let len = n(2).map_or(text.len().saturating_sub(start), |l| l.max(0) as usize);
             Val::Char(text.iter().skip(start).take(len).collect())
         }
-        "INDEX" => Val::Fixed(s(0).find(&s(1)).map_or(0, |p| p as i64 + 1)),
+        // INDEX(x,y,n), VERIFY(x,y,n): positions from n (Language Reference)
+        "INDEX" => {
+            let x: Vec<char> = s(0).chars().collect();
+            let y: Vec<char> = s(1).chars().collect();
+            let from = (n(2).unwrap_or(1).max(1) - 1) as usize;
+            if y.is_empty() || from >= x.len() {
+                Val::Fixed(0)
+            } else {
+                Val::Fixed(
+                    (from..=x.len().saturating_sub(y.len()))
+                        .find(|&k| x[k..k + y.len()] == y[..])
+                        .map_or(0, |k| k as i64 + 1),
+                )
+            }
+        }
         "VERIFY" => {
             let set = s(1);
+            let from = (n(2).unwrap_or(1).max(1) - 1) as usize;
             Val::Fixed(
                 s(0).chars()
-                    .position(|c| !set.contains(c))
-                    .map_or(0, |p| p as i64 + 1),
+                    .enumerate()
+                    .skip(from)
+                    .find(|(_, c)| !set.contains(*c))
+                    .map_or(0, |(p, _)| p as i64 + 1),
             )
         }
-        "TRIM" => Val::Char(s(0).trim().to_string()),
+        // TRIM(x,y,z): the characters of y from the left and of z from the
+        // right (blanks when omitted)
+        "TRIM" => {
+            let left = if a.len() > 1 { s(1) } else { " ".into() };
+            let right = if a.len() > 2 { s(2) } else { left.clone() };
+            Val::Char(
+                s(0).trim_start_matches(|c| left.contains(c))
+                    .trim_end_matches(|c| right.contains(c))
+                    .to_string(),
+            )
+        }
         "UPPERCASE" => Val::Char(s(0).to_ascii_uppercase()),
         "LOWERCASE" => Val::Char(s(0).to_ascii_lowercase()),
         "COPY" => Val::Char(s(0).repeat(n(1).unwrap_or(0).max(0) as usize)),
         "REPEAT" => Val::Char(s(0).repeat(n(1).unwrap_or(0).max(0) as usize + 1)),
         "TRANSLATE" => {
-            let (to, from): (Vec<char>, Vec<char>) =
-                (s(1).chars().collect(), s(2).chars().collect());
+            let from: Vec<char> = if a.len() > 2 {
+                s(2).chars().collect()
+            } else {
+                collate().chars().collect()
+            };
+            let to: Vec<char> = s(1).chars().collect();
             Val::Char(
                 s(0).chars()
                     .map(|c| match from.iter().position(|f| *f == c) {
@@ -1396,9 +1568,36 @@ fn builtin(name: &str, a: &[Val], pp: &mut Pp) -> Option<Val> {
             Val::Char(format!("{:05}", pp.counter))
         }
         "SYSPARM" => Val::Char(std::env::var("ZEUS_SYSPARM").unwrap_or_default()),
-        "SYSVERSION" => Val::Char("ZEUS PL/I".into()),
+        // the z/OS form, padded to 22 (Zeus implements Enterprise PL/I 6.1)
+        "SYSVERSION" => Val::Char(format!("{:<22}", "PL/I for z/OS V6.R1.M0")),
         "SYSTEM" => Val::Char("MVS".into()),
-        "COMPILEDATE" => Val::Char(String::new()),
+        "COMPILEDATE" => {
+            let (y, mo, d, h, mi, sec, ms) = now();
+            Val::Char(format!("{y:04}{mo:02}{d:02}{h:02}{mi:02}{sec:02}{ms:03}"))
+        }
+        // DD.MMM.YY HH.MM.SS, a leading zero of the day as a blank
+        "COMPILETIME" => {
+            let (y, mo, d, h, mi, sec, _) = now();
+            const M: [&str; 12] = [
+                "JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC",
+            ];
+            Val::Char(format!(
+                "{d:>2}.{}.{:02} {h:02}.{mi:02}.{sec:02}",
+                M[(mo - 1) as usize],
+                y % 100
+            ))
+        }
+        "COLLATE" => Val::Char(collate()),
+        // COMMENT(x): /*x*/ with any /* or */ in x made /> and </
+        "COMMENT" => Val::Char(format!(
+            "/*{}*/",
+            s(0).replace("/*", "/>").replace("*/", "</")
+        )),
+        // MARGINS(2,72) is the default
+        "MACLMAR" => Val::Fixed(2),
+        "MACRMAR" => Val::Fixed(72),
+        "MACNAME" => Val::Char(pp.macros.last().cloned().unwrap_or_default()),
+        "SYSDIMSIZE" | "SYSOFFSETSIZE" | "SYSPOINTERSIZE" => Val::Fixed(4),
         "PARMSET" => Val::Bit(a.first().is_some_and(|v| !v.text().is_empty())),
         _ => return None,
     })
@@ -1434,6 +1633,8 @@ pub fn preprocess(
         depth: 0,
         counter: 0,
         gotos: 0,
+        macros: Vec::new(),
+        answers: Vec::new(),
     };
     match pp.run(&toks, 0, n)? {
         Flow::Next => {}
