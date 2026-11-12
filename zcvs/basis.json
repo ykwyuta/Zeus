@@ -69,6 +69,76 @@
   "ZA122A": {
     "basis": "spec"
   },
+  "ZA123A": {
+    "basis": "zos",
+    "note": "Behaviors the IBM documentation leaves undefined or unpublished; expected values are the current Zeus behavior.",
+    "tests": {
+      "OVERLAP-MOVE-RIGHT": {
+        "basis": "zos",
+        "note": "Overlapping MOVE: the result is undefined in the Language Reference. Zeus moves left to right byte by byte (propagation)."
+      },
+      "OVERLAP-MOVE-LEFT": {
+        "basis": "zos",
+        "note": "Overlapping MOVE toward lower addresses: undefined in the Language Reference; Zeus value."
+      },
+      "DIVIDE-ZERO-NO-SIZE": {
+        "basis": "zos",
+        "note": "Divide by zero without ON SIZE ERROR: Zeus leaves the receiver unchanged. z/OS may end abnormally instead; record what happens."
+      },
+      "TRUNC-OPT-OVER-PIC": {
+        "basis": "zos",
+        "note": "TRUNC(OPT) with a value beyond the PICTURE: IBM documents the result as unpredictable. Zeus truncates to the PICTURE digits (X0929), not to the halfword (X3039)."
+      },
+      "WS-NO-VALUE-BINARY": {
+        "basis": "zos",
+        "note": "WORKING-STORAGE without VALUE: contents are undefined unless an initialization option applies. Zeus initializes by category."
+      },
+      "WS-NO-VALUE-PACKED": {
+        "basis": "zos",
+        "note": "WORKING-STORAGE without VALUE (packed): Zeus gives a positive zero."
+      },
+      "WS-NO-VALUE-ALNUM": {
+        "basis": "zos",
+        "note": "WORKING-STORAGE without VALUE (alphanumeric): Zeus gives spaces."
+      },
+      "RANDOM-SEED-ONE": {
+        "basis": "zos",
+        "note": "FUNCTION RANDOM: the generator is not published; Zeus value for seed 1."
+      },
+      "RANDOM-NEXT": {
+        "basis": "zos",
+        "note": "FUNCTION RANDOM without a seed after RANDOM(1): Zeus value."
+      },
+      "COMP1-DECIMAL-TENTH": {
+        "basis": "zos",
+        "note": "Decimal 0.1 to short HFP: the rounding of the conversion is not stated; Zeus rounds (X4019999A)."
+      },
+      "COMP2-DECIMAL-TENTH": {
+        "basis": "zos",
+        "note": "Decimal 0.1 to long HFP: Zeus rounds (X401999999999999A)."
+      },
+      "COMP1-BACK-TO-DEC": {
+        "basis": "zos",
+        "note": "Short HFP back to PIC 9V9(9): Zeus truncates the exact binary value."
+      },
+      "DATE-INVALID-DAY": {
+        "basis": "zos",
+        "note": "INTEGER-OF-DATE with day 30 of February: Zeus carries into March (154193). z/OS may return 0 or end abnormally; record what happens."
+      }
+    }
+  },
+  "ZA124A": {
+    "basis": "zos",
+    "note": "After the report is closed, NUMVAL('12X') must end the run unit. The Language Reference only requires a valid argument; the run-time action and the step completion code are not stated. Zeus ends with RC 16 (manifest expect_exit_code). On z/OS record the LE message and completion code; the TEST-NUMVAL checks themselves follow the Language Reference.",
+    "tests": {
+      "TEST-NUMVAL-INVALID": {
+        "basis": "spec"
+      },
+      "TEST-NUMVAL-VALID": {
+        "basis": "spec"
+      }
+    }
+  },
   "ZD101A": {
     "basis": "spec"
   },
@@ -398,6 +468,10 @@
   },
   "ZN113A": {
     "basis": "spec"
+  },
+  "ZN114A": {
+    "basis": "zos",
+    "note": "MOVE from a national item to an alphanumeric item: the Programming Guide documents national receivers and DISPLAY-OF for the reverse conversion, but no table stating that this MOVE is invalid was confirmed. Zeus accepts it, converts each character to the program CCSID and pads or truncates on the right. If z/OS rejects it at compile time, record the message and make this a ZE negative check instead."
   },
   "ZP101A": {
     "basis": "spec"

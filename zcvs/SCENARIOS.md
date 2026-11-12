@@ -132,11 +132,23 @@
 | E01 終端/空VALUE/REPLACE | `ZE101N/102N`、新規`ZE126N/P`・`ZE127N/P` | 部分 | END PROGRAMのピリオド欠落、入れ子の名前入替え、親終端のみ欠落。正常対照も必要 |
 | E02 再帰/記憶域禁止 | `ZE109N/110N/111N/129N/P`、`ZE145N/P` | 部分 | LOCAL-STORAGE EXTERNALの違反だけを除いた正常対照を追加。RECURSIVE+INITIAL/入れ子/USE FOR DEBUGGINGと対応対照は残る |
 | E03 INITIALIZE/条件名 | `ZE103N`–`ZE108N` | 部分 | EGCS/DBCS別名重複、他の重複カテゴリ、条件名受信、NATIONAL FALSE不適合。既存負系の正常対照 |
-| E04 NATIONAL/POINTER | `ZE114N`–`ZE116N`、`ZE134N/P`–`ZE143N/P` | 部分 | JUSTIFIED・BLANK WHEN ZERO・SIGN・手続ポインターPIC/VALUE・国別PIC・外部浮動VALUE/JUSTIFIED/USAGEを1規則ずつ拒否/受理で追加。GROUP-USAGE下JUSTIFIED・国別符号の対照は残る。2026-11-12: 国別（カテゴリNATIONAL）から英数字へのMOVEの可否は未決。Programming Guideは「国別項目は国別/国別編集項目へMOVEできる」とし、国別→英数字の変換はDISPLAY-OFを示すが、無効と明記した表を確認できていない。Zeusは受理（`crates/zeus-cobol/tests/national.cbl`）、cobol-on-javaは拒否。z/OSで確認するまで負系にしない |
+| E04 NATIONAL/POINTER | `ZE114N`–`ZE116N`、`ZE134N/P`–`ZE143N/P` | 部分 | JUSTIFIED・BLANK WHEN ZERO・SIGN・手続ポインターPIC/VALUE・国別PIC・外部浮動VALUE/JUSTIFIED/USAGEを1規則ずつ拒否/受理で追加。GROUP-USAGE下JUSTIFIED・国別符号の対照は残る。2026-11-12: 国別（カテゴリNATIONAL）から英数字へのMOVEの可否は未決。Programming Guideは「国別項目は国別/国別編集項目へMOVEできる」とし、国別→英数字の変換はDISPLAY-OFを示すが、無効と明記した表を確認できていない。Zeusは受理（`crates/zeus-cobol/tests/national.cbl`）、cobol-on-javaは拒否。z/OSで確認するまで負系にしない。実機確認は `ZN114A` (根拠 `zos`) |
 | E05 ファイル禁止句 | `ZE117N`–`ZE123N` | 部分 | LINE SEQUENTIAL+RESERVE、不正SAME AREA、属性不一致と構文違反の区別、各規則の正常対照 |
 | E06 RETURNING/可視性 | `ZE112N/113N` | 部分 | USING重複、受信型不適合、非COMMON兄弟CALL、01/77以外の結果項目 |
 | E07 指示文/桁数 | `ZE124N/125N/128N/P/130N/P/131N/P/133N/P`、`ZE144N/P` | 部分 | ODOの小数カウント拒否と整数カウント正常対照を追加。未知/矛盾オプション、部分語の複数語・空語、USAGE別の境界桁数は残る |
 | E08 UNTIL EXIT禁止形 | `ZE105N`、新規`ZE132N/P` | 部分 | TEST BEFORE/AFTER/WITH表記、VARYING禁止、単にEXIT未定義と診断する場合と専用診断を区別 |
+
+## 実機確認シナリオ (根拠 `zos`)
+
+公式文書から値が決まらない挙動は、抜かさずに `basis.json` の根拠 `zos` として書く。
+期待値は 2026-11-12 時点の Zeus の振る舞いであり、z/OS で FAIL したら実機の値を正解に
+して検査と Zeus を直す (`docs/validation-plan.md`)。
+
+| プログラム | 内容 | 実機で記録すること |
+| --- | --- | --- |
+| `ZA123A` 13検査 | 重なりの MOVE (右/左)、SIZE ERROR 無しの 0 除算、TRUNC(OPT) で PICTURE を超える値、VALUE 無しの WORKING-STORAGE (BINARY/PACKED/英数字)、RANDOM の種 1 と次の値、10 進 0.1 の COMP-1/COMP-2 変換と戻し、2 月 30 日の INTEGER-OF-DATE | 0 除算と不正な日付で異常終了するならその完了コード。WORKING-STORAGE は初期化オプション (STGOPT/WSCLEAR 相当の LE 指定) を記録 |
+| `ZA124A` 2検査 + 終了コード | 報告を閉じたあと `NUMVAL('12X')` で実行単位が終わること (Zeus は RC 16、manifest `expect_exit_code`)。TEST-NUMVAL の 2 検査は `spec` | LE のメッセージ番号と完了コード。戻ってきたら RC 0 で FAIL になる |
+| `ZN114A` 2検査 | 国別項目から英数字項目への MOVE。Zeus は文字ごとに変換し、右を空白で埋める/切る | コンパイルで拒否されたら、その診断を記録して `ZE` の負系に移す (E04 の未決を解く) |
 
 ## 実行基盤自体の検査
 

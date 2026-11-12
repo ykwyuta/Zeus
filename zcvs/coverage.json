@@ -739,6 +739,31 @@
       "SIGN-SEP-MOVE"
     ]
   },
+  "ZA123A": {
+    "expect": "run",
+    "tests": [
+      "OVERLAP-MOVE-RIGHT",
+      "OVERLAP-MOVE-LEFT",
+      "DIVIDE-ZERO-NO-SIZE",
+      "TRUNC-OPT-OVER-PIC",
+      "WS-NO-VALUE-BINARY",
+      "WS-NO-VALUE-PACKED",
+      "WS-NO-VALUE-ALNUM",
+      "RANDOM-SEED-ONE",
+      "RANDOM-NEXT",
+      "COMP1-DECIMAL-TENTH",
+      "COMP2-DECIMAL-TENTH",
+      "COMP1-BACK-TO-DEC",
+      "DATE-INVALID-DAY"
+    ]
+  },
+  "ZA124A": {
+    "expect": "run",
+    "tests": [
+      "TEST-NUMVAL-INVALID",
+      "TEST-NUMVAL-VALID"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [
@@ -1868,6 +1893,13 @@
       "DBCS-DECODE",
       "MIXED-ENCODE",
       "MIXED-DECODE"
+    ]
+  },
+  "ZN114A": {
+    "expect": "run",
+    "tests": [
+      "NAT-TO-ALNUM-SAME",
+      "NAT-TO-ALNUM-SHORT"
     ]
   },
   "ZP101A": {
