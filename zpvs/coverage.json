@@ -858,6 +858,46 @@
       "PLISTCKP-FORMS-CC"
     ]
   },
+  "PM115A": {
+    "expect": "run",
+    "tests": [
+      "FIXEDBIN-FRACTION",
+      "FIXEDBIN-PRECISION",
+      "FIXEDDEC-SCALE",
+      "FLOATBIN-FLOATDEC",
+      "SIGNED-UNSIGNED",
+      "CENTERRIGHT-LRM",
+      "CENTRERIGHT-ODD",
+      "COUNT-PUT-LIST",
+      "HEXIMAGE8-UTF8",
+      "HEXDECODE8-UTF8",
+      "BASE64DECODE8-LRM",
+      "ONFILE-UNDEFINEDFILE",
+      "ONPROCEDURE-ONLOC",
+      "PLIFILL",
+      "PLIMOVE",
+      "PLIOVER-OVERLAP",
+      "WHIGH-WLOW",
+      "SUBTO",
+      "POLY-ZERO-BASED",
+      "POLY-ONE-BASED",
+      "WSCOLLAPSE16",
+      "WSREPLACE16",
+      "BASE64ENCODE16-LRM",
+      "BASE64DECODE16-ROUNDTRIP",
+      "PROCEDURENAME-MAIN",
+      "PROCEDURENAME-INNER",
+      "PACKAGENAME",
+      "SOURCELINE",
+      "SOURCEFILE",
+      "ISMAIN",
+      "MAINNAME",
+      "PUTENV-GETENV",
+      "UUID4-FORM",
+      "VALID-PICTURE",
+      "VALID-FIXED-DEC"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

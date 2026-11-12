@@ -6,7 +6,7 @@ use super::value::{self, SPACE, Value};
 use super::*;
 use crate::types::{MAX_DEC, arith_bit_len, operand_arith};
 
-fn ebcdic_text(b: &[u8]) -> String {
+pub(crate) fn ebcdic_text(b: &[u8]) -> String {
     zeus_cobol::ebcdic::decode(b)
 }
 

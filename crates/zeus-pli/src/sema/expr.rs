@@ -351,6 +351,56 @@ impl Compiler {
         ))
     }
 
+    /// The program-information built-ins, as constants.
+    fn program_info(&self, b: crate::builtin::Bif, pos: Pos) -> Result<Expr> {
+        use crate::builtin::Bif::*;
+        let proc_of = |mut blk: BlockId| loop {
+            let block = &self.m.blocks[blk as usize];
+            if let Some(p) = block.proc {
+                break Some(p);
+            }
+            match block.parent {
+                Some(p) => blk = p,
+                None => break None,
+            }
+        };
+        let text = |t: &str| {
+            let b = zeus_cobol::ebcdic::encode(t);
+            let n = b.len() as u32;
+            mk(Ek::Char(b), Ty::char(n))
+        };
+        Ok(match b {
+            ProcedureName => {
+                let p = proc_of(self.cur)
+                    .ok_or_else(|| self.err(pos, "PROCEDURENAME outside a procedure"))?;
+                text(&self.m.procs[p as usize].name)
+            }
+            // no PACKAGE statement: the outermost procedure
+            PackageName => {
+                let p = proc_of(self.outer)
+                    .ok_or_else(|| self.err(pos, "PACKAGENAME outside a procedure"))?;
+                text(&self.m.procs[p as usize].name)
+            }
+            SourceFile => text(
+                self.m
+                    .sources
+                    .get(pos.file as usize)
+                    .map_or("", |s| s.as_str()),
+            ),
+            SourceLine => mk(Ek::Fixed(i128::from(pos.line), 0), Ty::fixed_bin(31, 0)),
+            IsMain => {
+                let main = proc_of(self.cur).is_some_and(|p| self.m.procs[p as usize].main);
+                mk(Ek::Bit(vec![main]), Ty::bit(1))
+            }
+            _ => {
+                let p = self.m.main.ok_or_else(|| {
+                    self.err(pos, "MAINNAME outside the compilation unit of the MAIN procedure is not supported")
+                })?;
+                text(&self.m.procs[p as usize].name)
+            }
+        })
+    }
+
     fn string(&self, text: &str, kind: StrKind, pos: Pos) -> Result<Expr> {
         let bad = || self.err(pos, format!("invalid string constant '{text}'"));
         Ok(match kind {
@@ -1270,6 +1320,12 @@ impl Compiler {
                 let rr = self.reference(&ast::Ref::simple(&format!("%{t}"), pos), true)?;
                 return Ok(mk(Ek::RefBuiltin(b, rr, Vec::new()), Ty::Pointer));
             }
+            // program information known at compile time (Language Reference:
+            // PROCEDURENAME, PACKAGENAME, SOURCEFILE, SOURCELINE, ISMAIN,
+            // MAINNAME)
+            ProcedureName | PackageName | SourceFile | SourceLine | IsMain | MainName => {
+                return self.program_info(b, pos);
+            }
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField
             | OnCondCond | OnCondId => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
@@ -1332,6 +1388,8 @@ impl Compiler {
                             | Present
                             | Omitted
                             | Unspec
+                            | Poly
+                            | Valid
                             | PliStck
                             | PliStckE
                             | PliStckF
@@ -1357,7 +1415,7 @@ impl Compiler {
         // value arguments (HEX: the bytes of GRAPHIC and WIDECHAR)
         let mut xs = Vec::new();
         for a in args {
-            xs.push(if b == Hex {
+            xs.push(if matches!(b, Hex | Unspec) {
                 self.expr_wide(a)?
             } else {
                 self.expr(a)?
@@ -1421,6 +1479,13 @@ impl Compiler {
                 v.extend(it.map(|x| int(self, x)));
                 v
             }
+            WHigh | WLow => xs.into_iter().map(|x| int(self, x)).collect(),
+            SubTo => {
+                let mut it = xs.into_iter();
+                let mut v = vec![it.next().unwrap()];
+                v.extend(it.map(|x| int(self, x)));
+                v
+            }
             Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
             | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => xs
                 .into_iter()
@@ -1457,6 +1522,12 @@ impl Compiler {
             | IUnsigned
             | ReplaceBy2
             | Y4Date
+            | WsCollapse16
+            | WsReplace16
+            | Base64Encode16
+            | Base64Decode16
+            | GetEnv
+            | PutEnv
             | Microsecs
             | Secs
             | MicrosecsToDate

@@ -174,6 +174,24 @@ pub enum Bif {
     PrecVal,
     ScaleVal,
     Y4Date,
+    WHigh,
+    WLow,
+    SubTo,
+    Poly,
+    WsCollapse16,
+    WsReplace16,
+    Base64Encode16,
+    Base64Decode16,
+    MainName,
+    ProcedureName,
+    PackageName,
+    SourceFile,
+    SourceLine,
+    IsMain,
+    GetEnv,
+    PutEnv,
+    Uuid4,
+    Valid,
     Microsecs,
     Secs,
     MicrosecsToDate,
@@ -381,7 +399,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "ONSOURCE" => OnSource,
         "ONKEY" => OnKey,
         "ONFILE" => OnFile,
-        "ONLOC" => OnLoc,
+        "ONLOC" | "ONPROC" | "ONPROCEDURE" => OnLoc,
         "ONCOUNT" => OnCount,
         "DATAFIELD" => DataField,
         "PLIRETV" => PliRetV,
@@ -398,7 +416,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "HANDLE" => Addr,
         "PLISRTA" => PliSrtA,
         "PLIFILL" => PliFill,
-        "PLIMOVE" => PliMove,
+        "PLIMOVE" | "PLIOVER" => PliMove,
         "OMITTED" => Omitted,
         "PRESENT" => Present,
         "LINENO" => LineNo,
@@ -461,6 +479,26 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "PRECVAL" => PrecVal,
         "SCALEVAL" => ScaleVal,
         "Y4DATE" => Y4Date,
+        "WHIGH" => WHigh,
+        "WLOW" => WLow,
+        "SUBTO" => SubTo,
+        "POLY" => Poly,
+        "WSCOLLAPSE16" => WsCollapse16,
+        "WHITESPACECOLLAPSE" => WsCollapse16,
+        "WSREPLACE16" => WsReplace16,
+        "BASE64ENCODE16" => Base64Encode16,
+        "BASE64DECODE16" => Base64Decode16,
+        "MAINNAME" => MainName,
+        "PROCEDURENAME" => ProcedureName,
+        "PROCNAME" => ProcedureName,
+        "PACKAGENAME" => PackageName,
+        "SOURCEFILE" => SourceFile,
+        "SOURCELINE" => SourceLine,
+        "ISMAIN" => IsMain,
+        "GETENV" => GetEnv,
+        "PUTENV" => PutEnv,
+        "UUID4" => Uuid4,
+        "VALID" => Valid,
         "MICROSECS" => Microsecs,
         "SECS" => Secs,
         "MICROSECSTODATE" => MicrosecsToDate,
@@ -554,6 +592,13 @@ impl Bif {
                 | Days
                 | Weekday
                 | Microsecs
+                | MainName
+                | ProcedureName
+                | PackageName
+                | SourceFile
+                | SourceLine
+                | IsMain
+                | Uuid4
                 | Secs
                 | Timestamp
                 | UtcDatetime
@@ -589,6 +634,8 @@ impl Bif {
                 | PageNo
                 | Count
                 | MaxLength
+                | Poly
+                | Valid
                 | PliStck
                 | PliStckE
                 | PliStckF
@@ -732,6 +779,40 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             _ => return Err(format!("{b:?} requires a REAL FLOAT argument")),
         },
         Y4Date => Ty::char(8),
+        WHigh | WLow => match cint(0) {
+            Some(n) => Ty::Wchar {
+                len: crate::types::Ext::Const(n.max(0) as u32),
+                var: crate::types::Var::Fixed,
+                graphic: false,
+            },
+            None => Ty::Wchar {
+                len: crate::types::Ext::Const(16383),
+                var: crate::types::Var::Varying,
+                graphic: false,
+            },
+        },
+        SubTo => {
+            let a = arg(0)?;
+            if a.is_bit() {
+                Ty::Bit {
+                    len: crate::types::Ext::Const(str_len(&a).max(1)),
+                    var: crate::types::Var::Varying,
+                    aligned: false,
+                }
+            } else {
+                Ty::char_var(str_len(&a).max(1))
+            }
+        }
+        Poly => match arg(0)?.arith() {
+            Some(t @ Ty::Float { .. }) => t,
+            _ => return Err("POLY requires a REAL FLOAT array".into()),
+        },
+        WsCollapse16 | WsReplace16 | Base64Encode16 | Base64Decode16 => Ty::fixed_bin(63, 0),
+        MainName | ProcedureName | PackageName | SourceFile => Ty::char_var(255),
+        SourceLine => fixed_bin31(),
+        IsMain | PutEnv | Valid => Ty::bit(1),
+        GetEnv => Ty::char_var(32767),
+        Uuid4 => Ty::char(36),
         Microsecs | DaysToMicrosecs | UtcMicrosecs => Ty::fixed_bin(63, 0),
         MicrosecsToDays => fixed_bin31(),
         Secs | UtcSecs => Ty::Float { dec: false, p: 53 },

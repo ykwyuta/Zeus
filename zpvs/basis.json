@@ -2411,6 +2411,226 @@
       }
     }
   },
+  "PM115A": {
+    "basis": "spec",
+    "tests": {
+      "FIXEDBIN-FRACTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDBIN"
+        ]
+      },
+      "FIXEDBIN-PRECISION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDBIN"
+        ]
+      },
+      "FIXEDDEC-SCALE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDDEC"
+        ]
+      },
+      "FLOATBIN-FLOATDEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLOATBIN",
+          "PLI-LRM: FLOATDEC"
+        ]
+      },
+      "SIGNED-UNSIGNED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIGNED",
+          "PLI-LRM: UNSIGNED"
+        ]
+      },
+      "CENTERRIGHT-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CENTERRIGHT | inserting string x in the center (or one position to the"
+        ]
+      },
+      "CENTRERIGHT-ODD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CENTERRIGHT | inserting string x in the center (or one position to the"
+        ]
+      },
+      "COUNT-PUT-LIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COUNT | is incremented by one after the transmission of each data item in the list."
+        ]
+      },
+      "HEXIMAGE8-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXIMAGE8"
+        ]
+      },
+      "HEXDECODE8-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXDECODE8"
+        ]
+      },
+      "BASE64DECODE8-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64DECODE8"
+        ]
+      },
+      "ONFILE-UNDEFINEDFILE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONFILE | ONFILE returns a character string whose value is the name of the file for which an input or output condition is raised."
+        ]
+      },
+      "ONPROCEDURE-ONLOC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONPROCEDURE | ONPROCEDURE returns the name of a procedure in which a condition is raised.",
+          "PLI-LRM: ONLOC | ONLOC is a synonym for ONPROC."
+        ]
+      },
+      "PLIFILL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIFILL | PLIFILL moves z copies of the byte y to the location x without any conversions, padding, or truncation."
+        ]
+      },
+      "PLIMOVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIMOVE"
+        ]
+      },
+      "PLIOVER-OVERLAP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIOVER"
+        ]
+      },
+      "WHIGH-WLOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WHIGH | WHIGH returns a widechar string of length x, where each widechar has the highest widechar value",
+          "PLI-LRM: WLOW"
+        ]
+      },
+      "SUBTO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SUBTO | SUBTO(x,y) is equivalent to SUBSTR(x,y), and SUBTO(x,y,z) is equivalent to SUBSTR(x,y,z-y+1)."
+        ]
+      },
+      "POLY-ZERO-BASED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POLY | x(m) + x(m+1)*y + x(m+2)*y**2 + ... + x(n)*y**(n-m)"
+        ]
+      },
+      "POLY-ONE-BASED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POLY | x(m) + x(m+1)*y + x(m+2)*y**2 + ... + x(n)*y**(n-m)"
+        ]
+      },
+      "WSCOLLAPSE16": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WSCOLLAPSE16 | Reducing multiple interior blanks to one blank."
+        ]
+      },
+      "WSREPLACE16": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WSREPLACE16"
+        ]
+      },
+      "BASE64ENCODE16-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64ENCODE16 | 6 'please'E 16 WCHAR('l5OFgaKF')"
+        ]
+      },
+      "BASE64DECODE16-ROUNDTRIP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64DECODE16"
+        ]
+      },
+      "PROCEDURENAME-MAIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PROCEDURENAME | PROCEDURENAME returns a nonvarying character string containing the name of the procedure in which this built-in function is invoked."
+        ]
+      },
+      "PROCEDURENAME-INNER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PROCEDURENAME | PROCEDURENAME returns a nonvarying character string containing the name of the procedure in which this built-in function is invoked."
+        ]
+      },
+      "PACKAGENAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PACKAGENAME | If there is no package in the current compilation unit, PACKAGENAME returns the name of the outermost procedure."
+        ]
+      },
+      "SOURCELINE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SOURCELINE"
+        ]
+      },
+      "SOURCEFILE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SOURCEFILE"
+        ]
+      },
+      "ISMAIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISMAIN | ISMAIN() returns a '1'B if the procedure in which it is invoked has the OPTIONS(MAIN) attribute."
+        ]
+      },
+      "MAINNAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAINNAME"
+        ]
+      },
+      "PUTENV-GETENV": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PUTENV",
+          "PLI-LRM: GETENV"
+        ]
+      },
+      "UUID4-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UUID4"
+        ]
+      },
+      "VALID-PICTURE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALID | x is FIXED DECIMAL and the data in x is valid packed decimal data."
+        ]
+      },
+      "VALID-FIXED-DEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALID | x is FIXED DECIMAL and the data in x is valid packed decimal data."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

@@ -1192,6 +1192,129 @@ impl Machine {
                 let ddd = h.get(4..7).unwrap_or("001");
                 Value::Char(ebcdic(&format!("{}{yy}{ddd}", 19 + cent)))
             }
+            // WIDECHAR strings of n highest (FFFF) or lowest (0000) characters
+            WHigh | WLow => {
+                let n = int(0).unwrap_or(0).max(0) as usize;
+                Value::Char(vec![if b == WHigh { 0xFF } else { 0 }; 2 * n])
+            }
+            // SUBTO(x,y,z) is SUBSTR(x,y,z-y+1)
+            SubTo => {
+                let s = int(1).unwrap_or(1);
+                let n = int(2).map(|z| z - s + 1);
+                match &v[0] {
+                    Value::Bit(x) => Value::Bit(self.substr(x, s, n, act)?),
+                    x => {
+                        let c = chars(x);
+                        Value::Char(self.substr(&c, s, n, act)?)
+                    }
+                }
+            }
+            // PUTENV values are kept by the run unit and read first by GETENV
+            // COUNT: the data items of the last GET or PUT on the file
+            Count => match &v[0] {
+                Value::File(f) => {
+                    let st = &self.files[*f as usize];
+                    Value::int(if st.open { st.count as i64 } else { 0 })
+                }
+                _ => return err("COUNT requires a file"),
+            },
+            GetEnv => {
+                let name = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let name = name.trim();
+                let val = ENV
+                    .with(|e| e.borrow().get(name).cloned())
+                    .or_else(|| std::env::var(name).ok())
+                    .unwrap_or_default();
+                Value::Char(ebcdic(&val))
+            }
+            PutEnv => {
+                let text = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                match text.split_once('=') {
+                    Some((k, val)) if !k.trim().is_empty() => {
+                        ENV.with(|e| e.borrow_mut().insert(k.trim().to_string(), val.to_string()));
+                        Value::bit1(true)
+                    }
+                    _ => Value::bit1(false),
+                }
+            }
+            // a version 4 UUID: random bits, version nibble 4, variant 10
+            Uuid4 => {
+                let mut r = [0u8; 16];
+                for chunk in r.chunks_mut(8) {
+                    self.random ^= self.random << 13;
+                    self.random ^= self.random >> 7;
+                    self.random ^= self.random << 17;
+                    chunk.copy_from_slice(&self.random.to_be_bytes()[..chunk.len()]);
+                }
+                r[6] = (r[6] & 0x0f) | 0x40;
+                r[8] = (r[8] & 0x3f) | 0x80;
+                let h: std::string::String = r.iter().map(|c| format!("{c:02x}")).collect();
+                Value::Char(ebcdic(&format!(
+                    "{}-{}-{}-{}-{}",
+                    &h[0..8],
+                    &h[8..12],
+                    &h[12..16],
+                    &h[16..20],
+                    &h[20..32]
+                )))
+            }
+            // buffer functions on UTF-16: whitespace \t \f \v \n \r, base 64
+            // digits as UTF-16 characters
+            WsCollapse16 | WsReplace16 | Base64Encode16 | Base64Decode16 => {
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[2]) else {
+                    return err(format!("{b:?} requires locators"));
+                };
+                let (p, q) = (*p, *q);
+                let m = int(1).unwrap_or(0).max(0) as usize;
+                let n = int(3).unwrap_or(0).max(0) as usize;
+                let src = self.read(q, n)?.to_vec();
+                let units: Vec<u16> = src
+                    .chunks(2)
+                    .map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)]))
+                    .collect();
+                let utf16 = |u: &[u16]| u.iter().flat_map(|x| x.to_be_bytes()).collect::<Vec<u8>>();
+                let out: Option<Vec<u8>> = match b {
+                    WsCollapse16 | WsReplace16 => {
+                        let mut u: Vec<u16> = units
+                            .iter()
+                            .map(|c| if matches!(c, 9..=13) { 0x20 } else { *c })
+                            .collect();
+                        if b == WsCollapse16 {
+                            let mut c = Vec::new();
+                            for x in u {
+                                if !(x == 0x20 && (c.is_empty() || c.last() == Some(&0x20))) {
+                                    c.push(x);
+                                }
+                            }
+                            while c.last() == Some(&0x20) {
+                                c.pop();
+                            }
+                            u = c;
+                        }
+                        Some(utf16(&u))
+                    }
+                    Base64Encode16 => {
+                        let e = base64_encode(&src);
+                        Some(utf16(&e.iter().map(|c| u16::from(*c)).collect::<Vec<_>>()))
+                    }
+                    _ => {
+                        let ascii: Option<Vec<u8>> =
+                            units.iter().map(|u| u8::try_from(*u).ok()).collect();
+                        ascii.and_then(|a| base64_decode(&a))
+                    }
+                };
+                let Some(out) = out else {
+                    return Ok(Value::int(-1));
+                };
+                if p == 0 {
+                    Value::int(out.len() as i64)
+                } else if out.len() > m {
+                    Value::int(-1)
+                } else {
+                    self.write(p, &out)?;
+                    Value::int(out.len() as i64)
+                }
+            }
             Y4Date | Y4Julian | Y4Year => {
                 let d = zeus_cobol::ebcdic::decode(&chars(&v[0]));
                 let w = int(1).unwrap_or(1950);
@@ -1586,6 +1709,48 @@ impl Machine {
             None => 1,
         };
         Ok(match b {
+            // POLY(x,y): x(m) + x(m+1)*y + ... + x(n)*y**(n-m)
+            Poly => {
+                let y = args.first().map(|e| self.eval(e, act)).transpose()?;
+                let y = y.map_or(0.0, |v| v.as_f64());
+                let mut sum = 0.0;
+                let mut pow = 1.0;
+                for l in self.elements(r, act)? {
+                    sum += self.load(&l)?.as_f64() * pow;
+                    pow *= y;
+                }
+                Value::Float(sum)
+            }
+            // VALID: a PICTURE image valid for its specification, a FIXED
+            // DECIMAL item holding valid packed decimal data
+            Valid => {
+                let locs = self.elements(r, act)?;
+                let mut ok = true;
+                for l in locs {
+                    match &l.ty {
+                        Ty::Pic(p) => {
+                            let Value::Char(img) = self.load(&l)? else {
+                                return err("VALID: picture value");
+                            };
+                            let text = super::conv::ebcdic_text(&img);
+                            ok &= if p.float.is_some() {
+                                p.value_float(&text).is_some()
+                            } else if p.numeric {
+                                p.value(&text).is_some()
+                            } else {
+                                p.valid_char(&text)
+                            };
+                        }
+                        Ty::Fixed { dec: true, p, .. } => {
+                            let n = usize::from(*p) / 2 + 1;
+                            let bytes = self.read((l.bit / 8) as u32, n)?.to_vec();
+                            ok &= packed_valid(&bytes);
+                        }
+                        _ => return err("VALID requires a PICTURE or FIXED DECIMAL reference"),
+                    }
+                }
+                Value::bit1(ok)
+            }
             // the store-clock instructions: set the reference and return the
             // condition code 0 (clock in the set state)
             PliStck | PliStckE | PliStckF | PliStckLocal | PliStckUtc | PliStckELocal
@@ -1780,6 +1945,20 @@ impl Machine {
             }
         })
     }
+}
+
+thread_local! {
+    /// Environment variables set by PUTENV.
+    static ENV: std::cell::RefCell<std::collections::HashMap<std::string::String, std::string::String>> =
+        std::cell::RefCell::new(std::collections::HashMap::new());
+}
+
+/// Valid packed decimal data: digits 0-9 and a sign nibble A-F.
+fn packed_valid(b: &[u8]) -> bool {
+    let Some((last, rest)) = b.split_last() else {
+        return false;
+    };
+    rest.iter().all(|x| x >> 4 <= 9 && x & 15 <= 9) && last >> 4 <= 9 && last & 15 >= 10
 }
 
 /// The pattern argument `i`, or the default pattern.

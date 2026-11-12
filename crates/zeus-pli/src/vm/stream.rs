@@ -62,6 +62,8 @@ pub struct FileState {
     /// The output buffer of the last LOCATE: its address, length and key,
     /// written by the next LOCATE, WRITE or CLOSE.
     pub pending: Option<(u32, usize, Option<Vec<u8>>)>,
+    /// Data items transmitted by the last GET or PUT (COUNT).
+    pub count: usize,
 }
 
 impl FileState {
@@ -83,6 +85,7 @@ impl FileState {
             relative: false,
             relative_ds: None,
             pending: None,
+            count: 0,
             lineno: 1,
             pageno: 1,
             linesize: 120,
@@ -527,6 +530,7 @@ impl Machine {
         } else if col > 1 {
             self.out_text(f, &[SPACE], act)?;
         }
+        self.files[f as usize].count += 1;
         self.out_text(f, &text, act)
     }
 
@@ -541,6 +545,7 @@ impl Machine {
             }
             f
         };
+        self.files[f as usize].count = 0;
         if s.page {
             self.new_page(f)?;
         }
@@ -580,6 +585,7 @@ impl Machine {
                 for (items, fmts) in pairs {
                     let mut vals = Vec::new();
                     self.collect_out(items, act, &mut vals)?;
+                    self.files[f as usize].count += vals.len();
                     self.put_edit(f, vals, fmts, act)?;
                 }
             }
@@ -985,6 +991,7 @@ impl Machine {
             f
         };
         let string = s.string.is_some();
+        self.files[f as usize].count = 0;
         let r = (|| -> R<()> {
             if let Some(n) = &s.skip {
                 let n = self.eval(n, act)?.as_i64();
@@ -1001,6 +1008,7 @@ impl Machine {
                     self.collect_targets(items, &mut targets);
                     for t in targets {
                         self.get_list_item(f, &t, act)?;
+                        self.files[f as usize].count += 1;
                     }
                     Ok(())
                 }
@@ -1019,6 +1027,7 @@ impl Machine {
                                     continue;
                                 }
                                 self.get_edit_item(f, &fm, &t, act)?;
+                                self.files[f as usize].count += 1;
                                 break;
                             }
                         }
