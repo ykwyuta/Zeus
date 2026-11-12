@@ -1403,7 +1403,11 @@ pub(crate) fn execute_entry_with_host(
                         let compare = registers[r3 | 1] as i32;
                         let sum = (registers[r1] as i32).wrapping_add(increment);
                         registers[r1] = sum as u32;
-                        let taken = if op == "BXH" { sum > compare } else { sum <= compare };
+                        let taken = if op == "BXH" {
+                            sum > compare
+                        } else {
+                            sum <= compare
+                        };
                         if taken {
                             branch = Some(target);
                         }
