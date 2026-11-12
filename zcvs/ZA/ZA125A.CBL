@@ -1,13 +1,14 @@
       * ZA125A: Enterprise COBOL intrinsic functions that NIST CCVS85
       * does not measure. Expected values follow the Enterprise COBOL
       * for z/OS Language Reference function definitions: E, PI, EXP,
-      * EXP10, SIGN, HEX-OF, HEX-TO-CHAR, BIT-OF, BIT-TO-CHAR, TRIML,
-      * TRIMR, NUMVAL-F, TEST-NUMVAL-F, TEST-DATE-YYYYMMDD, TEST-DAY-
-      * YYYYDDD, FORMATTED-DATE, FORMATTED-TIME, FORMATTED-DATETIME,
-      * INTEGER-OF-FORMATTED-DATE, SECONDS-FROM-FORMATTED-TIME,
-      * COMBINED-DATETIME and TEST-FORMATTED-DATETIME. Integer date 1
-      * is 1601-01-01, a Monday (ISO week 1601-W01-1). Irrational
-      * results are checked in a closed range, as CCVS85 does.
+      * EXP10, SIGN, HEX-OF, HEX-TO-CHAR, BIT-OF, BIT-TO-CHAR, TRIM
+      * LEADING/TRAILING, NUMVAL-F, TEST-NUMVAL-F, TEST-DATE-YYYYMMDD,
+      * TEST-DAY-YYYYDDD, FORMATTED-DATE, FORMATTED-TIME, FORMATTED-
+      * DATETIME, INTEGER-OF-FORMATTED-DATE, SECONDS-FROM-FORMATTED-
+      * TIME, COMBINED-DATETIME and TEST-FORMATTED-DATETIME. Integer
+      * date 1 is 1601-01-01, a Monday (ISO week 1601-W01-1).
+      * Irrational results are checked in a closed range, as CCVS85
+      * does.
        IDENTIFICATION DIVISION.
        PROGRAM-ID. ZA125A.
        ENVIRONMENT DIVISION.
@@ -28,6 +29,7 @@
        01  WS-IE PIC -9(9).
        01  WS-X PIC X(20).
        01  WS-L PIC 9(4).
+       01  WS-T PIC X(6) VALUE '  AB  '.
        01  WS-LE PIC 9(4).
        PROCEDURE DIVISION.
        MAIN-PROC SECTION.
@@ -163,8 +165,8 @@
                PERFORM ZCVS-FAIL
            END-IF.
 
-           MOVE 'FN-TRIML-LEN' TO ZCVS-TEST-NAME.
-           COMPUTE WS-L = FUNCTION LENGTH(FUNCTION TRIML('  AB  ')).
+           MOVE 'FN-TRIM-LEADING-LEN' TO ZCVS-TEST-NAME.
+           COMPUTE WS-L = FUNCTION LENGTH(FUNCTION TRIM(WS-T LEADING)).
            MOVE WS-L TO WS-LE.
            IF WS-L = 4
                PERFORM ZCVS-PASS
@@ -174,8 +176,8 @@
                PERFORM ZCVS-FAIL
            END-IF.
 
-           MOVE 'FN-TRIML-TEXT' TO ZCVS-TEST-NAME.
-           MOVE FUNCTION TRIML('  AB  ') TO WS-X.
+           MOVE 'FN-TRIM-LEADING-TXT' TO ZCVS-TEST-NAME.
+           MOVE FUNCTION TRIM(WS-T LEADING) TO WS-X.
            IF WS-X = 'AB'
                PERFORM ZCVS-PASS
            ELSE
@@ -184,8 +186,8 @@
                PERFORM ZCVS-FAIL
            END-IF.
 
-           MOVE 'FN-TRIMR-LEN' TO ZCVS-TEST-NAME.
-           COMPUTE WS-L = FUNCTION LENGTH(FUNCTION TRIMR('  AB  ')).
+           MOVE 'FN-TRIM-TRAILNG-LEN' TO ZCVS-TEST-NAME.
+           COMPUTE WS-L = FUNCTION LENGTH(FUNCTION TRIM(WS-T TRAILING)).
            MOVE WS-L TO WS-LE.
            IF WS-L = 4
                PERFORM ZCVS-PASS

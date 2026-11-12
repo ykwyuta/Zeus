@@ -1,6 +1,6 @@
 # ZCVS 網羅台帳 (Enterprise COBOL for z/OS)
 
-Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 337、使用あり 253、CCVS85 だけが測る 50、未網羅 34。
+Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 251、CCVS85 だけが測る 51、未網羅 43。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -72,6 +72,7 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Statements | WRITE | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 11 | 405 |  |
 | Statements | XML GENERATE | 未網羅 |  | 0 |  |
 | Statements | XML PARSE | 未網羅 |  | 0 |  |
+| Statements | ENTER | CCVS85 |  | 2 |  |
 | Phrases | ON SIZE ERROR | 使用あり | ZA101A, ZA105A, ZA109A, ZA110A, ZA118A, ZA119A ほか 1 | 25 |  |
 | Phrases | NOT ON SIZE ERROR | 使用あり | ZA105A, ZA109A, ZA118A, ZA119A | 13 |  |
 | Phrases | ROUNDED | 使用あり | ZA104A, ZA105A, ZA108A, ZA109A, ZA122A, ZX108A ほか 1 | 23 |  |
@@ -119,7 +120,7 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Data description | SIGN TRAILING | 使用あり | ZA106A, ZA122A, ZD102A, ZD112A, ZF103A, ZS107A | 9 |  |
 | Data description | SEPARATE CHARACTER | 使用あり | ZA106A, ZA122A, ZD102A, ZD112A, ZE136N, ZE136P ほか 3 | 14 |  |
 | Data description | SYNCHRONIZED | 使用あり | ZD104A, ZD114A, ZD115A | 17 |  |
-| Data description | VALUE | 使用あり | ZA105A, ZA109A, ZA121A, ZA123A, ZA126A, ZCVSCOPY ほか 58 | 438 |  |
+| Data description | VALUE | 使用あり | ZA105A, ZA109A, ZA121A, ZA123A, ZA125A, ZA126A ほか 59 | 438 |  |
 | Data description | VALUE THRU | 使用あり | ZX102A, ZX110A | 8 |  |
 | Data description | WHEN SET TO FALSE | 使用あり | ZE103N, ZE104N, ZE126N, ZE126P, ZS107A, ZX102A ほか 1 | 11 |  |
 | Data description | VOLATILE | 使用あり | ZS108A | 0 |  |
@@ -297,12 +298,12 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Intrinsic functions | TEST-NUMVAL | 使用あり | ZA124A, ZA125A, ZX107A, ZX108A, ZX109A | 0 |  |
 | Intrinsic functions | TEST-NUMVAL-C | 使用あり | ZX107A, ZX109A | 0 |  |
 | Intrinsic functions | TEST-NUMVAL-F | 使用あり | ZA125A | 0 |  |
-| Intrinsic functions | TRIM | 使用あり | ZX107A, ZX108A | 0 |  |
-| Intrinsic functions | TRIML | 使用あり | ZA125A | 0 |  |
-| Intrinsic functions | TRIMR | 使用あり | ZA125A | 0 |  |
+| Intrinsic functions | TRIM | 使用あり | ZA125A, ZX107A, ZX108A | 0 |  |
 | Intrinsic functions | ULENGTH | 未網羅 |  | 0 |  |
 | Intrinsic functions | UPOS | 未網羅 |  | 0 |  |
 | Intrinsic functions | UPPER-CASE | CCVS85 |  | 2 |  |
+| Intrinsic functions | CONTENT-OF | 未網羅 |  | 0 |  |
+| Intrinsic functions | UUID4 | 未網羅 |  | 0 |  |
 | Intrinsic functions | USUBSTR | 未網羅 |  | 0 |  |
 | Intrinsic functions | USUPPLEMENTARY | 未網羅 |  | 0 |  |
 | Intrinsic functions | UVALID | 未網羅 |  | 0 |  |
@@ -331,6 +332,13 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Special registers | JSON-CODE | 未網羅 |  | 0 |  |
 | Special registers | JSON-STATUS | 未網羅 |  | 0 |  |
 | Special registers | DEBUG-ITEM | 未網羅 |  | 0 |  |
+| Special registers | JNIENVPTR | 未網羅 |  | 0 |  |
+| Special registers | IGY-JAVAIOP-CALL-EXCEPTION | 未網羅 |  | 0 |  |
+| Special registers | XML-INFORMATION | 未網羅 |  | 0 |  |
+| Special registers | XML-NAMESPACE | 未網羅 |  | 0 |  |
+| Special registers | XML-NAMESPACE-PREFIX | 未網羅 |  | 0 |  |
+| Special registers | XML-NNAMESPACE | 未網羅 |  | 0 |  |
+| Special registers | XML-NNAMESPACE-PREFIX | 未網羅 |  | 0 |  |
 | Compiler options (semantic) | ARITH | 使用あり | ZA110A, ZA116A, ZA117A, ZA118A, ZD108A, ZD111A ほか 3 | 0 |  |
 | Compiler options (semantic) | CODEPAGE | 未網羅 |  | 0 |  |
 | Compiler options (semantic) | DBCS | 使用あり | ZN102B, ZS106A | 0 |  |

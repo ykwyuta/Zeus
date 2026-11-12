@@ -1,6 +1,6 @@
 # ZPVS 網羅台帳 (Enterprise PL/I for z/OS)
 
-Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 664、使用あり 309、対象外 9、未網羅 346。
+Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 311、対象外 9、未網羅 388。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -57,6 +57,16 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Statements | STOP | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PC101A ほか 43 | - |  |
 | Statements | WAIT | 未網羅 |  | - |  |
 | Statements | WRITE | 使用あり | PF103A, PF104M, PF105A, PF106A, PS104A, PS105A | - |  |
+| Statements | CANCEL THREAD | 未網羅 |  | - |  |
+| Statements | OTHERWISE | 使用あり | PC101A | - |  |
+| Statements | QUALIFY | 未網羅 |  | - |  |
+| Statements | REINIT | 使用あり | PC109A | - |  |
+| Statements | WHEN | 使用あり | PC101A, PC103A, PE112N, PE112P | - |  |
+| Statements | XDECLARE | 未網羅 |  | - |  |
+| Statements | XDEFINE ALIAS | 未網羅 |  | - |  |
+| Statements | XDEFINE ORDINAL | 未網羅 |  | - |  |
+| Statements | XDEFINE STRUCTURE | 未網羅 |  | - |  |
+| Statements | XPROCEDURE | 未網羅 |  | - |  |
 | Data attributes | ALIGNED | 使用あり | PD103A | - |  |
 | Data attributes | AREA | 使用あり | PD109A, PE114P, PE115P, PM111A, PS103A | - |  |
 | Data attributes | AUTOMATIC | 使用あり | PC109A | - |  |
@@ -170,6 +180,9 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Conditions | UNDEFINEDFILE | 使用あり | PC111A | - |  |
 | Conditions | UNDERFLOW | 使用あり | PC110A | - |  |
 | Conditions | ZERODIVIDE | 使用あり | PC106A, PC110A | - |  |
+| Conditions | ANYCONDITION | 未網羅 |  | - |  |
+| Conditions | ASSERTION | 未網羅 |  | - |  |
+| Conditions | CONFORMANCE | 未網羅 |  | - |  |
 | Built-in functions | ABS | 使用あり | PD106A, PD109A, PM105A, PM109A, PM110A | - |  |
 | Built-in functions | ACOS | 使用あり | PM110A | - |  |
 | Built-in functions | ADD | 使用あり | PA101A | - |  |
@@ -638,29 +651,60 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Preprocessor | %GO TO | 使用あり | PM110A | - |  |
 | Preprocessor | %IF | 使用あり | PM101A, PM110A | - |  |
 | Preprocessor | %INCLUDE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PC101A ほか 43 | - |  |
-| Preprocessor | %XINCLUDE | 未網羅 |  | - |  |
 | Preprocessor | %INSCAN | 未網羅 |  | - |  |
 | Preprocessor | %ITERATE | 使用あり | PM110A | - |  |
 | Preprocessor | %LEAVE | 使用あり | PM110A | - |  |
 | Preprocessor | %NOTE | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
+| Preprocessor | %REPLACE | 使用あり | PM110A | - |  |
+| Preprocessor | %SELECT | 未網羅 |  | - |  |
+| Preprocessor | %XINCLUDE | 未網羅 |  | - |  |
+| Preprocessor | %XINSCAN | 未網羅 |  | - |  |
+| Preprocessor | %PROCEDURE | 使用あり | PM102A, PM106A | - |  |
+| Preprocessor | %RETURN | 未網羅 |  | - |  |
+| Preprocessor | %ANSWER | 未網羅 |  | - |  |
+| Preprocessor | %CALL | 未網羅 |  | - |  |
+| Preprocessor | %LINE | 未網羅 |  | - |  |
+| Preprocessor | %NOPRINT | 未網羅 |  | - |  |
 | Preprocessor | %PAGE | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | %POP | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | %PRINT | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
-| Preprocessor | %PROCEDURE | 使用あり | PM102A, PM106A | - |  |
+| Preprocessor | %PROCESS | 未網羅 |  | - |  |
+| Preprocessor | %PROCINC | 未網羅 |  | - |  |
 | Preprocessor | %PUSH | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
-| Preprocessor | %REPLACE | 使用あり | PM110A | - |  |
-| Preprocessor | %SELECT | 未網羅 |  | - |  |
 | Preprocessor | %SKIP | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | STATEMENT | 使用あり | PM106A | - |  |
-| Preprocessor | COMPILEDATE | 未網羅 |  | - |  |
-| Preprocessor | COMPILETIME | 未網羅 |  | - |  |
-| Preprocessor | COUNTER | 使用あり | PCS01A | - |  |
-| Preprocessor | PARMSET | 未網羅 |  | - |  |
-| Preprocessor | QUOTE | 未網羅 |  | - |  |
-| Preprocessor | SYSPARM | 未網羅 |  | - |  |
-| Preprocessor | SYSTEM | 未網羅 |  | - |  |
-| Preprocessor | SYSVERSION | 未網羅 |  | - |  |
-| Preprocessor | MACNAME | 未網羅 |  | - |  |
+| Preprocessor built-in functions | COLLATE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | COMMENT | 未網羅 |  | - |  |
+| Preprocessor built-in functions | COMPILEDATE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | COMPILETIME | 未網羅 |  | - |  |
+| Preprocessor built-in functions | COPY | 未網羅 |  | - |  |
+| Preprocessor built-in functions | COUNTER | 未網羅 |  | - |  |
+| Preprocessor built-in functions | DIMENSION | 未網羅 |  | - |  |
+| Preprocessor built-in functions | HBOUND | 未網羅 |  | - |  |
+| Preprocessor built-in functions | INDEX | 未網羅 |  | - |  |
+| Preprocessor built-in functions | LBOUND | 未網羅 |  | - |  |
+| Preprocessor built-in functions | LENGTH | 未網羅 |  | - |  |
+| Preprocessor built-in functions | LOWERCASE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | MACCOL | 未網羅 |  | - |  |
+| Preprocessor built-in functions | MACLMAR | 未網羅 |  | - |  |
+| Preprocessor built-in functions | MACNAME | 未網羅 |  | - |  |
+| Preprocessor built-in functions | MACRMAR | 未網羅 |  | - |  |
+| Preprocessor built-in functions | MAX | 未網羅 |  | - |  |
+| Preprocessor built-in functions | MIN | 未網羅 |  | - |  |
+| Preprocessor built-in functions | PARMSET | 未網羅 |  | - |  |
+| Preprocessor built-in functions | QUOTE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | REPEAT | 未網羅 |  | - |  |
+| Preprocessor built-in functions | SUBSTR | 未網羅 |  | - |  |
+| Preprocessor built-in functions | SYSDIMSIZE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | SYSOFFSETSIZE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | SYSPARM | 未網羅 |  | - |  |
+| Preprocessor built-in functions | SYSPOINTERSIZE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | SYSTEM | 未網羅 |  | - |  |
+| Preprocessor built-in functions | SYSVERSION | 未網羅 |  | - |  |
+| Preprocessor built-in functions | TRANSLATE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | TRIM | 未網羅 |  | - |  |
+| Preprocessor built-in functions | UPPERCASE | 未網羅 |  | - |  |
+| Preprocessor built-in functions | VERIFY | 未網羅 |  | - |  |
 | Procedure options | OPTIONS(MAIN) | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PC101A ほか 73 | - |  |
 | Procedure options | NOEXECOPS | 使用あり | PM108A | - |  |
 | Procedure options | FETCHABLE | 使用あり | PCS01A | - |  |

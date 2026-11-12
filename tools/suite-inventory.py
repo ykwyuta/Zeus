@@ -32,7 +32,7 @@ COBOL = {
         'WITH TEST AFTER', 'READ', 'READ NEXT', 'READ PREVIOUS', 'RELEASE', 'RETURN', 'REWRITE',
         'SEARCH', 'SEARCH ALL', 'SET TO TRUE', 'SET TO FALSE', 'SET UP BY', 'SET DOWN BY',
         'SET ADDRESS OF', 'SORT', 'START', 'STOP RUN', 'STRING', 'SUBTRACT', 'UNSTRING', 'USE',
-        'WRITE', 'XML GENERATE', 'XML PARSE'],
+        'WRITE', 'XML GENERATE', 'XML PARSE', 'ENTER'],
     'Phrases': [
         'ON SIZE ERROR', 'NOT ON SIZE ERROR', 'ROUNDED', 'ROUNDED MODE', 'ON OVERFLOW',
         'ON EXCEPTION', 'NOT ON EXCEPTION', 'INVALID KEY', 'NOT INVALID KEY', 'AT END',
@@ -80,13 +80,13 @@ COBOL = {
         'REVERSE', 'SECONDS-FROM-FORMATTED-TIME', 'SECONDS-PAST-MIDNIGHT', 'SIGN', 'SIN', 'SQRT',
         'STANDARD-DEVIATION', 'SUM', 'TAN', 'TEST-DATE-YYYYMMDD', 'TEST-DAY-YYYYDDD',
         'TEST-FORMATTED-DATETIME', 'TEST-NUMVAL', 'TEST-NUMVAL-C', 'TEST-NUMVAL-F', 'TRIM',
-        'TRIML', 'TRIMR', 'ULENGTH', 'UPOS', 'UPPER-CASE', 'USUBSTR', 'USUPPLEMENTARY', 'UVALID',
+        'ULENGTH', 'UPOS', 'UPPER-CASE', 'CONTENT-OF', 'UUID4', 'USUBSTR', 'USUPPLEMENTARY', 'UVALID',
         'UWIDTH', 'VARIANCE', 'WHEN-COMPILED', 'YEAR-TO-YYYY'],
     'Special registers': [
         'ADDRESS OF', 'LENGTH OF', 'LINAGE-COUNTER', 'RETURN-CODE', 'SHIFT-OUT', 'SHIFT-IN',
         'SORT-CONTROL', 'SORT-CORE-SIZE', 'SORT-FILE-SIZE', 'SORT-MESSAGE', 'SORT-MODE-SIZE',
         'SORT-RETURN', 'TALLY', 'WHEN-COMPILED', 'XML-CODE', 'XML-EVENT', 'XML-TEXT',
-        'XML-NTEXT', 'JSON-CODE', 'JSON-STATUS', 'DEBUG-ITEM'],
+        'XML-NTEXT', 'JSON-CODE', 'JSON-STATUS', 'DEBUG-ITEM', 'JNIENVPTR', 'IGY-JAVAIOP-CALL-EXCEPTION', 'XML-INFORMATION', 'XML-NAMESPACE', 'XML-NAMESPACE-PREFIX', 'XML-NNAMESPACE', 'XML-NNAMESPACE-PREFIX'],
     'Compiler options (semantic)': [
         'ARITH', 'CODEPAGE', 'DBCS', 'INTDATE', 'NSYMBOL', 'NUMCLS', 'NUMPROC', 'NUMCHECK',
         'TRUNC', 'ZWB', 'DYNAM', 'QUALIFY', 'INITCHECK', 'SQLCCSID'],
@@ -184,7 +184,7 @@ PLI = {
         'DO UNTIL', 'DO LOOP', 'DO REPEAT', 'END', 'ENTRY', 'EXIT', 'FETCH', 'FLUSH', 'FORMAT', 'FREE',
         'GET', 'GO TO', 'IF', 'ITERATE', 'LEAVE', 'LOCATE', 'ON', 'OPEN', 'PACKAGE', 'PROCEDURE', 'PUT',
         'READ', 'RELEASE', 'RESIGNAL', 'RETURN', 'REVERT', 'REWRITE', 'SELECT', 'SIGNAL', 'STOP',
-        'WAIT', 'WRITE'],
+        'WAIT', 'WRITE', 'CANCEL THREAD', 'OTHERWISE', 'QUALIFY', 'REINIT', 'WHEN', 'XDECLARE', 'XDEFINE ALIAS', 'XDEFINE ORDINAL', 'XDEFINE STRUCTURE', 'XPROCEDURE'],
     'Data attributes': [
         'ALIGNED', 'AREA', 'AUTOMATIC', 'BASED', 'BIGENDIAN', 'BINARY', 'BIT', 'BUILTIN', 'BYADDR',
         'BYVALUE', 'CHARACTER', 'COMPLEX', 'CONDITION', 'CONNECTED', 'CONTROLLED', 'DATE', 'DECIMAL',
@@ -202,7 +202,7 @@ PLI = {
         'AREA', 'ATTENTION', 'CONDITION', 'CONVERSION', 'ENDFILE', 'ENDPAGE', 'ERROR', 'FINISH',
         'FIXEDOVERFLOW', 'INVALIDOP', 'KEY', 'NAME', 'OVERFLOW', 'RECORD', 'SIZE', 'STORAGE',
         'STRINGRANGE', 'STRINGSIZE', 'SUBSCRIPTRANGE', 'TRANSMIT', 'UNDEFINEDFILE', 'UNDERFLOW',
-        'ZERODIVIDE'],
+        'ZERODIVIDE', 'ANYCONDITION', 'ASSERTION', 'CONFORMANCE'],
     # The index of built-in functions, subroutines and pseudovariables of the
     # Enterprise PL/I for z/OS 6.1 Language Reference (SC31-5716-00), read 2026-11-12.
     'Built-in functions': [
@@ -271,11 +271,11 @@ PLI = {
         'WEEKDAY', 'WHIGH', 'WHEREDIFF', 'WIDECHAR', 'WLOW', 'WSCOLLAPSE', 'WSCOLLAPSE16',
         'WSREPLACE', 'WSREPLACE16', 'XMLCHAR', 'XMLSCRUB', 'XMLSCRUB16', 'XMLUCHAR', 'Y4DATE',
         'Y4JULIAN', 'Y4YEAR',],
-    'Preprocessor': [
-        '%ACTIVATE', '%DEACTIVATE', '%DECLARE', '%DO', '%END', '%GO TO', '%IF', '%INCLUDE',
-        '%XINCLUDE', '%INSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%PAGE', '%POP', '%PRINT',
-        '%PROCEDURE', '%PUSH', '%REPLACE', '%SELECT', '%SKIP', 'STATEMENT', 'COMPILEDATE',
-        'COMPILETIME', 'COUNTER', 'PARMSET', 'QUOTE', 'SYSPARM', 'SYSTEM', 'SYSVERSION', 'MACNAME'],
+    # preprocessor statements, directives and built-in functions of the Enterprise PL/I
+    # 6.1 Language Reference ("Preprocessor facilities"), checked 2026-11-12
+    'Preprocessor': ['%ACTIVATE', '%DEACTIVATE', '%DECLARE', '%DO', '%END', '%GO TO', '%IF', '%INCLUDE', '%INSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%REPLACE', '%SELECT', '%XINCLUDE', '%XINSCAN', '%PROCEDURE', '%RETURN', '%ANSWER', '%CALL', '%LINE', '%NOPRINT', '%PAGE', '%POP', '%PRINT', '%PROCESS', '%PROCINC', '%PUSH', '%SKIP', 'STATEMENT'],
+    'Preprocessor built-in functions': ['COLLATE', 'COMMENT', 'COMPILEDATE', 'COMPILETIME', 'COPY', 'COUNTER', 'DIMENSION', 'HBOUND', 'INDEX', 'LBOUND', 'LENGTH', 'LOWERCASE', 'MACCOL', 'MACLMAR', 'MACNAME', 'MACRMAR', 'MAX', 'MIN', 'PARMSET', 'QUOTE', 'REPEAT', 'SUBSTR', 'SYSDIMSIZE', 'SYSOFFSETSIZE', 'SYSPARM', 'SYSPOINTERSIZE', 'SYSTEM', 'SYSVERSION', 'TRANSLATE', 'TRIM', 'UPPERCASE', 'VERIFY'],
+
     'Procedure options': ['OPTIONS(MAIN)', 'NOEXECOPS', 'FETCHABLE', 'RECURSIVE', 'REORDER',
                           'BYVALUE', 'LINKAGE', 'ASSEMBLER', 'COBOL', 'INTER', 'RETCODE'],
 }
@@ -303,8 +303,9 @@ PLI_PATTERNS = {
     'STORAGE': r'\b(STORAGE|STG)\s*\(', 'CURRENTSTORAGE': r'\b(CURRENTSTORAGE|CSTG)\s*\(',
 }
 for p in ['%ACTIVATE', '%DEACTIVATE', '%DECLARE', '%DO', '%END', '%IF', '%INCLUDE', '%XINCLUDE',
-          '%INSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%PAGE', '%POP', '%PRINT', '%PROCEDURE', '%PUSH',
-          '%REPLACE', '%SELECT', '%SKIP']:
+          '%INSCAN', '%XINSCAN', '%ITERATE', '%LEAVE', '%NOTE', '%PAGE', '%POP', '%PRINT', '%PROCEDURE',
+          '%PUSH', '%REPLACE', '%SELECT', '%SKIP', '%RETURN', '%ANSWER', '%CALL', '%LINE', '%NOPRINT',
+          '%PROCESS', '%PROCINC']:
     word = p[1:]
     alt = {'DECLARE': 'DECLARE|DCL', 'PROCEDURE': 'PROCEDURE|PROC', 'ACTIVATE': 'ACTIVATE|ACT',
            'DEACTIVATE': 'DEACTIVATE|DEACT'}.get(word, word)
@@ -313,6 +314,8 @@ PLI_PATTERNS['%GO TO'] = r'%\s*GO\s*TO\b'
 
 
 def pli_pattern(category, name):
+    if category == 'Preprocessor built-in functions':
+        return r'^\s*%.*\b' + re.escape(name) + r'\s*\('
     if name in PLI_PATTERNS:
         return PLI_PATTERNS[name]
     if category == 'Built-in functions':
@@ -328,23 +331,32 @@ def pli_text(path):
 
 # --------------------------------------------------------------------------- HLASM
 HLASM_ASM = [
-    'ACONTROL', 'ADATA', 'AINSERT', 'ALIAS', 'AMODE', 'CATTR', 'CCW', 'CCW0', 'CCW1', 'CEJECT',
+    '*PROCESS', 'ACONTROL', 'ADATA', 'AINSERT', 'ALIAS', 'AMODE', 'CATTR', 'CCW', 'CCW0', 'CCW1', 'CEJECT',
     'CNOP', 'COM', 'COPY', 'CSECT', 'CXD', 'DC', 'DROP', 'DS', 'DSECT', 'DXD', 'EJECT', 'END',
     'ENTRY', 'EQU', 'EXITCTL', 'EXTRN', 'ICTL', 'ISEQ', 'LOCTR', 'LTORG', 'MNOTE', 'OPSYN', 'ORG',
     'POP', 'PRINT', 'PUNCH', 'PUSH', 'REPRO', 'RMODE', 'RSECT', 'SPACE', 'START', 'TITLE', 'USING',
     'WXTRN', 'XATTR']
 HLASM_DC = ['A', 'AD', 'B', 'C', 'CA', 'CE', 'CU', 'D', 'DB', 'DD', 'DH', 'E', 'EB', 'ED', 'EH',
-            'F', 'FD', 'G', 'H', 'HD', 'J', 'L', 'LB', 'LD', 'LH', 'LQ', 'P', 'Q', 'QD', 'QY', 'R',
+            'F', 'FD', 'G', 'H', 'J', 'JD', 'L', 'LB', 'LD', 'LH', 'LQ', 'P', 'Q', 'QD', 'QY', 'R',
             'RD', 'S', 'SY', 'V', 'VD', 'X', 'Y', 'Z']
 HLASM_MACRO = [
+    # instructions, attributes, functions (Table 56) and system variable symbols of the
+    # HLASM V1R6 Language Reference (SC26-4940-09), checked 2026-11-12
     'ACTR', 'AEJECT', 'AGO', 'AIF', 'ANOP', 'AREAD', 'ASPACE', 'GBLA', 'GBLB', 'GBLC', 'LCLA',
     'LCLB', 'LCLC', 'MACRO', 'MEND', 'MEXIT', 'MHELP', 'SETA', 'SETB', 'SETC', 'SETAF', 'SETCF',
-    '&SYSNDX', '&SYSECT', '&SYSLIST', '&SYSDATE', '&SYSDATC', '&SYSTIME', '&SYSPARM', '&SYSLOC',
-    '&SYSNEST', '&SYSMAC', '&SYSSTYP', '&SYSOPT_RENT', "T'", "L'", "S'", "I'", "K'", "N'", "D'",
-    "O'", 'A2B', 'A2C', 'A2D', 'A2X', 'B2A', 'B2C', 'B2D', 'B2X', 'BYTE', 'C2A', 'C2B', 'C2D',
-    'C2X', 'D2A', 'D2B', 'D2C', 'D2X', 'DCLEN', 'DCVAL', 'DEQUOTE', 'DOUBLE', 'FIND', 'INDEX',
-    'ISBIN', 'ISDEC', 'ISHEX', 'ISSYM', 'LOWER', 'SIGNED', 'SLA', 'SLL', 'SRA', 'SRL', 'UPPER',
-    'X2A', 'X2B', 'X2C', 'X2D', 'AND', 'OR', 'XOR', 'NOT']
+    '"T\'"', '"L\'"', '"S\'"', '"I\'"', '"K\'"', '"N\'"', '"D\'"', '"O\'"', 'A2B', 'A2C', 'A2D',
+    'A2X', 'B2A', 'B2C', 'B2D', 'B2X', 'BYTE', 'C2A', 'C2B', 'C2D', 'C2X', 'D2A', 'D2B', 'D2C',
+    'D2X', 'DCLEN', 'DCVAL', 'DEQUOTE', 'DOUBLE', 'FIND', 'INDEX', 'ISBIN', 'ISDEC', 'ISHEX',
+    'ISSYM', 'LOWER', 'SIGNED', 'SLA', 'SLL', 'SRA', 'SRL', 'UPPER', 'X2A', 'X2B', 'X2C', 'X2D',
+    'AND', 'OR', 'XOR', 'NOT', '&SYSADATA_DSN', '&SYSADATA_MEMBER', '&SYSADATA_VOLUME', '&SYSASM',
+    '&SYSCLOCK', '&SYSDATC', '&SYSDATE', '&SYSECT', '&SYSIN_DSN', '&SYSIN_MEMBER', '&SYSIN_VOLUME',
+    '&SYSJOB', '&SYSLIB_DSN', '&SYSLIB_MEMBER', '&SYSLIB_VOLUME', '&SYSLIN_DSN', '&SYSLIN_MEMBER',
+    '&SYSLIN_VOLUME', '&SYSLIST', '&SYSLOC', '&SYSMAC', '&SYSM_HSEV', '&SYSM_SEV', '&SYSNDX',
+    '&SYSNEST', '&SYSOPT_DBCS', '&SYSOPT_OPTABLE', '&SYSOPT_RENT', '&SYSOPT_XOBJECT', '&SYSPARM',
+    '&SYSPRINT_DSN', '&SYSPRINT_MEMBER', '&SYSPRINT_VOLUME', '&SYSPUNCH_DSN', '&SYSPUNCH_MEMBER',
+    '&SYSPUNCH_VOLUME', '&SYSSEQF', '&SYSSTEP', '&SYSSTMT', '&SYSSTYP', '&SYSTEM_ID',
+    '&SYSTERM_DSN', '&SYSTERM_MEMBER', '&SYSTERM_VOLUME', '&SYSTIME', '&SYSVER', 'ESYM', 'SYSATTRA',
+    'SYSATTRP',]
 
 
 def hlasm_instructions():
@@ -365,13 +377,16 @@ def hlasm_text(path):
     lines = []
     with open(path, encoding='latin-1') as f:
         for line in f:
-            if line.startswith('*') or line.startswith('.*'):
+            if (line.startswith('*') and not line.upper().startswith('*PROCESS')) \
+                    or line.startswith('.*'):
                 continue
             lines.append(line[:71].upper())
     return '\n'.join(lines)
 
 
 def hlasm_pattern(category, name):
+    if name == '*PROCESS':
+        return r'^\*PROCESS\s'
     if category == 'Machine instructions' or category == 'Assembler instructions':
         return r'^\S*\s+' + re.escape(name) + r'(\s|$)'
     if category == 'DC types':

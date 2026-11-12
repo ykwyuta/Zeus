@@ -132,8 +132,8 @@ pub fn function(name: &str) -> Option<Func> {
         "HEX-TO-CHAR" => Func::HexToChar,
         "BIT-OF" => Func::BitOf,
         "BIT-TO-CHAR" => Func::BitToChar,
-        "TRIML" => Func::TrimL,
-        "TRIMR" => Func::TrimR,
+        // TRIML/TRIMR are not Enterprise COBOL functions (TRIM takes LEADING or
+        // TRAILING); they are not recognized, as on z/OS
         "NUMVAL-F" => Func::NumValF,
         "TEST-NUMVAL-F" => Func::TestNumValF,
         "TEST-DATE-YYYYMMDD" => Func::TestDateYyyymmdd,
