@@ -414,7 +414,7 @@ fn malformed_unrepresentable_metadata_and_relative_fields_are_diagnosed() {
             "macro expansion",
         ),
         (
-            "UNENC CSECT\n MVST 2,4\n BR 14\n END\n",
+            "UNENC CSECT\n MVCLE 2,4,0\n BR 14\n END\n",
             "encoding is not implemented",
         ),
         (

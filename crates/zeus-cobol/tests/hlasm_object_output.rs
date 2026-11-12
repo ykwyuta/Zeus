@@ -237,7 +237,7 @@ fn unsupported_metadata_and_instructions_are_diagnosed() {
             "macro expansion",
         ),
         (
-            "M CSECT\n MVST 2,4\n BR 14\n END\n",
+            "M CSECT\n MVCLE 2,4,0\n BR 14\n END\n",
             "encoding is not implemented",
         ),
         (
@@ -319,7 +319,7 @@ fn cli_compiles_and_links_obj_and_preserves_existing_file_on_encoding_failure() 
             .code(),
         Some(37)
     );
-    std::fs::write(&path, "SIMPLE CSECT\n MVST 2,4\n BR 14\n END\n").unwrap();
+    std::fs::write(&path, "SIMPLE CSECT\n MVCLE 2,4,0\n BR 14\n END\n").unwrap();
     let before = std::fs::read(&object).unwrap();
     let failed = std::process::Command::new(zas)
         .args(["compile", "--output-format", "obj"])

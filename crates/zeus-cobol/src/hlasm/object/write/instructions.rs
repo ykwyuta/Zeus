@@ -610,9 +610,15 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("SLDA", 0x8f),
         ("STM", 0x90),
         ("LM", 0x98),
+        ("BXH", 0x86),
+        ("BXLE", 0x87),
     ];
     if let Some((_, opcode)) = rs.iter().find(|(name, _)| *name == op) {
-        let second = if matches!(op, "STM" | "LM") { r(1)? } else { 0 };
+        let second = if matches!(op, "STM" | "LM" | "BXH" | "BXLE") {
+            r(1)?
+        } else {
+            0
+        };
         let mut b = vec![*opcode, r(0)? << 4 | second];
         b.extend(address(i.address.as_ref(), false)?);
         return Ok(b);
@@ -645,6 +651,7 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("TRT", 0xdd),
         ("ED", 0xde),
         ("EDMK", 0xdf),
+        ("MVO", 0xf1),
         ("PACK", 0xf2),
         ("UNPK", 0xf3),
         ("ZAP", 0xf8),

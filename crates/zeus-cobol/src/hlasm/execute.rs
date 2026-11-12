@@ -1174,6 +1174,34 @@ pub(crate) fn execute_entry_with_host(
                             store_packed(&mut mem[dest], i128::from(registers[r] as i32))?;
                         }
                     }
+                    "MVO" => {
+                        // The second operand is placed to the left of the rightmost four bits
+                        // of the first operand; zeros fill the left, excess digits are lost.
+                        let a = ea()?;
+                        let b = address(
+                            ins.source.as_ref().ok_or("missing source address")?,
+                            &registers,
+                        )?;
+                        let (l1, l2) = (ins.length as usize, ins.source_length as usize);
+                        if !(1..=16).contains(&l1) || !(1..=16).contains(&l2) {
+                            return Err("decimal lengths must be 1..16".into());
+                        }
+                        let (ra, rb) = (range(mem, a, l1)?, range(mem, b, l2)?);
+                        storage.check_write(a, l1)?;
+                        let mut source = Vec::new();
+                        for byte in &mem[rb] {
+                            source.push(byte >> 4);
+                            source.push(byte & 15);
+                        }
+                        let mut digits = vec![0u8; l1 * 2];
+                        digits[l1 * 2 - 1] = mem[a + l1 - 1] & 15;
+                        for (i, n) in source.iter().rev().take(l1 * 2 - 1).enumerate() {
+                            digits[l1 * 2 - 2 - i] = *n;
+                        }
+                        for (i, pair) in digits.chunks(2).enumerate() {
+                            mem[ra.start + i] = pair[0] * 16 + pair[1];
+                        }
+                    }
                     "PACK" | "UNPK" | "ZAP" | "AP" | "SP" | "CP" | "MP" | "DP" => {
                         let a = ea()?;
                         let b = address(
@@ -1364,6 +1392,20 @@ pub(crate) fn execute_entry_with_host(
                         }
                         if ins.immediate & (8 >> cc) != 0 {
                             branch = Some(ea()?);
+                        }
+                    }
+                    "BXH" | "BXLE" => {
+                        // The increment is in R3 and the compare value in the odd register of
+                        // the R3 pair; both are taken before the sum replaces R1 (Principles of
+                        // Operation, "BRANCH ON INDEX HIGH / LOW OR EQUAL").
+                        let (r1, r3, target) = (reg(0)?, reg(1)?, ea()?);
+                        let increment = registers[r3] as i32;
+                        let compare = registers[r3 | 1] as i32;
+                        let sum = (registers[r1] as i32).wrapping_add(increment);
+                        registers[r1] = sum as u32;
+                        let taken = if op == "BXH" { sum > compare } else { sum <= compare };
+                        if taken {
+                            branch = Some(target);
                         }
                     }
                     "BCT" => {

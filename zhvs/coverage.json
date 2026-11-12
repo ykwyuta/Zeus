@@ -1056,6 +1056,48 @@
       "ICMH-MASK-15"
     ]
   },
+  "HI110A": {
+    "expect": "run",
+    "tests": [
+      "TR-TABLE",
+      "TRT-FOUND-OFFSET",
+      "TRT-FOUND-FUNC",
+      "TRT-FOUND-CC",
+      "TRT-NONE-CC",
+      "TRT-LAST-CC",
+      "EX-MVC-LENGTH",
+      "MVCL-PAD",
+      "MVCL-PAD-CC",
+      "CLCL-PAD-EQUAL",
+      "CLCL-LOW-OFFSET",
+      "MVST-COPY",
+      "MVST-END-OFFSET",
+      "SRST-FOUND",
+      "CLST-EQUAL",
+      "EDMK-RESULT",
+      "EDMK-MARK-OFFSET",
+      "MVO-SHIFT",
+      "TM-ONES-CC",
+      "TM-ZEROS-CC",
+      "TM-MIXED-CC"
+    ]
+  },
+  "HI111A": {
+    "expect": "run",
+    "tests": [
+      "BCT-COUNT",
+      "BXLE-COUNT",
+      "BXLE-FINAL-INDEX",
+      "BXH-COUNT",
+      "CLM-MASK-EQUAL",
+      "STCM-MASK",
+      "IC-PRESERVE",
+      "SLDA-OVERFLOW-CC",
+      "SLDA-OVERFLOW-VAL",
+      "SRDA-NEGATIVE",
+      "SRDA-NEGATIVE-CC"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [
@@ -1087,6 +1129,24 @@
     "tests": [
       "OPSYN-SNAPSHOT",
       "LOOKAHEAD-LENGTH"
+    ]
+  },
+  "HM105A": {
+    "expect": "run",
+    "tests": [
+      "SYSNDX-STEP",
+      "GBLA-ACROSS-CALLS",
+      "MEXIT-STOPS",
+      "GBLC-APPEND",
+      "SYSLIST-COUNT",
+      "SYSLIST-ELEMENT",
+      "AGO-SKIPS",
+      "AGO-COMPUTED",
+      "D2A-NEGATIVE",
+      "SETA-DIVIDE-TRUNC",
+      "COMPARE-SAME-LENGTH",
+      "COMPARE-SHORTER-LOW",
+      "DUPLICATION-FACTOR"
     ]
   },
   "HS101A": {
