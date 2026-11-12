@@ -1,0 +1,6 @@
+         MACRO
+         HMLIB1
+.* HMLIB1: library macro of HM110A; records &SYSLIB_MEMBER.
+         GBLC  &GLMEM
+&GLMEM   SETC  '&SYSLIB_MEMBER'
+         MEND

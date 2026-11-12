@@ -51,6 +51,16 @@ fn alnum_function(f: Func) -> bool {
             | Func::UpperCase
             | Func::Reverse
             | Func::Trim
+            | Func::TrimL
+            | Func::TrimR
+            | Func::HexOf
+            | Func::HexToChar
+            | Func::BitOf
+            | Func::BitToChar
+            | Func::FormattedDate
+            | Func::FormattedTime
+            | Func::FormattedDatetime
+            | Func::FormattedCurrentDate
             | Func::WhenCompiled
             | Func::WhenCompiledRegister
             | Func::NationalOf
@@ -113,6 +123,30 @@ pub fn function(name: &str) -> Option<Func> {
         "TRIM" => Func::Trim,
         "TEST-NUMVAL" => Func::TestNumVal,
         "TEST-NUMVAL-C" => Func::TestNumValC,
+        "E" => Func::E,
+        "PI" => Func::Pi,
+        "EXP" => Func::Exp,
+        "EXP10" => Func::Exp10,
+        "SIGN" => Func::Sign,
+        "HEX-OF" => Func::HexOf,
+        "HEX-TO-CHAR" => Func::HexToChar,
+        "BIT-OF" => Func::BitOf,
+        "BIT-TO-CHAR" => Func::BitToChar,
+        // TRIML/TRIMR are not Enterprise COBOL functions (TRIM takes LEADING or
+        // TRAILING); they are not recognized, as on z/OS
+        "NUMVAL-F" => Func::NumValF,
+        "TEST-NUMVAL-F" => Func::TestNumValF,
+        "TEST-DATE-YYYYMMDD" => Func::TestDateYyyymmdd,
+        "TEST-DAY-YYYYDDD" => Func::TestDayYyyyddd,
+        "FORMATTED-DATE" => Func::FormattedDate,
+        "FORMATTED-TIME" => Func::FormattedTime,
+        "FORMATTED-DATETIME" => Func::FormattedDatetime,
+        "INTEGER-OF-FORMATTED-DATE" => Func::IntegerOfFormattedDate,
+        "SECONDS-FROM-FORMATTED-TIME" => Func::SecondsFromFormattedTime,
+        "COMBINED-DATETIME" => Func::CombinedDatetime,
+        "TEST-FORMATTED-DATETIME" => Func::TestFormattedDatetime,
+        "SECONDS-PAST-MIDNIGHT" => Func::SecondsPastMidnight,
+        "FORMATTED-CURRENT-DATE" => Func::FormattedCurrentDate,
         _ => return None,
     })
 }
@@ -221,6 +255,8 @@ impl Gen<'_> {
                             | Func::LowerCase
                             | Func::Reverse
                             | Func::Trim
+                            | Func::TrimL
+                            | Func::TrimR
                             | Func::Max
                             | Func::Min
                     ) && call.args.first().is_some_and(|arg| self.national_expr(arg))
@@ -246,7 +282,18 @@ impl Gen<'_> {
                 | Func::PresentValue
         );
         let (min, max) = match func {
-            Func::CurrentDate | Func::WhenCompiled | Func::WhenCompiledRegister => (0, 0),
+            Func::CurrentDate
+            | Func::WhenCompiled
+            | Func::WhenCompiledRegister
+            | Func::E
+            | Func::Pi
+            | Func::SecondsPastMidnight => (0, 0),
+            Func::FormattedDatetime => (3, 4),
+            Func::FormattedDate | Func::FormattedTime => (2, 3),
+            Func::IntegerOfFormattedDate
+            | Func::SecondsFromFormattedTime
+            | Func::TestFormattedDatetime
+            | Func::CombinedDatetime => (2, 2),
             Func::Random => (0, 1),
             Func::Annuity | Func::Mod | Func::Rem => (2, 2),
             Func::PresentValue => (2, usize::MAX),
@@ -286,6 +333,22 @@ impl Gen<'_> {
                 | Func::TestNumVal
                 | Func::TestNumValC
                 | Func::Ord
+                | Func::TrimL
+                | Func::TrimR
+                | Func::HexOf
+                | Func::HexToChar
+                | Func::BitOf
+                | Func::BitToChar
+                | Func::NumValF
+                | Func::TestNumValF
+                // a format literal followed by numeric or text arguments
+                | Func::FormattedDate
+                | Func::FormattedTime
+                | Func::FormattedDatetime
+                | Func::FormattedCurrentDate
+                | Func::IntegerOfFormattedDate
+                | Func::SecondsFromFormattedTime
+                | Func::TestFormattedDatetime
         ) && !polymorphic;
         let first_numeric = call.args.first().is_some_and(|a| self.is_numeric_expr(a));
         for arg in &call.args {
@@ -357,7 +420,23 @@ impl Gen<'_> {
                 let func = function(&f.name)
                     .ok_or_else(|| Diag::error(f.pos, format!("unknown function {}", f.name)))?;
                 self.validate_function(func, f)?;
-                let args = self.func_args(&f.args)?;
+                let mut args = self.func_args(&f.args)?;
+                if crate::front::lilian() {
+                    // INTDATE(LILIAN): day 1 is 15 October 1582, 6653 days
+                    // before the ANSI day 1 (1 January 1601)
+                    let offset = || Box::new(Ex::Lit(Dec::from_i64(6653)));
+                    match func {
+                        Func::IntegerOfDate | Func::IntegerOfDay => {
+                            return Ok(Ex::Bin(Op::Add, Box::new(Ex::Func(func, args)), offset()));
+                        }
+                        Func::DateOfInteger | Func::DayOfInteger => {
+                            if let Some(Arg::Num(e)) = args.first_mut() {
+                                *e = Ex::Bin(Op::Sub, Box::new(e.clone()), offset());
+                            }
+                        }
+                        _ => {}
+                    }
+                }
                 Ex::Func(func, args)
             }
             Operand::Lit(l) => {
@@ -624,8 +703,42 @@ impl Gen<'_> {
         let (sa, sb) = if mode == CmpMode::Numeric {
             (Src::Num(self.ex(a)?), Src::Num(self.ex(b)?))
         } else {
-            (self.src_expr(a)?, self.src_expr(b)?)
+            let (a, b) = (self.zwb_operand(a), self.zwb_operand(b));
+            (self.src_expr(&a)?, self.src_expr(&b)?)
         };
         Ok(Cx::Cmp(sa, rel(op), sb, mode))
+    }
+
+    /// In an alphanumeric comparison a signed zoned decimal item is compared
+    /// as its unsigned value under ZWB (the default). Under NOZWB the sign is
+    /// kept: the item compares as its bytes, as a reference modification of
+    /// the whole item would (Programming Guide, ZWB compiler option).
+    fn zwb_operand(&self, e: &Expr) -> Expr {
+        if !crate::front::nozwb() {
+            return e.clone();
+        }
+        if let Expr::Operand(Operand::Ref(r)) = e
+            && r.refmod.is_none()
+            && let Ok(id) = self.dm.resolve(r)
+            && let DataType::Numeric(t) = &self.dm.descs[self.dm.items[id].desc as usize].ty
+            && t.usage == crate::zir::NumUsage::Display
+            && t.signed
+            // an embedded sign (None is the default trailing embedded sign);
+            // a separate sign is a character of its own and ZWB does not apply
+            && matches!(
+                t.sign,
+                crate::zir::SignPos::None
+                    | crate::zir::SignPos::Trailing
+                    | crate::zir::SignPos::Leading
+            )
+        {
+            let mut r = r.clone();
+            r.refmod = Some((
+                Box::new(Expr::Operand(Operand::Lit(Literal::Num("1".into())))),
+                None,
+            ));
+            return Expr::Operand(Operand::Ref(r));
+        }
+        e.clone()
     }
 }

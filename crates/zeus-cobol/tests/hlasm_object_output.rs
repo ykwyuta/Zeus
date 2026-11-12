@@ -237,10 +237,6 @@ fn unsupported_metadata_and_instructions_are_diagnosed() {
             "macro expansion",
         ),
         (
-            "M CSECT\n MVST 2,4\n BR 14\n END\n",
-            "encoding is not implemented",
-        ),
-        (
             "M CSECT\n EXTRN CALLEE\n BRASL 14,CALLEE\n END\n",
             "linked before",
         ),
@@ -319,7 +315,8 @@ fn cli_compiles_and_links_obj_and_preserves_existing_file_on_encoding_failure() 
             .code(),
         Some(37)
     );
-    std::fs::write(&path, "SIMPLE CSECT\n MVST 2,4\n BR 14\n END\n").unwrap();
+    // a statement OBJ cannot represent: a runtime service without IBM macro expansion
+    std::fs::write(&path, "SIMPLE CSECT\n WTO 'HI'\n BR 14\n END\n").unwrap();
     let before = std::fs::read(&object).unwrap();
     let failed = std::process::Command::new(zas)
         .args(["compile", "--output-format", "obj"])

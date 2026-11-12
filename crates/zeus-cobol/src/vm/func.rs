@@ -60,6 +60,8 @@ impl Machine {
                     | Func::LowerCase
                     | Func::Reverse
                     | Func::Trim
+                    | Func::TrimL
+                    | Func::TrimR
                     | Func::Max
                     | Func::Min
             ) && args.first().is_some_and(|arg| match arg {
@@ -354,11 +356,48 @@ impl Machine {
                     it.min().unwrap()
                 }
             }
+            Func::NumValF | Func::TestNumValF => {
+                let vals = self.arg_values(cur, args)?;
+                let s = self.text_arg(cur, vals.first())?;
+                if func == Func::TestNumValF {
+                    Dec::from_i64(super::func6::test_numval_f(&s) as i64)
+                } else {
+                    super::func6::numval_f(&s)?
+                }
+            }
+            Func::IntegerOfFormattedDate
+            | Func::SecondsFromFormattedTime
+            | Func::TestFormattedDatetime => {
+                let vals = self.arg_values(cur, args)?;
+                let format = self.text_arg(cur, vals.first())?;
+                let text = self.text_arg(cur, vals.get(1))?;
+                match func {
+                    Func::IntegerOfFormattedDate => {
+                        Dec::from_i64(super::func6::integer_of_formatted_date(&format, &text)?)
+                    }
+                    Func::SecondsFromFormattedTime => {
+                        super::func6::seconds_from_formatted_time(&format, &text)?
+                    }
+                    _ => Dec::from_i64(super::func6::test_formatted_datetime(&format, &text)?),
+                }
+            }
             _ => {
                 let v = self.nums(cur, args)?;
                 numeric_function(func, &v)?
             }
         })
+    }
+
+    /// The text of an alphanumeric argument (EBCDIC decoded).
+    fn text_arg(&mut self, cur: usize, v: Option<&Val>) -> RResult<String> {
+        let b = match v {
+            Some(v) => self.alnum_bytes(cur, v, 0)?,
+            None => vec![],
+        };
+        Ok(ebcdic::decode_latin1(&b)
+            .iter()
+            .map(|&c| c as char)
+            .collect())
     }
 
     pub(super) fn func_alnum(&mut self, cur: usize, func: Func, args: &[Arg]) -> RResult<Vec<u8>> {
@@ -392,6 +431,58 @@ impl Machine {
                     _ => vec![],
                 }
             }
+            Func::HexOf | Func::BitOf => {
+                // the bytes of the argument as stored, whatever its category
+                let b = match vals.first() {
+                    Some(Val::Item(_, b)) => b.clone(),
+                    Some(v) => self.alnum_bytes(cur, v, 0)?,
+                    None => vec![],
+                };
+                ebcdic::encode(&if func == Func::HexOf {
+                    super::func6::hex_of(&b)
+                } else {
+                    super::func6::bit_of(&b)
+                })
+            }
+            Func::HexToChar | Func::BitToChar => {
+                let s = self.text_arg(cur, vals.first())?;
+                if func == Func::HexToChar {
+                    super::func6::hex_to_char(&s)?
+                } else {
+                    super::func6::bit_to_char(&s)?
+                }
+            }
+            Func::FormattedCurrentDate => {
+                // the clock CURRENT-DATE uses (UTC, offset +0000)
+                let format = self.text_arg(cur, vals.first())?;
+                let now = crate::clock::now();
+                let secs = now.as_secs() as i64;
+                let date = unix_days_to_int(secs.div_euclid(86400));
+                let seconds = Dec::new(
+                    i128::from(secs.rem_euclid(86400) as i32) * 1000
+                        + i128::from(now.subsec_millis()),
+                    3,
+                );
+                ebcdic::encode(&super::func6::formatted_datetime(&format, date, seconds)?)
+            }
+            Func::FormattedDate | Func::FormattedTime | Func::FormattedDatetime => {
+                let format = self.text_arg(cur, vals.first())?;
+                let num =
+                    |m: &Self, i: usize| vals.get(i).map(|v| m.val_num(v)).unwrap_or(Dec::ZERO);
+                let int = |d: Dec| {
+                    d.rescale(0, Rounding::Truncate)
+                        .map_or(0, |x| x.coef as i64)
+                };
+                ebcdic::encode(&match func {
+                    Func::FormattedDate => {
+                        super::func6::formatted_date(&format, int(num(self, 1)))?
+                    }
+                    Func::FormattedTime => super::func6::formatted_time(&format, num(self, 1))?,
+                    _ => {
+                        super::func6::formatted_datetime(&format, int(num(self, 1)), num(self, 2))?
+                    }
+                })
+            }
             Func::Char => {
                 let n = vals.first().map(|v| self.val_num(v)).unwrap_or(Dec::ZERO);
                 let n = super::data::to_raw(n, 0, false);
@@ -404,7 +495,7 @@ impl Machine {
                 };
                 vec![b]
             }
-            Func::Trim => {
+            Func::Trim | Func::TrimL | Func::TrimR => {
                 let b = match vals.first() {
                     Some(v) if national => self.national_bytes(cur, v)?,
                     Some(v) => self.alnum_bytes(cur, v, 0)?,
@@ -414,9 +505,9 @@ impl Machine {
                     Some(v) => self.alnum_bytes(cur, v, 0)?.first().copied(),
                     None => None,
                 };
-                let (lead, trail) = match mode {
-                    Some(0xD3) => (true, false), // L
-                    Some(0xE3) => (false, true), // T
+                let (lead, trail) = match (func, mode) {
+                    (Func::TrimL, _) | (_, Some(0xD3)) => (true, false), // L
+                    (Func::TrimR, _) | (_, Some(0xE3)) => (false, true), // T
                     _ => (true, true),
                 };
                 let width = if national { 2 } else { 1 };
@@ -708,6 +799,26 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
     };
     Ok(match func {
         Func::Abs => a(0)?.abs(),
+        Func::SecondsPastMidnight => {
+            // the clock CURRENT-DATE uses (UTC, offset +0000)
+            let now = crate::clock::now();
+            Dec::new(
+                i128::from(now.as_secs() % 86400) * 100 + i128::from(now.subsec_millis() / 10),
+                2,
+            )
+        }
+        Func::E => super::func6::constant(false),
+        Func::Pi => super::func6::constant(true),
+        Func::Exp => f(a(0)?.to_f64().exp())?,
+        Func::Exp10 => f(10f64.powf(a(0)?.to_f64()))?,
+        Func::Sign => Dec::from_i64(match a(0)? {
+            x if x.is_zero() => 0,
+            x if x.coef < 0 => -1,
+            _ => 1,
+        }),
+        Func::TestDateYyyymmdd => Dec::from_i64(super::func6::test_date(int(a(0)?))),
+        Func::TestDayYyyyddd => Dec::from_i64(super::func6::test_day(int(a(0)?))),
+        Func::CombinedDatetime => super::func6::combined(a(0)?, a(1)?)?,
         Func::Sqrt => f(a(0)?.to_f64().sqrt())?,
         Func::Sin => f(a(0)?.to_f64().sin())?,
         Func::Cos => f(a(0)?.to_f64().cos())?,

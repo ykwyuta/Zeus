@@ -120,8 +120,29 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
     if cics {
         add_eib(&mut stmts);
     }
-    let ccsid = zeus_cobol::codepage::active().ccsid;
-    let (module, sema_diags) = sema::compile(&stmts, ccsid, files.names.clone());
+    // *PROCESS / %PROCESS の行 (ソースの先頭) から読む翻訳オプション
+    let process: Vec<String> = std::fs::read_to_string(path)
+        .map(|text| {
+            text.lines()
+                .map(|l| l.trim_start().to_ascii_uppercase())
+                .take_while(|l| l.starts_with("*PROCESS") || l.starts_with("%PROCESS"))
+                .collect()
+        })
+        .unwrap_or_default();
+    let assert_condition = process.iter().any(|l| l.contains("ASSERT(CONDITION)"));
+    // CODEPAGE(n): Zeus が変換できる CCSID のときだけ従う。--ccsid と
+    // ZEUS_CCSID の指定はこれより強い
+    let ccsid = process
+        .iter()
+        .filter_map(|l| {
+            let at = l.find("CODEPAGE(")? + 9;
+            l[at..].split(')').next()?.trim().parse::<u32>().ok()
+        })
+        .find(|c| zeus_cobol::codepage::get(*c).is_some())
+        .filter(|_| !zeus_cobol::codepage::overridden())
+        .unwrap_or_else(|| zeus_cobol::codepage::active().ccsid);
+    let (module, sema_diags) =
+        sema::compile_with(&stmts, ccsid, files.names.clone(), assert_condition);
     let mut diags = pp_diags;
     diags.extend(sema_diags);
     let msgs = messages(&diags, &files.names);

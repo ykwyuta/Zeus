@@ -26,7 +26,7 @@
        01  SEED PIC X(8) VALUE 'OFF'.
        REPLACE ==ALPHA== BY ==BETA==.
        01  ALPHA PIC X(8) VALUE 'FIRST'.
-       REPLACE ==OMEGA== BY ==FINAL==.
+       REPLACE ==OMEGA== BY ==OMICRON==.
        01  ALPHA PIC X(8) VALUE 'SECOND'.
        01  OMEGA PIC X(8) VALUE 'THIRD'.
        REPLACE OFF.
@@ -70,7 +70,7 @@
 
            MOVE 'REPLACE-NEW-SCOPE' TO ZCVS-TEST-NAME.
            IF BETA = 'FIRST' AND ALPHA = 'SECOND'
-             AND FINAL = 'THIRD'
+             AND OMICRON = 'THIRD'
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'FIRST/SECOND/THIRD' TO ZCVS-EXPECTED

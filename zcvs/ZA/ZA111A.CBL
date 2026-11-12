@@ -20,7 +20,7 @@
        01  SP-RAW PIC X(3).
        01  SP REDEFINES SP-RAW PIC S9(4) COMP-3.
        01  UP-RAW PIC X(3).
-       01  UP REDEFINES UP-RAW PIC 9(4) COMP-3.
+       01  UPK REDEFINES UP-RAW PIC 9(4) COMP-3.
        01  SZ-RAW PIC X(4).
        01  SZ REDEFINES SZ-RAW PIC S9(4).
        01  UZ-RAW PIC X(4).
@@ -117,7 +117,7 @@
 
            MOVE 'UP-SIGN-0' TO ZCVS-TEST-NAME.
            MOVE X'012340' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED
@@ -127,7 +127,7 @@
 
            MOVE 'UP-SIGN-9' TO ZCVS-TEST-NAME.
            MOVE X'012349' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED
@@ -137,7 +137,7 @@
 
            MOVE 'UP-SIGN-A' TO ZCVS-TEST-NAME.
            MOVE X'01234A' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED
@@ -147,7 +147,7 @@
 
            MOVE 'UP-SIGN-B' TO ZCVS-TEST-NAME.
            MOVE X'01234B' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED
@@ -157,7 +157,7 @@
 
            MOVE 'UP-SIGN-C' TO ZCVS-TEST-NAME.
            MOVE X'01234C' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED
@@ -167,7 +167,7 @@
 
            MOVE 'UP-SIGN-D' TO ZCVS-TEST-NAME.
            MOVE X'01234D' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED
@@ -177,7 +177,7 @@
 
            MOVE 'UP-SIGN-E' TO ZCVS-TEST-NAME.
            MOVE X'01234E' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED
@@ -187,7 +187,7 @@
 
            MOVE 'UP-SIGN-F' TO ZCVS-TEST-NAME.
            MOVE X'01234F' TO UP-RAW.
-           IF UP IS NUMERIC
+           IF UPK IS NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NUMERIC' TO ZCVS-EXPECTED
@@ -367,7 +367,7 @@
 
            MOVE 'UP-BAD-DIGIT' TO ZCVS-TEST-NAME.
            MOVE X'01A34F' TO UP-RAW.
-           IF UP IS NOT NUMERIC
+           IF UPK IS NOT NUMERIC
                PERFORM ZCVS-PASS
            ELSE
                MOVE 'NOT NUMERIC' TO ZCVS-EXPECTED

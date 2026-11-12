@@ -117,6 +117,176 @@ pub enum Bif {
     Days,
     DaysToDate,
     Weekday,
+    DaysToSecs,
+    SecsToDays,
+    ValidDate,
+    // Enterprise PL/I integer, string and floating-point inquiry built-ins
+    Iand,
+    Ior,
+    Ieor,
+    Inot,
+    Isll,
+    Isrl,
+    Raise2,
+    SearchR,
+    VerifyR,
+    CharVal,
+    Huge,
+    Tiny,
+    Epsilon,
+    MaxExp,
+    MinExp,
+    Radix,
+    PointerDiff,
+    PointerSubtract,
+    OffsetValue,
+    OffsetAdd,
+    OffsetSubtract,
+    OffsetDiff,
+    AddrData,
+    BitLocation,
+    Rank,
+    Exponent,
+    Scale,
+    SecsToDate,
+    Cs,
+    Cds,
+    Between,
+    BetweenExclusive,
+    BetweenLeftExclusive,
+    BetweenRightExclusive,
+    InList,
+    IfThenElse,
+    Iclz,
+    Irll,
+    Irrl,
+    Lower2,
+    Popcnt,
+    ISigned,
+    IUnsigned,
+    RoundAwayFromZero,
+    RoundToEven,
+    MaxVal,
+    MinVal,
+    Pred,
+    Succ,
+    Places,
+    PrecVal,
+    ScaleVal,
+    Y4Date,
+    OnText,
+    OnActual,
+    OnExpected,
+    OnOperator,
+    OnPackage,
+    OnSubscript,
+    OnLbound,
+    OnHbound,
+    OnLine,
+    OnArea,
+    /// SHAnDIGEST/INIT/UPDATE/FINAL: family 1, 2 or 3, digest bits, and
+    /// the operation (0 digest, 1 init, 2 update, 3 final).
+    Sha(u8, u16, u8),
+    WHigh,
+    WLow,
+    InArray,
+    Allocate,
+    Alloc31,
+    AllocNext,
+    AllocSize,
+    AvailableArea,
+    CheckStg,
+    Unallocated,
+    QuickSort,
+    BinSearch,
+    QuickSortX,
+    BinSearchX,
+    WcharVal,
+    PicSpec,
+    CodePage,
+    SubTo,
+    Poly,
+    WsCollapse16,
+    XmlScrub,
+    XmlScrub16,
+    XmlChar,
+    WsReplace16,
+    Base64Encode16,
+    Base64Decode16,
+    MainName,
+    ProcedureName,
+    PackageName,
+    SourceFile,
+    SourceLine,
+    IsMain,
+    GetEnv,
+    PutEnv,
+    Uuid4,
+    Valid,
+    Microsecs,
+    Secs,
+    MicrosecsToDate,
+    DaysToMicrosecs,
+    MicrosecsToDays,
+    Timestamp,
+    UtcDatetime,
+    UtcSecs,
+    UtcMicrosecs,
+    MaxDate,
+    MinDate,
+    StckToDate,
+    StckeToDate,
+    JulianToSmf,
+    SmfToJulian,
+    PliStck,
+    PliStckE,
+    PliStckF,
+    PliStckLocal,
+    PliStckUtc,
+    PliStckELocal,
+    PliStckEUtc,
+    PliStckP,
+    PliStckPLocal,
+    PliStckPUtc,
+    Y4Julian,
+    Y4Year,
+    ReplaceBy2,
+    HexImage,
+    Compare,
+    Location,
+    Erf,
+    Erfc,
+    Gamma,
+    LogGamma,
+    OnCondCond,
+    OnCondId,
+    Collapse,
+    Squeeze,
+    IndexR,
+    Replace,
+    Scrubout,
+    Unhex,
+    MemIndex,
+    MemSearch,
+    MemSearchR,
+    MemVerify,
+    MemVerifyR,
+    MemCollapse,
+    MemSqueeze,
+    MemReplace,
+    WsCollapse,
+    WsReplace,
+    HexEncode,
+    HexDecode,
+    HexEncode8,
+    HexDecode8,
+    Base64Encode,
+    Base64Decode,
+    Base64Encode8,
+    Base64Decode8,
+    WhereDiff,
+    Hex8,
+    HexImage8,
     // conditions
     OnCode,
     OnChar,
@@ -147,6 +317,7 @@ pub enum Bif {
     LineNo,
     PageNo,
     Count,
+    SameKey,
     Random,
 }
 
@@ -260,7 +431,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "ONSOURCE" => OnSource,
         "ONKEY" => OnKey,
         "ONFILE" => OnFile,
-        "ONLOC" => OnLoc,
+        "ONLOC" | "ONPROC" | "ONPROCEDURE" => OnLoc,
         "ONCOUNT" => OnCount,
         "DATAFIELD" => DataField,
         "PLIRETV" => PliRetV,
@@ -277,15 +448,210 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "HANDLE" => Addr,
         "PLISRTA" => PliSrtA,
         "PLIFILL" => PliFill,
-        "PLIMOVE" => PliMove,
+        "PLIMOVE" | "PLIOVER" => PliMove,
         "OMITTED" => Omitted,
         "PRESENT" => Present,
         "LINENO" => LineNo,
         "PAGENO" => PageNo,
         "COUNT" => Count,
+        "SAMEKEY" => SameKey,
         "RANDOM" => Random,
-        _ => return None,
+        "DAYSTOSECS" => DaysToSecs,
+        "SECSTODAYS" => SecsToDays,
+        "VALIDDATE" => ValidDate,
+        "IAND" => Iand,
+        "IOR" => Ior,
+        "IEOR" => Ieor,
+        "INOT" => Inot,
+        "ISLL" => Isll,
+        "ISRL" => Isrl,
+        "RAISE2" => Raise2,
+        "SEARCHR" => SearchR,
+        "VERIFYR" => VerifyR,
+        "CHARVAL" | "BYTE" => CharVal,
+        "HUGE" => Huge,
+        "TINY" => Tiny,
+        "EPSILON" => Epsilon,
+        "MAXEXP" => MaxExp,
+        "MINEXP" => MinExp,
+        "RADIX" => Radix,
+        "POINTERDIFF" => PointerDiff,
+        "POINTERSUBTRACT" | "PTRSUBTRACT" => PointerSubtract,
+        "OFFSETVALUE" => OffsetValue,
+        "OFFSETADD" => OffsetAdd,
+        "OFFSETSUBTRACT" => OffsetSubtract,
+        "OFFSETDIFF" => OffsetDiff,
+        "ADDRDATA" => AddrData,
+        "BITLOCATION" | "BITLOC" => BitLocation,
+        "RANK" => Rank,
+        "EXPONENT" => Exponent,
+        "SCALE" => Scale,
+        "SECSTODATE" => SecsToDate,
+        "CS" => Cs,
+        "CDS" => Cds,
+        "BETWEEN" => Between,
+        "BETWEENEXCLUSIVE" => BetweenExclusive,
+        "BETWEENLEFTEXCLUSIVE" => BetweenLeftExclusive,
+        "BETWEENRIGHTEXCLUSIVE" => BetweenRightExclusive,
+        "INLIST" => InList,
+        "IFTHENELSE" => IfThenElse,
+        "ICLZ" => Iclz,
+        "IRLL" => Irll,
+        "IRRL" => Irrl,
+        "LOWER2" => Lower2,
+        "POPCNT" => Popcnt,
+        "ISIGNED" => ISigned,
+        "IUNSIGNED" => IUnsigned,
+        "ROUNDAWAYFROMZERO" => RoundAwayFromZero,
+        "ROUNDTOEVEN" => RoundToEven,
+        "MAXVAL" => MaxVal,
+        "MINVAL" => MinVal,
+        "PRED" => Pred,
+        "SUCC" => Succ,
+        "PLACES" => Places,
+        "PRECVAL" => PrecVal,
+        "SCALEVAL" => ScaleVal,
+        "Y4DATE" => Y4Date,
+        "ONTEXT" => OnText,
+        "ONACTUAL" => OnActual,
+        "ONEXPECTED" => OnExpected,
+        "ONOPERATOR" => OnOperator,
+        "ONPACKAGE" => OnPackage,
+        "ONSUBSCRIPT" => OnSubscript,
+        "ONLBOUND" => OnLbound,
+        "ONHBOUND" => OnHbound,
+        "ONLINE" => OnLine,
+        "ONAREA" => OnArea,
+        "WHIGH" => WHigh,
+        "INARRAY" => InArray,
+        "ALLOCATE" | "ALLOC" => Allocate,
+        "ALLOC31" => Alloc31,
+        "ALLOCNEXT" => AllocNext,
+        "ALLOCSIZE" => AllocSize,
+        "AVAILABLEAREA" => AvailableArea,
+        "CHECKSTG" => CheckStg,
+        "UNALLOCATED" => Unallocated,
+        "QUICKSORT" => QuickSort,
+        "BINSEARCH" => BinSearch,
+        "QUICKSORTX" => QuickSortX,
+        "BINSEARCHX" => BinSearchX,
+        "WCHARVAL" => WcharVal,
+        "PICSPEC" => PicSpec,
+        "CODEPAGE" => CodePage,
+        "WLOW" => WLow,
+        "SUBTO" => SubTo,
+        "POLY" => Poly,
+        "WSCOLLAPSE16" => WsCollapse16,
+        "XMLSCRUB" => XmlScrub,
+        "XMLSCRUB16" | "XMLCLEAN" => XmlScrub16,
+        "XMLCHAR" => XmlChar,
+        "WHITESPACECOLLAPSE" => WsCollapse16,
+        "WSREPLACE16" => WsReplace16,
+        "BASE64ENCODE16" => Base64Encode16,
+        "BASE64DECODE16" => Base64Decode16,
+        "MAINNAME" => MainName,
+        "PROCEDURENAME" => ProcedureName,
+        "PROCNAME" => ProcedureName,
+        "PACKAGENAME" => PackageName,
+        "SOURCEFILE" => SourceFile,
+        "SOURCELINE" => SourceLine,
+        "ISMAIN" => IsMain,
+        "GETENV" => GetEnv,
+        "PUTENV" => PutEnv,
+        "UUID4" => Uuid4,
+        "VALID" => Valid,
+        "MICROSECS" => Microsecs,
+        "SECS" => Secs,
+        "MICROSECSTODATE" => MicrosecsToDate,
+        "DAYSTOMICROSECS" => DaysToMicrosecs,
+        "MICROSECSTODAYS" => MicrosecsToDays,
+        "TIMESTAMP" => Timestamp,
+        "UTCDATETIME" => UtcDatetime,
+        "UTCSECS" => UtcSecs,
+        "UTCMICROSECS" => UtcMicrosecs,
+        "MAXDATE" => MaxDate,
+        "MINDATE" => MinDate,
+        "STCKTODATE" => StckToDate,
+        "STCKETODATE" => StckeToDate,
+        "JULIANTOSMF" => JulianToSmf,
+        "SMFTOJULIAN" => SmfToJulian,
+        "PLISTCK" => PliStck,
+        "PLISTCKE" => PliStckE,
+        "PLISTCKF" => PliStckF,
+        "PLISTCKLOCAL" => PliStckLocal,
+        "PLISTCKUTC" => PliStckUtc,
+        "PLISTCKELOCAL" => PliStckELocal,
+        "PLISTCKEUTC" => PliStckEUtc,
+        "PLISTCKP" => PliStckP,
+        "PLISTCKPLOCAL" => PliStckPLocal,
+        "PLISTCKPUTC" => PliStckPUtc,
+        "Y4JULIAN" => Y4Julian,
+        "Y4YEAR" => Y4Year,
+        "REPLACEBY2" => ReplaceBy2,
+        "HEXIMAGE" => HexImage,
+        "COMPARE" => Compare,
+        "LOCATION" => Location,
+        "LOC" => Location,
+        "ERF" => Erf,
+        "ERFC" => Erfc,
+        "GAMMA" => Gamma,
+        "LOGGAMMA" => LogGamma,
+        "ONCONDCOND" => OnCondCond,
+        "COLLAPSE" => Collapse,
+        "SQUEEZE" => Squeeze,
+        "INDEXR" => IndexR,
+        "REPLACE" => Replace,
+        "SCRUBOUT" => Scrubout,
+        "UNHEX" => Unhex,
+        "MEMINDEX" => MemIndex,
+        "MEMSEARCH" => MemSearch,
+        "MEMSEARCHR" => MemSearchR,
+        "MEMVERIFY" => MemVerify,
+        "MEMVERIFYR" => MemVerifyR,
+        "MEMCOLLAPSE" => MemCollapse,
+        "MEMSQUEEZE" => MemSqueeze,
+        "MEMREPLACE" => MemReplace,
+        "WSCOLLAPSE" => WsCollapse,
+        "WSREPLACE" => WsReplace,
+        "HEXENCODE" => HexEncode,
+        "HEXDECODE" => HexDecode,
+        "HEXENCODE8" => HexEncode8,
+        "HEXDECODE8" => HexDecode8,
+        "BASE64ENCODE" => Base64Encode,
+        "BASE64DECODE" => Base64Decode,
+        "BASE64ENCODE8" => Base64Encode8,
+        "BASE64DECODE8" => Base64Decode8,
+        "WHEREDIFF" => WhereDiff,
+        "HEX8" => Hex8,
+        "HEXIMAGE8" => HexImage8,
+        "ONCONDID" => OnCondId,
+        _ => return sha_name(name),
     })
+}
+
+/// SHA1DIGEST, SHA2INIT256, SHA3FINAL512 ...
+fn sha_name(name: &str) -> Option<Bif> {
+    let rest = name.strip_prefix("SHA")?;
+    let family = rest
+        .get(0..1)?
+        .parse::<u8>()
+        .ok()
+        .filter(|f| (1..=3).contains(f))?;
+    let rest = &rest[1..];
+    let (op, bits) = [("DIGEST", 0u8), ("INIT", 1), ("UPDATE", 2), ("FINAL", 3)]
+        .iter()
+        .find_map(|(w, op)| rest.strip_prefix(w).map(|b| (*op, b)))?;
+    let bits: u16 = if family == 1 {
+        if !bits.is_empty() {
+            return None;
+        }
+        160
+    } else {
+        bits.parse()
+            .ok()
+            .filter(|b| matches!(b, 224 | 256 | 384 | 512))?
+    };
+    Some(Bif::Sha(family, bits, op))
 }
 
 impl Bif {
@@ -311,6 +677,31 @@ impl Bif {
                 | Empty
                 | Days
                 | Weekday
+                | Microsecs
+                | OnText
+                | OnActual
+                | OnExpected
+                | OnOperator
+                | OnPackage
+                | OnSubscript
+                | OnLbound
+                | OnHbound
+                | OnLine
+                | OnArea
+                | MainName
+                | ProcedureName
+                | PackageName
+                | SourceFile
+                | SourceLine
+                | IsMain
+                | CodePage
+                | CheckStg
+                | Uuid4
+                | Secs
+                | Timestamp
+                | UtcDatetime
+                | UtcSecs
+                | UtcMicrosecs
                 | Random
         )
     }
@@ -320,7 +711,10 @@ impl Bif {
         use Bif::*;
         matches!(
             self,
-            Addr | Dim
+            Addr | AddrData
+                | BitLocation
+                | Location
+                | Dim
                 | Lbound
                 | Hbound
                 | Size
@@ -337,7 +731,20 @@ impl Bif {
                 | LineNo
                 | PageNo
                 | Count
+                | SameKey
                 | MaxLength
+                | Poly
+                | Valid
+                | PliStck
+                | PliStckE
+                | PliStckF
+                | PliStckLocal
+                | PliStckUtc
+                | PliStckELocal
+                | PliStckEUtc
+                | PliStckP
+                | PliStckPLocal
+                | PliStckPUtc
         )
     }
 }
@@ -423,9 +830,153 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
     };
     Ok(match b {
         Abs => operand_arith(&arg(0)?),
+        // the integer built-ins keep FIXED BIN(31) unless an argument needs 63 bits
+        Iand | Ior | Ieor | Inot | Isll | Isrl | Raise2 => {
+            let wide = args
+                .iter()
+                .any(|t| t.arith().is_some_and(|a| a.precision().0 > 31));
+            Ty::fixed_bin(if wide { 63 } else { BIFPREC }, 0)
+        }
+        SearchR | VerifyR | MaxExp | MinExp | Radix | PointerDiff | SecsToDays | OffsetDiff
+        | BitLocation | Rank | Exponent | Cs | Cds => fixed_bin31(),
+        PointerSubtract | AddrData => Ty::Pointer,
+        Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive | InList => {
+            Ty::bit(1)
+        }
+        Iclz | Places | PrecVal | ScaleVal | Compare | Location | OnCondId => fixed_bin31(),
+        Irll | Irrl | Lower2 | Popcnt => match operand_arith(&arg(0)?) {
+            t @ Ty::Fixed {
+                dec: false, q: 0, ..
+            } => t,
+            _ => fixed_bin31(),
+        },
+        ISigned | IUnsigned => {
+            let (p, unsigned) = match operand_arith(&arg(0)?) {
+                Ty::Fixed {
+                    dec: false,
+                    p,
+                    q: 0,
+                    unsigned,
+                } => (p, unsigned),
+                _ => (BIFPREC, false),
+            };
+            let p = match (b, unsigned) {
+                (ISigned, true) if matches!(p, 8 | 16 | 32 | 64) => p - 1,
+                (IUnsigned, false) if matches!(p, 7 | 15 | 31 | 63) => p + 1,
+                _ => p,
+            };
+            Ty::Fixed {
+                dec: false,
+                p,
+                q: 0,
+                unsigned: b == IUnsigned,
+            }
+        }
+        MaxVal | MinVal => operand_arith(&arg(0)?),
+        Pred | Succ => match operand_arith(&arg(0)?) {
+            t @ Ty::Float { .. } => t,
+            _ => return Err(format!("{b:?} requires a REAL FLOAT argument")),
+        },
+        Y4Date => Ty::char(8),
+        OnText | OnActual | OnExpected | OnPackage | OnArea => Ty::char_var(32767),
+        OnOperator => Ty::char(2),
+        OnSubscript | OnLbound | OnHbound => Ty::fixed_bin(63, 0),
+        OnLine => fixed_bin31(),
+        Sha(_, bits, 0 | 3) => Ty::char(u32::from(bits) / 8),
+        Sha(..) => Ty::Pointer,
+        WHigh | WLow => match cint(0) {
+            Some(n) => Ty::Wchar {
+                len: crate::types::Ext::Const(n.max(0) as u32),
+                var: crate::types::Var::Fixed,
+                graphic: false,
+            },
+            None => Ty::Wchar {
+                len: crate::types::Ext::Const(16383),
+                var: crate::types::Var::Varying,
+                graphic: false,
+            },
+        },
+        SubTo => {
+            let a = arg(0)?;
+            if a.is_bit() {
+                Ty::Bit {
+                    len: crate::types::Ext::Const(str_len(&a).max(1)),
+                    var: crate::types::Var::Varying,
+                    aligned: false,
+                }
+            } else {
+                Ty::char_var(str_len(&a).max(1))
+            }
+        }
+        Poly => match arg(0)?.arith() {
+            Some(t @ Ty::Float { .. }) => t,
+            _ => return Err("POLY requires a REAL FLOAT array".into()),
+        },
+        WsCollapse16 | WsReplace16 | Base64Encode16 | Base64Decode16 => Ty::fixed_bin(63, 0),
+        // size_t under LP(32)
+        XmlScrub | XmlScrub16 | XmlChar => fixed_bin31(),
+        MainName | ProcedureName | PackageName | SourceFile => Ty::char_var(255),
+        SourceLine | CodePage => fixed_bin31(),
+        InArray | CheckStg | Unallocated => Ty::bit(1),
+        Allocate | Alloc31 | AllocNext => Ty::Pointer,
+        // size_t under LP(32)
+        AllocSize | AvailableArea => fixed_bin31(),
+        // size_t under LP(32)
+        QuickSort | BinSearch | QuickSortX | BinSearchX => fixed_bin31(),
+        PicSpec => Ty::char(1),
+        WcharVal => Ty::Wchar {
+            len: crate::types::Ext::Const(1),
+            var: crate::types::Var::Fixed,
+            graphic: false,
+        },
+        IsMain | PutEnv | Valid => Ty::bit(1),
+        GetEnv => Ty::char_var(32767),
+        Uuid4 => Ty::char(36),
+        Microsecs | DaysToMicrosecs | UtcMicrosecs => Ty::fixed_bin(63, 0),
+        MicrosecsToDays => fixed_bin31(),
+        Secs | UtcSecs => Ty::Float { dec: false, p: 53 },
+        Timestamp => Ty::char(26),
+        UtcDatetime => Ty::char(17),
+        MicrosecsToDate | MaxDate | MinDate | StckToDate | StckeToDate => Ty::char_var(32),
+        JulianToSmf => Ty::char(4),
+        SmfToJulian => Ty::char(7),
+        PliStck | PliStckE | PliStckF | PliStckLocal | PliStckUtc | PliStckELocal | PliStckEUtc
+        | PliStckP | PliStckPLocal | PliStckPUtc => fixed_bin31(),
+        Y4Julian => Ty::char(7),
+        Y4Year => Ty::char(4),
+        ReplaceBy2 | HexImage => Ty::char_var(65_535),
+        OnCondCond => Ty::char_var(255),
+        Collapse | Squeeze | Replace | Scrubout | Unhex | Hex8 | HexImage8 => Ty::char_var(65_535),
+        IndexR | MemIndex | MemSearch | MemSearchR | MemVerify | MemVerifyR | MemCollapse
+        | MemSqueeze | MemReplace | WsCollapse | WsReplace | HexEncode | HexDecode | HexEncode8
+        | HexDecode8 | Base64Encode | Base64Decode | Base64Encode8 | Base64Decode8 | WhereDiff => {
+            Ty::fixed_bin(63, 0)
+        }
+        IfThenElse => {
+            let (y, z) = (arg(1)?, arg(2)?);
+            if y.arith().is_some() && z.arith().is_some() && !y.is_string() && !z.is_string() {
+                common(&[y, z])
+            } else {
+                y
+            }
+        }
+        OffsetValue | OffsetAdd | OffsetSubtract => Ty::Offset(None),
+        SecsToDate => Ty::char_var(26),
+        Scale => match operand_arith(&arg(0)?) {
+            t @ Ty::Float { .. } => t,
+            _ => return Err("SCALE requires a floating-point argument".into()),
+        },
+        CharVal => Ty::char(1),
+        ValidDate => Ty::bit(1),
+        DaysToSecs => Ty::Float { dec: true, p: 16 },
+        Huge | Tiny | Epsilon => match operand_arith(&arg(0)?) {
+            t @ Ty::Float { .. } => t,
+            _ => return Err(format!("{b:?} requires a floating-point argument")),
+        },
         Sign | Index | Search | Verify | Tally | Length | MaxLength | Dim | Lbound | Hbound
         | Size | CurrentSize | Allocation | OnCode | OnCount | PliRetV | Days | Weekday
         | LineNo | PageNo | Count => fixed_bin31(),
+        SameKey => Ty::bit(1),
         Add | Subtract | Multiply | Divide => {
             let a = operand_arith(&arg(0)?);
             let c = operand_arith(&arg(1)?);
@@ -459,7 +1010,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             }
         }
         Max | Min => common(args),
-        Round => {
+        Round | RoundAwayFromZero | RoundToEven => {
             let a = operand_arith(&arg(0)?);
             let n = cint(1).unwrap_or(0);
             match a {
@@ -585,8 +1136,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
                 unsigned: b == Unsigned,
             }
         }
-        Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin | Acos
-        | Atan | Atanh | Sind | Cosd | Tand | Atand => {
+        Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+        | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => {
             crate::types::to_float_ty(&operand_arith(&arg(0)?))
         }
         Random => Ty::Float { dec: false, p: 53 },

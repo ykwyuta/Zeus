@@ -186,6 +186,7 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
                 0x4a => "AH",
                 0x4b => "SH",
                 0x4c => "MH",
+                0x71 => "MS",
                 0x4d => "BAS",
                 0x4e => "CVD",
                 0x4f => "CVB",
@@ -231,8 +232,21 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             }
             op
         }
-        0x88..=0x8f | 0x90 | 0x98 | 0x9a | 0x9b | 0xba | 0xbb | 0xbd | 0xbe | 0xbf => {
+        0x86..=0x8f
+        | 0x90
+        | 0x98
+        | 0x9a
+        | 0x9b
+        | 0xa8
+        | 0xa9
+        | 0xba
+        | 0xbb
+        | 0xbd
+        | 0xbe
+        | 0xbf => {
             let op = match b[0] {
+                0x86 => "BXH",
+                0x87 => "BXLE",
                 0x88 => "SRL",
                 0x89 => "SLL",
                 0x8a => "SRA",
@@ -245,6 +259,8 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
                 0x98 => "LM",
                 0x9a => "LAM",
                 0x9b => "STAM",
+                0xa8 => "MVCLE",
+                0xa9 => "CLCLE",
                 0xba => "CS",
                 0xbb => "CDS",
                 0xbd => "CLM",
@@ -266,6 +282,8 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             match b[0] {
                 0x91 => "TM",
                 0x92 => "MVI",
+                // TEST AND SET: S format, the second byte is unused
+                0x93 => "TS",
                 0x94 => "NI",
                 0x95 => "CLI",
                 0x96 => "OI",
@@ -472,6 +490,18 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             }
             op
         }
+        // SSF: C8 with R3 and a 4-bit opcode extension, two storage operands
+        0xc8 => {
+            i.registers = vec![r1];
+            i.address = Some(address(&b[2..4], 0));
+            i.source = Some(address(&b[4..6], 0));
+            match r2 {
+                2 => "CSST",
+                4 => "LPD",
+                5 => "LPDG",
+                _ => "",
+            }
+        }
         0xc0 => {
             let op = match r2 {
                 0 => "LARL",
@@ -507,8 +537,9 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             }
             op
         }
-        0xd1..=0xd7 | 0xdc..=0xdf | 0xf0..=0xf3 | 0xf8..=0xfd => {
+        0xd0..=0xd7 | 0xdc..=0xdf | 0xf0..=0xf3 | 0xf8..=0xfd => {
             let op = match b[0] {
+                0xd0 => "TRTR",
                 0xd1 => "MVN",
                 0xd2 => "MVC",
                 0xd3 => "MVZ",

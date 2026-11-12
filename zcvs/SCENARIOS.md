@@ -7,7 +7,7 @@
 
 **全件PASSはシナリオ網羅を意味しない。** 起点の66プログラム・248検査は
 すべて通るが、提案に列挙した機能の一部しか検証していない。
-この変更後は158プログラム、1,476検査（実行1,431件、負系45件）、
+この変更後は162プログラム、1,510検査（実行1,465件、負系45件）、
 正常コンパイル対照20本となる。これらはZeusのインタプリタとネイティブで
 同じ期待値を使う。実機z/OS・Herculesとの比較を完了したという意味ではない。
 
@@ -40,7 +40,7 @@
 | D01 表意定数 | `ZD107A` のSPACE/ZERO/HIGH/LOW/QUOTE/ALL | 部分 | QUOTE/APOSTオプション別、長さ1/複数、比較に使う場合 |
 | D02 照合順序 | `ZD109A/110A` 10検査 | 部分 | 通常の小文字/大文字/数字・HIGH/LOW・空白補充、独自順序Z/A/9、変数/リテラル比較と生バイト不変を追加。集団内の異なる桁位置、SORT/MERGEとの一致は残る |
 | D03 BINARY別名・桁幅 | `ZD103A`、`ZA116A/117A` 252検査 | 部分 | PIC 1/4/5/9/10/18×COMP/BINARY/COMP-4の0/±1/±最大、STDの桁切詰め、OPTの有効入力を追加。各VALUE初期値・全演算との直積は残る |
-| D04 COMP-5物理幅 | `ZD108A`、`ZA118A` | 部分 | 2/4/8バイトの既知HEXに加え、BINの符号有無×上限/下限演算とSIZE ERROR保持を追加。COMP-5別名との差・エラー句なしは残る |
+| D04 COMP-5物理幅 | `ZD108A`、`ZA118A` | 部分 | 2/4/8バイトの既知HEXに加え、BINの符号有無×上限/下限演算を追加。SIZE ERROR は PICTURE の桁で判定し (LRM「SIZE ERROR phrases」、TRUNC に依らない)、エラー句なしは 2 進の幅で切り捨てて格納する。COMP-5別名との差は残る |
 | D05 PACKED | `ZD101A`、`ZD111A` 104検査 | 部分 | 1/2/3/4/5/6/7/8/9/18/19/30/31桁×符号有無の0/1/最大/負値、偶数桁の余剰ニブル・全31桁HEXを追加。小数スケール境界、演算後の符号は残る |
 | D06 DISPLAY符号 | `ZD102A`、`ZD112A` 80検査 | 部分 | 先頭/末尾×分離/非分離×0–9の正負を独立HEXで追加。MOVE後のゼロは優先正符号。負ゼロ入力の生バイト/比較は残る |
 | D07 SYNC | `ZD104A`、`ZD114A/115A` 17検査 | 部分 | 表の要素長/末尾余白、2次元入れ子、非整列開始、COMP-1/2/5、PACKEDでSYNC無効を追加。INDEX/POINTER・LEFT/RIGHTは残る。余白内容は固定しない |
@@ -53,14 +53,14 @@
 | 要求ID | 現在の証拠 | 判定 | 追加すべき独立シナリオ |
 |---|---|---|---|
 | A01 TRUNC(STD) | `ZA101A`、`ZA116A` 144検査 | 部分 | 3別名×PIC 1/4/5/9/10/18の有効境界、上限ADD、正負の桁超過MOVEを追加。各型のVALUE/SUB/MUL/DIV/COMPUTEは残る |
-| A02 TRUNC(BIN) | `ZA103A`、`ZD108A`、`ZA118A` 18検査 | 部分 | 2/4/8バイト×符号有無の上限-1/上限/上限+1、符号付き下限で演算成功/エラー保持を追加。エラー句なし・送出先の型差は残る |
+| A02 TRUNC(BIN) | `ZA103A`、`ZD108A`、`ZA118A` 27検査 | 部分 | 2/4/8バイト×符号有無の上限-1/上限/上限+1、符号付き下限で、PICTURE を超える結果の SIZE ERROR と受取側の保持、エラー句なしの 2 進幅での格納を測る。送出先の型差は残る |
 | A03 TRUNC(OPT) | `ZA102A`、`ZA117A` 108検査 | 部分 | 3別名×PIC 1/4/5/9/10/18の0/±1/±最大と有効演算を追加。複合式・格納幅跨ぎは残る。範囲外入力の結果保証は要求しない |
 | A04 ARITH(COMPAT) | `ZA104A` の18桁と複合式 | 部分 | 30桁中間結果の整数/小数配分3分岐、桁落ちする式/しない式、演算順序 |
 | A05 ARITH(EXTEND) | `ZA110A` 6検査、`ZE131N/P` | 部分 | 31桁PACKED最大/負値・DISPLAY往復・30桁受信先エラー・中間乗除算は追加。19/30桁、NATIONAL/編集、31桁中間結果の配分各分岐は残る |
-| A06 SIZE ERROR | `ZA105A/109A`、`ZA119A` 11検査 | 部分 | ADD/SUB/MUL/DIV/COMPUTEの狭い/広い受信先を両順序で実行し、エラー側保持・正常側格納・分岐を追加。余り側だけの桁あふれも追加。丸め桁上がり×型は残る |
-| A07 NUMPROC/NUMCLS | `ZA111A`–`ZA115A` 228検査、`ZA106A` | 部分 | NOPFD/PFD×PRIM/ALTの4単位でPACKED/DISPLAY・符号有無×A–F/不正0/9、桁不正、符号なしゼロ・負ゼロ、MOVE/ADD後の優先符号を追加。MIGは4.2の優先符号対照4件。先頭符号/分離符号、MIG固有の非優先符号、NUMERIC後の入力不変は残る |
+| A06 SIZE ERROR | `ZA105A/109A`、`ZA119A` 11検査、`ZA122A` 5検査 | 部分 | ADD/SUB/MUL/DIV/COMPUTEの狭い/広い受信先を両順序で実行し、エラー側保持・正常側格納・分岐を追加。余り側だけの桁あふれも追加。丸め桁上がり×型は残る。2026-11-12: 丸めの桁上がりでSIZE ERRORになる場合（DISPLAY/PACKED、ON SIZE ERRORで受信先不変、指定なしで上位桁欠落、負の半分）を追加。BINARY×TRUNCの組は残る |
+| A07 NUMPROC/NUMCLS | `ZA111A`–`ZA115A` 228検査、`ZA106A`、`ZA122A` 6検査 | 部分 | NOPFD/PFD×PRIM/ALTの4単位でPACKED/DISPLAY・符号有無×A–F/不正0/9、桁不正、符号なしゼロ・負ゼロ、MOVE/ADD後の優先符号を追加。MIGは4.2の優先符号対照4件。先頭符号/分離符号、MIG固有の非優先符号、NUMERIC後の入力不変は残る。2026-11-12: 先頭/末尾の分離符号と埋込み符号のbytes、分離符号での加算・MOVEを追加 |
 | A08 HFP | `ZA107A`、`ZA120A` 21検査 | 部分 | 外部浮動小数点DISPLAY/NATIONALの0/正負/小さい値/指数変化、NUMERIC・独立文字列・十進復元を追加。HFP指数限界・丸め・128bit精度は残る |
-| A09 組込み関数 | `ZA108A`、`ZA121A` 14検査 | 部分 | LOG/TAN/ASIN/ACOS/ATAN、非自明SIN/COS、ANNUITY/PRESENT-VALUE、正負/0/小数べき乗を追加。定義域内・絶対誤差1E-9を明記。関数ごとの全境界は残る |
+| A09 組込み関数 | `ZA108A`、`ZA121A` 14検査 | 部分 | LOG/TAN/ASIN/ACOS/ATAN、非自明SIN/COS、ANNUITY/PRESENT-VALUE、正負/0/小数べき乗を追加。定義域内・絶対誤差1E-9を明記。関数ごとの全境界は残る。2026-11-12: CCVS85 に無い Enterprise COBOL 5/6 の関数 22 個 (E、PI、EXP、EXP10、SIGN、HEX-OF、HEX-TO-CHAR、BIT-OF、BIT-TO-CHAR、TRIM の LEADING/TRAILING、NUMVAL-F、TEST-NUMVAL-F、TEST-DATE-YYYYMMDD、TEST-DAY-YYYYDDD、FORMATTED-DATE/TIME/DATETIME、INTEGER-OF-FORMATTED-DATE、SECONDS-FROM-FORMATTED-TIME、COMBINED-DATETIME、TEST-FORMATTED-DATETIME) を `ZA125A` 36検査で追加。Zeus はどれも持っておらず、実装した。2026-11-12: TRIML/TRIMR は Enterprise COBOL の関数ではなかった (公式の関数一覧に無い)。TRIM の LEADING/TRAILING の検査に替え、Zeus からも名前を外した |
 
 ## ZN: NATIONAL・DBCS・CCSID
 
@@ -68,7 +68,7 @@
 |---|---|---|---|
 | N01 PIC G/DBCS | `ZN103A`、`ZN102B` | 部分 | 比較の長さ差、INSPECT、切詰め/空白補充、DBCS文字境界、SO/SIが要る混在領域との区別 |
 | N02 NSYMBOL | `ZN101A`、`ZN102B` | 部分 | 同じPIC N宣言をNATIONAL/DBCSでコンパイルして対比、明示USAGEとの優先関係、版/CCSIDの固定 |
-| N03 国別数値・編集 | `ZN102A` | 部分 | SIGN先頭/末尾、0/負/最大、四則各文、NUMERIC不正入力、逆編集、national-editedの部分参照 |
+| N03 国別数値・編集 | `ZN102A`、`ZS107A` 2検査 | 部分 | SIGN先頭/末尾、0/負/最大、四則各文、NUMERIC不正入力、逆編集、national-editedの部分参照。2026-11-12: 国別数値の先頭/末尾分離符号のUTF-16 bytesを追加 |
 | N04 GROUP-USAGE | `ZN101A`、`ZN109A` 7検査 | 部分 | 国別集団の数値子項目、集団MOVE・既知UTF-16 bytes・LENGTH・部分参照・INITIALIZE分類を追加。深い入れ子と明示USAGE優先は残る |
 | N05 INITIALIZE分類 | `ZN103A/105A`、`ZN108A` 6検査 | 部分 | 英数字/数値/国別/数値編集/国別編集/国別数値の同居で各REPLACINGと非対象保持、既定初期化を追加。DBCS/EGCS同居、各カテゴリ×FILLER/REDEFINES/OCCURSは残る |
 | N06 CCSID変換 | `ZN104A/106M`、`ZN110A`–`ZN113A` 24検査 | 部分 | 930/939/1390/1399の別単位でSBCSのみ/DBCSのみ/混在を独立既知bytesで両方向検査。共有文字だけなのでコードページ固有文字・037・空白・代替/変換不能は残る。明示引数と既定を同一視しない |
@@ -82,9 +82,10 @@
 | P02 再帰 | `ZP102A`、`ZP112A` 10検査 | 部分 | 深さ0–8、累積WS呼出数、LS/LINKAGEのフレーム隔離、再帰内PERFORM復帰、CANCEL後再計算を追加。再帰呼出し失敗・ポインターのフレーム別観測は残る |
 | P03 RETURNING | `ZP103A`、`ZP110A` 7検査 | 部分 | 集団RETURNINGの連続結果、77から01への同属性数値結果、成功/ON EXCEPTIONの受信先・RETURN-CODE保持を追加。型不一致は正常変換扱いしない。数値/文字/浮動属性別は残る |
 | P04 ENTRY | `ZP104A`、`ZP111A` 10検査 | 部分 | 主入口/引数2個の別入口/BY VALUE別入口を交互実行。入口前のコード不実行、引数再束縛・参照更新・値引数保持・入口ポインターを追加。OMITTEDと入口の組合せは残る |
-| P05 CALL引数 | `ZP104A`、`ZP107A` 4検査 | 部分 | 今回0/負値/OMITTED→PRESENTの再束縛、CONTENT/VALUE/非対象領域保持を追加。同一項目を複数引数へ渡すalias、集団、別名入口との組合せは残る |
+| P05 CALL引数 | `ZP104A`、`ZP107A` 4検査、`ZP113A` 3検査 | 部分 | 今回0/負値/OMITTED→PRESENTの再束縛、CONTENT/VALUE/非対象領域保持を追加。同一項目を複数引数へ渡すalias、集団、別名入口との組合せは残る。2026-11-12: 同一項目を2引数へ参照渡しする別名、CONTENTの複写側の変更と呼出し元保持を追加 |
 | P06 ポインター | `ZP105A`、`ZP108A` 7検査 | 部分 | 既存のPROCEDURE→FUNCTIONコピー後のNULL化に加え、データポインターのコピー、別名ENTRYの動的入口名、NULL化・別入口への再束縛後もコピーが有効、別バッファ保持を追加。ABI別サイズ、引数個数の異なる複数ENTRY、再帰フレーム別ポインターは残る |
-| P07 可視性 | `ZP106A` のCOMMON/GLOBAL/EXTERNAL | 部分 | 非COMMON兄弟の拒否、同名の遮蔽、GLOBAL条件名/ファイル、EXTERNALの再呼出し/別プログラム/CANCEL後 |
+| P07 可視性 | `ZP106A` のCOMMON/GLOBAL/EXTERNAL、`ZP113A` 3検査 | 部分 | 非COMMON兄弟の拒否、同名の遮蔽、GLOBAL条件名/ファイル、EXTERNALの再呼出し/別プログラム/CANCEL後。2026-11-12: 入れ子での同名局所項目によるGLOBALの遮蔽と親の値保持、GLOBAL条件名のSETを追加 |
+| P08 デバッグ宣言 | `ZP114A` 6検査 | 部分 | USE FOR DEBUGGING の PERFORM/GO TO/FALL THROUGH と DEBUG-ITEM、デバッグ行、PARM の `/DEBUG` (CBLOPTS(ON))。ALTER/SORT/USE 手続きの起動、START PROGRAM、DEBUG-LINE の値、NODEBUG で動かないことは残る |
 
 ## ZF: ファイル・VSAM・テープ
 
@@ -96,7 +97,7 @@
 | F04 CODE-SET | `ZF103A` のASCII片方向/往復 | 部分 | STANDARD-1/2、英数/記号/空白/LOW/HIGH、F/V、RDW非変換、符号分離数値 |
 | F05 VSAM主キー | `ZF104A/107A/108A`、`ZF110A/111A` 49検査 | 部分 | RRDS欠番/重複/REWRITE/DELETE/再挿入/START/NEXT/EOF復帰、KSDS =/>/>= の一致/間隙/前後境界・部分キー・失敗後復帰を追加。ACCESSモード別の直積は残る |
 | F06 VSAM代替キー・ESDS | `ZF107A/108A`、`ZF112A` 26検査 | 部分 | 重複許可/一意の2代替キー、書込み順の重複検索、主キーREAD00、更新拒否の原データ/旧索引保持、両キー変更・削除・永続化を追加。ESDSは未実装、代替キー側の部分STARTは残る |
-| F07 属性不一致39 | `ZF102A`、`ZF109A` 6検査 | 部分 | 同じ標準ラベルテープのLRECL/RECFMを別FDで不一致にして39、正常FDで再OPENして内容不変を追加。DD/DCB属性、VSAMキー長/位置、ラベル不一致は残る |
+| F07 属性不一致39 | `ZF109A` 6検査 | 部分 | 同じ標準ラベルテープのLRECL/RECFMを別FDで不一致にして39、正常FDで再OPENして内容不変を追加。DD/DCB属性、VSAMキー長/位置、ラベル不一致は残る |
 | F08 SAME AREA | `ZF105A` のSAME RECORD AREA | 部分 | 複数FDの交互OPENと上書き、VSAM SAME AREA、異なる長さ、コンパイル負系との対応 |
 | F09 テープラベル | `ZF201M/202M` とRust物理画像検査 | 部分 | 4巻全体で80-byte VOL1/HDR1/HDR2/EOV1/EOV2/EOF1/EOF2の順、HDR2 F/BLKSIZE/LRECL、区切りマーク、部分データ、巻別block数を外部検査。全ラベル属性・ユーザーラベルは残る |
 | F10 テープ位置 | `ZF201M`、`ZF202M` 18検査 | 部分 | CLOSE REEL/UNIT FOR REMOVAL後もOPENを維持、空巻を跨ぐ自動継続/明示巻移動、再OPEN/最終UNIT後EOFを追加。同一巻に2論理ファイル・MULTIPLE FILE位置指定は残る |
@@ -109,19 +110,21 @@
 | S01 COPY/REPLACEスコープ | `ZX103A`、`ZS105A` 7検査、`ZS106A`（リテラル/タグ置換） | 部分 | 独立PROGRAM終端で解除、入れ子への識別子/リテラル置換継承、OFF、新REPLACEによる前ルール解除、単語一致・リテラル非置換、部分語空置換を追加。COPY REPLACINGとの交互作用、ALSO/LAST OFF、複数段入れ子は残る |
 | S02 コンパイル指示文 | `ZX104A`、`ZS106A`（バッチ内の単位別TRUNC） | 部分 | CBL/PROCESSの同値性と後勝ち/矛盾規則、文途中EJECT/SKIP1/2/3/TITLE、継続行・72列境界、一覧制御の実際の効果 |
 | S03 WHEN-COMPILED | `ZS101A` は区切りと年4桁だけ | 部分 | 16/21文字全フィールド、日付/時刻範囲、同一コンパイル単位で不変、再実行でも不変。現在時刻との厳密一致は要求しない |
-| S04 世紀窓 | `ZS101A` は26/98年のみ | 部分 | 固定した窓末年に対する始年/末年/隣接年、00/99、日付/通日関数との同値性。実行年を使う場合は窓を固定する計算を明記 |
+| S04 世紀窓 | `ZS101A` は26/98年のみ、`ZS107A` 5検査 | 部分 | 固定した窓末年に対する始年/末年/隣接年、00/99、日付/通日関数との同値性。実行年を使う場合は窓を固定する計算を明記。2026-11-12: 実行年から窓の両端を計算し、YEAR-TO-YYYY/DATE-TO-YYYYMMDD/DAY-TO-YYYYDDDを境界の年で照合（Enterprise COBOLは引数2つまで、第2引数の既定50）を追加 |
 | S05 Gregorian境界 | `ZS104A` 8検査 | 追加 | epoch/翌日、1900/2000/2100世紀、2000閏日前後、9999年末を独立通算日・通日・逆変換で照合 |
 | S06 PARM | `ZS103M` の固定文字列・2バイト長 | 部分 | 空/1/最大長、カンマ/空白/引用符、DDとPARMの独立、切詰め規則。exportしたJCLでも同じ値を受領 |
-| S07 特殊レジスター | `ZS101A` のTALLY/RETURN-CODE | 部分 | CALL成功/失敗/RETURNINGによるRC保持、ジョブRCへの伝播、SORT成功/失敗時SORT-RETURN |
+| S07 特殊レジスター | `ZS101A` のTALLY/RETURN-CODE、`ZP113A` 1検査 | 部分 | CALL成功/失敗/RETURNINGによるRC保持、ジョブRCへの伝播、SORT成功/失敗時SORT-RETURN。2026-11-12: 別コンパイルの被呼出しが設定したRETURN-CODEが呼出し元に届くことを追加 |
 | S08 LE | `ZS102A` のCEEDAYS等 | 部分 | 日付下限/閏日/不正月日/書式不一致、feedback全体、失敗時出力保持、CEE3ABDの異常終了をプロセス/JCL結果で観測 |
+| S09 指示文・USAGE 綴り・UPSI | `ZS108A` 11検査 | 部分 | 2026-11-12: CCVS85 に無い `>>DEFINE`・`>>IF`/`>>ELSE`・`>>EVALUATE`/`WHEN OTHER`・`IS NOT DEFINED`・`OVERRIDE`、PACKED-DECIMAL の符号ニブル、UPSI の既定 (全 OFF)、VOLATILE、SECONDS-PAST-MIDNIGHT を追加。Zeus に VOLATILE と SECONDS-PAST-MIDNIGHT が無かったので実装した。`>>DEFINE` の算術式・`PARAMETER`、UPSI を実行時に ON にする形は残る |
+| S10 特殊レジスター・既定のオプション | `ZS109A` 10検査、`ZA126A` 8検査 | 部分 | 2026-11-12: SHIFT-OUT/SHIFT-IN、SORT 系の特殊レジスターの初期値、既定の ZWB の比較、FORMATTED-CURRENT-DATE、INTDATE(LILIAN) の整数日、NOZWB の比較 (符号のバイトのまま)。Zeus に FORMATTED-CURRENT-DATE と ZWB/NOZWB・INTDATE オプションが無かったので実装した。NUMCHECK・INITCHECK・QUALIFY は残る |
 
 ## ZX: 5.x/6.x拡張
 
 | 要求ID | 現在の証拠 | 判定 | 追加すべき独立シナリオ |
 |---|---|---|---|
-| X01 EXIT/CYCLE | `ZX101A`、`ZX105A` 4検査 | 部分 | 今回多重ループで最内側への作用、TEST AFTER CYCLE、初回EXITを追加。VARYING AFTER繰上げ、out-of-line UNTIL EXIT、EXITとCYCLEの混在は残る |
-| X02 SET FALSE | `ZX102A` の通常/添字付き条件名 | 部分 | 省略形、複数対象、SYMBOLIC CHARACTERS、NATIONAL、GLOBAL、範囲VALUEのFALSE設定と他条件名の非干渉 |
-| X03 INITIALIZE | `ZX102A`、`ZX106A` 13検査 | 部分 | 通常/FILLER有無、ALL/ALPHANUMERIC TO VALUE、VALUE→REPLACING→DEFAULTの各分岐、JUSTIFIEDのVALUE配置とMOVEとの差、2次元全体/指定要素と隣接要素保持を追加。REDEFINES除外、国別/編集カテゴリのVALUE分岐は残る |
+| X01 EXIT/CYCLE | `ZX101A`、`ZX105A` 4検査、`ZX110A` 3検査 | 部分 | 今回多重ループで最内側への作用、TEST AFTER CYCLE、初回EXITを追加。VARYING AFTER繰上げ、out-of-line UNTIL EXIT、EXITとCYCLEの混在は残る。2026-11-12: VARYING AFTERの繰上げ後の最終値、AFTERのFROMが外側に依存する三角形、繰上げ順を追加 |
+| X02 SET FALSE | `ZX102A` の通常/添字付き条件名、`ZX110A` 4検査、`ZS107A` 1検査 | 部分 | 省略形、複数対象、SYMBOLIC CHARACTERS、NATIONAL、GLOBAL、範囲VALUEのFALSE設定と他条件名の非干渉。2026-11-12: 複数対象、FALSE値が別条件名の値と一致する場合、範囲VALUEのTRUE（先頭値）/FALSE、NATIONALの条件名を追加 |
+| X03 INITIALIZE | `ZX102A`、`ZX106A` 13検査、`ZS107A` 1検査 | 部分 | 通常/FILLER有無、ALL/ALPHANUMERIC TO VALUE、VALUE→REPLACING→DEFAULTの各分岐、JUSTIFIEDのVALUE配置とMOVEとの差、2次元全体/指定要素と隣接要素保持を追加。REDEFINES除外、国別/編集カテゴリのVALUE分岐は残る。2026-11-12: INITIALIZEがREDEFINES項目を除き被再定義項目を初期化することを追加 |
 | X04 部分語置換 | `ZX103A`、`ZS105A`、`ZE128N/P`、`ZE133N/P` | 部分 | LEADING/TRAILING識別子とLEADINGの空置換、単語全体一致/非一致を追加。TRAILING空置換、PICTURE、COPY REPLACING別の部分語ケースは残る |
 | X05 追加関数 | `ZX107A`、`ZX108A/109A` 22検査 | 部分 | NATIONALのTRIM値/結果長、TEST-NUMVAL不正位置、NUMVAL正負、DECIMAL-POINT COMMAとNUMVAL-C桁区切りを追加。浮動結果はROUNDEDで小数2桁に格納。通貨記号引数・最大桁数は残る |
 
@@ -132,11 +135,22 @@
 | E01 終端/空VALUE/REPLACE | `ZE101N/102N`、新規`ZE126N/P`・`ZE127N/P` | 部分 | END PROGRAMのピリオド欠落、入れ子の名前入替え、親終端のみ欠落。正常対照も必要 |
 | E02 再帰/記憶域禁止 | `ZE109N/110N/111N/129N/P`、`ZE145N/P` | 部分 | LOCAL-STORAGE EXTERNALの違反だけを除いた正常対照を追加。RECURSIVE+INITIAL/入れ子/USE FOR DEBUGGINGと対応対照は残る |
 | E03 INITIALIZE/条件名 | `ZE103N`–`ZE108N` | 部分 | EGCS/DBCS別名重複、他の重複カテゴリ、条件名受信、NATIONAL FALSE不適合。既存負系の正常対照 |
-| E04 NATIONAL/POINTER | `ZE114N`–`ZE116N`、`ZE134N/P`–`ZE143N/P` | 部分 | JUSTIFIED・BLANK WHEN ZERO・SIGN・手続ポインターPIC/VALUE・国別PIC・外部浮動VALUE/JUSTIFIED/USAGEを1規則ずつ拒否/受理で追加。GROUP-USAGE下JUSTIFIED・国別符号の対照は残る |
+| E04 NATIONAL/POINTER | `ZE114N`–`ZE116N`、`ZE134N/P`–`ZE143N/P`、`ZE146N/P` | 部分 | JUSTIFIED・BLANK WHEN ZERO・SIGN・手続ポインターPIC/VALUE・国別PIC・外部浮動VALUE/JUSTIFIED/USAGEを1規則ずつ拒否/受理で追加。GROUP-USAGE下JUSTIFIED・国別符号の対照は残る。国別から英数字への MOVE は LRM の表 51「Valid and invalid elementary moves」で No なので `ZE146N` で拒否、`DISPLAY-OF` を通す `ZE146P` で受理を測る (旧 `ZN114A` を置き換え)。 |
 | E05 ファイル禁止句 | `ZE117N`–`ZE123N` | 部分 | LINE SEQUENTIAL+RESERVE、不正SAME AREA、属性不一致と構文違反の区別、各規則の正常対照 |
 | E06 RETURNING/可視性 | `ZE112N/113N` | 部分 | USING重複、受信型不適合、非COMMON兄弟CALL、01/77以外の結果項目 |
 | E07 指示文/桁数 | `ZE124N/125N/128N/P/130N/P/131N/P/133N/P`、`ZE144N/P` | 部分 | ODOの小数カウント拒否と整数カウント正常対照を追加。未知/矛盾オプション、部分語の複数語・空語、USAGE別の境界桁数は残る |
 | E08 UNTIL EXIT禁止形 | `ZE105N`、新規`ZE132N/P` | 部分 | TEST BEFORE/AFTER/WITH表記、VARYING禁止、単にEXIT未定義と診断する場合と専用診断を区別 |
+
+## 実機確認シナリオ (根拠 `zos`)
+
+公式文書から値が決まらない挙動は、抜かさずに `basis.json` の根拠 `zos` として書く。
+期待値は 2026-11-12 時点の Zeus の振る舞いであり、z/OS で FAIL したら実機の値を正解に
+して検査と Zeus を直す (`docs/validation-plan.md`)。
+
+| プログラム | 内容 | 実機で記録すること |
+| --- | --- | --- |
+| `ZA123A` 13検査 | 重なりの MOVE (右/左)、SIZE ERROR 無しの 0 除算、TRUNC(OPT) で PICTURE を超える値、VALUE 無しの WORKING-STORAGE (BINARY/PACKED/英数字)、RANDOM の種 1 と次の値、10 進 0.1 の COMP-1/COMP-2 変換と戻し、2 月 30 日の INTEGER-OF-DATE | 0 除算と不正な日付で異常終了するならその完了コード。WORKING-STORAGE は初期化オプション (STGOPT/WSCLEAR 相当の LE 指定) を記録 |
+| `ZA124A` 2検査 + 終了コード | 報告を閉じたあと `NUMVAL('12X')` で実行単位が終わること (Zeus は RC 16、manifest `expect_exit_code`)。TEST-NUMVAL の 2 検査は `spec` | LE のメッセージ番号と完了コード。戻ってきたら RC 0 で FAIL になる |
 
 ## 実行基盤自体の検査
 
@@ -147,7 +161,7 @@
 既存実行ファイルがある場合もCargoで鮮度を確認する。
 `ZF202M`の4巻は本番のAWSデコーダーを使わず独立に解析し、ヘッダーの
 前ブロック長・flags・label長/順序・HDR2属性・EOV/EOF・ファイルマーク・
-既知EBCDICデータ・巻別block数まで照合する。Rust物理検査は実行1,431件に含めない。
+既知EBCDICデータ・巻別block数まで照合する。Rust物理検査は実行1,465件に含めない。
 
 この台帳は**実装済みシナリオの退行防止**であり、上表の不足を埋めたことを
 証明するものではない。新規ケースを追加するときは、対応する要求ID・入力分割・

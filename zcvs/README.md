@@ -11,16 +11,16 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 | Module | Category | Programs |
 |--------|----------|----------|
 | `ZD` | Packed/zoned/binary storage, layout, ODO, edited PICTURE, figurative constants, collation | `ZD101A` .. `ZD115A` (15) |
-| `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA121A` (21) |
+| `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA126A` (26) |
 | `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN113A`, including `ZN102B` and `ZN106M` (14) |
-| `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments | `ZP101A` .. `ZP112A` + 16 `lib/` subprograms (12 mains) |
+| `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments, debugging declaratives | `ZP101A` .. `ZP114A` + 17 `lib/` subprograms (14 mains) |
 | `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF114A`, `ZF201M`, `ZF202M` (16) |
-| `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS106A`, including `ZS103M` (6) |
-| `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX109A` (9) |
-| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE145N`, `ZE126P` .. `ZE145P` (65) |
+| `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS109A`, including `ZS103M` (9) |
+| `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX110A` (10) |
+| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE146N`, `ZE126P` .. `ZE146P` (67) |
 
-The suite contains 158 main programs: 93 runtime programs with 1,431 assertions,
-45 negative compile checks, and 20 successful-compilation controls. Cargo tests
+The suite contains 170 main programs: 103 runtime programs with 1,553 assertions,
+46 negative compile checks, and 21 successful-compilation controls. Cargo tests
 run both Zeus backends and require the exact program set, assertion IDs in
 report order, counts, and zero deleted/manual checks. They rebuild `zcobc` and
 `zeus-rt` through Cargo to avoid testing stale binaries:
@@ -49,10 +49,20 @@ recursive PERFORM frames, ENTRY arities, RETURNING groups/77 items, sparse
 RRDS, partial START, multiple alternate indexes, QSAM sequencing/EXTEND,
 four tape volumes, and national/decimal-comma intrinsic functions.
 
+The 2026-11-12 expansion adds 4 mains and 1 helper with 34 assertions chosen
+from the audit's remaining partitions (A06, A07, N03, P05, P07, S04, S07,
+X01–X03): ROUNDED carry into SIZE ERROR, separate and embedded signs, PERFORM
+VARYING AFTER carry order, SET TO FALSE on ranges and national condition
+names, argument aliasing and BY CONTENT, GLOBAL shadowing, RETURN-CODE from
+a separately compiled callee, century windows computed from the current year,
+and INITIALIZE skipping REDEFINES. `ZS107A` also uses reference modification
+of a function result (`FUNCTION CURRENT-DATE(1:4)`), which no earlier program
+did.
+
 The Rust harness additionally inspects all four `ZF202M` AWS images without
 the production decoder: label lengths/order, HDR2 format, EOV versus EOF,
 tape marks, raw payloads, physical block counts and previous-length chains.
-These physical checks are separate from the 1,431 COBOL assertions.
+These physical checks are separate from the 1,465 COBOL assertions.
 
 `ZA111A`–`ZA114A` use Zeus's `CBL NUMCLS` selection to test both NUMCLS
 installation settings. On IBM z/OS, NUMCLS is an installation setting rather

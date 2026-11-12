@@ -375,7 +375,10 @@ fn cli_writes_adata_and_preserves_existing_output_on_encoding_failure() {
     let before = std::fs::read(&output).unwrap();
     let records = hlasm::decode_adata_records(&before, true).unwrap();
     assert!(records.iter().any(|r| r.record_type == 0x70));
-    std::fs::write(&source, "MAIN CSECT\n MVST 2,4\n BR 14\n END\n").unwrap();
+    // A statement without an architectural encoding: a runtime service that
+    // needs IBM macro expansion first. (MVST and MVCLE, used here before, are
+    // now encoded.)
+    std::fs::write(&source, "MAIN CSECT\n WTO 'HI'\n BR 14\n END\n").unwrap();
     let result = invoke();
     assert_eq!(result.status.code(), Some(12));
     assert!(String::from_utf8_lossy(&result.stderr).contains("ADATA instruction output"));

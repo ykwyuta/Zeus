@@ -64,7 +64,8 @@ OPTIONS
                compile/check: select UNI or ZEUS, optionally followed by
                ,NOLIST. Both select the implemented union of instructions.
                Older architecture profiles and opcode-table LIST are diagnosed.
-               The default is ZEUS. This option uses *PROCESS precedence.
+               The default is UNI, as in HLASM (&SYSOPT_OPTABLE reports it).
+               This option uses *PROCESS precedence.
   --listing FILE
                compile/check: write an expanded source listing with final
                offsets, storage lengths, member file/line locations, and

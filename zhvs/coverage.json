@@ -51,6 +51,58 @@
       "USING-RESTORED"
     ]
   },
+  "HA106A": {
+    "expect": "run",
+    "tests": [
+      "DC-CA-ASCII",
+      "DC-CE-EBCDIC",
+      "DC-CU-UTF16",
+      "DC-Y-HALFWORD",
+      "DC-AD-DOUBLEWORD",
+      "DC-AL3-LENGTH",
+      "CCW0-LAYOUT",
+      "CCW1-LAYOUT",
+      "CCW-ALIGNED",
+      "CCW-LENGTH-ATTR"
+    ]
+  },
+  "HA107A": {
+    "expect": "run",
+    "tests": [
+      "CCW0-LAYOUT",
+      "S-CON-BASE",
+      "S-CON-DISPLACEMENT",
+      "SY-CON-SAME-LOW",
+      "WXTRN-UNRESOLVED",
+      "V-CON-ENTRY",
+      "VD-CON-ENTRY",
+      "LOCTR-ORDER"
+    ]
+  },
+  "HA108A": {
+    "expect": "run",
+    "tests": [
+      "AMODE31-LA",
+      "COPY-MEMBER"
+    ]
+  },
+  "HA109A": {
+    "expect": "run",
+    "tests": [
+      "DXD-CXD-COVERS",
+      "DXD-Q-ALIGNED",
+      "RSECT-DATA",
+      "RSECT-SYSSTYP",
+      "ENTRY-VCON"
+    ]
+  },
+  "HA110A": {
+    "expect": "run",
+    "tests": [
+      "ICTL-COLUMN1-IGNORED",
+      "ICTL-LABEL-COLUMN2"
+    ]
+  },
   "HD101A": {
     "expect": "run",
     "tests": [
@@ -142,6 +194,21 @@
       "TP-SIGN-E",
       "TP-SIGN-F",
       "TP-INPUT-KEPT"
+    ]
+  },
+  "HD107A": {
+    "expect": "run",
+    "tests": [
+      "E-TENTH",
+      "D-TENTH",
+      "L-TENTH",
+      "F-FRACTION",
+      "H-NEG-FRACTION",
+      "FS-SCALE",
+      "P-DECIMAL-POINT",
+      "Z-NEGATIVE",
+      "E-ROUND-HALF",
+      "DS-UNINITIALIZED"
     ]
   },
   "HE101N": {
@@ -1056,6 +1123,484 @@
       "ICMH-MASK-15"
     ]
   },
+  "HI110A": {
+    "expect": "run",
+    "tests": [
+      "TR-TABLE",
+      "TRT-FOUND-OFFSET",
+      "TRT-FOUND-FUNC",
+      "TRT-FOUND-CC",
+      "TRT-NONE-CC",
+      "TRT-LAST-CC",
+      "EX-MVC-LENGTH",
+      "MVCL-PAD",
+      "MVCL-PAD-CC",
+      "CLCL-PAD-EQUAL",
+      "CLCL-LOW-OFFSET",
+      "MVST-COPY",
+      "MVST-END-OFFSET",
+      "SRST-FOUND",
+      "CLST-EQUAL",
+      "EDMK-RESULT",
+      "EDMK-MARK-OFFSET",
+      "MVO-SHIFT",
+      "TM-ONES-CC",
+      "TM-ZEROS-CC",
+      "TM-MIXED-CC"
+    ]
+  },
+  "HI111A": {
+    "expect": "run",
+    "tests": [
+      "BCT-COUNT",
+      "BXLE-COUNT",
+      "BXLE-FINAL-INDEX",
+      "BXH-COUNT",
+      "CLM-MASK-EQUAL",
+      "STCM-MASK",
+      "IC-PRESERVE",
+      "SLDA-OVERFLOW-CC",
+      "SLDA-OVERFLOW-VAL",
+      "SRDA-NEGATIVE",
+      "SRDA-NEGATIVE-CC"
+    ]
+  },
+  "HI112A": {
+    "expect": "run",
+    "tests": [
+      "A-OVERFLOW",
+      "AH-SIGN-EXTEND",
+      "AHY-NEGATIVE",
+      "AY-ZERO",
+      "AGF-SIGN-EXTEND",
+      "AGFI-OVERFLOW",
+      "AGR-NEGATIVE",
+      "S-NEGATIVE",
+      "S-OVERFLOW",
+      "SH-SIGN-EXTEND",
+      "SHY",
+      "SY-ZERO",
+      "SGF-SIGN-EXTEND",
+      "SGR-OVERFLOW"
+    ]
+  },
+  "HI113A": {
+    "expect": "run",
+    "tests": [
+      "AL-ZERO-CARRY",
+      "ALR-NO-CARRY",
+      "ALY-NONZERO-CARRY",
+      "ALG-ZERO-CARRY",
+      "ALC-CARRY-IN",
+      "ALCR-NO-CARRY-IN",
+      "ALCG-CARRY-OUT",
+      "SL-BORROW",
+      "SLR-ZERO",
+      "SLY-NO-BORROW",
+      "SLG-BORROW",
+      "SLGR",
+      "SLB-BORROW-IN",
+      "SLBR-NO-BORROW-IN",
+      "SLBG-ZERO-BORROW",
+      "SLBGR"
+    ]
+  },
+  "HI114A": {
+    "expect": "run",
+    "tests": [
+      "C-SIGNED-HIGH",
+      "CR-LOW",
+      "CY-EQUAL",
+      "CH-SIGN-EXTEND",
+      "CHY",
+      "CHI-LOW",
+      "CG-64",
+      "CGF-SIGN-EXTEND",
+      "CGFI",
+      "CGFR",
+      "CGHI",
+      "CL-LOGICAL",
+      "CLR-HIGH",
+      "CLY",
+      "CLG",
+      "CLGR",
+      "CLI-LOW",
+      "CLIY-EQUAL",
+      "CLMH-HIGH-HALF",
+      "CLMY"
+    ]
+  },
+  "HI115A": {
+    "expect": "run",
+    "tests": [
+      "M-SIGNED-PAIR",
+      "MH-LOW-WORD",
+      "MHI-TRUNCATED",
+      "ML-LOGICAL",
+      "MLR",
+      "MLG-128",
+      "MLGR-128",
+      "MSG",
+      "MSGR-LOW-64",
+      "MSY",
+      "MGHI",
+      "D-NEGATIVE-DIVIDEND",
+      "DL-LOGICAL",
+      "DLR",
+      "DLG-128",
+      "DLGR",
+      "DSG",
+      "DSGF-SIGN-EXTEND",
+      "DSGFR",
+      "DSGR"
+    ]
+  },
+  "HI116A": {
+    "expect": "run",
+    "tests": [
+      "LH-SIGN-EXTEND",
+      "LHY",
+      "LB-SIGN-EXTEND",
+      "LBR",
+      "LGB",
+      "LGBR",
+      "LGFI",
+      "LLC-ZERO-EXTEND",
+      "LLH-ZERO-EXTEND",
+      "LLIHF",
+      "LLIHH-LLIHL",
+      "LLILF-LLILH-LLILL",
+      "LCR-OVERFLOW",
+      "LCR-NEGATIVE",
+      "LNR",
+      "LNR-ZERO",
+      "LPR",
+      "LPR-OVERFLOW",
+      "LTR",
+      "LTGR"
+    ]
+  },
+  "HI117A": {
+    "expect": "run",
+    "tests": [
+      "STMG-LMG",
+      "STMY-LMY",
+      "STC-LOW-BYTE",
+      "STCY",
+      "STH-STHY",
+      "STY",
+      "STCMH-MASK",
+      "STCMY-MASK",
+      "ICMY-LEFT-ONE",
+      "ICMY-ZERO-MASK",
+      "ICY",
+      "IIHH-IIHL",
+      "IILH-IILL",
+      "LAY-NEGATIVE-DISP",
+      "LARL-SAME-AS-LA"
+    ]
+  },
+  "HI118A": {
+    "expect": "run",
+    "tests": [
+      "LRV",
+      "LRVR",
+      "LRVGR",
+      "LRVH",
+      "STRV-STRVH",
+      "LOCR-TAKEN",
+      "LOCR-NOT-TAKEN",
+      "LOCGR",
+      "LOC-LOCG",
+      "LOCHI-LOCGHI",
+      "LOCHHI",
+      "LOCFH-LOCFHR",
+      "STOC-STOCG",
+      "STOCFH",
+      "SELR",
+      "SELGR",
+      "SELFHR"
+    ]
+  },
+  "HI119A": {
+    "expect": "run",
+    "tests": [
+      "N",
+      "NR-ZERO",
+      "NY",
+      "NG",
+      "NGR",
+      "NI-NIY",
+      "NIHF",
+      "NIHH-ZERO",
+      "NIHL",
+      "NILF",
+      "NILH-NILL",
+      "TMLL-MIXED-LEFT-ONE",
+      "TMLL-MIXED-LEFT-ZERO",
+      "TMLH-ONES",
+      "TMHH-ZEROS",
+      "TMHL",
+      "TMY-MIXED"
+    ]
+  },
+  "HI120A": {
+    "expect": "run",
+    "tests": [
+      "O",
+      "OR-ZERO",
+      "OY",
+      "OG",
+      "OGR",
+      "OIY",
+      "OIHF",
+      "OIHH-OIHL",
+      "OILF",
+      "OILH-OILL",
+      "X",
+      "XY-ZERO",
+      "XG",
+      "XGR-SELF",
+      "XI-XIY",
+      "XIHF-XILF"
+    ]
+  },
+  "HI121A": {
+    "expect": "run",
+    "tests": [
+      "NRK",
+      "NGRK",
+      "ORK",
+      "OGRK",
+      "XRK",
+      "XGRK",
+      "NCRK",
+      "NCGRK",
+      "OCRK",
+      "OCGRK",
+      "NNRK",
+      "NNGRK",
+      "NORK",
+      "NOGRK",
+      "NXRK",
+      "NXGRK"
+    ]
+  },
+  "HI122A": {
+    "expect": "run",
+    "tests": [
+      "SLA-OVERFLOW",
+      "SLA-NEGATIVE",
+      "SLAG",
+      "SRA-NEGATIVE",
+      "SRAG",
+      "SLDL",
+      "SRDL",
+      "RLL",
+      "RISBGN-INSERT",
+      "RISBGN-ZERO-REST",
+      "RISBHG",
+      "RISBLG-ZERO",
+      "RNSBG",
+      "ROSBG",
+      "RXSBG-ZERO",
+      "RXSBG-TEST-ONLY"
+    ]
+  },
+  "HI123A": {
+    "expect": "run",
+    "tests": [
+      "BAL-LINK",
+      "BALR-LINK",
+      "BAS-LINK",
+      "BRAS-LINK",
+      "BRASL-LINK",
+      "BC-TAKEN",
+      "BC-NOT-TAKEN",
+      "BCR-TAKEN",
+      "BRC-TAKEN",
+      "BRCL-NOT-TAKEN",
+      "BCTR-LOOP",
+      "BCTR-ZERO-COUNTS",
+      "BCTG-LOOP",
+      "BCTGR-LOOP",
+      "BRCT-LOOP",
+      "BRCTG-LOOP",
+      "BRCTH-LOOP",
+      "EXRL-LENGTH"
+    ]
+  },
+  "HI124A": {
+    "expect": "run",
+    "tests": [
+      "LAA-OVERFLOW",
+      "LAAL-CARRY",
+      "LAALG",
+      "LAN-ZERO",
+      "LAO",
+      "LAX-ZERO",
+      "LANG-LAOG-LAXG",
+      "CSY-EQUAL",
+      "CSY-UNEQUAL",
+      "CSG",
+      "CDS-EQUAL",
+      "CDSY-UNEQUAL",
+      "CDSG",
+      "TS-ZERO",
+      "TS-SET",
+      "LPD",
+      "LPDG",
+      "LPQ-STPQ"
+    ]
+  },
+  "HI125A": {
+    "expect": "run",
+    "tests": [
+      "CVBY",
+      "CVBG",
+      "CVDY",
+      "CVDG",
+      "MVCLE-PAD",
+      "MVCLE-TRUNCATE",
+      "CLCLE-HIGH",
+      "CLCLE-PAD-EQUAL",
+      "MVIY",
+      "TRTR-RIGHTMOST",
+      "LAM-STAM",
+      "SPM-SETS-CC",
+      "MS",
+      "BSM-RECORD-MODE",
+      "BASSM-LINK-31",
+      "SAM64-LA-64BIT"
+    ]
+  },
+  "HI126A": {
+    "expect": "run",
+    "tests": [
+      "AE-NORMALIZED",
+      "AER-NEGATIVE",
+      "AU-UNNORMALIZED",
+      "AUR-CARRY",
+      "CE-LOW",
+      "CER-EQUAL",
+      "DE",
+      "DER-NEGATIVE",
+      "HER",
+      "LCER",
+      "LNER",
+      "LPER",
+      "LTER-ZERO",
+      "LER",
+      "ME-LONG-PRODUCT",
+      "MER",
+      "SE-NEGATIVE",
+      "SER-ZERO",
+      "SU-UNNORMALIZED",
+      "SUR"
+    ]
+  },
+  "HI127A": {
+    "expect": "run",
+    "tests": [
+      "ADR",
+      "AW-UNNORMALIZED",
+      "AWR-CARRY",
+      "CD-HIGH",
+      "CDR-EQUAL",
+      "DDR",
+      "HDR",
+      "LCDR",
+      "LNDR",
+      "LPDR",
+      "LTDR-NEGATIVE",
+      "LDR",
+      "LEDR-ROUND-UP",
+      "LEDR-NO-ROUND",
+      "LRDR-ROUND-UP",
+      "MDR",
+      "SD-NEGATIVE",
+      "SDR-ZERO",
+      "SW-UNNORMALIZED",
+      "SWR"
+    ]
+  },
+  "HI128A": {
+    "expect": "run",
+    "tests": [
+      "AXR",
+      "AXR-CC",
+      "SXR",
+      "SXR-CC-ZERO",
+      "LXR",
+      "MXR",
+      "MXD",
+      "MXDR"
+    ]
+  },
+  "HI129A": {
+    "expect": "run",
+    "tests": [
+      "ADB",
+      "AEB-NEGATIVE",
+      "SDB-NEGATIVE",
+      "SEB-ZERO",
+      "MDB-ROUNDED",
+      "MEEB-ROUNDED",
+      "DDB-THIRD",
+      "DEB-THIRD",
+      "MADB",
+      "MAEB",
+      "MSDB",
+      "MSEB",
+      "CDB-LOW",
+      "CEB-EQUAL",
+      "KDB-HIGH",
+      "KEB-EQUAL"
+    ]
+  },
+  "HI130A": {
+    "expect": "run",
+    "tests": [
+      "LDEB-EXACT",
+      "LXDB",
+      "LXEB",
+      "MDEB-EXACT",
+      "MXDB",
+      "SQDB",
+      "SQEB",
+      "TCDB-POS-NORMAL",
+      "TCDB-NOT-ZERO",
+      "TCEB-NEG-NORMAL",
+      "TCXB-POS-ZERO",
+      "LFPC-EFPC",
+      "SRNM",
+      "SRNMB",
+      "SRNMT"
+    ]
+  },
+  "HI131A": {
+    "expect": "run",
+    "tests": [
+      "CDPT",
+      "CXPT-NEGATIVE",
+      "CPDT-NEGATIVE",
+      "CPXT-NEGATIVE",
+      "CDZT",
+      "CXZT",
+      "CZDT-UNSIGNED",
+      "CZXT-UNSIGNED",
+      "SLDT",
+      "SRDT",
+      "SLXT",
+      "SRXT",
+      "TDCDT-PLUS-ZERO",
+      "TDCDT-MINUS-ZERO",
+      "TDCDT-MINUS-ZERO-BIT",
+      "TDCET-PLUS-ZERO",
+      "TDCXT-PLUS-ZERO",
+      "TDCDT-NONZERO"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [
@@ -1089,6 +1634,127 @@
       "LOOKAHEAD-LENGTH"
     ]
   },
+  "HM105A": {
+    "expect": "run",
+    "tests": [
+      "SYSNDX-STEP",
+      "GBLA-ACROSS-CALLS",
+      "MEXIT-STOPS",
+      "GBLC-APPEND",
+      "SYSLIST-COUNT",
+      "SYSLIST-ELEMENT",
+      "AGO-SKIPS",
+      "AGO-COMPUTED",
+      "D2A-NEGATIVE",
+      "SETA-DIVIDE-TRUNC",
+      "COMPARE-SAME-LENGTH",
+      "COMPARE-SHORTER-LOW",
+      "DUPLICATION-FACTOR"
+    ]
+  },
+  "HM106A": {
+    "expect": "run",
+    "tests": [
+      "A2B-LENGTH",
+      "A2B-LOW-BITS",
+      "A2C",
+      "A2D",
+      "A2X",
+      "B2A",
+      "B2C",
+      "B2D",
+      "B2X",
+      "C2A",
+      "C2B",
+      "C2D",
+      "D2A-NEGATIVE",
+      "D2B-LOW-BITS",
+      "D2C",
+      "D2X",
+      "X2A",
+      "X2B",
+      "X2C",
+      "X2D"
+    ]
+  },
+  "HM107A": {
+    "expect": "run",
+    "tests": [
+      "DOUBLE-LENGTH",
+      "LOWER",
+      "DEQUOTE",
+      "FIND",
+      "IS-FUNCTIONS",
+      "ISSYM-DIGIT-FIRST",
+      "SHIFT-LOGICAL",
+      "SLA-OPERATOR",
+      "SRA-NEGATIVE",
+      "SIGNED-NEGATIVE",
+      "NEGATIVE-SUBSTITUTE",
+      "BYTE",
+      "AND-OR-XOR",
+      "NOT-COMPLEMENT",
+      "DCLEN",
+      "DCVAL",
+      "SYSECT-SYSSTYP",
+      "SYSLOC",
+      "SYSMAC-SYSNEST",
+      "SYSOPT-RENT",
+      "OPCODE-ATTRIBUTE",
+      "SYSDATE-LENGTHS",
+      "SYSPARM-EMPTY",
+      "GBLB-SETB"
+    ]
+  },
+  "HM108A": {
+    "expect": "run",
+    "tests": [
+      "T-FULLWORD-HALF",
+      "T-CHAR-PACKED-HEX",
+      "T-EXPLICIT-LENGTH",
+      "T-ADDRESS-LONG",
+      "T-CSECT-INSTR",
+      "T-WXTRN",
+      "T-UNDEFINED",
+      "T-SETA-NUMERIC",
+      "T-MACRO-OPERANDS",
+      "D-DEFINED",
+      "D-SETC-SYMBOL",
+      "SYSATTRA",
+      "SYSATTRA-NONE",
+      "SYSATTRA-DS",
+      "SYSATTRP"
+    ]
+  },
+  "HM109A": {
+    "expect": "run",
+    "tests": [
+      "SYSCLOCK-FORMAT",
+      "SYSSEQF",
+      "SYSIN-MEMBER",
+      "SYSM-SEV",
+      "SYSM-HSEV",
+      "SYSSTMT-FORM",
+      "SYSSTMT-NEXT",
+      "SYSOPT-DBCS",
+      "SYSOPT-XOBJECT",
+      "SYSOPT-OPTABLE",
+      "SYSVER-SYSASM-TYPE",
+      "SYSJOB-SYSSTEP-TYPE"
+    ]
+  },
+  "HM110A": {
+    "expect": "run",
+    "tests": [
+      "SYSIN-DSN-SET",
+      "SYSLIB-SOURCE-MACRO",
+      "SYSLIB-LIB-MEMBER",
+      "VOLUME-AT-MOST-6",
+      "SYSLIN-OBJECT",
+      "SYSPRINT-LISTING",
+      "UNUSED-DD-NULL"
+    ]
+  },
   "HS101A": {
     "expect": "run",
     "tests": [
@@ -1119,6 +1785,13 @@
       "HLASM-PLI-TEXT",
       "HLASM-COBOL-SHARED",
       "HLASM-COBOL-TEXT"
+    ]
+  },
+  "HS105A": {
+    "expect": "run",
+    "tests": [
+      "TP-BAD-SIGN-CC",
+      "TP-BAD-DIGIT-CC"
     ]
   }
 }

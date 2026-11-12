@@ -1,0 +1,3567 @@
+{
+  "PA101A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Table 28. Results of arithmetic operations between two FIXED operands under RULES(IBM) | N is the maximum precision for FIXED DECIMAL.",
+      "PLI-PG: LIMITS | If FIXEDDEC(15,31) is specified, you can declare FIXED DECIMAL variables with precision greater than 15, but unless an expression contains an operand with precision greater than 15, the compiler uses 15 as the maximum precision for all arithmetic.",
+      "PLI-PG: RULES"
+    ],
+    "tests": {
+      "EXPLICIT-ADD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ADD"
+        ]
+      },
+      "EXPLICIT-MULTIPLY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MULTIPLY"
+        ]
+      },
+      "EXPLICIT-DIVIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIVIDE"
+        ]
+      },
+      "POWER-NEG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Arithmetic operations"
+        ]
+      },
+      "POWER-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Arithmetic operations"
+        ]
+      }
+    }
+  },
+  "PA102A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Source-to-target rules"
+    ],
+    "tests": {
+      "AND-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Bit operations"
+        ]
+      },
+      "OR-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Bit operations"
+        ]
+      },
+      "NOT-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Bit operations"
+        ]
+      },
+      "BOOL-XOR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BOOL"
+        ]
+      }
+    }
+  },
+  "PA103A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Picture characters for numeric character data",
+      "PLI-LRM: Exponent characters | The value of the exponent is adjusted in the character value so that the first significant digit of the first field (the mantissa) appears in the position associated with the first digit specifier of the specification"
+    ],
+    "tests": {
+      "FLOAT-PIC-NORMAL": {
+        "basis": "zos",
+        "note": "1234.5 has five significant digits and the mantissa field holds four; the Language Reference does not say whether the dropped digit 5 truncates (1.234) or rounds (1.235) on the way to a float picture. Expected is the current Zeus value (truncation)."
+      }
+    }
+  },
+  "PA104A": {
+    "basis": "spec",
+    "tests": {
+      "ARRAY-BROADCAST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Array expressions"
+        ]
+      },
+      "ARRAY-ARITH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Array expressions"
+        ]
+      },
+      "ARRAY-SECTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Array expressions"
+        ]
+      },
+      "ARRAY-BOUNDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIM"
+        ]
+      },
+      "BY-NAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BY NAME"
+        ]
+      },
+      "SUBSTR-PSEUDO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SUBSTR"
+        ]
+      },
+      "UNSPEC-PSEUDO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNSPEC"
+        ]
+      }
+    }
+  },
+  "PA105A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Picture characters for numeric character data"
+    ],
+    "tests": {
+      "PIC-POINT-INSERTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Insertion characters"
+        ]
+      },
+      "PIC-POINT-WITH-V": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Insertion characters"
+        ]
+      },
+      "PIC-DRIFT-CURRENCY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Drifting use"
+        ]
+      },
+      "PIC-CREDIT-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Credit, debit, overpunched, and zero replacement characters"
+        ]
+      },
+      "PIC-CREDIT-POSITIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Credit, debit, overpunched, and zero replacement characters"
+        ]
+      },
+      "PIC-OVERPUNCH-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Credit, debit, overpunched, and zero replacement characters"
+        ]
+      },
+      "PIC-EDITED-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Numeric character data"
+        ]
+      }
+    }
+  },
+  "PA106A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: QUICKSORT | QUICKSORT performs a quick-sort of an array by using a simple compare."
+    ],
+    "tests": {
+      "QUICKSORT-ALL": {
+        "basis": "zos",
+        "note": "LRM は QUICKSORT/QUICKSORTX を組込み関数の表に挙げるが値を書いていない。Zeus は CALL 文で呼ぶ形だけを受ける。その形が通ることを実機で確かめる",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements."
+        ]
+      },
+      "QUICKSORT-N-M": {
+        "basis": "zos",
+        "note": "QUICKSORT-ALL と同じ (CALL 文で呼ぶ形)",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements.",
+          "PLI-LRM: QUICKSORT | An expression that specifies the number of to-be-examined array elements. The counting starts with the nth and defaults to HBOUND(x) – n + 1."
+        ]
+      },
+      "QUICKSORT-CHAR": {
+        "basis": "zos",
+        "note": "QUICKSORT-ALL と同じ (CALL 文で呼ぶ形)",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements."
+        ]
+      },
+      "QUICKSORTX-DOWN": {
+        "basis": "zos",
+        "note": "QUICKSORT-ALL と同じ (CALL 文で呼ぶ形)",
+        "refs": [
+          "PLI-LRM: QUICKSORT | QUICKSORT overwrites the contents of x with the sorted elements.",
+          "PLI-LRM: QUICKSORTX | The function f must have the OPTLINK linkage and it is passed 2 POINTER BYVALUE arguments",
+          "PLI-LRM: QUICKSORTX | You can sort in reverse order by reversing the greater than and less than logic in the comparison function."
+        ]
+      },
+      "BINSEARCH-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero."
+        ]
+      },
+      "BINSEARCH-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero."
+        ]
+      },
+      "BINSEARCH-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero."
+        ]
+      },
+      "BINSEARCH-RELATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero.",
+          "PLI-LRM: BINSEARCH | the true index would be calculated as: the returned value + LBOUND(x) – 1."
+        ]
+      },
+      "BINSEARCH-N-M": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCH | The returned value is the relative index of the key value in this array. If the key value y is not found in the array, the returned size_t value is zero.",
+          "PLI-LRM: BINSEARCH | An expression that specifies the index of the first array element to be examined. It defaults to LBOUND(x)."
+        ]
+      },
+      "BINSEARCHX-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCHX | The address of the key value to be searched for (the value of p).",
+          "PLI-LRM: BINSEARCHX | If the value of the array element is less than the value of the key element, then the returned value must be -1."
+        ]
+      },
+      "BINSEARCHX-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINSEARCHX | The address of the key value to be searched for (the value of p).",
+          "PLI-LRM: BINSEARCHX | If the value of the array element is less than the value of the key element, then the returned value must be -1."
+        ]
+      }
+    }
+  },
+  "PC101A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DO statement"
+    ],
+    "tests": {
+      "DO-ITERATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ITERATE statement"
+        ]
+      },
+      "DO-LEAVE-LABEL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LEAVE statement"
+        ]
+      },
+      "SELECT-WHEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SELECT statement"
+        ]
+      },
+      "SELECT-OTHER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SELECT statement"
+        ]
+      }
+    }
+  },
+  "PC102A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Recursive procedures",
+      "PLI-LRM: Scope of declarations"
+    ]
+  },
+  "PC103A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ENTRY attribute"
+    ],
+    "tests": {
+      "GENERIC-FIXED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GENERIC attribute"
+        ]
+      },
+      "GENERIC-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GENERIC attribute"
+        ]
+      }
+    }
+  },
+  "PC104A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: FETCH statement",
+      "PLI-LRM: RELEASE statement"
+    ],
+    "tests": {
+      "FETCH-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 4001 through 9999 | 9250 Procedure to be fetched cannot be found."
+        ]
+      }
+    }
+  },
+  "PC105A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ON statement",
+      "PLI-LRM: REVERT statement",
+      "PLI-LRM: SIGNAL statement"
+    ]
+  },
+  "PC106A": {
+    "basis": "spec",
+    "tests": {
+      "ZERODIVIDE-HANDLER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ZERODIVIDE condition",
+          "PLI-MC: Condition codes 1 through 500 | 320 SIGNAL ZERODIVIDE statement executed or ZERODIVIDE condition occurred."
+        ]
+      },
+      "SIZE-HANDLER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIZE condition"
+        ]
+      },
+      "RECOVER-ARITH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIZE condition"
+        ]
+      }
+    }
+  },
+  "PC107A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONVERSION condition",
+      "PLI-LRM: ONCHAR"
+    ]
+  },
+  "PC108A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONVERSION condition",
+      "PLI-LRM: ONSOURCE"
+    ]
+  },
+  "PC109A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Scope of declarations"
+    ],
+    "tests": {
+      "STATIC-PERSIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC"
+        ]
+      },
+      "STATIC-INIT-ONCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC"
+        ]
+      },
+      "AUTOMATIC-REINIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: AUTOMATIC"
+        ]
+      }
+    }
+  },
+  "PC110A": {
+    "basis": "spec",
+    "tests": {
+      "OVERFLOW-HFP-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: OVERFLOW condition",
+          "POP: HFP Number Representation"
+        ]
+      },
+      "UNDERFLOW-HFP-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNDERFLOW condition",
+          "POP: HFP Number Representation"
+        ]
+      },
+      "ONCODE-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 300 SIGNAL OVERFLOW statement executed or OVERFLOW condition occurred."
+        ]
+      },
+      "ONCODE-UNDERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 330 SIGNAL UNDERFLOW statement executed or UNDERFLOW condition occurred."
+        ]
+      },
+      "ONCODE-ZERODIVIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 320 SIGNAL ZERODIVIDE statement executed or ZERODIVIDE condition occurred."
+        ]
+      },
+      "ONCODE-CONVERSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 501 through 1000 | 612 Error during character value to arithmetic conversion."
+        ]
+      },
+      "ONCODE-STRINGRANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 350 SIGNAL STRINGRANGE statement executed or STRINGRANGE condition occurred."
+        ]
+      },
+      "ONCODE-SUBSCRIPTRNG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 501 through 1000 | 520 SIGNAL SUBSCRIPTRANGE statement executed, or subscript has been evaluated and found to lie outside its specified bounds."
+        ]
+      },
+      "ONCODE-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | high-order nonzero digits have been lost in an assignment to a variable or temporary"
+        ]
+      },
+      "ONCODE-SIGNAL-ERROR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 9 SIGNAL ERROR statement executed."
+        ]
+      },
+      "ONCODE-CONDITION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 500 SIGNAL CONDITION (name) statement executed."
+        ]
+      }
+    }
+  },
+  "PC111A": {
+    "basis": "spec",
+    "tests": {
+      "UNDEFINEDFILE-ONCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 84 No DD statement associating file with a data set."
+        ]
+      },
+      "STRINGSIZE-RAISED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "STRINGSIZE-DISABLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "STRINGSIZE-VAR-BIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "STRINGSIZE-FITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "FIXEDOVERFLOW-DEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDOVERFLOW condition",
+          "PLI-MC: Condition codes 1 through 500 | 310 SIGNAL FIXEDOVERFLOW statement executed or FIXEDOVERFLOW condition occurred."
+        ]
+      },
+      "UNDEFINEDFILE-RAISED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNDEFINEDFILE condition"
+        ]
+      }
+    }
+  },
+  "PC112A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: ASSERT | The default is ASSERT(ENTRY).",
+      "PLI-LRM: ASSERT statement | Under the ASSERT(CONDITION) compiler option, the ASSERTION condition will be raised.",
+      "PLI-LRM: ASSERTION condition | On return from an ASSERTION ON-unit, processing is resumed at the next statement immediately following the statement that raised the condition."
+    ],
+    "tests": {
+      "ASSERT-TRUE-PASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B."
+        ]
+      },
+      "ASSERT-TRUE-TEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT TRUE/FALSE statement with a TEXT clause failed.",
+          "PLI-LRM: ONTEXT | If the ASSERT statement had no TEXT clause, a null string is returned.",
+          "PLI-LRM: ONCONDID | condid_assertion value(24),"
+        ]
+      },
+      "ASSERT-FALSE-PASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B."
+        ]
+      },
+      "ASSERT-FALSE-FAIL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | Asserts that test-expression is true when one or more bits in test-expression have the value '1'B.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT TRUE/FALSE statement with a TEXT clause failed.",
+          "PLI-LRM: ONTEXT | If the ASSERT statement had no TEXT clause, a null string is returned."
+        ]
+      },
+      "ASSERT-COMPARE-EQ": {
+        "basis": "zos",
+        "note": "ONACTUAL/ONEXPECTED の文字列は数の値を CHAR に変換した形とみなし、TRIM して比べる。変換の形は文書に書かれていない",
+        "refs": [
+          "PLI-LRM: ASSERT statement | If you do not specify operator, EQ is the default value.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT COMPARE statement with a TEXT clause failed.",
+          "PLI-LRM: ONACTUAL | ONACTUAL returns a nonvarying character string whose value is the \"actual\" value",
+          "PLI-LRM: ONEXPECTED | ONEXPECTED returns a nonvarying character string whose value is the \"expected\" value",
+          "PLI-LRM: ONOPERATOR | ONOPERATOR returns a CHAR(2) string whose value is the operator"
+        ]
+      },
+      "ASSERT-COMPARE-PASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | If you do not specify operator, EQ is the default value."
+        ]
+      },
+      "ASSERT-COMPARE-OP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSERT statement | If you do not specify operator, EQ is the default value.",
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT COMPARE statement with a TEXT clause failed.",
+          "PLI-LRM: ONOPERATOR | ONOPERATOR returns a CHAR(2) string whose value is the operator",
+          "PLI-LRM: ASSERT statement | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      },
+      "ASSERT-UNREACHABLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | An ASSERT UNREACHABLE statement without a TEXT clause failed."
+        ]
+      },
+      "SIGNAL-ASSERTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | SIGNAL ASSERTION.",
+          "PLI-LRM: ASSERTION condition | The condition can also be raised by a SIGNAL ASSERTION statement."
+        ]
+      },
+      "ONPACKAGE": {
+        "basis": "zos",
+        "note": "パッケージ文の無いプログラムのパッケージ名は外側の手続きの名前とみなす",
+        "refs": [
+          "PLI-LRM: ONPACKAGE | ONPACKAGE returns a nonvarying character string containing the name of the package"
+        ]
+      },
+      "ONSUBSCRIPT-BOUNDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONSUBSCRIPT | ONSUBSCRIPT returns a REAL FIXED BIN(63) value that specifies the invalid array index",
+          "PLI-LRM: ONLBOUND | ONLBOUND returns a REAL FIXED BIN(63) value that specifies the lower bound",
+          "PLI-LRM: ONHBOUND | ONHBOUND returns a REAL FIXED BIN(63) value that specifies the upper bound"
+        ]
+      },
+      "ONLINE": {
+        "basis": "zos",
+        "note": "GONUMBER で翻訳したときの値。行番号の数え方 (SOURCELINE と同じ) は実機で確かめる",
+        "refs": [
+          "PLI-LRM: ONLINE | ONLINE returns a FIXED BIN(31) value which is the line number in the source in which a condition was raised."
+        ]
+      },
+      "ONAREA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONAREA | ONAREA returns a character string whose value is the name of the AREA reference",
+          "PLI-MC: Condition codes 1 through 500 | Attempt to allocate a based variable within an area that contains insufficient free storage"
+        ]
+      },
+      "ANYCONDITION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ANYCONDITION condition | establish (and cancel) an ON-unit that will trap any condition, including the CONDITION condition",
+          "PLI-LRM: ONCONDID | condid_condition value(3),"
+        ]
+      },
+      "FINISH-SIGNAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | SIGNAL FINISH, or STOP statement executed.",
+          "PLI-LRM: FINISH condition | Control passes to the FINISH ON-unit and processing continues."
+        ]
+      },
+      "INVALIDOP-SIGNAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | SIGNAL INVALIDOP statement was executed or INVALIDOP exception occurred."
+        ]
+      }
+    }
+  },
+  "PD101A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Table 39. Alignment requirements | Packed decimal",
+      "POP: Decimal Codes | The preferred sign codes are 1100 for plus and 1101"
+    ]
+  },
+  "PD102A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Table 39. Alignment requirements",
+      "PLI-LRM: Converting string lengths"
+    ],
+    "tests": {
+      "VAR-PREFIX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | Two-byte prefix plus"
+        ]
+      }
+    }
+  },
+  "PD103A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALIGNED and UNALIGNED attributes",
+      "PLI-LRM: Table 39. Alignment requirements"
+    ]
+  },
+  "PD104A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DEFINE STRUCTURE statement",
+      "PLI-LRM: DEFINE ALIAS statement",
+      "PLI-LRM: LIKE attribute"
+    ]
+  },
+  "PD105A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DEFINE ORDINAL statement"
+    ],
+    "tests": {
+      "ORDINAL-FIRST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIRST"
+        ]
+      },
+      "ORDINAL-LAST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LAST"
+        ]
+      },
+      "ORDINAL-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BINARYVALUE"
+        ]
+      },
+      "ORDINAL-SUCC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDINALSUCC"
+        ]
+      },
+      "ORDINAL-PRED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDINALPRED"
+        ]
+      },
+      "DEFAULT-I-N": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DEFAULT statement"
+        ]
+      }
+    }
+  },
+  "PD106A": {
+    "basis": "spec",
+    "tests": {
+      "WIDE-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | Two bytes per widechar"
+        ]
+      },
+      "GRAPHIC-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | Two bytes per graphic"
+        ]
+      },
+      "COMPLEX-REAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONJG",
+          "PLI-LRM: REAL"
+        ]
+      },
+      "COMPLEX-CONJ": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONJG",
+          "PLI-LRM: REAL"
+        ]
+      },
+      "COMPLEX-MAGNITUDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONJG",
+          "PLI-LRM: ABS"
+        ]
+      },
+      "HFP-SHORT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | Short floating-point",
+          "POP: HFP Number Representation",
+          "PLI-PG: DEFAULT | HEXADEC is the default."
+        ]
+      },
+      "HFP-LONG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | Short floating-point",
+          "POP: HFP Number Representation",
+          "PLI-PG: DEFAULT | HEXADEC is the default."
+        ]
+      },
+      "FLOAT-SIZES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | Short floating-point"
+        ]
+      }
+    }
+  },
+  "PD107A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: SIGNED and UNSIGNED attributes",
+      "PLI-LRM: Table 39. Alignment requirements",
+      "POP: Binary-Integer Representation"
+    ]
+  },
+  "PD108A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Language-specified defaults | If DEFAULT(IBM) is in effect, variables with names beginning with the letters I through N are given the attributes REAL FIXED BINARY(15,0); all other variables are given the attributes REAL FLOAT DECIMAL(6)."
+    ],
+    "tests": {
+      "FIXED-ALONE-DECIMAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 40. Default arithmetic precisions"
+        ]
+      },
+      "VALUE-CONSTANT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALUE attribute"
+        ]
+      },
+      "BUILTIN-NOT-VARIABLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SUBSTR"
+        ]
+      }
+    }
+  },
+  "PD109A": {
+    "basis": "zos",
+    "note": "Implementation-defined representations; expected values are the current Zeus behavior.",
+    "tests": {
+      "HFP-SHORT-TENTH": {
+        "basis": "zos",
+        "note": "Decimal 0.1 to short HFP: Zeus truncates (X40199999); Enterprise COBOL in Zeus rounds (X4019999A). Record which the PL/I compiler does.",
+        "refs": [
+          "PLI-LRM: Converting arithmetic precision | For floating-point data items, truncation on the right, or padding on the right with zeros, can occur."
+        ]
+      },
+      "HFP-LONG-TENTH": {
+        "basis": "zos",
+        "note": "Decimal 0.1 to long HFP: Zeus X401999999999999A.",
+        "refs": [
+          "PLI-LRM: Converting arithmetic precision | For floating-point data items, truncation on the right, or padding on the right with zeros, can occur."
+        ]
+      },
+      "HFP-BIN21-TENTH": {
+        "basis": "zos",
+        "note": "FLOAT BIN(21) maps to short HFP; same truncation question as HFP-SHORT-TENTH.",
+        "refs": [
+          "PLI-LRM: Converting arithmetic precision | For floating-point data items, truncation on the right, or padding on the right with zeros, can occur."
+        ]
+      },
+      "TENTH-TO-FIXED-DEC": {
+        "basis": "zos",
+        "note": "Short HFP 0.1 (truncated, below 0.1) to FIXED DEC(5,2) truncates to 0.09 in Zeus. If z/OS gives 0.10 the HFP constant is rounded or the conversion rounds.",
+        "refs": [
+          "PLI-LRM: Converting arithmetic precision | For floating-point data items, truncation on the right, or padding on the right with zeros, can occur."
+        ]
+      },
+      "FLOAT-TO-CHAR": {
+        "basis": "zos",
+        "note": "FLOAT DEC(6) to CHAR: Zeus gives a leading blank and a four-digit exponent ( 1.00000E-0001).",
+        "refs": [
+          "PLI-LRM: Target: CHARACTER | w, the length of the intermediate string, is p1+8."
+        ]
+      },
+      "STG-ENTRY-VARIABLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNSPEC | Table 84. Length of bit string returned by UNSPEC"
+        ]
+      },
+      "STG-LABEL-VARIABLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNSPEC | Table 84. Length of bit string returned by UNSPEC"
+        ]
+      },
+      "STG-FILE-VARIABLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNSPEC | Table 84. Length of bit string returned by UNSPEC"
+        ]
+      },
+      "STG-HANDLE-OFFSET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNSPEC | Table 84. Length of bit string returned by UNSPEC"
+        ]
+      },
+      "STG-AREA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNSPEC | AREA (n) under LP(32)",
+          "PLI-LRM: Area data and attribute | In addition to the declared size, an extra 16 bytes of control information precedes the reserved size of an area."
+        ]
+      },
+      "NULL-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: DEFAULT | NULL370 is the default."
+        ]
+      },
+      "SYSNULL-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSNULL | SYSNULL returns the system null pointer value.",
+          "PLI-PG: DEFAULT | If you specify NULLSYS, binvalue(null()) is equal to 0."
+        ]
+      },
+      "AREA-EMPTY-HEADER": {
+        "basis": "zos",
+        "note": "The 16-byte header of an empty AREA is not published; Zeus has all zeros.",
+        "refs": [
+          "PLI-LRM: Area data and attribute | The 16 bytes contain such details as the amount of storage in use."
+        ]
+      },
+      "OVERLAP-SUBSTR-RIGHT": {
+        "basis": "zos",
+        "note": "Overlapping SUBSTR assignment to the right: Zeus copies byte by byte from the left (propagation).",
+        "refs": [
+          "PLI-LRM: SUBSTR"
+        ]
+      },
+      "OVERLAP-SUBSTR-LEFT": {
+        "basis": "zos",
+        "note": "Overlapping SUBSTR assignment to the left: Zeus value.",
+        "refs": [
+          "PLI-LRM: SUBSTR"
+        ]
+      },
+      "DEC-OVER-NO-SIZE": {
+        "basis": "zos",
+        "note": "FIXED DEC(3) assigned 1000 with SIZE disabled: the result is undefined in the Language Reference; Zeus keeps the low-order digits (X000C).",
+        "refs": [
+          "PLI-LRM: SIZE condition"
+        ]
+      },
+      "STATIC-NO-INIT": {
+        "basis": "zos",
+        "note": "STATIC without INITIAL: Zeus gives binary zeros for both FIXED BIN and CHAR.",
+        "refs": [
+          "PLI-LRM: INITIAL attribute"
+        ]
+      },
+      "RANDOM-SEED-ONE": {
+        "basis": "zos",
+        "note": "RANDOM(1): the generator is not published; Zeus value.",
+        "refs": [
+          "PLI-LRM: RANDOM | RANDOM returns a FLOAT BINARY(53) random number generated using x as the given seed."
+        ]
+      },
+      "RANDOM-NEXT": {
+        "basis": "zos",
+        "note": "RANDOM() after RANDOM(1): Zeus value.",
+        "refs": [
+          "PLI-LRM: RANDOM | RANDOM returns a FLOAT BINARY(53) random number generated using x as the given seed."
+        ]
+      }
+    }
+  },
+  "PD110A": {
+    "basis": "spec",
+    "tests": {
+      "UNSIGNED-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIGNED and UNSIGNED attributes"
+        ]
+      },
+      "SIGNED-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIGNED and UNSIGNED attributes"
+        ]
+      },
+      "VARYINGZ-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | nullterminator"
+        ]
+      },
+      "VARYINGZ-NULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | nullterminator"
+        ]
+      },
+      "NONVARYING-PADDED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Table 39. Alignment requirements | nullterminator"
+        ]
+      },
+      "HEXADEC-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: DEFAULT | HEXADEC is the default."
+        ]
+      },
+      "BIGENDIAN-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes"
+        ]
+      },
+      "BYVALUE-COPY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Using BYVALUE and BYADDR | Unless an argument is passed by value (BYVALUE), a reference to an argument, not its value, is generally passed to a subroutine or function."
+        ]
+      },
+      "OPTIONAL-PRESENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: OPTIONAL attribute",
+          "PLI-LRM: PRESENT"
+        ]
+      },
+      "OPTIONAL-OMITTED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: OPTIONAL attribute",
+          "PLI-LRM: PRESENT"
+        ]
+      },
+      "NONASSIGNABLE-READ": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSIGNABLE and NONASSIGNABLE attributes"
+        ]
+      }
+    }
+  },
+  "PD111A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLOCSIZE | To use this built-in function, you must also specify the CHECK(STORAGE) compile-time option."
+    ],
+    "tests": {
+      "AVAILABLEAREA-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: AVAILABLEAREA | SizeAfter = availablearea(Uarea); /* returns 896 */"
+        ]
+      },
+      "AVAILABLEAREA-FULL": {
+        "basis": "zos",
+        "note": "LRM の例は 896 バイトの割り当てで終わり、そのあとの値を書いていない。Zeus は 0 を返す",
+        "refs": [
+          "PLI-LRM: AVAILABLEAREA | SizeAfter = availablearea(Uarea); /* returns 896 */"
+        ]
+      },
+      "ALLOCATE-AREA-ROUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCATE | When you specify ALLOCATE(n, x), the specified number of bytes n is allocated within that area. The number is rounded up to a multiple of 8."
+        ]
+      },
+      "ALLOCATE-AREA-COND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCATE | When you specify ALLOCATE(n, x), the specified number of bytes n is allocated within that area. The number is rounded up to a multiple of 8.",
+          "PLI-LRM: ALLOCATE | If there is insufficient space within the specified area, the AREA condition is raised."
+        ]
+      },
+      "ALLOCNEXT-NULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCNEXT | It is rounded up to the nearest multiple of 8.",
+          "PLI-LRM: ALLOCNEXT | If the first available chunk is not large enough, sysnull is returned. Unlike the ALLOCATE built-in function, neither the STORAGE nor the AREA condition is raised."
+        ]
+      },
+      "ALLOCNEXT-FITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCNEXT | It is rounded up to the nearest multiple of 8."
+        ]
+      },
+      "ALLOCSIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCSIZE | ALLOCSIZE returns 0 if the pointer does not point to the start of a piece of allocated storage."
+        ]
+      },
+      "ALLOC31": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCSIZE | ALLOCSIZE returns 0 if the pointer does not point to the start of a piece of allocated storage.",
+          "PLI-LRM: ALLOC31 | ALLOC31 allocates storage of size n in heap storage below the bar and returns the pointer to the allocated storage.",
+          "PLI-LRM: CHECKSTG | When an allocation is made, it is followed by eight extra bytes which are set to 'ff'x. The allocation is considered uncorrupted if those bytes have not been altered."
+        ]
+      },
+      "ALLOCATE-STMT": {
+        "basis": "zos",
+        "note": "ALLOCATE 文で取った CHAR(99) VARYINGZ の大きさを 100 (データの大きさ) とみなす。端数の丸めがあるかは実機で確かめる",
+        "refs": [
+          "PLI-LRM: ALLOCSIZE | ALLOCSIZE returns 0 if the pointer does not point to the start of a piece of allocated storage.",
+          "PLI-LRM: UNALLOCATED | UNALLOCATED returns the BIT(1) value '1'b if the specified pointer value is not the start of a piece of storage that is obtained with the ALLOCATE statement or the ALLOCATE built-in function."
+        ]
+      },
+      "UNALLOCATED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNALLOCATED | UNALLOCATED returns the BIT(1) value '1'b if the specified pointer value is not the start of a piece of storage that is obtained with the ALLOCATE statement or the ALLOCATE built-in function."
+        ]
+      },
+      "FREE-UNALLOCATED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNALLOCATED | UNALLOCATED returns the BIT(1) value '1'b if the specified pointer value is not the start of a piece of storage that is obtained with the ALLOCATE statement or the ALLOCATE built-in function."
+        ]
+      },
+      "CHECKSTG-CLEAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHECKSTG | When an allocation is made, it is followed by eight extra bytes which are set to 'ff'x. The allocation is considered uncorrupted if those bytes have not been altered.",
+          "PLI-LRM: CHECKSTG | If no pointer value is supplied, CHECKSTG determines whether all allocated storage is uncorrupted."
+        ]
+      },
+      "CHECKSTG-CORRUPT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHECKSTG | When an allocation is made, it is followed by eight extra bytes which are set to 'ff'x. The allocation is considered uncorrupted if those bytes have not been altered.",
+          "PLI-LRM: CHECKSTG | If no pointer value is supplied, CHECKSTG determines whether all allocated storage is uncorrupted."
+        ]
+      }
+    }
+  },
+  "PE101N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Precision attribute"
+    ]
+  },
+  "PE101P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Precision attribute"
+    ]
+  },
+  "PE102N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Precision attribute",
+      "PLI-PG: LIMITS | Specifies the maximum precision for SIGNED FIXED BINARY to be either 31 or 63."
+    ]
+  },
+  "PE102P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Precision attribute"
+    ]
+  },
+  "PE103N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REAL and COMPLEX attributes"
+    ]
+  },
+  "PE103P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REAL and COMPLEX attributes"
+    ]
+  },
+  "PE104N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LIKE attribute"
+    ]
+  },
+  "PE104P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LIKE attribute"
+    ]
+  },
+  "PE105N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LIKE attribute"
+    ]
+  },
+  "PE105P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LIKE attribute"
+    ]
+  },
+  "PE106N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REFER option (self-defining data)"
+    ]
+  },
+  "PE106P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REFER option (self-defining data)"
+    ]
+  },
+  "PE107N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REFER option (self-defining data)"
+    ]
+  },
+  "PE107P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REFER option (self-defining data)"
+    ]
+  },
+  "PE108N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LEAVE statement"
+    ]
+  },
+  "PE108P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LEAVE statement"
+    ]
+  },
+  "PE109N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ITERATE statement"
+    ]
+  },
+  "PE109P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ITERATE statement"
+    ]
+  },
+  "PE110N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: RETURN statement"
+    ]
+  },
+  "PE110P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: RETURN statement"
+    ]
+  },
+  "PE111N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LOCATE statement"
+    ]
+  },
+  "PE111P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LOCATE statement"
+    ]
+  },
+  "PE112N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: GENERIC attribute"
+    ]
+  },
+  "PE112P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: GENERIC attribute"
+    ]
+  },
+  "PE113N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLOCATE statement for based variables",
+      "PLI-LRM: ALLOCATE statement for controlled variables"
+    ]
+  },
+  "PE113P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLOCATE statement for based variables"
+    ]
+  },
+  "PE114N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLOCATE statement for based variables",
+      "PLI-LRM: Area data and attribute"
+    ]
+  },
+  "PE114P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLOCATE statement for based variables"
+    ]
+  },
+  "PE115N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Offset data and attribute"
+    ]
+  },
+  "PE115P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Offset data and attribute"
+    ]
+  },
+  "PF101A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: STRING option"
+    ],
+    "tests": {
+      "PUT-STRING-EDIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Edit-directed data specification"
+        ]
+      },
+      "GET-STRING-EDIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Edit-directed data specification"
+        ]
+      },
+      "GET-STRING-LIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: List-directed data specification"
+        ]
+      },
+      "PUT-STRING-DATA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Data-directed data specification"
+        ]
+      }
+    }
+  },
+  "PF102A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PRINT attribute",
+      "PLI-LRM: LINENO"
+    ],
+    "tests": {
+      "PRINT-ENDPAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ENDPAGE condition"
+        ]
+      },
+      "PRINT-ENDPAGE-ONCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ENDPAGE condition"
+        ]
+      },
+      "PRINT-PAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PAGENO"
+        ]
+      },
+      "PRINT-REOPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PAGENO"
+        ]
+      }
+    }
+  },
+  "PF103A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: READ statement",
+      "PLI-LRM: WRITE statement"
+    ],
+    "tests": {
+      "RECORD-EOF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ENDFILE condition"
+        ]
+      }
+    }
+  },
+  "PF104M": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: KEYED attribute",
+      "PLI-LRM: REWRITE statement",
+      "PLI-LRM: DELETE statement"
+    ],
+    "tests": {
+      "KSDS-DUPLICATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: KEY condition"
+        ]
+      },
+      "KSDS-DELETE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: KEY condition"
+        ]
+      }
+    }
+  },
+  "PF105A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: READ statement",
+      "PLI-LRM: WRITE statement",
+      "PLI-PG: Variable-length records"
+    ],
+    "tests": {
+      "RECORD-EOF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ENDFILE condition"
+        ]
+      }
+    }
+  },
+  "PF106A": {
+    "basis": "spec",
+    "tests": {
+      "KEY-DUPLICATE-ONCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | Attempt to add keyed record that has same key as a record already present in data set",
+          "PLI-LRM: KEY condition"
+        ]
+      },
+      "KEY-MISSING-ONCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 51 Key specified cannot be found.",
+          "PLI-LRM: KEY condition"
+        ]
+      },
+      "ENDPAGE-DEFAULT-NEWPAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ENDPAGE condition"
+        ]
+      }
+    }
+  },
+  "PF107A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: BUFFERED and UNBUFFERED attributes | BUFFERED is the default for SEQUENTIAL files."
+    ],
+    "tests": {
+      "KEYTO-SEQUENTIAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SEQUENTIAL and DIRECT attributes | records in an indexed data set are accessed in key sequence order.",
+          "PLI-LRM: KEYTO option | For indexed data sets, the record key is padded or truncated on the right to the declared length of the character variable."
+        ]
+      },
+      "SAMEKEY-UNIQUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SAMEKEY | the value accessed by SAMEKEY is set to '1'B if the record processed is followed by another record with the same key, and set to '0'B if it is not."
+        ]
+      },
+      "SAMEKEY-CLOSED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SAMEKEY | the value accessed by SAMEKEY is set to '1'B if the record processed is followed by another record with the same key, and set to '0'B if it is not.",
+          "PLI-LRM: SAMEKEY | The file is not open"
+        ]
+      },
+      "KEY-THEN-NEXT": {
+        "basis": "zos",
+        "note": "KEY 付きの READ のあとの KEY なしの READ が、その次のキーのレコードを読むことは文書に明記が無い。実機で確かめる",
+        "refs": [
+          "PLI-LRM: SEQUENTIAL and DIRECT attributes | a file with the SEQUENTIAL attribute can also be used for direct access or for a mixture of random and sequential access.",
+          "PLI-LRM: KEY option | The KEY option is required if the file has the DIRECT attribute, and is optional if the file has the SEQUENTIAL and KEYED attributes."
+        ]
+      },
+      "ONKEY-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONKEY | ONKEY returns a character string whose value is the key of the record that raised an input/output condition.",
+          "PLI-MC: Condition codes 1 through 500 | Key specified cannot be found."
+        ]
+      }
+    }
+  },
+  "PM101A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %DO statement",
+      "PLI-LRM: %DECLARE statement"
+    ],
+    "tests": {
+      "MACRO-INACTIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DEACTIVATE statement"
+        ]
+      }
+    }
+  },
+  "PM102A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Preprocessor procedures",
+      "PLI-LRM: %ACTIVATE statement"
+    ]
+  },
+  "PM103A": {
+    "basis": "spec",
+    "tests": {
+      "BIF-TRIM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TRIM"
+        ]
+      },
+      "BIF-REVERSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REVERSE"
+        ]
+      },
+      "BIF-COPY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COPY"
+        ]
+      },
+      "BIF-TRANSLATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TRANSLATE"
+        ]
+      },
+      "BIF-LOWER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWERCASE"
+        ]
+      },
+      "BIF-UPPER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPPERCASE"
+        ]
+      },
+      "BIF-INDEX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INDEX"
+        ]
+      },
+      "BIF-SEARCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SEARCH"
+        ]
+      },
+      "BIF-VERIFY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VERIFY"
+        ]
+      },
+      "BIF-TALLY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TALLY"
+        ]
+      },
+      "BIF-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LENGTH"
+        ]
+      },
+      "BIF-CENTER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CENTERLEFT"
+        ]
+      },
+      "BIF-LEFT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LEFT"
+        ]
+      },
+      "BIF-RIGHT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RIGHT"
+        ]
+      },
+      "BIF-MOD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MOD"
+        ]
+      },
+      "BIF-REM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REM"
+        ]
+      },
+      "BIF-FLOOR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLOOR"
+        ]
+      },
+      "BIF-CEIL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CEIL"
+        ]
+      },
+      "BIF-ROUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ROUND"
+        ]
+      }
+    }
+  },
+  "PM104M": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: Interlanguage communication",
+      "PLI-LRM: OPTIONS option and attribute"
+    ],
+    "tests": {
+      "PLI-HLASM-RETCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIRETV"
+        ]
+      }
+    }
+  },
+  "PM105A": {
+    "basis": "spec",
+    "tests": {
+      "LILIAN-ORIGIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYS"
+        ]
+      },
+      "LILIAN-LEAP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYS",
+          "PLI-LRM: DAYSTODATE"
+        ]
+      },
+      "DATE-DELTA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYS"
+        ]
+      },
+      "SQRT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRT"
+        ]
+      },
+      "SIN-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIN"
+        ]
+      },
+      "COS-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COS"
+        ]
+      },
+      "LOG-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOG"
+        ]
+      },
+      "ABS-NEG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ABS"
+        ]
+      },
+      "MINMAX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAX",
+          "PLI-LRM: MIN"
+        ]
+      }
+    }
+  },
+  "PM106A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Preprocessor procedures",
+      "PLI-LRM: STATEMENT option"
+    ]
+  },
+  "PM107A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: Passing an argument"
+    ],
+    "tests": {
+      "PLIRETC-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIRETC",
+          "PLI-LRM: PLIRETV"
+        ]
+      }
+    }
+  },
+  "PM108A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: Passing an argument",
+      "PLI-LRM: OPTIONS option and attribute"
+    ],
+    "tests": {
+      "PLIRETC-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIRETC"
+        ]
+      }
+    }
+  },
+  "PM109A": {
+    "basis": "spec",
+    "tests": {
+      "ATAN-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ATAN"
+        ]
+      },
+      "ATAN-TWO-ARGS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ATAN"
+        ]
+      },
+      "ATAND-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ATAND"
+        ]
+      },
+      "COSD-60": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COSD"
+        ]
+      },
+      "SIND-30": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIND"
+        ]
+      },
+      "TAND-45": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TAND"
+        ]
+      },
+      "COSH-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COSH"
+        ]
+      },
+      "SINH-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SINH"
+        ]
+      },
+      "TANH-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TANH"
+        ]
+      },
+      "ATANH-HALF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ATANH"
+        ]
+      },
+      "EXP-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: EXP"
+        ]
+      },
+      "LOG10-1000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOG10"
+        ]
+      },
+      "LOG2-8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOG2"
+        ]
+      },
+      "SIGN-VALUES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIGN"
+        ]
+      },
+      "TRUNC-TOWARD-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TRUNC"
+        ]
+      },
+      "HIGH-LOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HIGH",
+          "PLI-LRM: LOW"
+        ]
+      },
+      "COLLATE-ORDER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COLLATE"
+        ]
+      },
+      "PROD-ARRAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PROD"
+        ]
+      },
+      "BOUNDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BOUNDS"
+        ]
+      },
+      "ALL-ANY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ANY",
+          "PLI-LRM: ALL"
+        ]
+      },
+      "WEEKDAY-LILIAN-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WEEKDAY"
+        ]
+      },
+      "SIZE-CSTG-VARYING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIZE"
+        ]
+      },
+      "IAND-IOR-IEOR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: IAND",
+          "PLI-LRM: IEOR",
+          "PLI-LRM: IOR"
+        ]
+      },
+      "INOT-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INOT"
+        ]
+      },
+      "ISLL-ISRL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISLL",
+          "PLI-LRM: ISRL"
+        ]
+      },
+      "RAISE2": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RAISE2"
+        ]
+      },
+      "SEARCHR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SEARCHR"
+        ]
+      },
+      "VERIFYR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VERIFYR"
+        ]
+      },
+      "CHARVAL-BYTE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARVAL"
+        ]
+      },
+      "VALIDDATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDDATE"
+        ]
+      },
+      "DAYSTOSECS-SECSTODAYS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYSTOSECS",
+          "PLI-LRM: SECSTODAYS"
+        ]
+      },
+      "FLOAT-MODEL-INTS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLOAT"
+        ]
+      },
+      "HUGE-SHORT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HUGE"
+        ]
+      },
+      "TINY-SHORT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TINY"
+        ]
+      },
+      "EPSILON-SHORT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: EPSILON"
+        ]
+      },
+      "POINTERDIFF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POINTERDIFF"
+        ]
+      }
+    }
+  },
+  "PM110A": {
+    "basis": "spec",
+    "tests": {
+      "ACOS-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ACOS"
+        ]
+      },
+      "ASIN-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASIN"
+        ]
+      },
+      "TAN-HALF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TAN"
+        ]
+      },
+      "COMPLEX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COMPLEX"
+        ]
+      },
+      "SUBTRACT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SUBTRACT"
+        ]
+      },
+      "PRECISION-TRUNC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PRECISION",
+          "PLI-LRM: TRUNC"
+        ]
+      },
+      "FLOAT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLOAT"
+        ]
+      },
+      "DATE-TIME-LENGTHS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DATETIME",
+          "PLI-LRM: DATE",
+          "PLI-LRM: TIME"
+        ]
+      },
+      "DATETIME-PATTERN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DATETIME"
+        ]
+      },
+      "POINTERVALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POINTERVALUE"
+        ]
+      },
+      "ONCOUNT-OUTSIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONCOUNT"
+        ]
+      },
+      "DO-LOOP-LEAVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LEAVE",
+          "PLI-LRM: DO statement"
+        ]
+      },
+      "PP-ITERATE-LEAVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LEAVE",
+          "PLI-LRM: %ITERATE statement"
+        ]
+      },
+      "PP-REPLACE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPLACE",
+          "PLI-LRM: %REPLACE statement"
+        ]
+      },
+      "CENTRE-EVEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CENTERLEFT"
+        ]
+      },
+      "RESIGNAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RESIGNAL statement"
+        ]
+      },
+      "PP-GO-TO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %GO TO statement"
+        ]
+      },
+      "REMOTE-FORMAT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Remote-format item"
+        ]
+      }
+    }
+  },
+  "PM111A": {
+    "basis": "spec",
+    "tests": {
+      "ADDRDATA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ADDRDATA"
+        ]
+      },
+      "BITLOCATION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BITLOCATION"
+        ]
+      },
+      "CDS-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CDS"
+        ]
+      },
+      "POINTERSUBTRACT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POINTERSUBTRACT"
+        ]
+      },
+      "OFFSETADD-DIFF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: OFFSETADD",
+          "PLI-LRM: OFFSETDIFF"
+        ]
+      },
+      "OFFSETSUBTRACT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: OFFSETSUBTRACT"
+        ]
+      },
+      "RANK-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RANK"
+        ]
+      },
+      "EXPONENT-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: EXPONENT"
+        ]
+      },
+      "SCALE-BY-16": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SCALE"
+        ]
+      },
+      "SECSTODATE-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SECSTODATE"
+        ]
+      },
+      "SECSTODATE-TIME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SECSTODATE"
+        ]
+      },
+      "CS-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CS"
+        ]
+      },
+      "CS-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CS"
+        ]
+      }
+    }
+  },
+  "PM112A": {
+    "basis": "spec",
+    "tests": {
+      "BETWEEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BETWEEN"
+        ]
+      },
+      "BETWEEN-EXCLUSIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BETWEENEXCLUSIVE"
+        ]
+      },
+      "BETWEEN-LEFT-EXCL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BETWEEN"
+        ]
+      },
+      "BETWEEN-RIGHT-EXCL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BETWEEN"
+        ]
+      },
+      "INLIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INLIST"
+        ]
+      },
+      "IFTHENELSE-LAZY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: IFTHENELSE"
+        ]
+      },
+      "IFTHENELSE-FALSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: IFTHENELSE"
+        ]
+      },
+      "ICLZ": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ICLZ"
+        ]
+      },
+      "IRRL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: IRRL"
+        ]
+      },
+      "IRLL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: IRLL"
+        ]
+      },
+      "LOWER2": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWER2"
+        ]
+      },
+      "POPCNT-PER-BYTE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POPCNT"
+        ]
+      },
+      "POPCNT-SECOND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POPCNT"
+        ]
+      },
+      "ISIGNED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISIGNED"
+        ]
+      },
+      "IUNSIGNED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: IUNSIGNED"
+        ]
+      },
+      "ROUND-AWAY-FROM-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ROUNDAWAYFROMZERO"
+        ]
+      },
+      "ROUND-TO-EVEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ROUNDTOEVEN"
+        ]
+      },
+      "MAXVAL-MINVAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAXVAL",
+          "PLI-LRM: MINVAL"
+        ]
+      },
+      "SUCC-HFP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SUCC"
+        ]
+      },
+      "PRED-HFP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PRED"
+        ]
+      },
+      "PLACES-HFP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLACES"
+        ]
+      },
+      "PRECVAL-SCALEVAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SCALEVAL",
+          "PLI-LRM: PRECVAL"
+        ]
+      },
+      "Y4DATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Y4DATE"
+        ]
+      },
+      "Y4JULIAN-Y4YEAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Y4JULIAN",
+          "PLI-LRM: Y4YEAR"
+        ]
+      },
+      "REPLACEBY2": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPLACEBY2"
+        ]
+      },
+      "HEXIMAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXIMAGE"
+        ]
+      },
+      "HEXIMAGE-SEPARATOR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXIMAGE"
+        ]
+      },
+      "COMPARE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COMPARE"
+        ]
+      },
+      "LOCATION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCATION"
+        ]
+      },
+      "ERF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ERF"
+        ]
+      },
+      "ERFC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ERFC"
+        ]
+      },
+      "GAMMA-INTEGER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GAMMA"
+        ]
+      },
+      "GAMMA-HALF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GAMMA"
+        ]
+      },
+      "LOGGAMMA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOGGAMMA"
+        ]
+      },
+      "ONCONDID-CONDITION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONCONDID"
+        ]
+      },
+      "ONCONDID-ZERODIVIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONCONDID"
+        ]
+      },
+      "ONCONDID-OUTSIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONCONDID"
+        ]
+      }
+    }
+  },
+  "PM113A": {
+    "basis": "spec",
+    "tests": {
+      "COLLAPSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COLLAPSE"
+        ]
+      },
+      "SQUEEZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQUEEZE"
+        ]
+      },
+      "INDEXR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INDEXR"
+        ]
+      },
+      "REPLACE-ONCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPLACE"
+        ]
+      },
+      "REPLACE-ALL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPLACE"
+        ]
+      },
+      "SCRUBOUT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SCRUBOUT"
+        ]
+      },
+      "UNHEX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNHEX"
+        ]
+      },
+      "HEX8-UTF8-DIGITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEX8"
+        ]
+      },
+      "MEMINDEX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMINDEX"
+        ]
+      },
+      "MEMSEARCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMSEARCH"
+        ]
+      },
+      "MEMVERIFY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMVERIFY"
+        ]
+      },
+      "MEMCOLLAPSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCOLLAPSE"
+        ]
+      },
+      "MEMSQUEEZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMSQUEEZE"
+        ]
+      },
+      "MEMREPLACE-ALL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMREPLACE"
+        ]
+      },
+      "WSREPLACE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WSREPLACE"
+        ]
+      },
+      "WSCOLLAPSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WSCOLLAPSE"
+        ]
+      },
+      "HEXENCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXENCODE"
+        ]
+      },
+      "HEXDECODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXDECODE"
+        ]
+      },
+      "HEXENCODE8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXENCODE8"
+        ]
+      },
+      "BASE64ENCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64ENCODE"
+        ]
+      },
+      "BASE64DECODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64DECODE"
+        ]
+      },
+      "BASE64ENCODE8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64ENCODE8"
+        ]
+      },
+      "WHEREDIFF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WHEREDIFF"
+        ]
+      },
+      "BUFFER-MEASURE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64ENCODE"
+        ]
+      },
+      "BUFFER-TOO-SHORT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64ENCODE"
+        ]
+      }
+    }
+  },
+  "PM114A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Date/time built-in functions",
+      "PLI-LRM: Table 65. Date/time patterns"
+    ],
+    "tests": {
+      "MAXDATE-TIMESTAMP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAXDATE | MAXDATE('YYYY-MM-DD-HH.MI.SS.999999') returns the value '9999-12-31-23.59.59.999999'."
+        ]
+      },
+      "MAXDATE-JULIAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAXDATE | MAXDATE('YYYY-MM-DD-HH.MI.SS.999999') returns the value '9999-12-31-23.59.59.999999'."
+        ]
+      },
+      "MINDATE-NONULLDATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MINDATE | MINDATE('YYYY-MM-DD-HH.MI.SS.999999') returns the value '1582-10-14-00.00.00.000000' under the NONULLDATE compiler option"
+        ]
+      },
+      "DAYSTOMICROSECS-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYSTOMICROSECS | DAYSTOMICROSECS(x) is the same as x*(24*60*60*1_000_000)."
+        ]
+      },
+      "MICROSECSTODAYS-DROP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECSTODAYS | MICROSECSTODAYS returns a FIXED BINARY(31) value that represents the number of microseconds x converted to days, ignoring incomplete days."
+        ]
+      },
+      "MICROSECS-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECS"
+        ]
+      },
+      "MICROSECS-ROUNDTRIP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECS",
+          "PLI-LRM: MICROSECSTODATE | If p is omitted, it is assumed to be the TIMESTAMP pattern, namely 'YYYY-MM-DD-HH.MI.SS.999999'."
+        ]
+      },
+      "MICROSECSTODATE-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECSTODATE | If p is omitted, it is assumed to be the TIMESTAMP pattern, namely 'YYYY-MM-DD-HH.MI.SS.999999'."
+        ]
+      },
+      "MICROSECSTODATE-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MICROSECSTODATE | If p is omitted, it is assumed to be the TIMESTAMP pattern, namely 'YYYY-MM-DD-HH.MI.SS.999999'."
+        ]
+      },
+      "SECS-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SECS"
+        ]
+      },
+      "PATTERN-MMM-MIXED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYSTODATE"
+        ]
+      },
+      "PATTERN-MMM-UPPER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYSTODATE"
+        ]
+      },
+      "PATTERN-WINDOW-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYS"
+        ]
+      },
+      "PATTERN-WINDOW-LOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DAYS"
+        ]
+      },
+      "STCKTODATE-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STCKTODATE",
+          "POP: Time-of-Day Clock and Epoch | Bit 51 of the TOD clock represents 1 microsecond"
+        ]
+      },
+      "STCKETODATE-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STCKETODATE",
+          "POP: Time-of-Day Clock and Epoch | Bit 51 of the TOD clock represents 1 microsecond"
+        ]
+      },
+      "JULIANTOSMF-20XX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: JULIANTOSMF",
+          "SMF: Standard and extended SMF record headers | form 0cyydddF (where c is 0 for 19xx or 1 for 20xx, yy is the"
+        ]
+      },
+      "SMFTOJULIAN-19XX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SMFTOJULIAN",
+          "SMF: Standard and extended SMF record headers | form 0cyydddF (where c is 0 for 19xx or 1 for 20xx, yy is the"
+        ]
+      },
+      "TIMESTAMP-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TIMESTAMP | TIMESTAMP returns a CHAR(26) character string that gives the current date and time in the format YYYY-MM-DD-HH.MI.SS.999999."
+        ]
+      },
+      "UTCDATETIME-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTCDATETIME"
+        ]
+      },
+      "UTCSECS-AFTER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTCSECS"
+        ]
+      },
+      "UTCMICROSECS-AFTER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTCMICROSECS"
+        ]
+      },
+      "PLISTCK-CC-DATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCK",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCKE-CC-DATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKE",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCK-FORMS-CC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKF",
+          "PLI-LRM: PLISTCKLOCAL",
+          "PLI-LRM: PLISTCKUTC",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCKE-FORMS-CC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKELOCAL",
+          "PLI-LRM: PLISTCKEUTC",
+          "POP: TOD Clock"
+        ]
+      },
+      "PLISTCKP-FORMS-CC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISTCKP",
+          "PLI-LRM: PLISTCKPLOCAL",
+          "PLI-LRM: PLISTCKPUTC",
+          "POP: TOD Clock"
+        ]
+      }
+    }
+  },
+  "PM115A": {
+    "basis": "spec",
+    "tests": {
+      "FIXEDBIN-FRACTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDBIN"
+        ]
+      },
+      "FIXEDBIN-PRECISION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDBIN"
+        ]
+      },
+      "FIXEDDEC-SCALE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDDEC"
+        ]
+      },
+      "FLOATBIN-FLOATDEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLOATBIN",
+          "PLI-LRM: FLOATDEC"
+        ]
+      },
+      "SIGNED-UNSIGNED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIGNED",
+          "PLI-LRM: UNSIGNED"
+        ]
+      },
+      "CENTERRIGHT-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CENTERRIGHT | inserting string x in the center (or one position to the"
+        ]
+      },
+      "CENTRERIGHT-ODD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CENTERRIGHT | inserting string x in the center (or one position to the"
+        ]
+      },
+      "COUNT-PUT-LIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COUNT | is incremented by one after the transmission of each data item in the list."
+        ]
+      },
+      "HEXIMAGE8-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXIMAGE8"
+        ]
+      },
+      "HEXDECODE8-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXDECODE8"
+        ]
+      },
+      "BASE64DECODE8-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64DECODE8"
+        ]
+      },
+      "ONFILE-UNDEFINEDFILE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONFILE | ONFILE returns a character string whose value is the name of the file for which an input or output condition is raised."
+        ]
+      },
+      "ONPROCEDURE-ONLOC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONPROCEDURE | ONPROCEDURE returns the name of a procedure in which a condition is raised.",
+          "PLI-LRM: ONLOC | ONLOC is a synonym for ONPROC."
+        ]
+      },
+      "PLIFILL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIFILL | PLIFILL moves z copies of the byte y to the location x without any conversions, padding, or truncation."
+        ]
+      },
+      "PLIMOVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIMOVE"
+        ]
+      },
+      "PLIOVER-OVERLAP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIOVER"
+        ]
+      },
+      "WHIGH-WLOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WHIGH | WHIGH returns a widechar string of length x, where each widechar has the highest widechar value",
+          "PLI-LRM: WLOW"
+        ]
+      },
+      "SUBTO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SUBTO | SUBTO(x,y) is equivalent to SUBSTR(x,y), and SUBTO(x,y,z) is equivalent to SUBSTR(x,y,z-y+1)."
+        ]
+      },
+      "POLY-ZERO-BASED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POLY | x(m) + x(m+1)*y + x(m+2)*y**2 + ... + x(n)*y**(n-m)"
+        ]
+      },
+      "POLY-ONE-BASED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POLY | x(m) + x(m+1)*y + x(m+2)*y**2 + ... + x(n)*y**(n-m)"
+        ]
+      },
+      "WSCOLLAPSE16": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WSCOLLAPSE16 | Reducing multiple interior blanks to one blank."
+        ]
+      },
+      "WSREPLACE16": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WSREPLACE16"
+        ]
+      },
+      "BASE64ENCODE16-LRM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64ENCODE16 | 6 'please'E 16 WCHAR('l5OFgaKF')"
+        ]
+      },
+      "BASE64DECODE16-ROUNDTRIP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BASE64DECODE16"
+        ]
+      },
+      "PROCEDURENAME-MAIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PROCEDURENAME | PROCEDURENAME returns a nonvarying character string containing the name of the procedure in which this built-in function is invoked."
+        ]
+      },
+      "PROCEDURENAME-INNER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PROCEDURENAME | PROCEDURENAME returns a nonvarying character string containing the name of the procedure in which this built-in function is invoked."
+        ]
+      },
+      "PACKAGENAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PACKAGENAME | If there is no package in the current compilation unit, PACKAGENAME returns the name of the outermost procedure."
+        ]
+      },
+      "SOURCELINE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SOURCELINE"
+        ]
+      },
+      "SOURCEFILE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SOURCEFILE"
+        ]
+      },
+      "ISMAIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISMAIN | ISMAIN() returns a '1'B if the procedure in which it is invoked has the OPTIONS(MAIN) attribute."
+        ]
+      },
+      "MAINNAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAINNAME"
+        ]
+      },
+      "PUTENV-GETENV": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PUTENV",
+          "PLI-LRM: GETENV"
+        ]
+      },
+      "UUID4-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UUID4"
+        ]
+      },
+      "VALID-PICTURE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALID | x is FIXED DECIMAL and the data in x is valid packed decimal data."
+        ]
+      },
+      "VALID-FIXED-DEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALID | x is FIXED DECIMAL and the data in x is valid packed decimal data."
+        ]
+      }
+    }
+  },
+  "PM116A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: SHA1DIGEST",
+      "PLI-LRM: SHA1FINAL | In the example, all the SHA function calls are in the same block of code."
+    ],
+    "tests": {
+      "SHA1-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.1 SHA-1"
+        ]
+      },
+      "SHA1-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.1 SHA-1"
+        ]
+      },
+      "SHA2-224-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.3 SHA-224",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-224-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.3 SHA-224",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-256-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.2 SHA-256",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-256-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.2 SHA-256",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-256-EMPTY": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.2 SHA-256",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-384-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.5 SHA-384",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-384-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.5 SHA-384",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "SHA2-512-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.4 SHA-512",
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA2-512-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS180: 6.4 SHA-512",
+          "PLI-LRM: SHA2FINAL224, SHA2FINAL256, SHA2FINAL384, and SHA2FINAL512"
+        ]
+      },
+      "DIGEST-LENGTHS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SHA2DIGEST224, SHA2DIGEST256, SHA2DIGEST384, and SHA2DIGEST512 | The length returned is one eighth of the bit length in the function name"
+        ]
+      },
+      "SHA3-224-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-224-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      },
+      "SHA3-256-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-256-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      },
+      "SHA3-384-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-384-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      },
+      "SHA3-512-DIGEST": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3DIGEST224, SHA3DIGEST256, SHA3DIGEST384, and SHA3DIGEST512"
+        ]
+      },
+      "SHA3-512-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "FIPS202: 6.1 SHA-3 Hash Functions",
+          "PLI-LRM: SHA3FINAL224, SHA3FINAL256, SHA3FINAL384, and SHA3FINAL512"
+        ]
+      }
+    }
+  },
+  "PM117A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Preprocessor built-in functions | In preprocessor statements, the preprocessor built-in function names are always active as built-in functions unless they are declared with some other meaning."
+    ],
+    "tests": {
+      "PP-TRIM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TRIM"
+        ]
+      },
+      "PP-COPY-REPEAT-SUBSTR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPEAT | REPEAT returns a CHARACTER string consisting of (y + 1) concatenated copies of the string x.",
+          "PLI-LRM: COPY | COPY returns a CHARACTER string consisting of y concatenated copies of the string x."
+        ]
+      },
+      "PP-INDEX-FROM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INDEX | n specifies the location within x at which to begin processing."
+        ]
+      },
+      "PP-VERIFY-FROM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VERIFY"
+        ]
+      },
+      "PP-COLLATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COLLATE | COLLATE returns a CHARACTER string of length 256 comprising the 256 possible character values one time each in the collating order."
+        ]
+      },
+      "PP-MAX-MIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MAX"
+        ]
+      },
+      "PP-MARGINS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACLMAR",
+          "PLI-LRM: MACRMAR",
+          "PLI-PG: MARGINS | The IBM-supplied default for fixed-length records is MARGINS(2,72)."
+        ]
+      },
+      "PP-SIZES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSDIMSIZE | 4 under CMPAT(V2) and CMPAT(LE)",
+          "PLI-LRM: SYSOFFSETSIZE | Currently, SYSOFFSETSIZE returns 4.",
+          "PLI-LRM: SYSPOINTERSIZE | Currently, SYSPOINTERSIZE returns 4."
+        ]
+      },
+      "PP-COMPILE-DATE-TIME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COMPILEDATE | COMPILEDATE returns a CHARACTER string of length 17 containing the date and the time of the compilation.",
+          "PLI-LRM: COMPILETIME | COMPILETIME returns a CHARACTER string of length 18 containing the date and the time of compilation."
+        ]
+      },
+      "PP-QUOTE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUOTE | If x contains single quotation marks, each is replaced by two consecutive single quotation marks."
+        ]
+      },
+      "PP-COMMENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COMMENT"
+        ]
+      },
+      "PP-SYSVERSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSVERSION | Each string is padded with blanks on the right to make it 22 in length."
+        ]
+      },
+      "PP-SYSTEM-SYSPARM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSTEM",
+          "PLI-LRM: SYSPARM",
+          "PLI-PG: Table 3. Compile-time options, abbreviations, and IBM-supplied defaults | SYSTEM(MVS)"
+        ]
+      },
+      "PP-CASE-TRANSLATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWERCASE",
+          "PLI-LRM: TRANSLATE"
+        ]
+      },
+      "PP-COUNTER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: COUNTER | The returned number is 00001 for the first invocation, and increments by one on each successive invocation."
+        ]
+      },
+      "PP-MACNAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACNAME | MACNAME returns the name of the preprocessor procedure within which it is invoked."
+        ]
+      },
+      "PP-PARMSET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PARMSET"
+        ]
+      },
+      "PP-ANSWER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Preprocessor ANSWER statement | The answered text replaces the invocation of the preprocessor procedure in the source text."
+        ]
+      },
+      "PP-CALL-ANSWER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Preprocessor CALL statement | By using the preprocessor CALL statement, a MACRO procedure can call another MACRO procedure."
+        ]
+      },
+      "PP-SELECT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %SELECT statement"
+        ]
+      },
+      "PP-INSCAN-XINSCAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %INSCAN statement",
+          "PLI-LRM: %XINSCAN statement | The %XINSCAN statement is the same as the %INSCAN statement except that the file is not included if it already has been."
+        ]
+      }
+    }
+  },
+  "PM118A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: CODEPAGE | The CODEPAGE option specifies the code page used for conversions between CHARACTER and WIDECHAR"
+    ],
+    "tests": {
+      "INARRAY-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array.",
+          "PLI-LRM: INARRAY | is the same as INLIST( countryCode, 'AT', 'DE', 'CH' )"
+        ]
+      },
+      "INARRAY-CHAR-PAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array.",
+          "PLI-LRM: INARRAY | is the same as INLIST( countryCode, 'AT', 'DE', 'CH' )"
+        ]
+      },
+      "INARRAY-MISS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array.",
+          "PLI-LRM: INARRAY | is the same as INLIST( countryCode, 'AT', 'DE', 'CH' )"
+        ]
+      },
+      "INARRAY-NUMERIC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array."
+        ]
+      },
+      "INARRAY-2D": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array."
+        ]
+      },
+      "WCHARVAL-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WCHARVAL | WCHARVAL(n) has the same bit value as n (that is, UNSPEC(WCHARVAL(n)) is equal to UNSPEC(n)), but it has the attributes WIDECHAR(1)."
+        ]
+      },
+      "WCHARVAL-RANK": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WCHARVAL | WCHARVAL(n) has the same bit value as n (that is, UNSPEC(WCHARVAL(n)) is equal to UNSPEC(n)), but it has the attributes WIDECHAR(1).",
+          "PLI-LRM: RANK | If xx is widechar, RANK(x) is equal to UNSPEC(y) where y is x stored in bigendian format."
+        ]
+      },
+      "WCHARVAL-UNSPEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WCHARVAL | WCHARVAL(n) has the same bit value as n (that is, UNSPEC(WCHARVAL(n)) is equal to UNSPEC(n)), but it has the attributes WIDECHAR(1)."
+        ]
+      },
+      "PICSPEC-DIGITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument."
+        ]
+      },
+      "PICSPEC-V": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument."
+        ]
+      },
+      "PICSPEC-SIGN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument."
+        ]
+      },
+      "PICSPEC-EXPR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument.",
+          "PLI-LRM: PICSPEC | will cause the contents of x to be treated as if it were declared as PIC'(5)9'."
+        ]
+      },
+      "CODEPAGE-OPTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CODEPAGE | CODEPAGE returns a FIXED BINARY(31) value that holds the value of the CODEPAGE compiler option."
+        ]
+      }
+    }
+  },
+  "PM119A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: XMLCHAR | XMLCHAR dumps data from a structure as XML into a buffer."
+    ],
+    "tests": {
+      "XMLCHAR-LRM-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | The following bytes would be written to the buffer, and written would be set equal to 72."
+        ]
+      },
+      "XMLCHAR-LRM-TEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | The following bytes would be written to the buffer, and written would be set equal to 72.",
+          "PLI-LRM: XMLCHAR | Leading and trailing blanks are trimmed wherever possible."
+        ]
+      },
+      "XMLCHAR-STAR-BIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | Leading and trailing blanks are trimmed wherever possible.",
+          "PLI-LRM: XMLCHAR | However, an asterisk may be used as the name of a base element, but in that case, the unnamed element will not be written to the target buffer.",
+          "PLI-LRM: XMLCHAR | Numeric and bit data is converted to character."
+        ]
+      },
+      "XMLCHAR-TRUNCATED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLCHAR | If the buffer is too small, the structure data is truncated and the number of bytes needed for the buffer to contain the structure is returned."
+        ]
+      },
+      "XMLSCRUB-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing each character less than a blank except for \\t, \\n, \\r with a blank.",
+          "PLI-LRM: XMLSCRUB | If the address of the target buffer is zero, the number of bytes to be written is returned."
+        ]
+      },
+      "XMLSCRUB-TEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing each character less than a blank except for \\t, \\n, \\r with a blank.",
+          "PLI-LRM: XMLSCRUB | Replacing carriage returns with &#xD;."
+        ]
+      },
+      "XMLSCRUB-SMALL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing each character less than a blank except for \\t, \\n, \\r with a blank.",
+          "PLI-LRM: XMLSCRUB | If the target buffer is not large enough, a value of -1 is returned."
+        ]
+      },
+      "XMLSCRUB16": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XMLSCRUB | Replacing carriage returns with &#xD;.",
+          "PLI-LRM: XMLSCRUB16 | Replacing each invalid UTF-16 with a UTF-16 blank."
+        ]
+      }
+    }
+  },
+  "PS101A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: BASED storage and attribute"
+    ],
+    "tests": {
+      "NULL-SYSNULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: DEFAULT | NULL370 is the default."
+        ]
+      },
+      "NULL-IMAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: DEFAULT | NULL370 is the default."
+        ]
+      },
+      "SYSNULL-IMAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SYSNULL | SYSNULL returns the system null pointer value.",
+          "PLI-PG: DEFAULT | If you specify NULLSYS, binvalue(null()) is equal to 0."
+        ]
+      },
+      "ALLOC-BASED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLOCATE statement for based variables"
+        ]
+      },
+      "POINTER-ADD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: POINTERADD"
+        ]
+      },
+      "FREE-OTHER-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FREE statement for based variables"
+        ]
+      }
+    }
+  },
+  "PS102A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONTROLLED storage and attribute",
+      "PLI-LRM: ALLOCATION"
+    ]
+  },
+  "PS103A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Area data and attribute",
+      "PLI-LRM: Offset data and attribute"
+    ],
+    "tests": {
+      "OFFSET-ROUNDTRIP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: OFFSET"
+        ]
+      },
+      "AREA-EMPTY-RESET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: EMPTY"
+        ]
+      }
+    }
+  },
+  "PS104A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REFER option (self-defining data)"
+    ],
+    "tests": {
+      "REFER-RESTORE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CURRENTSIZE"
+        ]
+      }
+    }
+  },
+  "PS105A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DEFINED and POSITION attributes"
+    ],
+    "tests": {
+      "ISUB-DIAGONAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: iSUB defining"
+        ]
+      },
+      "ISUB-TRANSPOSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: iSUB defining"
+        ]
+      },
+      "ISUB-WRITE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: iSUB defining"
+        ]
+      }
+    }
+  },
+  "PS106A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: HANDLE"
+    ],
+    "tests": {
+      "NEW-TYPED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NEW"
+        ]
+      },
+      "NEW-INDEPENDENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NEW"
+        ]
+      },
+      "HANDLE-FREE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIFREE"
+        ]
+      }
+    }
+  }
+}

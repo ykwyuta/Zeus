@@ -1,0 +1,98 @@
+{
+  "COB-LRM": {
+    "title": "Enterprise COBOL for z/OS 6.4 Language Reference",
+    "form": "SC27-8713-03",
+    "url": "https://www.ibm.com/docs/en/SS6SG3_6.4.0/pdf/lrmvs.pdf",
+    "sha256": "22b5b8875041300484ac48cd16d8db6191fe4f17424cfe2f3a93392fb2aac0f6"
+  },
+  "COB-PG": {
+    "title": "Enterprise COBOL for z/OS 6.4 Programming Guide",
+    "form": "SC27-8714-03",
+    "url": "https://publibfp.dhe.ibm.com/epubs/pdf/igy6pg40.pdf",
+    "sha256": "b821f73d99019fbef4e64624860e4402b8a594e5d56b5aff6dd2095b48314e62"
+  },
+  "COB42-PG": {
+    "title": "Enterprise COBOL for z/OS V4.2 Programming Guide",
+    "form": "SC23-8529-01",
+    "url": "https://publibfp.dhe.ibm.com/epubs/pdf/igy3pg50.pdf",
+    "sha256": "7e13ba66ee2ca4a870f6e1e8c4d560f4831d2123961a319ea975e03dc682e252"
+  },
+  "PLI-LRM": {
+    "title": "Enterprise PL/I for z/OS 6.1 Language Reference",
+    "form": "SC31-5716-00",
+    "url": "https://www.ibm.com/docs/en/SSY2V3_6.1/pdf/lrm.pdf",
+    "sha256": "1b67b9c4522a894a901b70c2e173dbabbcd6a904ea2ea0f89fd03667e6fc4d39"
+  },
+  "PLI-PG": {
+    "title": "Enterprise PL/I for z/OS 6.1 Programming Guide",
+    "form": "GI13-5620-00",
+    "url": "https://www.ibm.com/docs/en/SSY2V3_6.1/pdf/pg.pdf",
+    "sha256": "f8fa0927872f080c41f367fc7ec36129b58c3de70e147ff40d4703869c4d5fa1"
+  },
+  "PLI-MC": {
+    "title": "Enterprise PL/I for z/OS 6.1 Messages and Codes",
+    "form": "GC31-5717-00",
+    "url": "https://www.ibm.com/docs/en/SSY2V3_6.1/pdf/mc.pdf",
+    "sha256": "f2aa56452e8606d30bf3c2928ea280d5253f0086abceeb666922f2c4e5c168a9"
+  },
+  "HLASM-LR": {
+    "title": "High Level Assembler for z/OS & z/VM & z/VSE 1.6 Language Reference",
+    "form": "SC26-4940-09",
+    "url": "https://www.ibm.com/docs/en/SSENW6_1.6.0/pdf/asmr1024_pdf.pdf",
+    "sha256": "82d76f46cd6ae98837ea19ef5dc01606bae8cd5e26887dba62dc8ee3fca8be0e"
+  },
+  "HLASM-PG": {
+    "title": "High Level Assembler for z/OS & z/VM & z/VSE 1.6 Programmer's Guide",
+    "form": "SC26-4941-07",
+    "url": "https://www.ibm.com/docs/en/SSENW6_1.6.0/pdf/asmp1024_pdf.pdf",
+    "sha256": "1d5ab9fef7722cd45df218bedf58347aed7a007dd517b68804a5266e6e0b5df9"
+  },
+  "POP": {
+    "title": "z/Architecture Principles of Operation",
+    "form": "SA22-7832-13",
+    "url": "https://www.ibm.com/docs/en/module_1678991624569/pdf/SA22-7832-13.pdf",
+    "sha256": "87ca981964864012417fd6e259024f03bb3ba18b4d0309fdded7c74e6ded0d9a"
+  },
+  "LE-PR": {
+    "title": "z/OS 3.1 Language Environment Programming Reference",
+    "form": "SA38-0683-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ceea300_v3r1.pdf",
+    "sha256": "2dd8b4f44146875470f101012d29f165d57936b6c8ec2a99c677cac228185774"
+  },
+  "DFSMS-MAC": {
+    "title": "z/OS 3.1 DFSMS Macro Instructions for Data Sets",
+    "form": "SC23-6852-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/idad500_v3r1.pdf",
+    "sha256": "26ffbffe3ceae015bfa3799ed7f6234aadab5d47ac3ddeaafd5d8a5090d0c5b1"
+  },
+  "MVS-ASR1": {
+    "title": "z/OS 3.1 MVS Programming: Assembler Services Reference, Volume 1 (ABE-HSP)",
+    "form": "SA23-1369-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaa700_v3r1.pdf",
+    "sha256": "5a13fac375a1f0d475ffa85c1d2a786ffc366f54bef91b953465f058b999e89a"
+  },
+  "MVS-ASR2": {
+    "title": "z/OS 3.1 MVS Programming: Assembler Services Reference, Volume 2 (IAR-XCT)",
+    "form": "SA23-1370-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieaa900_v3r1.pdf",
+    "sha256": "b0b0021798eafaf91683ccae25660a9d3521c7bc83ebafb8ae114fb107ff280e"
+  },
+  "SMF": {
+    "title": "z/OS 3.1 MVS System Management Facilities (SMF)",
+    "form": "SA38-0667-60",
+    "url": "https://www.ibm.com/docs/en/SSLTBW_3.1.0/pdf/ieag200_v3r1.pdf",
+    "sha256": "383e0248e8da04b3b9c50d5a19c66b788f859b7968c9dc29e8dcd88585fd127a"
+  },
+  "FIPS180": {
+    "title": "NIST FIPS 180-4 Secure Hash Standard (SHS)",
+    "form": "FIPS PUB 180-4",
+    "url": "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf",
+    "sha256": "0455b406d89648d20cbde375561e19c245b9815e894164c2670772e3d54deb82"
+  },
+  "FIPS202": {
+    "title": "NIST FIPS 202 SHA-3 Standard: Permutation-Based Hash and Extendable-Output Functions",
+    "form": "FIPS PUB 202",
+    "url": "https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.202.pdf",
+    "sha256": "1592607831ff0908cc590632ce371c6c95e94025bb1a0c8ae90a4d0ec1ed025e"
+  }
+}

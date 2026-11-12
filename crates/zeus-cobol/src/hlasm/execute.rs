@@ -183,6 +183,9 @@ pub(crate) fn execute_entry_with_host(
     let frame = storage.invocation(mem, frame_length, amode)?;
     let mut registers = initial.as_ref().map_or([0; 16], |r| r.low);
     let mut high = initial.as_ref().map_or([0; 16], |r| r.high);
+    // Access registers: only LAM/STAM use them here (primary-space mode),
+    // so they are kept as plain state of this execution.
+    let mut access = [0u32; 16];
     let mut cc = initial.as_ref().map_or(0, |r| r.cc);
     let mut floating = initial.as_ref().map_or_else(
         || call_state.as_deref().cloned().unwrap_or_default(),
@@ -862,7 +865,7 @@ pub(crate) fn execute_entry_with_host(
                             }
                         }
                     }
-                    "MH" | "M" | "MR" | "D" | "DR" => {
+                    "MH" | "MS" | "M" | "MR" | "D" | "DR" => {
                         let r = reg(0)?;
                         let v = if op == "MR" || op == "DR" {
                             registers[reg(1)?] as i32
@@ -873,7 +876,8 @@ pub(crate) fn execute_entry_with_host(
                         } else {
                             word(mem, ea()?)? as i32
                         };
-                        if op == "MH" {
+                        if op == "MH" || op == "MS" {
+                            // MULTIPLY SINGLE: the low 32 bits, no overflow indication
                             registers[r] = (registers[r] as i32).wrapping_mul(v) as u32;
                         } else {
                             if !r.is_multiple_of(2) {
@@ -955,17 +959,22 @@ pub(crate) fn execute_entry_with_host(
                         registers[r] = v as u32;
                         cc = if of { 3 } else { signed_cc(v as u32) };
                     }
-                    "STM" | "LM" => {
+                    "STM" | "LM" | "STAM" | "LAM" => {
                         let (first, last, a) = (reg(0)?, reg(1)?, ea()?);
                         let count = (last + 16 - first) % 16 + 1;
                         range(mem, a, count * 4)?;
                         for i in 0..count {
                             let r = (first + i) % 16;
-                            if op == "STM" {
-                                storage.check_write(a + i * 4, 4)?;
-                                put_word(mem, a + i * 4, registers[r])?;
+                            let regs = if op.ends_with("AM") {
+                                &mut access
                             } else {
-                                registers[r] = word(mem, a + i * 4)?;
+                                &mut registers
+                            };
+                            if op.starts_with("ST") {
+                                storage.check_write(a + i * 4, 4)?;
+                                put_word(mem, a + i * 4, regs[r])?;
+                            } else {
+                                regs[r] = word(mem, a + i * 4)?;
                             }
                         }
                     }
@@ -1174,6 +1183,34 @@ pub(crate) fn execute_entry_with_host(
                             store_packed(&mut mem[dest], i128::from(registers[r] as i32))?;
                         }
                     }
+                    "MVO" => {
+                        // The second operand is placed to the left of the rightmost four bits
+                        // of the first operand; zeros fill the left, excess digits are lost.
+                        let a = ea()?;
+                        let b = address(
+                            ins.source.as_ref().ok_or("missing source address")?,
+                            &registers,
+                        )?;
+                        let (l1, l2) = (ins.length as usize, ins.source_length as usize);
+                        if !(1..=16).contains(&l1) || !(1..=16).contains(&l2) {
+                            return Err("decimal lengths must be 1..16".into());
+                        }
+                        let (ra, rb) = (range(mem, a, l1)?, range(mem, b, l2)?);
+                        storage.check_write(a, l1)?;
+                        let mut source = Vec::new();
+                        for byte in &mem[rb] {
+                            source.push(byte >> 4);
+                            source.push(byte & 15);
+                        }
+                        let mut digits = vec![0u8; l1 * 2];
+                        digits[l1 * 2 - 1] = mem[a + l1 - 1] & 15;
+                        for (i, n) in source.iter().rev().take(l1 * 2 - 1).enumerate() {
+                            digits[l1 * 2 - 2 - i] = *n;
+                        }
+                        for (i, pair) in digits.chunks(2).enumerate() {
+                            mem[ra.start + i] = pair[0] * 16 + pair[1];
+                        }
+                    }
                     "PACK" | "UNPK" | "ZAP" | "AP" | "SP" | "CP" | "MP" | "DP" => {
                         let a = ea()?;
                         let b = address(
@@ -1364,6 +1401,24 @@ pub(crate) fn execute_entry_with_host(
                         }
                         if ins.immediate & (8 >> cc) != 0 {
                             branch = Some(ea()?);
+                        }
+                    }
+                    "BXH" | "BXLE" => {
+                        // The increment is in R3 and the compare value in the odd register of
+                        // the R3 pair; both are taken before the sum replaces R1 (Principles of
+                        // Operation, "BRANCH ON INDEX HIGH / LOW OR EQUAL").
+                        let (r1, r3, target) = (reg(0)?, reg(1)?, ea()?);
+                        let increment = registers[r3] as i32;
+                        let compare = registers[r3 | 1] as i32;
+                        let sum = (registers[r1] as i32).wrapping_add(increment);
+                        registers[r1] = sum as u32;
+                        let taken = if op == "BXH" {
+                            sum > compare
+                        } else {
+                            sum <= compare
+                        };
+                        if taken {
+                            branch = Some(target);
                         }
                     }
                     "BCT" => {

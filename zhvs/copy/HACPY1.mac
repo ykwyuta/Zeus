@@ -1,0 +1,2 @@
+* HACPY1: copy member of HA108A (COPY instruction)
+CPYVAL   DC    F'42'

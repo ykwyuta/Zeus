@@ -1,0 +1,5262 @@
+{
+  "HA101A": {
+    "basis": "spec",
+    "tests": {
+      "EQU-FORWARD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: EQU instruction"
+        ]
+      },
+      "EQU-DIFFERENCE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: EQU instruction"
+        ]
+      },
+      "EQU-CHAIN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: EQU instruction"
+        ]
+      },
+      "EXPR-PRECEDENCE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Rules for coding expressions",
+          "HLASM-LR: Evaluation of expressions"
+        ]
+      },
+      "EXPR-PARENS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Rules for coding expressions",
+          "HLASM-LR: Evaluation of expressions"
+        ]
+      },
+      "EXPR-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Rules for coding expressions",
+          "HLASM-LR: Evaluation of expressions"
+        ]
+      }
+    }
+  },
+  "HA102A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Data attributes"
+    ],
+    "tests": {
+      "ATTR-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Length attribute (L')"
+        ]
+      },
+      "ATTR-EQU-LEN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Length attribute (L')"
+        ]
+      },
+      "ATTR-LITERAL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Length attribute (L')"
+        ]
+      },
+      "ATTR-SCALE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Scale attribute (S')"
+        ]
+      },
+      "ATTR-INTEGER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Integer attribute (I')"
+        ]
+      }
+    }
+  },
+  "HA103A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: DC instruction"
+    ],
+    "tests": {
+      "DC-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Character constant—C"
+        ]
+      },
+      "DC-HEX": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Hexadecimal constant—X"
+        ]
+      },
+      "DC-BITS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Binary constant—B"
+        ]
+      },
+      "DC-HALF": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Fixed-point constants—F and H"
+        ]
+      },
+      "DC-FULL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Fixed-point constants—F and H"
+        ]
+      },
+      "DC-DOUBLE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Fixed-point constants—F and H"
+        ]
+      },
+      "DC-SCALED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Fixed-point constants—F and H",
+          "HLASM-LR: Scale modifier"
+        ]
+      },
+      "DC-PACKED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Decimal constants—P and Z"
+        ]
+      },
+      "DC-ZONED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Decimal constants—P and Z"
+        ]
+      },
+      "DC-REPEAT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Duplication factor"
+        ]
+      }
+    }
+  },
+  "HA104A": {
+    "basis": "spec",
+    "tests": {
+      "CNOP-ALIGN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CNOP instruction"
+        ]
+      },
+      "DSECT-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: DSECT instruction"
+        ]
+      },
+      "ORG-RESTORE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ORG instruction"
+        ]
+      },
+      "ORG-OVERWRITE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ORG instruction"
+        ]
+      }
+    }
+  },
+  "HA105A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: PUSH instruction",
+      "HLASM-LR: POP instruction",
+      "HLASM-LR: USING instruction",
+      "HLASM-LR: DROP instruction"
+    ]
+  },
+  "HA106A": {
+    "basis": "spec",
+    "tests": {
+      "DC-CA-ASCII": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Character constant—C"
+        ]
+      },
+      "DC-CE-EBCDIC": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Character constant—C"
+        ]
+      },
+      "DC-CU-UTF16": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Character constant—C"
+        ]
+      },
+      "DC-Y-HALFWORD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constants—A and Y"
+        ]
+      },
+      "DC-AD-DOUBLEWORD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constants—A and Y"
+        ]
+      },
+      "DC-AL3-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constants—A and Y"
+        ]
+      },
+      "CCW0-LAYOUT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CCW and CCW0 instructions",
+          "POP: Channel-Command Word"
+        ]
+      },
+      "CCW-ALIGNED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CCW and CCW0 instructions"
+        ]
+      },
+      "CCW-LENGTH-ATTR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CCW and CCW0 instructions"
+        ]
+      },
+      "CCW1-LAYOUT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CCW1 instruction",
+          "POP: Channel-Command Word"
+        ]
+      }
+    }
+  },
+  "HA107A": {
+    "basis": "spec",
+    "tests": {
+      "CCW0-LAYOUT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CCW and CCW0 instructions"
+        ]
+      },
+      "S-CON-BASE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constant—S"
+        ]
+      },
+      "S-CON-DISPLACEMENT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constant—S"
+        ]
+      },
+      "SY-CON-SAME-LOW": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constant—S"
+        ]
+      },
+      "WXTRN-UNRESOLVED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: WXTRN instruction"
+        ]
+      },
+      "V-CON-ENTRY": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constant—V"
+        ]
+      },
+      "VD-CON-ENTRY": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constant—V"
+        ]
+      },
+      "LOCTR-ORDER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: LOCTR instruction"
+        ]
+      }
+    }
+  },
+  "HA108A": {
+    "basis": "spec",
+    "tests": {
+      "AMODE31-LA": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AMODE instruction | Specifies that 31 bit addressing mode is to be associated with a control section, or entry point.",
+          "HLASM-LR: RMODE instruction | The RMODE instruction specifies the residence mode to be associated with control sections in the object deck.",
+          "POP: LOAD ADDRESS | mode, the address is placed in bit positions 33-63, bit"
+        ]
+      },
+      "COPY-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: COPY instruction | You can also use the COPY instruction to copy complete macro definitions into a source module."
+        ]
+      }
+    }
+  },
+  "HA109A": {
+    "basis": "spec",
+    "tests": {
+      "DXD-CXD-COVERS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Using external dummy sections | Use the CXD instruction to reserve a fullword area into which the linker or loader inserts the total length of all the external dummy sections",
+          "HLASM-LR: CXD instruction | the total length of storage required for all the external dummy sections specified in a program."
+        ]
+      },
+      "DXD-Q-ALIGNED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Using external dummy sections | Use the CXD instruction to reserve a fullword area into which the linker or loader inserts the total length of all the external dummy sections",
+          "HLASM-LR: Using external dummy sections | The linker merges this definition with other definitions of the same name, assigning the longest length and strictest alignment.",
+          "HLASM-LR: Offset constant—Q | Use this constant to reserve storage for the offset into a storage area of an external dummy section"
+        ]
+      },
+      "RSECT-DATA": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: RSECT instruction | The RSECT instruction initiates a read-only executable control section or indicates the continuation of a read-only executable control section."
+        ]
+      },
+      "RSECT-SYSSTYP": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: RSECT instruction | The RSECT instruction initiates a read-only executable control section or indicates the continuation of a read-only executable control section.",
+          "HLASM-LR: &SYSSTYP System Variable Symbol | Use &SYSSTYP in a macro definition to generate the type of the current control section.",
+          "HLASM-LR: &SYSSTYP System Variable Symbol | the value assigned to &SYSSTYP is either CSECT, RSECT, DSECT, or COM."
+        ]
+      },
+      "ENTRY-VCON": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ENTRY instruction | The ENTRY instruction identifies symbols defined in this source module as “external” so that they can be referred to by another source module."
+        ]
+      }
+    }
+  },
+  "HA110A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: ICTL instruction | The ICTL instruction changes the begin, end, and continue columns that establish the coding format of the assembler language source statements.",
+      "HLASM-LR: ICTL instruction | Use the ICTL instruction only once, at the beginning of a source program."
+    ],
+    "tests": {
+      "ICTL-COLUMN1-IGNORED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ICTL instruction | By changing the begin column, you can even create a field before the begin column to contain identification or sequence numbers."
+        ]
+      },
+      "ICTL-LABEL-COLUMN2": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ICTL instruction | Specifies the begin column of the source statement.",
+          "HLASM-LR: ICTL instruction | The ICTL instruction does not affect the format of statements brought in by a COPY"
+        ]
+      }
+    }
+  },
+  "HD101A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Decimal-Number Formats"
+    ],
+    "tests": {
+      "MVC": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE"
+        ]
+      },
+      "CLC-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "MVN": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE NUMERICS"
+        ]
+      },
+      "MVZ": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE ZONES"
+        ]
+      },
+      "XC-SELF": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "NC": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "OC": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      }
+    }
+  },
+  "HD102A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Decimal-Number Formats"
+    ],
+    "tests": {
+      "CVD-N1234567": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO DECIMAL"
+        ]
+      },
+      "CVB-N1234567": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO BINARY"
+        ]
+      },
+      "CVD-N1": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO DECIMAL"
+        ]
+      },
+      "CVB-N1": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO BINARY"
+        ]
+      },
+      "CVD-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO DECIMAL"
+        ]
+      },
+      "CVB-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO BINARY"
+        ]
+      },
+      "CVD-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO DECIMAL"
+        ]
+      },
+      "CVB-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO BINARY"
+        ]
+      },
+      "CVD-1234567": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO DECIMAL"
+        ]
+      },
+      "CVB-1234567": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO BINARY"
+        ]
+      }
+    }
+  },
+  "HD103A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Decimal-Number Formats"
+    ],
+    "tests": {
+      "EDIT-POS": {
+        "basis": "spec",
+        "refs": [
+          "POP: ED"
+        ]
+      },
+      "EDIT-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: ED"
+        ]
+      },
+      "EDIT-NEG-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: ED"
+        ]
+      }
+    }
+  },
+  "HD104A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Decimal-Number Formats"
+    ],
+    "tests": {
+      "ZAP": {
+        "basis": "spec",
+        "refs": [
+          "POP: ZERO AND ADD"
+        ]
+      },
+      "AP": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD DECIMAL"
+        ]
+      },
+      "SP": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ADDRESS SPACE PARAMETERS               LASP      SSE C        P         A"
+        ]
+      },
+      "CP": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE DECIMAL"
+        ]
+      },
+      "MP": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY DECIMAL"
+        ]
+      },
+      "DP": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE DECIMAL"
+        ]
+      },
+      "PACK": {
+        "basis": "spec",
+        "refs": [
+          "POP: PACK"
+        ]
+      },
+      "UNPK": {
+        "basis": "spec",
+        "refs": [
+          "POP: UNPACK"
+        ]
+      },
+      "TP-VALID": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      }
+    }
+  },
+  "HD105A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Decimal-Number Formats"
+    ],
+    "tests": {
+      "TP-SIGN-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-2": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-3": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-4": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-5": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-6": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-7": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-8": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-9": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-A": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-B": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-C": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-D": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-E": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-F": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-INPUT-KEPT": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      }
+    }
+  },
+  "HD106A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Decimal-Number Formats"
+    ],
+    "tests": {
+      "TP-SIGN-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-2": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-3": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-4": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-5": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-6": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-7": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-8": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-9": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-A": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-B": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-C": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-D": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-E": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-SIGN-F": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-INPUT-KEPT": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      }
+    }
+  },
+  "HD107A": {
+    "basis": "zos",
+    "note": "Assembled constant bytes the HLASM Language Reference does not pin down to the bit; expected bytes are the current Zeus assembler.",
+    "tests": {
+      "E-TENTH": {
+        "basis": "zos",
+        "note": "E'0.1': Zeus rounds the 6-digit fraction to nearest (X4019999A).",
+        "refs": [
+          "HLASM-LR: Floating-point constant L, LH | The resulting number does not differ from the exact value specified by more than one in the last place."
+        ]
+      },
+      "D-TENTH": {
+        "basis": "zos",
+        "note": "D'0.1': Zeus rounds (X401999999999999A).",
+        "refs": [
+          "HLASM-LR: Floating-point constant L, LH | The resulting number does not differ from the exact value specified by more than one in the last place."
+        ]
+      },
+      "L-TENTH": {
+        "basis": "zos",
+        "note": "L'0.1': Zeus rounds the 28-digit fraction; the low-order characteristic is the high one minus 14.",
+        "refs": [
+          "HLASM-LR: Floating-point constant L, LH | The resulting number does not differ from the exact value specified by more than one in the last place."
+        ]
+      },
+      "F-FRACTION": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Fixed-point constants—F and H | Round the resulting number to a whole number."
+        ]
+      },
+      "H-NEG-FRACTION": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Fixed-point constants—F and H | Round the resulting number to a whole number."
+        ]
+      },
+      "FS-SCALE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Fixed-point constants—F and H | Round the resulting number to a whole number.",
+          "HLASM-LR: Fixed-point constants—F and H | If there is a scaling modifier, adjust the resulting binary number; that is, multiply by the corresponding power of two."
+        ]
+      },
+      "P-DECIMAL-POINT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Decimal constants—P and Z | The placement of a decimal point in the definition does not affect the assembly of the constant in any way"
+        ]
+      },
+      "Z-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Decimal constants—P and Z | The sign indicator (see 5 in Table 26 on page 139) replaces the first four bits of the low-order byte of the constant."
+        ]
+      },
+      "E-ROUND-HALF": {
+        "basis": "zos",
+        "note": "E'0.33333333': Zeus X40555555.",
+        "refs": [
+          "HLASM-LR: Floating-point constant L, LH | The resulting number does not differ from the exact value specified by more than one in the last place."
+        ]
+      },
+      "DS-UNINITIALIZED": {
+        "basis": "zos",
+        "note": "DS storage is not initialized by the assembler; Zeus loads it as zeros. On z/OS the loader may leave other contents; record them.",
+        "refs": [
+          "HLASM-LR: DS instruction"
+        ]
+      }
+    }
+  },
+  "HE101N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Registers"
+    ]
+  },
+  "HE101P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Registers"
+    ]
+  },
+  "HE102N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Addresses",
+      "HLASM-LR: Displacement"
+    ]
+  },
+  "HE102P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Addresses",
+      "HLASM-LR: Displacement"
+    ]
+  },
+  "HE103N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Addresses",
+      "HLASM-LR: Displacement"
+    ]
+  },
+  "HE103P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Addresses",
+      "HLASM-LR: Displacement"
+    ]
+  },
+  "HE104N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Register usage by machine instructions",
+      "POP: MULTIPLY"
+    ]
+  },
+  "HE104P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Register usage by machine instructions",
+      "POP: MULTIPLY"
+    ]
+  },
+  "HE105N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Register usage by machine instructions",
+      "POP: DIVIDE"
+    ]
+  },
+  "HE105P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Register usage by machine instructions",
+      "POP: DIVIDE"
+    ]
+  },
+  "HE106N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Immediate data"
+    ]
+  },
+  "HE106P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Immediate data"
+    ]
+  },
+  "HE107N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Immediate data"
+    ]
+  },
+  "HE107P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Immediate data"
+    ]
+  },
+  "HE108N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Lengths",
+      "POP: ZERO AND ADD"
+    ]
+  },
+  "HE108P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Lengths",
+      "POP: ZERO AND ADD"
+    ]
+  },
+  "HE109N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Lengths",
+      "POP: TEST DECIMAL"
+    ]
+  },
+  "HE109P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Lengths",
+      "POP: TEST DECIMAL"
+    ]
+  },
+  "HE110N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Hexadecimal constant—X"
+    ]
+  },
+  "HE110P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Hexadecimal constant—X"
+    ]
+  },
+  "HE111N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Binary constant—B"
+    ]
+  },
+  "HE111P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Binary constant—B"
+    ]
+  },
+  "HE112N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Symbols"
+    ]
+  },
+  "HE112P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Symbols"
+    ]
+  },
+  "HE113N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Operation codes"
+    ]
+  },
+  "HE113P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Operation codes"
+    ]
+  },
+  "HE114N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Operand entries"
+    ]
+  },
+  "HE114P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Operand entries"
+    ]
+  },
+  "HE115N": {
+    "basis": "spec",
+    "refs": [
+      "POP: SHIFT AND ROUND DECIMAL"
+    ]
+  },
+  "HE115P": {
+    "basis": "spec",
+    "refs": [
+      "POP: SHIFT AND ROUND DECIMAL"
+    ]
+  },
+  "HE116N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Addresses",
+      "POP: SHIFT LEFT SINGLE LOGICAL"
+    ]
+  },
+  "HE116P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Addresses",
+      "POP: SHIFT LEFT SINGLE LOGICAL"
+    ]
+  },
+  "HE117N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Immediate data",
+      "POP: INSERT CHARACTERS UNDER MASK"
+    ]
+  },
+  "HE117P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Immediate data",
+      "POP: INSERT CHARACTERS UNDER MASK"
+    ]
+  },
+  "HE118N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: DROP instruction",
+      "HLASM-LR: USING instruction"
+    ]
+  },
+  "HE118P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: DROP instruction",
+      "HLASM-LR: USING instruction"
+    ]
+  },
+  "HE119N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: MNOTE instruction"
+    ]
+  },
+  "HE119P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: MNOTE instruction"
+    ]
+  },
+  "HE120N": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Length attribute (L')",
+      "HLASM-LR: Symbols"
+    ]
+  },
+  "HE120P": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Length attribute (L')",
+      "HLASM-LR: Symbols"
+    ]
+  },
+  "HF101A": {
+    "basis": "spec",
+    "tests": {
+      "HFP-ADD": {
+        "basis": "spec",
+        "refs": [
+          "POP: Hexadecimal-Floating-Point Instructions",
+          "POP: HFP Number Representation"
+        ]
+      },
+      "HFP-MUL": {
+        "basis": "spec",
+        "refs": [
+          "POP: Hexadecimal-Floating-Point Instructions",
+          "POP: HFP Number Representation"
+        ]
+      },
+      "HFP-DIV": {
+        "basis": "spec",
+        "refs": [
+          "POP: Hexadecimal-Floating-Point Instructions",
+          "POP: HFP Number Representation"
+        ]
+      },
+      "HFP-SQRT": {
+        "basis": "spec",
+        "refs": [
+          "POP: Hexadecimal-Floating-Point Instructions",
+          "POP: SQUARE ROOT"
+        ]
+      }
+    }
+  },
+  "HF102A": {
+    "basis": "spec",
+    "tests": {
+      "BFP-ADD": {
+        "basis": "spec",
+        "refs": [
+          "POP: Binary-Floating-Point Instructions"
+        ]
+      },
+      "BFP-MUL": {
+        "basis": "spec",
+        "refs": [
+          "POP: Binary-Floating-Point Instructions"
+        ]
+      },
+      "BFP-SQRT": {
+        "basis": "spec",
+        "refs": [
+          "POP: Binary-Floating-Point Instructions",
+          "POP: SQUARE ROOT"
+        ]
+      },
+      "BFP-NEG-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: Binary-Floating-Point Instructions"
+        ]
+      },
+      "BFP-INFINITY": {
+        "basis": "spec",
+        "refs": [
+          "POP: Binary-Floating-Point Instructions"
+        ]
+      }
+    }
+  },
+  "HF103A": {
+    "basis": "spec",
+    "tests": {
+      "DPD-ONE": {
+        "basis": "spec",
+        "refs": [
+          "POP: Densely Packed Decimal"
+        ]
+      },
+      "DPD-QUANTUM": {
+        "basis": "spec",
+        "refs": [
+          "POP: Decimal-Floating-Point Instructions"
+        ]
+      },
+      "DPD-EIGHTS": {
+        "basis": "spec",
+        "refs": [
+          "POP: Densely Packed Decimal"
+        ]
+      },
+      "DFP-ADD": {
+        "basis": "spec",
+        "refs": [
+          "POP: Decimal-Floating-Point Instructions"
+        ]
+      },
+      "DFP-MUL": {
+        "basis": "spec",
+        "refs": [
+          "POP: Decimal-Floating-Point Instructions"
+        ]
+      }
+    }
+  },
+  "HF201A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF202A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF203A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF204A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF205A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF206A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF207A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF208A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF209A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF210A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF211A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF212A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF213A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF214A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF215A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF216A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF217A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF218A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF219A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF220A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF221A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF222A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF223A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF224A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF225A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF226A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF227A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF228A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF229A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF230A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF231A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF232A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF233A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF234A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF235A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF236A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF237A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF238A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF239A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF240A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF241A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF242A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF243A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF244A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF245A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF246A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF247A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF248A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF249A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF250A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF251A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF252A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF253A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HF254A": {
+    "basis": "spec",
+    "refs": [
+      "POP: PERFORM FLOATING-POINT OPERATION"
+    ]
+  },
+  "HI101A": {
+    "basis": "spec",
+    "tests": {
+      "ADD-SIGNED": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "ADD-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL"
+        ]
+      }
+    }
+  },
+  "HI102A": {
+    "basis": "spec",
+    "tests": {
+      "IIHF-LOW-PRESERVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT IMMEDIATE"
+        ]
+      },
+      "IILF-HIGH-PRESERVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT IMMEDIATE"
+        ]
+      },
+      "BYTE-REVERSE": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD REVERSED"
+        ]
+      },
+      "STORE-REVERSE": {
+        "basis": "spec",
+        "refs": [
+          "POP: STFH"
+        ]
+      },
+      "LONG-DISP": {
+        "basis": "spec",
+        "refs": [
+          "POP: Binary-Integer Representation"
+        ]
+      }
+    }
+  },
+  "HI103A": {
+    "basis": "spec",
+    "tests": {
+      "ROTATE-32": {
+        "basis": "spec",
+        "refs": [
+          "POP: RISBG"
+        ]
+      },
+      "POPCNT-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "POP: POPULATION COUNT"
+        ]
+      },
+      "POPCNT-TOTAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: POPULATION COUNT"
+        ]
+      },
+      "FLOGR-POSITION": {
+        "basis": "spec",
+        "refs": [
+          "POP: FIND LEFTMOST ONE"
+        ]
+      },
+      "RISBG-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN INSERT SELECTED BITS"
+        ]
+      },
+      "XGRK-DISTINCT": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      }
+    }
+  },
+  "HI104A": {
+    "basis": "spec",
+    "tests": {
+      "ICM-MASK-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-2": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-3": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-4": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-5": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-6": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-7": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-8": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-9": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-10": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-11": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-12": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-13": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-14": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICM-MASK-15": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      }
+    }
+  },
+  "HI105A": {
+    "basis": "spec",
+    "tests": {
+      "CS-SUCCESS": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP"
+        ]
+      },
+      "CS-STORED": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP"
+        ]
+      },
+      "CS-FAIL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP"
+        ]
+      },
+      "CS-FAIL-UNCHANGED": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP"
+        ]
+      },
+      "LAAG-OLD": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND ADD"
+        ]
+      },
+      "LAAG-STORED": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND ADD"
+        ]
+      }
+    }
+  },
+  "HI106A": {
+    "basis": "spec",
+    "tests": {
+      "LGF": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD"
+        ]
+      },
+      "LLGF": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL"
+        ]
+      },
+      "LGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD HALFWORD"
+        ]
+      },
+      "LLGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL HALFWORD"
+        ]
+      },
+      "LLGC": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL CHARACTER"
+        ]
+      },
+      "AG": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "SG": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT"
+        ]
+      },
+      "AGFR": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "SGFR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT"
+        ]
+      },
+      "LCGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD COMPLEMENT"
+        ]
+      },
+      "LPGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD POSITIVE"
+        ]
+      },
+      "LNGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD NEGATIVE"
+        ]
+      }
+    }
+  },
+  "HI107A": {
+    "basis": "spec",
+    "tests": {
+      "SIGNED-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "SIGNED-NEG": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "SIGNED-POS": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "SIGNED-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "LOGICAL-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL"
+        ]
+      },
+      "LOGICAL-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL"
+        ]
+      },
+      "COMPARE-LOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: CGRJ"
+        ]
+      },
+      "COMPARE-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: CGRJ"
+        ]
+      },
+      "COMPARE-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: CGRJ"
+        ]
+      }
+    }
+  },
+  "HI108A": {
+    "basis": "spec",
+    "tests": {
+      "SLLG-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE LOGICAL"
+        ]
+      },
+      "SRLG-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE LOGICAL"
+        ]
+      },
+      "SLLG-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE LOGICAL"
+        ]
+      },
+      "SRLG-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE LOGICAL"
+        ]
+      },
+      "SLLG-31": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE LOGICAL"
+        ]
+      },
+      "SRLG-31": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE LOGICAL"
+        ]
+      },
+      "SLLG-32": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE LOGICAL"
+        ]
+      },
+      "SRLG-32": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE LOGICAL"
+        ]
+      },
+      "SLLG-63": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE LOGICAL"
+        ]
+      },
+      "SRLG-63": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE LOGICAL"
+        ]
+      },
+      "SLLG-64": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE LOGICAL"
+        ]
+      },
+      "SRLG-64": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE LOGICAL"
+        ]
+      }
+    }
+  },
+  "HI109A": {
+    "basis": "spec",
+    "tests": {
+      "ICMH-MASK-0": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-1": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-2": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-3": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-4": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-5": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-6": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-7": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-8": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-9": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-10": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-11": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-12": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-13": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-14": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMH-MASK-15": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      }
+    }
+  },
+  "HI110A": {
+    "basis": "spec",
+    "tests": {
+      "TR-TABLE": {
+        "basis": "spec",
+        "refs": [
+          "POP: TRANSLATE"
+        ]
+      },
+      "TRT-FOUND-OFFSET": {
+        "basis": "spec",
+        "refs": [
+          "POP: TRANSLATE AND TEST"
+        ]
+      },
+      "TRT-FOUND-FUNC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TRANSLATE AND TEST"
+        ]
+      },
+      "TRT-FOUND-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TRANSLATE AND TEST"
+        ]
+      },
+      "TRT-NONE-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TRANSLATE AND TEST"
+        ]
+      },
+      "TRT-LAST-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TRANSLATE AND TEST"
+        ]
+      },
+      "EX-MVC-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXECUTE"
+        ]
+      },
+      "MVCL-PAD": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE LONG"
+        ]
+      },
+      "MVCL-PAD-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE LONG"
+        ]
+      },
+      "CLCL-PAD-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL LONG"
+        ]
+      },
+      "CLCL-LOW-OFFSET": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL LONG"
+        ]
+      },
+      "MVST-COPY": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE STRING"
+        ]
+      },
+      "MVST-END-OFFSET": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE STRING"
+        ]
+      },
+      "SRST-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "POP: SEARCH STRING"
+        ]
+      },
+      "CLST-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL STRING"
+        ]
+      },
+      "EDMK-RESULT": {
+        "basis": "spec",
+        "refs": [
+          "POP: EDIT AND MARK"
+        ]
+      },
+      "EDMK-MARK-OFFSET": {
+        "basis": "spec",
+        "refs": [
+          "POP: EDIT AND MARK"
+        ]
+      },
+      "MVO-SHIFT": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE WITH OFFSET"
+        ]
+      },
+      "TM-ONES-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      },
+      "TM-ZEROS-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      },
+      "TM-MIXED-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      }
+    }
+  },
+  "HI111A": {
+    "basis": "spec",
+    "tests": {
+      "BCT-COUNT": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON COUNT"
+        ]
+      },
+      "BXLE-COUNT": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON INDEX LOW OR EQUAL"
+        ]
+      },
+      "BXLE-FINAL-INDEX": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON INDEX LOW OR EQUAL"
+        ]
+      },
+      "BXH-COUNT": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON INDEX HIGH"
+        ]
+      },
+      "CLM-MASK-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL CHAR. UNDER MASK"
+        ]
+      },
+      "STCM-MASK": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE CHARACTERS UNDER MASK"
+        ]
+      },
+      "IC-PRESERVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTER"
+        ]
+      },
+      "SLDA-OVERFLOW-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT DOUBLE"
+        ]
+      },
+      "SLDA-OVERFLOW-VAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT DOUBLE"
+        ]
+      },
+      "SRDA-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT DOUBLE"
+        ]
+      },
+      "SRDA-NEGATIVE-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT DOUBLE"
+        ]
+      }
+    }
+  },
+  "HI112A": {
+    "basis": "spec",
+    "tests": {
+      "A-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "AH-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD HALFWORD"
+        ]
+      },
+      "AHY-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD HALFWORD"
+        ]
+      },
+      "AY-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "AGF-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "AGFI-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD IMMEDIATE"
+        ]
+      },
+      "AGR-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "S-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND FORM CODEWORD                  CFC"
+        ]
+      },
+      "S-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND FORM CODEWORD                  CFC"
+        ]
+      },
+      "SH-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT HALFWORD"
+        ]
+      },
+      "SHY": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT HALFWORD"
+        ]
+      },
+      "SY-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT"
+        ]
+      },
+      "SGF-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT"
+        ]
+      },
+      "SGR-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT"
+        ]
+      }
+    }
+  },
+  "HI113A": {
+    "basis": "spec",
+    "tests": {
+      "AL-ZERO-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL"
+        ]
+      },
+      "ALR-NO-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL"
+        ]
+      },
+      "ALY-NONZERO-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL"
+        ]
+      },
+      "ALG-ZERO-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL"
+        ]
+      },
+      "ALC-CARRY-IN": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL WITH CARRY"
+        ]
+      },
+      "ALCR-NO-CARRY-IN": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL WITH CARRY"
+        ]
+      },
+      "ALCG-CARRY-OUT": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD LOGICAL WITH CARRY"
+        ]
+      },
+      "SL-BORROW": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL"
+        ]
+      },
+      "SLR-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL"
+        ]
+      },
+      "SLY-NO-BORROW": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL"
+        ]
+      },
+      "SLG-BORROW": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL"
+        ]
+      },
+      "SLGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL"
+        ]
+      },
+      "SLB-BORROW-IN": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL WITH BORROW"
+        ]
+      },
+      "SLBR-NO-BORROW-IN": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL WITH BORROW"
+        ]
+      },
+      "SLBG-ZERO-BORROW": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL WITH BORROW"
+        ]
+      },
+      "SLBGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT LOGICAL WITH BORROW"
+        ]
+      }
+    }
+  },
+  "HI114A": {
+    "basis": "spec",
+    "tests": {
+      "C-SIGNED-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CR-LOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CY-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CH-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE HALFWORD"
+        ]
+      },
+      "CHY": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE HALFWORD"
+        ]
+      },
+      "CHI-LOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE HALFWORD IMMEDIATE"
+        ]
+      },
+      "CG-64": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CGF-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CGFI": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE IMMEDIATE"
+        ]
+      },
+      "CGFR": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CGHI": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE HALFWORD IMMEDIATE"
+        ]
+      },
+      "CL-LOGICAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "CLR-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "CLY": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "CLG": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "CLGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "CLI-LOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "CLIY-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL"
+        ]
+      },
+      "CLMH-HIGH-HALF": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL CHAR. UNDER MASK"
+        ]
+      },
+      "CLMY": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL CHAR. UNDER MASK"
+        ]
+      }
+    }
+  },
+  "HI115A": {
+    "basis": "spec",
+    "tests": {
+      "M-SIGNED-PAIR": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "MH-LOW-WORD": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY HALFWORD"
+        ]
+      },
+      "MHI-TRUNCATED": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY HALFWORD IMMEDIATE"
+        ]
+      },
+      "ML-LOGICAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY LOGICAL"
+        ]
+      },
+      "MLR": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY LOGICAL"
+        ]
+      },
+      "MLG-128": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY LOGICAL"
+        ]
+      },
+      "MLGR-128": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY LOGICAL"
+        ]
+      },
+      "MSG": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY SINGLE"
+        ]
+      },
+      "MSGR-LOW-64": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY SINGLE"
+        ]
+      },
+      "MSY": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY SINGLE"
+        ]
+      },
+      "MGHI": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY HALFWORD IMMEDIATE"
+        ]
+      },
+      "D-NEGATIVE-DIVIDEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE"
+        ]
+      },
+      "DL-LOGICAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE LOGICAL"
+        ]
+      },
+      "DLR": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE LOGICAL"
+        ]
+      },
+      "DLG-128": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE LOGICAL"
+        ]
+      },
+      "DLGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE LOGICAL"
+        ]
+      },
+      "DSG": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE SINGLE"
+        ]
+      },
+      "DSGF-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE SINGLE"
+        ]
+      },
+      "DSGFR": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE SINGLE"
+        ]
+      },
+      "DSGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE SINGLE"
+        ]
+      }
+    }
+  },
+  "HI116A": {
+    "basis": "spec",
+    "tests": {
+      "LH-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD HALFWORD"
+        ]
+      },
+      "LHY": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD HALFWORD"
+        ]
+      },
+      "LB-SIGN-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD BYTE"
+        ]
+      },
+      "LBR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD BYTE"
+        ]
+      },
+      "LGB": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD BYTE"
+        ]
+      },
+      "LGBR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD BYTE"
+        ]
+      },
+      "LGFI": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD IMMEDIATE"
+        ]
+      },
+      "LLC-ZERO-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL CHARACTER"
+        ]
+      },
+      "LLH-ZERO-EXTEND": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL HALFWORD"
+        ]
+      },
+      "LLIHF": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL IMMEDIATE"
+        ]
+      },
+      "LLIHH-LLIHL": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL IMMEDIATE"
+        ]
+      },
+      "LLILF-LLILH-LLILL": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LOGICAL IMMEDIATE"
+        ]
+      },
+      "LCR-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD COMPLEMENT"
+        ]
+      },
+      "LCR-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD COMPLEMENT"
+        ]
+      },
+      "LNR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD NEGATIVE"
+        ]
+      },
+      "LNR-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD NEGATIVE"
+        ]
+      },
+      "LPR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD POSITIVE"
+        ]
+      },
+      "LPR-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD POSITIVE"
+        ]
+      },
+      "LTR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND TEST"
+        ]
+      },
+      "LTGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND TEST"
+        ]
+      }
+    }
+  },
+  "HI117A": {
+    "basis": "spec",
+    "tests": {
+      "STMG-LMG": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE MULTIPLE"
+        ]
+      },
+      "STMY-LMY": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE MULTIPLE"
+        ]
+      },
+      "STC-LOW-BYTE": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE CHARACTER"
+        ]
+      },
+      "STCY": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE CHARACTER"
+        ]
+      },
+      "STH-STHY": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE HALFWORD"
+        ]
+      },
+      "STY": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE"
+        ]
+      },
+      "STCMH-MASK": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE CHARACTERS UNDER MASK"
+        ]
+      },
+      "STCMY-MASK": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMY-LEFT-ONE": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICMY-ZERO-MASK": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTERS UNDER MASK"
+        ]
+      },
+      "ICY": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT CHARACTER"
+        ]
+      },
+      "IIHH-IIHL": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT IMMEDIATE"
+        ]
+      },
+      "IILH-IILL": {
+        "basis": "spec",
+        "refs": [
+          "POP: INSERT IMMEDIATE"
+        ]
+      },
+      "LAY-NEGATIVE-DISP": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ADDRESS"
+        ]
+      },
+      "LARL-SAME-AS-LA": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ADDRESS RELATIVE LONG"
+        ]
+      }
+    }
+  },
+  "HI118A": {
+    "basis": "spec",
+    "tests": {
+      "LRV": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD REVERSED"
+        ]
+      },
+      "LRVR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD REVERSED"
+        ]
+      },
+      "LRVGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD REVERSED"
+        ]
+      },
+      "LRVH": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD REVERSED"
+        ]
+      },
+      "STRV-STRVH": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE REVERSED"
+        ]
+      },
+      "LOCR-TAKEN": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ON CONDITION"
+        ]
+      },
+      "LOCR-NOT-TAKEN": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ON CONDITION"
+        ]
+      },
+      "LOCGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ON CONDITION"
+        ]
+      },
+      "LOC-LOCG": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ON CONDITION"
+        ]
+      },
+      "LOCHI-LOCGHI": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD HALFWORD IMMEDIATE ON CONDITION"
+        ]
+      },
+      "LOCHHI": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD HALFWORD HIGH IMMEDIATE ON"
+        ]
+      },
+      "LOCFH-LOCFHR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD HIGH ON CONDITION"
+        ]
+      },
+      "STOC-STOCG": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE ON CONDITION"
+        ]
+      },
+      "STOCFH": {
+        "basis": "spec",
+        "refs": [
+          "POP: STORE HIGH ON CONDITION"
+        ]
+      },
+      "SELR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SELECT"
+        ]
+      },
+      "SELGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SELECT"
+        ]
+      },
+      "SELFHR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SELECT HIGH"
+        ]
+      }
+    }
+  },
+  "HI119A": {
+    "basis": "spec",
+    "tests": {
+      "N": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "NR-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "NY": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "NG": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "NGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "NI-NIY": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "NIHF": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND IMMEDIATE"
+        ]
+      },
+      "NIHH-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND IMMEDIATE"
+        ]
+      },
+      "NIHL": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND IMMEDIATE"
+        ]
+      },
+      "NILF": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND IMMEDIATE"
+        ]
+      },
+      "NILH-NILL": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND IMMEDIATE"
+        ]
+      },
+      "TMLL-MIXED-LEFT-ONE": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      },
+      "TMLL-MIXED-LEFT-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      },
+      "TMLH-ONES": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      },
+      "TMHH-ZEROS": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      },
+      "TMHL": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      },
+      "TMY-MIXED": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST UNDER MASK"
+        ]
+      }
+    }
+  },
+  "HI120A": {
+    "basis": "spec",
+    "tests": {
+      "O": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "OR-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "OY": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "OG": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "OGR": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "OIY": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "OIHF": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR IMMEDIATE"
+        ]
+      },
+      "OIHH-OIHL": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR IMMEDIATE"
+        ]
+      },
+      "OILF": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR IMMEDIATE"
+        ]
+      },
+      "OILH-OILL": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR IMMEDIATE"
+        ]
+      },
+      "X": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "XY-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "XG": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "XGR-SELF": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "XI-XIY": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "XIHF-XILF": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR IMMEDIATE"
+        ]
+      }
+    }
+  },
+  "HI121A": {
+    "basis": "spec",
+    "tests": {
+      "NRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "NGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND"
+        ]
+      },
+      "ORK": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "OGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR"
+        ]
+      },
+      "XRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "XGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXCLUSIVE OR"
+        ]
+      },
+      "NCRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND WITH COMPLEMENT"
+        ]
+      },
+      "NCGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: AND WITH COMPLEMENT"
+        ]
+      },
+      "OCRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR WITH COMPLEMENT"
+        ]
+      },
+      "OCGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: OR WITH COMPLEMENT"
+        ]
+      },
+      "NNRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: NAND"
+        ]
+      },
+      "NNGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: NAND"
+        ]
+      },
+      "NORK": {
+        "basis": "spec",
+        "refs": [
+          "POP: NOR"
+        ]
+      },
+      "NOGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: NOR"
+        ]
+      },
+      "NXRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: NOT EXCLUSIVE OR"
+        ]
+      },
+      "NXGRK": {
+        "basis": "spec",
+        "refs": [
+          "POP: NOT EXCLUSIVE OR"
+        ]
+      }
+    }
+  },
+  "HI122A": {
+    "basis": "spec",
+    "tests": {
+      "SLA-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE"
+        ]
+      },
+      "SLA-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE"
+        ]
+      },
+      "SLAG": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT SINGLE"
+        ]
+      },
+      "SRA-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE"
+        ]
+      },
+      "SRAG": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT SINGLE"
+        ]
+      },
+      "SLDL": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT LEFT DOUBLE LOGICAL"
+        ]
+      },
+      "SRDL": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT RIGHT DOUBLE LOGICAL"
+        ]
+      },
+      "RLL": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE LEFT SINGLE LOGICAL"
+        ]
+      },
+      "RISBGN-INSERT": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN INSERT SELECTED BITS"
+        ]
+      },
+      "RISBGN-ZERO-REST": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN INSERT SELECTED BITS"
+        ]
+      },
+      "RISBHG": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN INSERT SELECTED BITS HIGH"
+        ]
+      },
+      "RISBLG-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN INSERT SELECTED BITS"
+        ]
+      },
+      "RNSBG": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN AND SELECTED BITS"
+        ]
+      },
+      "ROSBG": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN OR SELECTED BITS"
+        ]
+      },
+      "RXSBG-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN EXCLUSIVE OR SELECTED BITS"
+        ]
+      },
+      "RXSBG-TEST-ONLY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ROTATE THEN EXCLUSIVE OR SELECTED BITS"
+        ]
+      }
+    }
+  },
+  "HI123A": {
+    "basis": "spec",
+    "tests": {
+      "BAL-LINK": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH AND LINK"
+        ]
+      },
+      "BALR-LINK": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH AND LINK"
+        ]
+      },
+      "BAS-LINK": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH AND SAVE"
+        ]
+      },
+      "BRAS-LINK": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH RELATIVE AND SAVE"
+        ]
+      },
+      "BRASL-LINK": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH RELATIVE AND SAVE LONG"
+        ]
+      },
+      "BC-TAKEN": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON CONDITION"
+        ]
+      },
+      "BC-NOT-TAKEN": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON CONDITION"
+        ]
+      },
+      "BCR-TAKEN": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON CONDITION"
+        ]
+      },
+      "BRC-TAKEN": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH RELATIVE ON CONDITION"
+        ]
+      },
+      "BRCL-NOT-TAKEN": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH RELATIVE ON CONDITION LONG"
+        ]
+      },
+      "BCTR-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON COUNT"
+        ]
+      },
+      "BCTR-ZERO-COUNTS": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON COUNT"
+        ]
+      },
+      "BCTG-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON COUNT"
+        ]
+      },
+      "BCTGR-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH ON COUNT"
+        ]
+      },
+      "BRCT-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH RELATIVE ON COUNT"
+        ]
+      },
+      "BRCTG-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH RELATIVE ON COUNT"
+        ]
+      },
+      "BRCTH-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH RELATIVE ON COUNT HIGH"
+        ]
+      },
+      "EXRL-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "POP: EXECUTE RELATIVE LONG"
+        ]
+      }
+    }
+  },
+  "HI124A": {
+    "basis": "spec",
+    "tests": {
+      "LAA-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND ADD"
+        ]
+      },
+      "LAAL-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND ADD LOGICAL"
+        ]
+      },
+      "LAALG": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND ADD LOGICAL"
+        ]
+      },
+      "LAN-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND AND"
+        ]
+      },
+      "LAO": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND OR"
+        ]
+      },
+      "LAX-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND EXCLUSIVE OR"
+        ]
+      },
+      "LANG-LAOG-LAXG": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND AND"
+        ]
+      },
+      "CSY-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP"
+        ]
+      },
+      "CSY-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP"
+        ]
+      },
+      "CSG": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP"
+        ]
+      },
+      "CDS-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE DOUBLE AND SWAP"
+        ]
+      },
+      "CDSY-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE DOUBLE AND SWAP"
+        ]
+      },
+      "CDSG": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE DOUBLE AND SWAP"
+        ]
+      },
+      "TS-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST AND SET"
+        ]
+      },
+      "TS-SET": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST AND SET"
+        ]
+      },
+      "LPD": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD PAIR DISJOINT"
+        ]
+      },
+      "LPDG": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD PAIR DISJOINT"
+        ]
+      },
+      "LPQ-STPQ": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD PAIR FROM QUADWORD"
+        ]
+      }
+    }
+  },
+  "HI125A": {
+    "basis": "spec",
+    "tests": {
+      "CVBY": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO BINARY"
+        ]
+      },
+      "CVBG": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO BINARY"
+        ]
+      },
+      "CVDY": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO DECIMAL"
+        ]
+      },
+      "CVDG": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO DECIMAL"
+        ]
+      },
+      "MVCLE-PAD": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE LONG EXTENDED"
+        ]
+      },
+      "MVCLE-TRUNCATE": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE LONG EXTENDED"
+        ]
+      },
+      "CLCLE-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL LONG EXTENDED"
+        ]
+      },
+      "CLCLE-PAD-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE LOGICAL LONG EXTENDED"
+        ]
+      },
+      "MVIY": {
+        "basis": "spec",
+        "refs": [
+          "POP: MOVE"
+        ]
+      },
+      "TRTR-RIGHTMOST": {
+        "basis": "spec",
+        "refs": [
+          "POP: TRANSLATE AND TEST REVERSE"
+        ]
+      },
+      "LAM-STAM": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ACCESS MULTIPLE"
+        ]
+      },
+      "SPM-SETS-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: SET PROGRAM MASK"
+        ]
+      },
+      "MS": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY SINGLE"
+        ]
+      },
+      "BSM-RECORD-MODE": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH AND SET MODE"
+        ]
+      },
+      "BASSM-LINK-31": {
+        "basis": "spec",
+        "refs": [
+          "POP: BRANCH AND SAVE AND SET MODE"
+        ]
+      },
+      "SAM64-LA-64BIT": {
+        "basis": "spec",
+        "refs": [
+          "POP: SET ADDRESSING MODE"
+        ]
+      }
+    }
+  },
+  "HI126A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Hexadecimal-Floating-Point Instructions",
+      "POP: HFP Number Representation"
+    ],
+    "tests": {
+      "AE-NORMALIZED": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD NORMALIZED"
+        ]
+      },
+      "AER-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD NORMALIZED"
+        ]
+      },
+      "AU-UNNORMALIZED": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD UNNORMALIZED"
+        ]
+      },
+      "AUR-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD UNNORMALIZED"
+        ]
+      },
+      "CE-LOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CER-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "DE": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE"
+        ]
+      },
+      "DER-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE"
+        ]
+      },
+      "HER": {
+        "basis": "spec",
+        "refs": [
+          "POP: HALVE"
+        ]
+      },
+      "LCER": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD COMPLEMENT"
+        ]
+      },
+      "LNER": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD NEGATIVE"
+        ]
+      },
+      "LPER": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD POSITIVE"
+        ]
+      },
+      "LTER-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND TEST"
+        ]
+      },
+      "LER": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD"
+        ]
+      },
+      "ME-LONG-PRODUCT": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "MER": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "SE-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT NORMALIZED"
+        ]
+      },
+      "SER-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT NORMALIZED"
+        ]
+      },
+      "SU-UNNORMALIZED": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT UNNORMALIZED"
+        ]
+      },
+      "SUR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT UNNORMALIZED"
+        ]
+      }
+    }
+  },
+  "HI127A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Hexadecimal-Floating-Point Instructions",
+      "POP: HFP Number Representation"
+    ],
+    "tests": {
+      "ADR": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD NORMALIZED"
+        ]
+      },
+      "AW-UNNORMALIZED": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD UNNORMALIZED"
+        ]
+      },
+      "AWR-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD UNNORMALIZED"
+        ]
+      },
+      "CD-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CDR-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "DDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE"
+        ]
+      },
+      "HDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: HALVE"
+        ]
+      },
+      "LCDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD COMPLEMENT"
+        ]
+      },
+      "LNDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD NEGATIVE"
+        ]
+      },
+      "LPDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD POSITIVE"
+        ]
+      },
+      "LTDR-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD AND TEST"
+        ]
+      },
+      "LDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD"
+        ]
+      },
+      "LEDR-ROUND-UP": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ROUNDED"
+        ]
+      },
+      "LEDR-NO-ROUND": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ROUNDED"
+        ]
+      },
+      "LRDR-ROUND-UP": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD ROUNDED"
+        ]
+      },
+      "MDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "SD-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT NORMALIZED"
+        ]
+      },
+      "SDR-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT NORMALIZED"
+        ]
+      },
+      "SW-UNNORMALIZED": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT UNNORMALIZED"
+        ]
+      },
+      "SWR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT UNNORMALIZED"
+        ]
+      }
+    }
+  },
+  "HI128A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Hexadecimal-Floating-Point Instructions",
+      "POP: HFP Number Representation"
+    ],
+    "tests": {
+      "AXR": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD NORMALIZED"
+        ]
+      },
+      "AXR-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD NORMALIZED"
+        ]
+      },
+      "SXR": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT NORMALIZED"
+        ]
+      },
+      "SXR-CC-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT NORMALIZED"
+        ]
+      },
+      "LXR": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD"
+        ]
+      },
+      "MXR": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "MXD": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "MXDR": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      }
+    }
+  },
+  "HI129A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Binary-Floating-Point Instructions"
+    ],
+    "tests": {
+      "ADB": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "AEB-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: ADD"
+        ]
+      },
+      "SDB-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT"
+        ]
+      },
+      "SEB-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: SUBTRACT"
+        ]
+      },
+      "MDB-ROUNDED": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "MEEB-ROUNDED": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "DDB-THIRD": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE"
+        ]
+      },
+      "DEB-THIRD": {
+        "basis": "spec",
+        "refs": [
+          "POP: DIVIDE"
+        ]
+      },
+      "MADB": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY AND ADD"
+        ]
+      },
+      "MAEB": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY AND ADD"
+        ]
+      },
+      "MSDB": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY AND SUBTRACT"
+        ]
+      },
+      "MSEB": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY AND SUBTRACT"
+        ]
+      },
+      "CDB-LOW": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "CEB-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE"
+        ]
+      },
+      "KDB-HIGH": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SIGNAL"
+        ]
+      },
+      "KEB-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SIGNAL"
+        ]
+      }
+    }
+  },
+  "HI130A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Binary-Floating-Point Instructions"
+    ],
+    "tests": {
+      "LDEB-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LENGTHENED"
+        ]
+      },
+      "LXDB": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LENGTHENED"
+        ]
+      },
+      "LXEB": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD LENGTHENED"
+        ]
+      },
+      "MDEB-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "MXDB": {
+        "basis": "spec",
+        "refs": [
+          "POP: MULTIPLY"
+        ]
+      },
+      "SQDB": {
+        "basis": "spec",
+        "refs": [
+          "POP: SQUARE ROOT"
+        ]
+      },
+      "SQEB": {
+        "basis": "spec",
+        "refs": [
+          "POP: SQUARE ROOT"
+        ]
+      },
+      "TCDB-POS-NORMAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TCDB-NOT-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TCEB-NEG-NORMAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TCXB-POS-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "LFPC-EFPC": {
+        "basis": "spec",
+        "refs": [
+          "POP: LOAD FPC"
+        ]
+      },
+      "SRNM": {
+        "basis": "spec",
+        "refs": [
+          "POP: SET BFP ROUNDING MODE"
+        ]
+      },
+      "SRNMB": {
+        "basis": "spec",
+        "refs": [
+          "POP: SET BFP ROUNDING MODE"
+        ]
+      },
+      "SRNMT": {
+        "basis": "spec",
+        "refs": [
+          "POP: SET DFP ROUNDING MODE"
+        ]
+      }
+    }
+  },
+  "HI131A": {
+    "basis": "spec",
+    "refs": [
+      "POP: Decimal-Floating-Point Instructions"
+    ],
+    "tests": {
+      "CDPT": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT FROM PACKED"
+        ]
+      },
+      "CXPT-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT FROM PACKED"
+        ]
+      },
+      "CPDT-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO PACKED"
+        ]
+      },
+      "CPXT-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO PACKED"
+        ]
+      },
+      "CDZT": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT FROM ZONED"
+        ]
+      },
+      "CXZT": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT FROM ZONED"
+        ]
+      },
+      "CZDT-UNSIGNED": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO ZONED"
+        ]
+      },
+      "CZXT-UNSIGNED": {
+        "basis": "spec",
+        "refs": [
+          "POP: CONVERT TO ZONED"
+        ]
+      },
+      "SLDT": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT SIGNIFICAND LEFT"
+        ]
+      },
+      "SRDT": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT SIGNIFICAND RIGHT"
+        ]
+      },
+      "SLXT": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT SIGNIFICAND LEFT"
+        ]
+      },
+      "SRXT": {
+        "basis": "spec",
+        "refs": [
+          "POP: SHIFT SIGNIFICAND RIGHT"
+        ]
+      },
+      "TDCDT-PLUS-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TDCDT-MINUS-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TDCDT-MINUS-ZERO-BIT": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TDCET-PLUS-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TDCXT-PLUS-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      },
+      "TDCDT-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA CLASS"
+        ]
+      }
+    }
+  },
+  "HM101A": {
+    "basis": "spec",
+    "tests": {
+      "POSITION-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Positional parameters"
+        ]
+      },
+      "KEYWORD-OVERRIDE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Keyword parameters"
+        ]
+      },
+      "SUBLIST-N": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Sublists in operands",
+          "HLASM-LR: Number attribute (N')"
+        ]
+      },
+      "SUBLIST-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Count attribute (K')"
+        ]
+      }
+    }
+  },
+  "HM102A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: SETA instruction"
+    ],
+    "tests": {
+      "SETB-SELECT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SETB instruction"
+        ]
+      },
+      "SETC-SUBSTR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SETC instruction",
+          "HLASM-LR: Substring notation"
+        ]
+      }
+    }
+  },
+  "HM103A": {
+    "basis": "spec",
+    "tests": {
+      "MACRO-C2X": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: C2X"
+        ]
+      },
+      "MACRO-UPPER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: UPPER"
+        ]
+      },
+      "MACRO-HEX": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: D2X | D2X('-7') has value 'FFFFFFF9'"
+        ]
+      },
+      "MACRO-INDEX": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: INDEX"
+        ]
+      }
+    }
+  },
+  "HM104A": {
+    "basis": "spec",
+    "tests": {
+      "OPSYN-SNAPSHOT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: OPSYN instruction"
+        ]
+      },
+      "LOOKAHEAD-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Lookahead"
+        ]
+      }
+    }
+  },
+  "HM105A": {
+    "basis": "spec",
+    "tests": {
+      "SYSNDX-STEP": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSNDX"
+        ]
+      },
+      "GBLA-ACROSS-CALLS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: GBLA, GBLB, and GBLC instructions"
+        ]
+      },
+      "GBLC-APPEND": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: GBLA, GBLB, and GBLC instructions"
+        ]
+      },
+      "MEXIT-STOPS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: MEXIT instruction"
+        ]
+      },
+      "SYSLIST-COUNT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIST"
+        ]
+      },
+      "SYSLIST-ELEMENT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIST"
+        ]
+      },
+      "AGO-SKIPS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AGO instruction"
+        ]
+      },
+      "AGO-COMPUTED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AGO instruction"
+        ]
+      },
+      "D2A-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: D2A"
+        ]
+      },
+      "SETA-DIVIDE-TRUNC": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SETA instruction"
+        ]
+      },
+      "COMPARE-SAME-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SETB instruction"
+        ]
+      },
+      "COMPARE-SHORTER-LOW": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SETB instruction"
+        ]
+      },
+      "DUPLICATION-FACTOR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SETC instruction"
+        ]
+      }
+    }
+  },
+  "HM106A": {
+    "basis": "spec",
+    "tests": {
+      "A2B-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: A2B"
+        ]
+      },
+      "A2B-LOW-BITS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: A2B"
+        ]
+      },
+      "A2C": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: A2C"
+        ]
+      },
+      "A2D": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: A2D"
+        ]
+      },
+      "A2X": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: A2X"
+        ]
+      },
+      "B2A": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: B2A"
+        ]
+      },
+      "B2C": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: B2C"
+        ]
+      },
+      "B2D": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: B2D"
+        ]
+      },
+      "B2X": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: B2X"
+        ]
+      },
+      "C2A": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: C2A"
+        ]
+      },
+      "C2B": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: C2B"
+        ]
+      },
+      "C2D": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: C2D"
+        ]
+      },
+      "D2A-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: D2A"
+        ]
+      },
+      "D2B-LOW-BITS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: D2B"
+        ]
+      },
+      "D2C": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: D2C"
+        ]
+      },
+      "D2X": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: D2X"
+        ]
+      },
+      "X2A": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: X2A"
+        ]
+      },
+      "X2B": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: X2B"
+        ]
+      },
+      "X2C": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: X2C"
+        ]
+      },
+      "X2D": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: X2D"
+        ]
+      }
+    }
+  },
+  "HM107A": {
+    "basis": "spec",
+    "tests": {
+      "DOUBLE-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: DOUBLE"
+        ]
+      },
+      "LOWER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: LOWER"
+        ]
+      },
+      "DEQUOTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: DEQUOTE"
+        ]
+      },
+      "FIND": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: FIND"
+        ]
+      },
+      "ISSYM-DIGIT-FIRST": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ISSYM"
+        ]
+      },
+      "SLA-OPERATOR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SLA"
+        ]
+      },
+      "SRA-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SRA"
+        ]
+      },
+      "SIGNED-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SIGNED"
+        ]
+      },
+      "BYTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: BYTE"
+        ]
+      },
+      "AND-OR-XOR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AND",
+          "HLASM-LR: XOR",
+          "HLASM-LR: OR"
+        ]
+      },
+      "NOT-COMPLEMENT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: NOT"
+        ]
+      },
+      "DCLEN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: DCLEN"
+        ]
+      },
+      "DCVAL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: DCVAL"
+        ]
+      },
+      "SYSOPT-RENT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_RENT"
+        ]
+      },
+      "GBLB-SETB": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: GBLB",
+          "HLASM-LR: SETB"
+        ]
+      },
+      "IS-FUNCTIONS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: ISBIN",
+          "HLASM-LR: ISDEC",
+          "HLASM-LR: ISHEX",
+          "HLASM-LR: ISSYM"
+        ]
+      },
+      "SHIFT-LOGICAL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SLL",
+          "HLASM-LR: SRL"
+        ]
+      },
+      "NEGATIVE-SUBSTITUTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SETA instruction"
+        ]
+      },
+      "SYSECT-SYSSTYP": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSECT",
+          "HLASM-LR: &SYSSTYP"
+        ]
+      },
+      "SYSLOC": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLOC"
+        ]
+      },
+      "SYSMAC-SYSNEST": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSMAC",
+          "HLASM-LR: &SYSNEST"
+        ]
+      },
+      "OPCODE-ATTRIBUTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Operation code attribute (O')"
+        ]
+      },
+      "SYSDATE-LENGTHS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSDATC",
+          "HLASM-LR: &SYSDATE",
+          "HLASM-LR: &SYSTIME"
+        ]
+      },
+      "SYSPARM-EMPTY": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSPARM"
+        ]
+      }
+    }
+  },
+  "HM108A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Type attribute (T') | The type attribute has a value of a single alphabetic character that shows the type of data represented by:"
+    ],
+    "tests": {
+      "T-FULLWORD-HALF": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | F Fullword fixed-point constant, implicit length, aligned",
+          "HLASM-LR: Type attribute (T') | H Halfword fixed-point constant, implicit length, aligned"
+        ]
+      },
+      "T-CHAR-PACKED-HEX": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | C Character constant",
+          "HLASM-LR: Type attribute (T') | P Packed decimal constant"
+        ]
+      },
+      "T-EXPLICIT-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | G Fixed-point constant, explicit length"
+        ]
+      },
+      "T-ADDRESS-LONG": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | D Long floating-point constant, implicit length, aligned"
+        ]
+      },
+      "T-CSECT-INSTR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | I Machine instruction J Control section name"
+        ]
+      },
+      "T-WXTRN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | $ Identified as an external symbol by WXTRN instruction"
+        ]
+      },
+      "T-UNDEFINED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | U Undefined, unknown, or unassigned"
+        ]
+      },
+      "T-SETA-NUMERIC": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | N refers to a numeric value."
+        ]
+      },
+      "T-MACRO-OPERANDS": {
+        "basis": "zos",
+        "note": "10 進の自己定義項のマクロ・オペランドを数値 (N) とみなす。LRM は「変数記号の値」について N を書いており、オペランドの例は載っていない",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | N refers to a numeric value.",
+          "HLASM-LR: Type attribute (T') | O refers to an omitted operand (has a value of a null character string)."
+        ]
+      },
+      "D-DEFINED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Defined attribute (D') | equal to 1 if the symbol has been defined, or 0 if the symbol has not been defined."
+        ]
+      },
+      "D-SETC-SYMBOL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Defined attribute (D') | equal to 1 if the symbol has been defined, or 0 if the symbol has not been defined.",
+          "HLASM-LR: Defined attribute (D') | SETC symbols whose value is an ordinary symbol"
+        ]
+      },
+      "SYSATTRA": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SYSATTRA | SYSATTRA('symbol') returns the assembler-type value for the specified symbol.",
+          "HLASM-LR: EQU instruction | The program type is always null, and the assembler type is always null, except when the appropriate operand is specified."
+        ]
+      },
+      "SYSATTRA-NONE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SYSATTRA | SYSATTRA('symbol') returns the assembler-type value for the specified symbol.",
+          "HLASM-LR: SYSATTRA | Symbols without an assigned assembler type, undefined symbols, and null arguments return null."
+        ]
+      },
+      "SYSATTRA-DS": {
+        "basis": "zos",
+        "note": "DS F の記号の assembler type を F とみなす。LRM は DC/DS の記号が型拡張を含むと書くだけで、値の例は無い",
+        "refs": [
+          "HLASM-LR: SYSATTRA | SYSATTRA('symbol') returns the assembler-type value for the specified symbol.",
+          "HLASM-LR: SYSATTRA | For symbols defined in DC and DS statements, the assembler type includes the type extensions, if any."
+        ]
+      },
+      "SYSATTRP": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: EQU instruction | The program type is always null, and the assembler type is always null, except when the appropriate operand is specified.",
+          "HLASM-LR: SYSATTRP | SYSATTRP('symbol') returns the program-type value for the specified symbol."
+        ]
+      }
+    }
+  },
+  "HM109A": {
+    "basis": "spec",
+    "tests": {
+      "SYSCLOCK-FORMAT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSCLOCK System Variable Symbol | The value of &SYSCLOCK is a 26-character string in the format: YYYY-MM-DD HH:MM:SS.mmmmmm",
+          "HLASM-LR: &SYSCLOCK System Variable Symbol | The value of the type attribute of &SYSCLOCK (T'&SYSCLOCK) is always U."
+        ]
+      },
+      "SYSSEQF": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSSEQF System Variable Symbol | If no ICTL instruction has been specified and sequence checking is not active, the contents of columns 73 to 80 inclusive of the source statement are assigned to &SYSSEQF."
+        ]
+      },
+      "SYSIN-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSIN_MEMBER System Variable Symbol | You can use &SYSIN_MEMBER in a macro definition to obtain the name of the data set member from which the assembler is reading the source module."
+        ]
+      },
+      "SYSM-SEV": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSM_SEV System Variable Symbol | the highest severity of all MNOTE assembler instructions executed in the called macro is used to update the variable.",
+          "HLASM-LR: &SYSM_SEV System Variable Symbol | The value of the variable symbol is supplied as three numeric characters, not as an arithmetic (binary) value."
+        ]
+      },
+      "SYSM-HSEV": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSM_SEV System Variable Symbol | The value of the variable symbol is supplied as three numeric characters, not as an arithmetic (binary) value.",
+          "HLASM-LR: &SYSM_HSEV System Variable Symbol | Use &SYSM_HSEV to get the highest MNOTE severity so far for the assembly."
+        ]
+      },
+      "SYSSTMT-FORM": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSSTMT System Variable Symbol | Use &SYSSTMT to obtain the next statement number that is assigned to a statement by the assembler.",
+          "HLASM-LR: &SYSSTMT System Variable Symbol | The value of the count attribute of &SYSSTMT (K'&SYSSTMT) is always 8."
+        ]
+      },
+      "SYSSTMT-NEXT": {
+        "basis": "zos",
+        "note": "条件付きアセンブリの文 (SETC) も 1 つずつ文番号を取るとみなす。LRM の例は DC 文だけ",
+        "refs": [
+          "HLASM-LR: &SYSSTMT System Variable Symbol | Use &SYSSTMT to obtain the next statement number that is assigned to a statement by the assembler.",
+          "HLASM-LR: &SYSSTMT System Variable Symbol | It assumes that the DC statement is in open code, and is the 23rd statement in the source module."
+        ]
+      },
+      "SYSOPT-DBCS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_DBCS System Variable Symbol | If the DBCS assembler option was not specified, &SYSOPT_DBCS is assigned a value of 0.",
+          "HLASM-LR: &SYSOPT_DBCS System Variable Symbol | The value of the type attribute of &SYSOPT_DBCS (T'&SYSOPT_DBCS) is always N."
+        ]
+      },
+      "SYSOPT-XOBJECT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_XOBJECT System Variable Symbol | The value of the count attribute (K'&SYSOPT_XOBJECT) is always 1."
+        ]
+      },
+      "SYSOPT-OPTABLE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_OPTABLE System Variable Symbol | The value of the type attribute of &SYSOPT_OPTABLE (T'&SYSOPT_OPTABLE) is always U.",
+          "HLASM-PG: OPTABLE | OPTABLE(UNI,NOLIST)"
+        ]
+      },
+      "SYSVER-SYSASM-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSVER System Variable Symbol | The value of the type attribute of &SYSVER (T'&SYSVER) is always U.",
+          "HLASM-LR: &SYSASM System Variable Symbol | The value of the type attribute of &SYSASM (T'&SYSASM) is always U.",
+          "HLASM-LR: &SYSTEM_ID System Variable Symbol | Use &SYSTEM_ID to obtain the name and release of the operating system under which your source module is being assembled."
+        ]
+      },
+      "SYSJOB-SYSSTEP-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSJOB System Variable Symbol | The value of the type attribute of &SYSJOB (T'&SYSJOB) is always U.",
+          "HLASM-LR: &SYSSTEP System Variable Symbol | The value of the type attribute of &SYSSTEP (T'&SYSSTEP) is always U."
+        ]
+      }
+    }
+  },
+  "HM110A": {
+    "basis": "spec",
+    "tests": {
+      "SYSIN-DSN-SET": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSIN_DSN System Variable Symbol | Use &SYSIN_DSN in a macro definition to obtain the name of the data set from which the assembler is reading the source module."
+        ]
+      },
+      "SYSLIB-SOURCE-MACRO": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIB_DSN System Variable Symbol | If the macro definition is a source macro definition, &SYSLIB_DSN is assigned the same value as &SYSIN_DSN.",
+          "HLASM-LR: &SYSLIB_MEMBER System Variable Symbol | If the macro definition is a source macro definition, &SYSLIB_MEMBER is assigned the same value as &SYSIN_MEMBER.",
+          "HLASM-LR: &SYSLIB_VOLUME System Variable Symbol | If the macro definition is a source macro definition, &SYSLIB_VOLUME is assigned the same value as &SYSIN_VOLUME."
+        ]
+      },
+      "SYSLIB-LIB-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIB_MEMBER System Variable Symbol | Use &SYSLIB_MEMBER in a macro definition to obtain the name of the data set member from which the assembler read the macro definition statements."
+        ]
+      },
+      "VOLUME-AT-MOST-6": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSIN_VOLUME System Variable Symbol | The maximum length of this system variable symbol is 6."
+        ]
+      },
+      "SYSLIN-OBJECT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIN_DSN System Variable Symbol | Use &SYSLIN_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the object records when assembler option OBJECT, GOFF, or XOBJECT is specified.",
+          "HLASM-LR: &SYSLIN_MEMBER System Variable Symbol | If the library to which the assembler is writing the object records is not a z/OS partitioned data set, &SYSLIN_MEMBER is assigned a null character string."
+        ]
+      },
+      "SYSPRINT-LISTING": {
+        "basis": "zos",
+        "note": "SYSOUT の SYSPRINT の &SYSPRINT_DSN が空でなく、&SYSPRINT_MEMBER が空であることを実機で確かめる (JFCB の値を LRM は例示していない)。Zeus は一覧ファイルが無いとき DUMMY とみなして NULLFILE を返す",
+        "refs": [
+          "HLASM-LR: &SYSPRINT_DSN System Variable Symbol | If SYSPRINT is allocated to DUMMY, or a NULLFILE, the value in &SYSPRINT_DSN is NULLFILE."
+        ]
+      },
+      "UNUSED-DD-NULL": {
+        "basis": "zos",
+        "note": "DECK・TERM・ADATA を指定せず DD も無いとき、これらの値が空になることを実機で確かめる (LRM は書いていない)",
+        "refs": [
+          "HLASM-LR: &SYSPUNCH_DSN System Variable Symbol | Use &SYSPUNCH_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the object records when assembler option DECK is specified.",
+          "HLASM-LR: &SYSTERM_DSN System Variable Symbol | Use &SYSTERM_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the terminal records.",
+          "HLASM-LR: &SYSADATA_DSN System Variable Symbol | Use &SYSADATA_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the associated data."
+        ]
+      }
+    }
+  },
+  "HS101A": {
+    "basis": "spec",
+    "tests": {
+      "SAM24": {
+        "basis": "spec",
+        "refs": [
+          "POP: SET ADDRESSING MODE"
+        ]
+      },
+      "SAM31": {
+        "basis": "spec",
+        "refs": [
+          "POP: SET ADDRESSING MODE"
+        ]
+      },
+      "LINK-RETURN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Address constant—V",
+          "POP: BRANCH AND SAVE"
+        ]
+      }
+    }
+  },
+  "HS102A": {
+    "basis": "spec",
+    "tests": {
+      "STORAGE-DATA": {
+        "basis": "spec",
+        "refs": [
+          "MVS-ASR1: Chapter 101. GETMAIN — Allocate virtual storage"
+        ]
+      },
+      "FREEMAIN-STATUS": {
+        "basis": "spec",
+        "refs": [
+          "MVS-ASR1: Chapter 99. FREEMAIN — Free virtual storage"
+        ]
+      },
+      "POST-ECB": {
+        "basis": "spec",
+        "refs": [
+          "MVS-ASR2: Chapter 84. POST — Signal event completion | Bit 1 to 1 (complete bit)"
+        ]
+      }
+    }
+  },
+  "HS103A": {
+    "basis": "spec",
+    "refs": [
+      "DFSMS-MAC: DCB—Construct a data control block (QSAM)",
+      "DFSMS-MAC: GET—Retrieve a record",
+      "DFSMS-MAC: OPEN—Connect program and data"
+    ]
+  },
+  "HS104A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Address constant—V",
+      "PLI-PG: Interlanguage communication",
+      "COB-PG: Accessing main program parameters under z/OS"
+    ]
+  },
+  "HS105A": {
+    "basis": "zos",
+    "note": "After the report is closed, AP on an invalid packed operand must take a data exception and end the step. Zeus ends with RC 16 (manifest expect_exit_code). On z/OS record the completion code (S0C7 expected) and how the runner should express it in JCL.",
+    "tests": {
+      "TP-BAD-SIGN-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      },
+      "TP-BAD-DIGIT-CC": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DECIMAL"
+        ]
+      }
+    }
+  }
+}

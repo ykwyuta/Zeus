@@ -119,6 +119,9 @@ pub(super) fn encode(i: &Instruction) -> Result<Option<Vec<u8>>, String> {
         .or_else(|| fp::decimal_bits(op).map(|s| 0xb300 | u16::from(s.opcode)))
         .or(match op {
             "IPM" => Some(0xb222),
+            "MVST" => Some(0xb255),
+            "CLST" => Some(0xb25d),
+            "SRST" => Some(0xb25e),
             "LXR" => Some(0xb365),
             "SFPC" => Some(0xb384),
             "EFPC" => Some(0xb38c),

@@ -43,6 +43,10 @@ pub struct FrontOptions {
     pub sql: Option<bool>,
     pub sqlims: bool,
     pub apost: bool,
+    /// NOZWB: a signed zoned item compared with alphanumeric keeps its sign
+    pub nozwb: bool,
+    /// INTDATE(LILIAN): integer dates count from 15 October 1582
+    pub lilian: bool,
     pub awo: bool,
     pub block0: bool,
     pub ssrange: bool,
@@ -87,6 +91,8 @@ thread_local! {
     static DYNAM: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static COMPILE_CCSID: std::cell::Cell<u32> = const { std::cell::Cell::new(37) };
     static APOST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static NOZWB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static LILIAN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static AWO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static BLOCK0: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static SSRANGE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -105,6 +111,12 @@ pub(crate) fn numeric() -> crate::numeric::Settings {
 }
 pub(crate) fn apost() -> bool {
     APOST.get()
+}
+pub(crate) fn nozwb() -> bool {
+    NOZWB.get()
+}
+pub(crate) fn lilian() -> bool {
+    LILIAN.get()
 }
 pub(crate) fn awo() -> bool {
     AWO.get()
@@ -463,6 +475,8 @@ pub fn source_unit_tokens(
     TRUNC.set(settings.trunc);
     NUMERIC.set(settings.numeric);
     APOST.set(settings.apost);
+    NOZWB.set(settings.nozwb);
+    LILIAN.set(settings.lilian);
     AWO.set(settings.awo);
     BLOCK0.set(settings.block0);
     SSRANGE.set(settings.ssrange);

@@ -539,11 +539,11 @@ impl Scope {
                     .filter(|d| d.category == "MNOTE")
                     .map(|d| d.severity)
                     .max()
-                    .unwrap_or(0)
-                    .to_string());
+                    .map_or_else(|| "000".to_string(), |v| format!("{v:03}")));
             }
+            // three numeric characters (Language Reference, &SYSM_SEV)
             if r.name == "&SYSM_SEV" {
-                return Ok(self.last_macro_severity.to_string());
+                return Ok(format!("{:03}", self.last_macro_severity));
             }
             if r.name == "&SYSLIST" {
                 let Some((&index, tail)) = r.indices.split_first() else {
@@ -571,7 +571,8 @@ impl Scope {
                 return Ok(self.macro_names.len().to_string());
             }
             if r.name == "&SYSSTMT" {
-                return Ok(format!("{:08}", state.generated + 1));
+                // the next statement number (Language Reference, &SYSSTMT)
+                return Ok(format!("{:08}", state.listed + 1));
             }
             if r.name == "&SYSOPT_CURR_OPTABLE" {
                 return Ok(state.controls.optable.clone());
@@ -808,6 +809,14 @@ pub(super) fn macro_expression(
                             break;
                         };
                         value = operands(inner).into_iter().next().unwrap_or_default();
+                    }
+                    // a macro operand that is a decimal, hexadecimal or
+                    // binary self-defining term has a numeric value: T' is N
+                    // (Language Reference, Type attribute (T'): "N refers to a
+                    // numeric value"). C'' and G'' terms are not decided here.
+                    if kind == b'T' && self_defining_number(&value) {
+                        out.push_str("'N'");
+                        continue;
                     }
                     if !value.starts_with('=') {
                         if kind != b'O'
@@ -1130,4 +1139,20 @@ pub(super) fn character(text: &str) -> Result<String, String> {
             return Err("character value exceeds 4064 characters".into());
         }
     }
+}
+
+/// A decimal (12), hexadecimal (X'0C') or binary (B'1100') self-defining
+/// term.
+fn self_defining_number(v: &str) -> bool {
+    let quoted = |prefix: u8, ok: fn(u8) -> bool| {
+        let b = v.as_bytes();
+        b.len() > 3
+            && b[0].to_ascii_uppercase() == prefix
+            && b[1] == b'\''
+            && b[b.len() - 1] == b'\''
+            && b[2..b.len() - 1].iter().all(|c| ok(*c))
+    };
+    (!v.is_empty() && v.bytes().all(|c| c.is_ascii_digit()))
+        || quoted(b'X', |c| c.is_ascii_hexdigit())
+        || quoted(b'B', |c| c == b'0' || c == b'1')
 }

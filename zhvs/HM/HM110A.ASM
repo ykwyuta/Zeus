@@ -1,0 +1,100 @@
+* HM110A: data-set system variable symbols in a source macro and a
+* library macro: &SYSIN_DSN is set (T' U); in a source macro
+* &SYSLIB_DSN, &SYSLIB_MEMBER and &SYSLIB_VOLUME equal the SYSIN
+* ones; in a library macro &SYSLIB_MEMBER is its member (HMLIB1);
+* every _VOLUME has at most 6 characters; &SYSLIN_DSN and
+* &SYSPRINT_DSN are set (OBJECT is specified; a SYSOUT or DUMMY
+* SYSPRINT is not a member) and their members are null; SYSPUNCH,
+* SYSTERM and SYSADATA, which the assembly does not use, are null.
+* The data set names depend on the job and are not compared.
+         MACRO
+         ZDS
+         GBLA  &GIN,&GSRC,&GVOL,&GLIN,&GPRT,&GOFF
+         GBLC  &GINT
+         LCLB  &B
+&GIN     SETA  K'&SYSIN_DSN
+&GINT    SETC  T'&SYSIN_DSN
+&B       SETB  ('&SYSLIB_DSN' EQ '&SYSIN_DSN')
+&GSRC    SETA  &GSRC+&B
+&B       SETB  ('&SYSLIB_MEMBER' EQ '&SYSIN_MEMBER')
+&GSRC    SETA  &GSRC+&B
+&B       SETB  ('&SYSLIB_VOLUME' EQ '&SYSIN_VOLUME')
+&GSRC    SETA  &GSRC+&B
+&B       SETB  (K'&SYSIN_VOLUME LE 6)
+&GVOL    SETA  &GVOL+&B
+&B       SETB  (K'&SYSLIB_VOLUME LE 6)
+&GVOL    SETA  &GVOL+&B
+&B       SETB  (K'&SYSLIN_VOLUME LE 6)
+&GVOL    SETA  &GVOL+&B
+&B       SETB  (K'&SYSPRINT_VOLUME LE 6)
+&GVOL    SETA  &GVOL+&B
+&B       SETB  (K'&SYSPUNCH_VOLUME LE 6)
+&GVOL    SETA  &GVOL+&B
+&B       SETB  (K'&SYSTERM_VOLUME LE 6)
+&GVOL    SETA  &GVOL+&B
+&B       SETB  (K'&SYSADATA_VOLUME LE 6)
+&GVOL    SETA  &GVOL+&B
+&B       SETB  (K'&SYSLIN_DSN GT 0)
+&GLIN    SETA  &GLIN+&B
+&B       SETB  (K'&SYSLIN_MEMBER EQ 0)
+&GLIN    SETA  &GLIN+&B
+&B       SETB  (K'&SYSPRINT_DSN GT 0)
+&GPRT    SETA  &GPRT+&B
+&B       SETB  (K'&SYSPRINT_MEMBER EQ 0)
+&GPRT    SETA  &GPRT+&B
+&GOFF    SETA  K'&SYSPUNCH_DSN+K'&SYSPUNCH_MEMBER+K'&SYSTERM_DSN
+&GOFF    SETA  &GOFF+K'&SYSTERM_MEMBER+K'&SYSADATA_DSN
+&GOFF    SETA  &GOFF+K'&SYSADATA_MEMBER
+         MEND
+HM110A CSECT
+         ZHVSHDR
+         ZDS
+         HMLIB1
+         GBLA  &GIN,&GSRC,&GVOL,&GLIN,&GPRT,&GOFF
+         GBLC  &GINT,&GLMEM
+         LCLA  &N
+         LCLB  &X
+         LCLC  &V
+* SYSIN-DSN-SET
+         MVC ACTUAL(5),K00
+         ZHVSCHK SYSIN-DSN-SET,ACTUAL,ZE000,5
+* SYSLIB-SOURCE-MACRO
+         MVC ACTUAL(4),K01
+         ZHVSCHK SYSLIB-SOURCE-MACRO,ACTUAL,ZE001,4
+* SYSLIB-LIB-MEMBER
+         MVC ACTUAL(6),K02
+         ZHVSCHK SYSLIB-LIB-MEMBER,ACTUAL,ZE002,6
+* VOLUME-AT-MOST-6
+         MVC ACTUAL(4),K03
+         ZHVSCHK VOLUME-AT-MOST-6,ACTUAL,ZE003,4
+* SYSLIN-OBJECT
+         MVC ACTUAL(4),K04
+         ZHVSCHK SYSLIN-OBJECT,ACTUAL,ZE004,4
+* SYSPRINT-LISTING
+         MVC ACTUAL(4),K05
+         ZHVSCHK SYSPRINT-LISTING,ACTUAL,ZE005,4
+* UNUSED-DD-NULL
+         MVC ACTUAL(4),K06
+         ZHVSCHK UNUSED-DD-NULL,ACTUAL,ZE006,4
+         ZHVSSUM
+ACTUAL DS 2D
+ZE000 DC F'1',C'U'
+ZE001 DC F'3'
+ZE002 DC C'HMLIB1'
+ZE003 DC F'7'
+ZE004 DC F'2'
+ZE005 DC F'2'
+ZE006 DC F'0'
+&X SETB (&GIN GT 0)
+&N SETA &X
+K00 DC F'&N',C'&GINT'
+K01 DC F'&GSRC'
+&V SETC '&GLMEM'
+K02 DC C'&V'
+K03 DC F'&GVOL'
+K04 DC F'&GLIN'
+K05 DC F'&GPRT'
+K06 DC F'&GOFF'
+
+         LTORG
+         END

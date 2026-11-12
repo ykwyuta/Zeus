@@ -26,6 +26,9 @@ enum Format {
 // remain in the fourth byte. EXECUTE must not reinterpret them as RR fields.
 pub(super) const RRE: &[(&str, u8, u8)] = &[
     ("IPM", 0xb2, 0x22),
+    ("MVST", 0xb2, 0x55),
+    ("CLST", 0xb2, 0x5d),
+    ("SRST", 0xb2, 0x5e),
     ("NRK", 0xB9, 0xF4),
     ("NGRK", 0xB9, 0xE4),
     ("ORK", 0xB9, 0xF6),

@@ -1,0 +1,156 @@
+      * ZP113A: argument aliasing, BY CONTENT, RETURN-CODE, GLOBAL scope
+      * SPEC: CALL USING BY REFERENCE/CONTENT; RETURN-CODE; GLOBAL
+      * AND NESTED PROGRAMS; AUDIT P05, P07, S07. ONE ITEM PASSED TWICE
+      * BY REFERENCE IS ONE STORAGE AREA; A LOCAL NAME HIDES A GLOBAL
+      * ONE; RETURN-CODE SET BY THE CALLEE REACHES THE CALLER.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZP113A.
+       ENVIRONMENT DIVISION.
+       INPUT-OUTPUT SECTION.
+       FILE-CONTROL.
+           SELECT REPORT-FILE ASSIGN TO REPORT.
+       DATA DIVISION.
+       FILE SECTION.
+       FD  REPORT-FILE
+           RECORDING MODE F
+           RECORD CONTAINS 120 CHARACTERS.
+       01  REPORT-RECORD PIC X(120).
+       WORKING-STORAGE SECTION.
+           COPY ZCVSRPT.
+       01  WS-A PIC S9(4) COMP VALUE 0.
+       01  WS-C PIC S9(4) COMP VALUE 0.
+       01  WS-OUT PIC S9(4) COMP VALUE 0.
+       01  WS-TEXT PIC X(4) VALUE SPACES.
+       01  WS-SHARED PIC X(4) VALUE 'MAIN' GLOBAL.
+       01  WS-STATE PIC X VALUE 'N' GLOBAL.
+           88  STATE-READY VALUE 'R'.
+       PROCEDURE DIVISION.
+       MAIN-PROC SECTION.
+       MAIN-000.
+           MOVE 'ZP113A' TO ZCVS-PROG-ID.
+           PERFORM ZCVS-BEGIN.
+
+           MOVE 'ALIAS-SAME-ITEM' TO ZCVS-TEST-NAME.
+           MOVE 5 TO WS-A.
+           CALL 'ZPALIAS' USING WS-A WS-A WS-OUT.
+           IF WS-OUT = 6 AND WS-A = 6
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '6 6' TO ZCVS-EXPECTED
+               MOVE WS-OUT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'CONTENT-CALLER-KEPT' TO ZCVS-TEST-NAME.
+           MOVE 5 TO WS-A.
+           CALL 'ZPALIAS' USING BY CONTENT WS-A
+               BY REFERENCE WS-A WS-OUT.
+           IF WS-A = 5 AND WS-OUT = 5
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '5 5' TO ZCVS-EXPECTED
+               MOVE WS-A TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'CONTENT-COPY-CHANGED' TO ZCVS-TEST-NAME.
+           MOVE 5 TO WS-A.
+           CALL 'ZPCOPY' USING BY CONTENT WS-A
+               BY REFERENCE WS-OUT.
+           IF WS-OUT = 6 AND WS-A = 5
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '6 5' TO ZCVS-EXPECTED
+               MOVE WS-OUT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'RETURN-CODE-PASSED' TO ZCVS-TEST-NAME.
+           MOVE 0 TO RETURN-CODE.
+           CALL 'ZPS13A'.
+           MOVE RETURN-CODE TO WS-C.
+           MOVE 0 TO RETURN-CODE.
+           IF WS-C = 4
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE '4' TO ZCVS-EXPECTED
+               MOVE WS-C TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'GLOBAL-SHADOWED' TO ZCVS-TEST-NAME.
+           CALL 'ZPSHADOW' USING WS-TEXT.
+           IF WS-TEXT = 'NEST'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'NEST' TO ZCVS-EXPECTED
+               MOVE WS-TEXT TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'GLOBAL-MAIN-KEPT' TO ZCVS-TEST-NAME.
+           IF WS-SHARED = 'MAIN'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'MAIN' TO ZCVS-EXPECTED
+               MOVE WS-SHARED TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           MOVE 'GLOBAL-COND-NAME' TO ZCVS-TEST-NAME.
+           MOVE 'N' TO WS-STATE.
+           CALL 'ZPREADY'.
+           IF STATE-READY AND WS-STATE = 'R'
+               PERFORM ZCVS-PASS
+           ELSE
+               MOVE 'R' TO ZCVS-EXPECTED
+               MOVE WS-STATE TO ZCVS-ACTUAL
+               PERFORM ZCVS-FAIL
+           END-IF.
+
+           PERFORM ZCVS-END.
+           MOVE 0 TO RETURN-CODE.
+           STOP RUN.
+           COPY ZCVSHEX.
+           COPY ZCVSPROC.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZPALIAS.
+       DATA DIVISION.
+       LINKAGE SECTION.
+       01  P1 PIC S9(4) COMP.
+       01  P2 PIC S9(4) COMP.
+       01  P3 PIC S9(4) COMP.
+       PROCEDURE DIVISION USING P1 P2 P3.
+           ADD 1 TO P1.
+           MOVE P2 TO P3.
+           GOBACK.
+       END PROGRAM ZPALIAS.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZPCOPY.
+       DATA DIVISION.
+       LINKAGE SECTION.
+       01  P1 PIC S9(4) COMP.
+       01  P2 PIC S9(4) COMP.
+       PROCEDURE DIVISION USING P1 P2.
+           ADD 1 TO P1.
+           MOVE P1 TO P2.
+           GOBACK.
+       END PROGRAM ZPCOPY.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZPSHADOW.
+       DATA DIVISION.
+       WORKING-STORAGE SECTION.
+       01  WS-SHARED PIC X(4) VALUE 'NEST'.
+       LINKAGE SECTION.
+       01  P1 PIC X(4).
+       PROCEDURE DIVISION USING P1.
+           MOVE WS-SHARED TO P1.
+           GOBACK.
+       END PROGRAM ZPSHADOW.
+       IDENTIFICATION DIVISION.
+       PROGRAM-ID. ZPREADY.
+       PROCEDURE DIVISION.
+           SET STATE-READY TO TRUE.
+           GOBACK.
+       END PROGRAM ZPREADY.
+       END PROGRAM ZP113A.

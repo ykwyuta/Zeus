@@ -343,6 +343,10 @@ pub(crate) fn runtime_ccsid(program: u32) -> u32 {
 pub(crate) fn has_override() -> bool {
     EXPLICIT.load(std::sync::atomic::Ordering::Relaxed) || std::env::var_os("ZEUS_CCSID").is_some()
 }
+/// Whether the code page was chosen by the command line or ZEUS_CCSID.
+pub fn overridden() -> bool {
+    has_override()
+}
 pub(crate) fn restore_override(enabled: bool) {
     if enabled {
         EXPLICIT.store(true, std::sync::atomic::Ordering::Relaxed);

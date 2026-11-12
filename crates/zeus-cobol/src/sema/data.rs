@@ -1148,13 +1148,25 @@ impl DataModel {
                 }
                 return Ok(());
             }
-            if matches!(ty, DataType::Numeric(t) if t.usage == NumUsage::Native) {
+            if let DataType::Numeric(t) = ty
+                && t.usage == NumUsage::Native
+            {
                 let value =
                     crate::numeric::number::Number::parse(text).map_err(|m| Diag::error(pos, m))?;
-                if value
+                // A VALUE literal may use the whole binary capacity (Programming
+                // Guide, TRUNC: "Large literals in VALUE clauses"); the PICTURE
+                // limit applies only to the size error test of arithmetic.
+                let raw = value.raw(t.scale, false);
+                let raw = if t.signed {
+                    raw
+                } else {
+                    num_traits::Signed::abs(&raw)
+                };
+                let (lo, hi) = zeus_decimal::binary::range(field.len(), t.signed);
+                value
                     .store(ty, field, false)
-                    .map_err(|m| Diag::error(pos, m))?
-                {
+                    .map_err(|m| Diag::error(pos, m))?;
+                if raw < lo.into() || raw > hi.into() {
                     return Err(Diag::error(
                         pos,
                         "VALUE exceeds the native binary storage range",

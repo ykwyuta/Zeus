@@ -13,7 +13,7 @@
            DISPLAY WS-HEX
            MOVE 'ABC' TO WS-N2
            DISPLAY WS-N2 '|'
-           MOVE WS-N1 TO WS-X
+           MOVE FUNCTION DISPLAY-OF(WS-N1) TO WS-X
            DISPLAY WS-X '|'
            MOVE WS-D1 TO WS-N2
            DISPLAY WS-N2 '|'

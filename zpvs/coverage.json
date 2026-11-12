@@ -50,6 +50,34 @@
       "UNSPEC-PSEUDO"
     ]
   },
+  "PA105A": {
+    "expect": "run",
+    "tests": [
+      "PIC-POINT-INSERTION",
+      "PIC-POINT-WITH-V",
+      "PIC-DRIFT-CURRENCY",
+      "PIC-CREDIT-NEGATIVE",
+      "PIC-CREDIT-POSITIVE",
+      "PIC-OVERPUNCH-NEGATIVE",
+      "PIC-EDITED-VALUE"
+    ]
+  },
+  "PA106A": {
+    "expect": "run",
+    "tests": [
+      "QUICKSORT-ALL",
+      "QUICKSORT-N-M",
+      "QUICKSORT-CHAR",
+      "QUICKSORTX-DOWN",
+      "BINSEARCH-FOUND",
+      "BINSEARCH-MISSING",
+      "BINSEARCH-CHAR",
+      "BINSEARCH-RELATIVE",
+      "BINSEARCH-N-M",
+      "BINSEARCHX-FOUND",
+      "BINSEARCHX-MISSING"
+    ]
+  },
   "PC101A": {
     "expect": "run",
     "tests": [
@@ -131,6 +159,66 @@
       "ONSOURCE-REPAIR",
       "ONSOURCE-INPUT-KEPT",
       "ONSOURCE-REPEAT"
+    ]
+  },
+  "PC109A": {
+    "expect": "run",
+    "tests": [
+      "SCOPE-CALLER-SHADOW",
+      "SCOPE-NESTED-PARENT",
+      "SCOPE-MAIN-UNCHANGED",
+      "STATIC-PERSIST",
+      "AUTOMATIC-REINIT",
+      "STATIC-INIT-ONCE"
+    ]
+  },
+  "PC110A": {
+    "expect": "run",
+    "tests": [
+      "OVERFLOW-HFP-RANGE",
+      "ONCODE-OVERFLOW",
+      "UNDERFLOW-HFP-RANGE",
+      "ONCODE-UNDERFLOW",
+      "ONCODE-ZERODIVIDE",
+      "ONCODE-CONVERSION",
+      "ONCODE-STRINGRANGE",
+      "ONCODE-SUBSCRIPTRNG",
+      "ONCODE-SIZE",
+      "ONCODE-SIGNAL-ERROR",
+      "ONCODE-CONDITION"
+    ]
+  },
+  "PC111A": {
+    "expect": "run",
+    "tests": [
+      "STRINGSIZE-RAISED",
+      "STRINGSIZE-DISABLED",
+      "STRINGSIZE-VAR-BIT",
+      "STRINGSIZE-FITS",
+      "FIXEDOVERFLOW-DEC",
+      "UNDEFINEDFILE-RAISED",
+      "UNDEFINEDFILE-ONCODE"
+    ]
+  },
+  "PC112A": {
+    "expect": "run",
+    "tests": [
+      "ASSERT-TRUE-PASS",
+      "ASSERT-TRUE-TEXT",
+      "ASSERT-FALSE-PASS",
+      "ASSERT-FALSE-FAIL",
+      "ASSERT-COMPARE-EQ",
+      "ASSERT-COMPARE-PASS",
+      "ASSERT-COMPARE-OP",
+      "ASSERT-UNREACHABLE",
+      "SIGNAL-ASSERTION",
+      "ONPACKAGE",
+      "ONSUBSCRIPT-BOUNDS",
+      "ONLINE",
+      "ONAREA",
+      "ANYCONDITION",
+      "FINISH-SIGNAL",
+      "INVALIDOP-SIGNAL"
     ]
   },
   "PD101A": {
@@ -299,6 +387,75 @@
       "U63-BOUND-0",
       "U63-BOUND-1",
       "U63-BOUND-2"
+    ]
+  },
+  "PD108A": {
+    "expect": "run",
+    "tests": [
+      "DEFAULT-NOT-INHERITED",
+      "DEFAULT-I-TO-N",
+      "FIXED-ALONE-DECIMAL",
+      "ATTRIBUTE-ORDER",
+      "VALUE-CONSTANT",
+      "BUILTIN-NOT-VARIABLE"
+    ]
+  },
+  "PD109A": {
+    "expect": "run",
+    "tests": [
+      "HFP-SHORT-TENTH",
+      "HFP-LONG-TENTH",
+      "HFP-BIN21-TENTH",
+      "TENTH-TO-FIXED-DEC",
+      "FLOAT-TO-CHAR",
+      "STG-ENTRY-VARIABLE",
+      "STG-LABEL-VARIABLE",
+      "STG-FILE-VARIABLE",
+      "STG-HANDLE-OFFSET",
+      "STG-AREA",
+      "NULL-VALUE",
+      "SYSNULL-VALUE",
+      "AREA-EMPTY-HEADER",
+      "OVERLAP-SUBSTR-RIGHT",
+      "OVERLAP-SUBSTR-LEFT",
+      "DEC-OVER-NO-SIZE",
+      "STATIC-NO-INIT",
+      "RANDOM-SEED-ONE",
+      "RANDOM-NEXT"
+    ]
+  },
+  "PD110A": {
+    "expect": "run",
+    "tests": [
+      "UNSIGNED-RANGE",
+      "SIGNED-RANGE",
+      "VARYINGZ-LENGTH",
+      "VARYINGZ-NULL",
+      "NONVARYING-PADDED",
+      "HEXADEC-DEFAULT",
+      "BIGENDIAN-DEFAULT",
+      "BYVALUE-COPY",
+      "OPTIONAL-PRESENT",
+      "OPTIONAL-OMITTED",
+      "NONASSIGNABLE-READ"
+    ]
+  },
+  "PD111A": {
+    "expect": "run",
+    "tests": [
+      "AVAILABLEAREA-LRM",
+      "AVAILABLEAREA-FULL",
+      "ALLOCATE-AREA-ROUND",
+      "ALLOCNEXT-NULL",
+      "ALLOCNEXT-FITS",
+      "ALLOCATE-AREA-COND",
+      "ALLOCSIZE",
+      "UNALLOCATED",
+      "CHECKSTG-CLEAN",
+      "CHECKSTG-CORRUPT",
+      "ALLOC31",
+      "ALLOCATE-STMT",
+      "FREE-UNALLOCATED"
     ]
   },
   "PE101N": {
@@ -477,6 +634,24 @@
       "RECORD-CLOSE"
     ]
   },
+  "PF106A": {
+    "expect": "run",
+    "tests": [
+      "ENDPAGE-DEFAULT-NEWPAGE",
+      "KEY-DUPLICATE-ONCODE",
+      "KEY-MISSING-ONCODE"
+    ]
+  },
+  "PF107A": {
+    "expect": "run",
+    "tests": [
+      "KEYTO-SEQUENTIAL",
+      "SAMEKEY-UNIQUE",
+      "SAMEKEY-CLOSED",
+      "KEY-THEN-NEXT",
+      "ONKEY-MISSING"
+    ]
+  },
   "PM101A": {
     "expect": "run",
     "tests": [
@@ -560,6 +735,314 @@
       "MAIN-PARM-TEXT",
       "MAIN-PARM-LENGTH",
       "PLIRETC-VALUE"
+    ]
+  },
+  "PM109A": {
+    "expect": "run",
+    "tests": [
+      "ATAN-ONE",
+      "ATAN-TWO-ARGS",
+      "ATAND-ONE",
+      "COSD-60",
+      "SIND-30",
+      "TAND-45",
+      "COSH-ONE",
+      "SINH-ONE",
+      "TANH-ONE",
+      "ATANH-HALF",
+      "EXP-ONE",
+      "LOG10-1000",
+      "LOG2-8",
+      "SIGN-VALUES",
+      "TRUNC-TOWARD-ZERO",
+      "HIGH-LOW",
+      "COLLATE-ORDER",
+      "PROD-ARRAY",
+      "BOUNDS",
+      "ALL-ANY",
+      "WEEKDAY-LILIAN-ONE",
+      "SIZE-CSTG-VARYING",
+      "IAND-IOR-IEOR",
+      "INOT-ZERO",
+      "ISLL-ISRL",
+      "RAISE2",
+      "SEARCHR",
+      "VERIFYR",
+      "CHARVAL-BYTE",
+      "VALIDDATE",
+      "DAYSTOSECS-SECSTODAYS",
+      "FLOAT-MODEL-INTS",
+      "HUGE-SHORT",
+      "TINY-SHORT",
+      "EPSILON-SHORT",
+      "POINTERDIFF"
+    ]
+  },
+  "PM110A": {
+    "expect": "run",
+    "tests": [
+      "ACOS-ONE",
+      "ASIN-ONE",
+      "TAN-HALF",
+      "CENTRE-EVEN",
+      "COMPLEX",
+      "SUBTRACT",
+      "PRECISION-TRUNC",
+      "FLOAT",
+      "DATE-TIME-LENGTHS",
+      "DATETIME-PATTERN",
+      "POINTERVALUE",
+      "ONCOUNT-OUTSIDE",
+      "DO-LOOP-LEAVE",
+      "REMOTE-FORMAT",
+      "RESIGNAL",
+      "PP-ITERATE-LEAVE",
+      "PP-GO-TO",
+      "PP-REPLACE"
+    ]
+  },
+  "PM111A": {
+    "expect": "run",
+    "tests": [
+      "ADDRDATA",
+      "BITLOCATION",
+      "CS-EQUAL",
+      "CS-UNEQUAL",
+      "CDS-EQUAL",
+      "POINTERSUBTRACT",
+      "OFFSETADD-DIFF",
+      "OFFSETSUBTRACT",
+      "RANK-CHAR",
+      "EXPONENT-ONE",
+      "SCALE-BY-16",
+      "SECSTODATE-DAY-ONE",
+      "SECSTODATE-TIME"
+    ]
+  },
+  "PM112A": {
+    "expect": "run",
+    "tests": [
+      "BETWEEN",
+      "BETWEEN-EXCLUSIVE",
+      "BETWEEN-LEFT-EXCL",
+      "BETWEEN-RIGHT-EXCL",
+      "INLIST",
+      "IFTHENELSE-LAZY",
+      "IFTHENELSE-FALSE",
+      "ICLZ",
+      "IRRL",
+      "IRLL",
+      "LOWER2",
+      "POPCNT-PER-BYTE",
+      "POPCNT-SECOND",
+      "ISIGNED",
+      "IUNSIGNED",
+      "ROUND-AWAY-FROM-ZERO",
+      "ROUND-TO-EVEN",
+      "MAXVAL-MINVAL",
+      "SUCC-HFP",
+      "PRED-HFP",
+      "PLACES-HFP",
+      "PRECVAL-SCALEVAL",
+      "Y4DATE",
+      "Y4JULIAN-Y4YEAR",
+      "REPLACEBY2",
+      "HEXIMAGE",
+      "HEXIMAGE-SEPARATOR",
+      "COMPARE",
+      "LOCATION",
+      "ERF",
+      "ERFC",
+      "GAMMA-INTEGER",
+      "GAMMA-HALF",
+      "LOGGAMMA",
+      "ONCONDID-CONDITION",
+      "ONCONDID-ZERODIVIDE",
+      "ONCONDID-OUTSIDE"
+    ]
+  },
+  "PM113A": {
+    "expect": "run",
+    "tests": [
+      "COLLAPSE",
+      "SQUEEZE",
+      "INDEXR",
+      "REPLACE-ONCE",
+      "REPLACE-ALL",
+      "SCRUBOUT",
+      "UNHEX",
+      "HEX8-UTF8-DIGITS",
+      "MEMINDEX",
+      "MEMSEARCH",
+      "MEMVERIFY",
+      "MEMCOLLAPSE",
+      "MEMSQUEEZE",
+      "MEMREPLACE-ALL",
+      "WSREPLACE",
+      "WSCOLLAPSE",
+      "HEXENCODE",
+      "HEXDECODE",
+      "HEXENCODE8",
+      "BASE64ENCODE",
+      "BASE64DECODE",
+      "BASE64ENCODE8",
+      "BUFFER-MEASURE",
+      "BUFFER-TOO-SHORT",
+      "WHEREDIFF"
+    ]
+  },
+  "PM114A": {
+    "expect": "run",
+    "tests": [
+      "MAXDATE-TIMESTAMP",
+      "MINDATE-NONULLDATE",
+      "MAXDATE-JULIAN",
+      "DAYSTOMICROSECS-ONE",
+      "MICROSECSTODAYS-DROP",
+      "MICROSECS-DAY-ONE",
+      "MICROSECSTODATE-DAY-ONE",
+      "MICROSECSTODATE-DEFAULT",
+      "SECS-DAY-ONE",
+      "MICROSECS-ROUNDTRIP",
+      "PATTERN-MMM-MIXED",
+      "PATTERN-MMM-UPPER",
+      "PATTERN-WINDOW-HIGH",
+      "PATTERN-WINDOW-LOW",
+      "STCKTODATE-2000",
+      "STCKETODATE-2000",
+      "JULIANTOSMF-20XX",
+      "SMFTOJULIAN-19XX",
+      "TIMESTAMP-FORM",
+      "UTCDATETIME-FORM",
+      "UTCSECS-AFTER",
+      "UTCMICROSECS-AFTER",
+      "PLISTCK-CC-DATE",
+      "PLISTCKE-CC-DATE",
+      "PLISTCK-FORMS-CC",
+      "PLISTCKE-FORMS-CC",
+      "PLISTCKP-FORMS-CC"
+    ]
+  },
+  "PM115A": {
+    "expect": "run",
+    "tests": [
+      "FIXEDBIN-FRACTION",
+      "FIXEDBIN-PRECISION",
+      "FIXEDDEC-SCALE",
+      "FLOATBIN-FLOATDEC",
+      "SIGNED-UNSIGNED",
+      "CENTERRIGHT-LRM",
+      "CENTRERIGHT-ODD",
+      "COUNT-PUT-LIST",
+      "HEXIMAGE8-UTF8",
+      "HEXDECODE8-UTF8",
+      "BASE64DECODE8-LRM",
+      "ONFILE-UNDEFINEDFILE",
+      "ONPROCEDURE-ONLOC",
+      "PLIFILL",
+      "PLIMOVE",
+      "PLIOVER-OVERLAP",
+      "WHIGH-WLOW",
+      "SUBTO",
+      "POLY-ZERO-BASED",
+      "POLY-ONE-BASED",
+      "WSCOLLAPSE16",
+      "WSREPLACE16",
+      "BASE64ENCODE16-LRM",
+      "BASE64DECODE16-ROUNDTRIP",
+      "PROCEDURENAME-MAIN",
+      "PROCEDURENAME-INNER",
+      "PACKAGENAME",
+      "SOURCELINE",
+      "SOURCEFILE",
+      "ISMAIN",
+      "MAINNAME",
+      "PUTENV-GETENV",
+      "UUID4-FORM",
+      "VALID-PICTURE",
+      "VALID-FIXED-DEC"
+    ]
+  },
+  "PM116A": {
+    "expect": "run",
+    "tests": [
+      "SHA1-DIGEST",
+      "SHA1-STREAM",
+      "SHA2-224-DIGEST",
+      "SHA2-224-STREAM",
+      "SHA2-256-DIGEST",
+      "SHA2-256-STREAM",
+      "SHA2-384-DIGEST",
+      "SHA2-384-STREAM",
+      "SHA2-512-DIGEST",
+      "SHA2-512-STREAM",
+      "SHA3-224-DIGEST",
+      "SHA3-224-STREAM",
+      "SHA3-256-DIGEST",
+      "SHA3-256-STREAM",
+      "SHA3-384-DIGEST",
+      "SHA3-384-STREAM",
+      "SHA3-512-DIGEST",
+      "SHA3-512-STREAM",
+      "SHA2-256-EMPTY",
+      "DIGEST-LENGTHS"
+    ]
+  },
+  "PM117A": {
+    "expect": "run",
+    "tests": [
+      "PP-TRIM",
+      "PP-COPY-REPEAT-SUBSTR",
+      "PP-INDEX-FROM",
+      "PP-VERIFY-FROM",
+      "PP-COLLATE",
+      "PP-MAX-MIN",
+      "PP-MARGINS",
+      "PP-SIZES",
+      "PP-COMPILE-DATE-TIME",
+      "PP-QUOTE",
+      "PP-COMMENT",
+      "PP-SYSVERSION",
+      "PP-SYSTEM-SYSPARM",
+      "PP-CASE-TRANSLATE",
+      "PP-COUNTER",
+      "PP-MACNAME",
+      "PP-PARMSET",
+      "PP-ANSWER",
+      "PP-CALL-ANSWER",
+      "PP-SELECT",
+      "PP-INSCAN-XINSCAN"
+    ]
+  },
+  "PM118A": {
+    "expect": "run",
+    "tests": [
+      "INARRAY-CHAR",
+      "INARRAY-CHAR-PAD",
+      "INARRAY-MISS",
+      "INARRAY-NUMERIC",
+      "INARRAY-2D",
+      "WCHARVAL-BITS",
+      "WCHARVAL-RANK",
+      "WCHARVAL-UNSPEC",
+      "PICSPEC-DIGITS",
+      "PICSPEC-V",
+      "PICSPEC-SIGN",
+      "PICSPEC-EXPR",
+      "CODEPAGE-OPTION"
+    ]
+  },
+  "PM119A": {
+    "expect": "run",
+    "tests": [
+      "XMLCHAR-LRM-LENGTH",
+      "XMLCHAR-LRM-TEXT",
+      "XMLCHAR-TRUNCATED",
+      "XMLCHAR-STAR-BIT",
+      "XMLSCRUB-SIZE",
+      "XMLSCRUB-TEXT",
+      "XMLSCRUB-SMALL",
+      "XMLSCRUB16"
     ]
   },
   "PS101A": {

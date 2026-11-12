@@ -17,6 +17,7 @@
        01  TEXT-IN PIC X(8) VALUE '  AB  CD'.
        01  TEXT-OUT PIC X(12).
        01  NUM-OUT PIC S9(5)V99 COMP-3.
+       01  NUM-ED PIC -9(5).99.
        01  POS-OUT PIC 99 COMP.
        PROCEDURE DIVISION.
        MAIN-PROC SECTION.
@@ -158,7 +159,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '12.5' TO ZCVS-EXPECTED
-               MOVE NUM-OUT TO ZCVS-ACTUAL
+               MOVE NUM-OUT TO NUM-ED
+               MOVE NUM-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -168,7 +170,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '0' TO ZCVS-EXPECTED
-               MOVE NUM-OUT TO ZCVS-ACTUAL
+               MOVE NUM-OUT TO NUM-ED
+               MOVE NUM-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 
@@ -178,7 +181,8 @@
                PERFORM ZCVS-PASS
            ELSE
                MOVE '12.5' TO ZCVS-EXPECTED
-               MOVE NUM-OUT TO ZCVS-ACTUAL
+               MOVE NUM-OUT TO NUM-ED
+               MOVE NUM-ED TO ZCVS-ACTUAL
                PERFORM ZCVS-FAIL
            END-IF.
 

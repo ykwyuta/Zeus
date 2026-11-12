@@ -642,23 +642,32 @@
   "ZA118A": {
     "expect": "run",
     "tests": [
-      "N2S-MAX-OK",
+      "N2S-MAX-SZERR",
+      "N2S-MAX-STORE",
       "N2S-MAX-OVER",
-      "N2S-MIN-OK",
+      "N2S-MIN-SZERR",
+      "N2S-MIN-STORE",
       "N2S-MIN-OVER",
-      "N2U-MAX-OK",
+      "N2U-MAX-SZERR",
+      "N2U-MAX-STORE",
       "N2U-MAX-OVER",
-      "N4S-MAX-OK",
+      "N4S-MAX-SZERR",
+      "N4S-MAX-STORE",
       "N4S-MAX-OVER",
-      "N4S-MIN-OK",
+      "N4S-MIN-SZERR",
+      "N4S-MIN-STORE",
       "N4S-MIN-OVER",
-      "N4U-MAX-OK",
+      "N4U-MAX-SZERR",
+      "N4U-MAX-STORE",
       "N4U-MAX-OVER",
-      "N8S-MAX-OK",
+      "N8S-MAX-SZERR",
+      "N8S-MAX-STORE",
       "N8S-MAX-OVER",
-      "N8S-MIN-OK",
+      "N8S-MIN-SZERR",
+      "N8S-MIN-STORE",
       "N8S-MIN-OVER",
-      "N8U-MAX-OK",
+      "N8U-MAX-SZERR",
+      "N8U-MAX-STORE",
       "N8U-MAX-OVER"
     ]
   },
@@ -721,6 +730,101 @@
       "POWER-ZEROEXP",
       "POWER-NEGBASE",
       "POWER-FRACTION"
+    ]
+  },
+  "ZA122A": {
+    "expect": "run",
+    "tests": [
+      "ROUND-CARRY-DISPLAY",
+      "ROUND-CARRY-PACKED",
+      "ROUND-NO-CARRY",
+      "ROUND-NEGATIVE-HALF",
+      "ROUND-CARRY-TRUNCATE",
+      "SIGN-LEAD-SEP-HEX",
+      "SIGN-TRAIL-SEP-HEX",
+      "SIGN-LEAD-OVER-HEX",
+      "SIGN-TRAIL-OVER-HEX",
+      "SIGN-SEP-ARITH",
+      "SIGN-SEP-MOVE"
+    ]
+  },
+  "ZA123A": {
+    "expect": "run",
+    "tests": [
+      "OVERLAP-MOVE-RIGHT",
+      "OVERLAP-MOVE-LEFT",
+      "DIVIDE-ZERO-NO-SIZE",
+      "TRUNC-OPT-OVER-PIC",
+      "WS-NO-VALUE-BINARY",
+      "WS-NO-VALUE-PACKED",
+      "WS-NO-VALUE-ALNUM",
+      "RANDOM-SEED-ONE",
+      "RANDOM-NEXT",
+      "COMP1-DECIMAL-TENTH",
+      "COMP2-DECIMAL-TENTH",
+      "COMP1-BACK-TO-DEC",
+      "DATE-INVALID-DAY"
+    ]
+  },
+  "ZA124A": {
+    "expect": "run",
+    "tests": [
+      "TEST-NUMVAL-INVALID",
+      "TEST-NUMVAL-VALID"
+    ]
+  },
+  "ZA125A": {
+    "expect": "run",
+    "tests": [
+      "FN-E",
+      "FN-PI",
+      "FN-EXP-ONE",
+      "FN-EXP10-TWO",
+      "FN-EXP10-HALF",
+      "FN-SIGN-NEG",
+      "FN-SIGN-ZERO",
+      "FN-SIGN-POS",
+      "FN-HEX-OF",
+      "FN-HEX-TO-CHAR",
+      "FN-BIT-OF",
+      "FN-BIT-TO-CHAR",
+      "FN-TRIM-LEADING-LEN",
+      "FN-TRIM-LEADING-TXT",
+      "FN-TRIM-TRAILNG-LEN",
+      "FN-NUMVAL-F",
+      "FN-NUMVAL-F-NEG",
+      "FN-TEST-NUMVAL-F-OK",
+      "FN-TEST-NUMVAL-F-BAD",
+      "FN-TEST-DATE-OK",
+      "FN-TEST-DATE-YEAR",
+      "FN-TEST-DATE-MONTH",
+      "FN-TEST-DATE-DAY",
+      "FN-TEST-DAY-OK",
+      "FN-TEST-DAY-BAD",
+      "FN-FMT-DATE-EXT",
+      "FN-FMT-DATE-ORD",
+      "FN-FMT-DATE-WEEK",
+      "FN-FMT-TIME",
+      "FN-FMT-TIME-EXT",
+      "FN-FMT-DATETIME",
+      "FN-INT-OF-FMT-DATE",
+      "FN-SEC-FROM-FMT",
+      "FN-COMBINED-DT",
+      "FN-TEST-FMT-DT-OK",
+      "FN-TEST-FMT-DT-BAD"
+    ]
+  },
+  "ZA126A": {
+    "expect": "run",
+    "tests": [
+      "LILIAN-DAY-ONE",
+      "LILIAN-ANSI-DAY-ONE",
+      "LILIAN-DATE-OF-INT",
+      "LILIAN-DAY-OF-INT",
+      "LILIAN-INT-OF-DAY",
+      "NOZWB-UNSIGNED-NE",
+      "NOZWB-SIGN-BYTE",
+      "NOZWB-POSITIVE-SIGN"
     ]
   },
   "ZD101A": {
@@ -1413,6 +1517,14 @@
     "expect": "compile-only",
     "tests": []
   },
+  "ZE146N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE146P": {
+    "expect": "compile-only",
+    "tests": []
+  },
   "ZF101A": {
     "expect": "run",
     "tests": [
@@ -1424,8 +1536,7 @@
   "ZF102A": {
     "expect": "run",
     "tests": [
-      "QSAM-MODE-S-SPAN",
-      "QSAM-MODE-U-FS39"
+      "QSAM-MODE-S-SPAN"
     ]
   },
   "ZF103A": {
@@ -1983,6 +2094,29 @@
       "RECURSIVE-CANCEL"
     ]
   },
+  "ZP113A": {
+    "expect": "run",
+    "tests": [
+      "ALIAS-SAME-ITEM",
+      "CONTENT-CALLER-KEPT",
+      "CONTENT-COPY-CHANGED",
+      "RETURN-CODE-PASSED",
+      "GLOBAL-SHADOWED",
+      "GLOBAL-MAIN-KEPT",
+      "GLOBAL-COND-NAME"
+    ]
+  },
+  "ZP114A": {
+    "expect": "run",
+    "tests": [
+      "PARM-RUNTIME-SPLIT",
+      "DEBUG-PERFORM-LOOP",
+      "DEBUG-SUB-SPACES",
+      "DEBUG-GO-TO",
+      "DEBUG-FALL-THROUGH",
+      "DEBUGGING-LINE"
+    ]
+  },
   "ZS101A": {
     "expect": "run",
     "tests": [
@@ -2042,6 +2176,51 @@
       "OPEN-CLOSE-ELSE",
       "INSPECT-FUNCTION",
       "BATCH-OPTIONS"
+    ]
+  },
+  "ZS107A": {
+    "expect": "run",
+    "tests": [
+      "WINDOW-LOW-EDGE",
+      "WINDOW-HIGH-EDGE",
+      "WINDOW-DEFAULT-50",
+      "WINDOW-DATE",
+      "WINDOW-DAY",
+      "NATIONAL-LEAD-SEP",
+      "NATIONAL-TRAIL-SEP",
+      "INIT-SKIPS-REDEFINES",
+      "NATIONAL-SET-FALSE"
+    ]
+  },
+  "ZS108A": {
+    "expect": "run",
+    "tests": [
+      "DIR-IF-TRUE",
+      "DIR-IF-ELSE",
+      "DIR-EVALUATE-WHEN",
+      "DIR-EVALUATE-OTHER",
+      "DIR-NOT-DEFINED",
+      "DIR-REDEFINE",
+      "PACKED-DECIMAL-SIGN",
+      "PACKED-DECIMAL-NOSGN",
+      "UPSI-DEFAULT-OFF",
+      "VOLATILE-VALUE",
+      "SECONDS-PAST-MIDNT"
+    ]
+  },
+  "ZS109A": {
+    "expect": "run",
+    "tests": [
+      "SHIFT-OUT-IN",
+      "SORT-RETURN-INITIAL",
+      "SORT-CONTROL-INITIAL",
+      "SORT-CORE-SIZE-INIT",
+      "SORT-FILE-SIZE-INIT",
+      "SORT-MODE-SIZE-INIT",
+      "SORT-MESSAGE-INITIAL",
+      "ZWB-DEFAULT-NEGATIVE",
+      "ZWB-DEFAULT-POSITIVE",
+      "FMT-CURRENT-DATE"
     ]
   },
   "ZX101A": {
@@ -2153,6 +2332,18 @@
       "COMMA-TEST-1",
       "COMMA-TEST-2",
       "COMMA-TEST-3"
+    ]
+  },
+  "ZX110A": {
+    "expect": "run",
+    "tests": [
+      "VARYING-AFTER-FINAL",
+      "VARYING-AFTER-DEPEND",
+      "VARYING-AFTER-ORDER",
+      "SET-FALSE-MULTIPLE",
+      "SET-FALSE-SIBLING",
+      "SET-TRUE-RANGE-FIRST",
+      "SET-FALSE-RANGE"
     ]
   }
 }

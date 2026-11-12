@@ -469,9 +469,14 @@ impl Number {
                 let raw = self.raw(t.scale, rounded);
                 let raw = if t.signed { raw } else { raw.abs() };
                 let (overflow, raw) = if t.usage == NumUsage::Native {
+                    // Language Reference, SIZE ERROR phrases: for BINARY and
+                    // COMP-5 receivers the largest value is the one the
+                    // PICTURE implies, regardless of TRUNC; the value itself
+                    // is stored truncated at the binary field.
                     let (lo, hi) = zeus_decimal::binary::range(bytes.len(), t.signed);
+                    let cap = BigInt::from(10u8).pow(t.digits);
                     (
-                        raw < lo.into() || raw > hi.into(),
+                        raw < lo.into() || raw > hi.into() || raw.abs() >= cap,
                         raw % (BigInt::one() << (bytes.len() * 8)),
                     )
                 } else {

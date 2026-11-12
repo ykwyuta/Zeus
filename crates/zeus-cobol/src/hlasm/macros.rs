@@ -22,7 +22,7 @@ pub(super) fn expand(
     state.controls.macrocase = options.macrocase.unwrap_or(false);
     state
         .controls
-        .set_optable(options.optable.as_deref().unwrap_or("ZEUS"))?;
+        .set_optable(options.optable.as_deref().unwrap_or("UNI"))?;
     state.initialize_context(input.first().map(|s| Path::new(&s.file)));
     let result = expand_scope(
         input,
@@ -190,6 +190,7 @@ fn expand_scope(
         pc += 1;
         if open_code {
             state.forward.last_mut().unwrap().1 = pc;
+            state.listed += 1;
         }
         let mut s = original.clone();
         s.op = substitute(&s.op, vars, state)
@@ -214,6 +215,30 @@ fn expand_scope(
             }
         }
         let macro_invocation = !builtin_alias && macros.contains_key(&s.op);
+        if !macro_invocation && matches!(s.op.as_str(), "CCW" | "CCW0" | "CCW1") {
+            // A channel command word is a doubleword of constants (Principles
+            // of Operation, "Channel-Command Word"): format 0 is command,
+            // 24-bit data address, flags, zero, count; format 1 is command,
+            // flags, count, 31-bit data address. HLASM aligns it on a
+            // doubleword. Written as the equivalent DC so that layout,
+            // attributes and listing need nothing new.
+            let ops = operands(&s.args);
+            if ops.len() != 4 {
+                return Err(s.error(format!("{} requires four operands", s.op)));
+            }
+            s.args = if s.op == "CCW1" {
+                format!(
+                    "0D,AL1({}),AL1({}),AL2({}),AL4({})",
+                    ops[0], ops[2], ops[3], ops[1]
+                )
+            } else {
+                format!(
+                    "0D,AL1({}),AL3({}),AL1({}),AL1(0),AL2({})",
+                    ops[0], ops[1], ops[2], ops[3]
+                )
+            };
+            s.op = "DC".into();
+        }
         if open_code
             && (macro_invocation
                 || matches!(s.op.as_str(), "SETA" | "SETB" | "SETC" | "AIF" | "AGO"))
@@ -550,6 +575,9 @@ fn expand_scope(
             }
             out.push(s);
             state.generated += 1;
+            if !open_code {
+                state.listed += 1;
+            }
         } else {
             if open_code {
                 state.open_variables = Some(vars.clone());
@@ -794,6 +822,10 @@ struct Expansion {
     serial: usize,
     steps: usize,
     generated: usize,
+    /// Statement numbers given so far: every open-code statement
+    /// (conditional assembly ones too) and every generated statement
+    /// (&SYSSTMT is the next one).
+    listed: usize,
     ended: bool,
     attribute_values: super::assemble::Symbols,
     attributes: HashMap<String, Result<super::expression::EquAttributes, String>>,
@@ -951,8 +983,29 @@ impl Expansion {
         for dd in [
             "SYSIN", "SYSLIB", "SYSLIN", "SYSPRINT", "SYSPUNCH", "SYSTERM", "SYSADATA",
         ] {
+            // a source macro definition: &SYSLIB_DSN/MEMBER/VOLUME are those
+            // of SYSIN (Language Reference, &SYSLIB_DSN System Variable
+            // Symbol); SYSIN comes first in this loop
             let mut data = if dd == "SYSLIB" && definition_file == self.input_file {
-                super::AssemblyDataSet::default()
+                let get = |suffix: &str| {
+                    scope
+                        .values
+                        .get(&format!("&SYSIN_{suffix}"))
+                        .cloned()
+                        .unwrap_or_default()
+                };
+                super::AssemblyDataSet {
+                    name: get("DSN"),
+                    member: get("MEMBER"),
+                    volume: get("VOLUME"),
+                }
+            } else if dd == "SYSPRINT" && !self.options.data_sets.contains_key(dd) {
+                // no listing file: as a SYSPRINT allocated to DUMMY, whose
+                // &SYSPRINT_DSN is NULLFILE (Language Reference)
+                super::AssemblyDataSet {
+                    name: "NULLFILE".into(),
+                    ..Default::default()
+                }
             } else {
                 let library = if dd == "SYSLIB" {
                     Path::new(definition_file)

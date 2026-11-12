@@ -1,0 +1,45 @@
+ PC111A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* Conditions the suite did not raise (Enterprise PL/I Language
+    Reference). STRINGSIZE is disabled by default; enabled by a
+    prefix it is raised when a string is assigned to a shorter target,
+    and a normal return completes the truncated assignment (ONCODE
+    150). FIXEDOVERFLOW is raised when a FIXED DECIMAL result exceeds
+    15 digits. UNDEFINEDFILE is raised when a file cannot be opened;
+    its ONCODE is the current Zeus value (basis zos). */
+ DCL C CHAR(2);
+ DCL V CHAR(2) VAR;
+ DCL BT BIT(2);
+ DCL D FIXED DEC(15) INIT(999999999999999);
+ DCL (N, CODE) FIXED BIN(31);
+ DCL NOFILE FILE RECORD INPUT;
+
+ OPEN FILE(REPORT);
+
+ N=0; CODE=0;
+ ON STRINGSIZE BEGIN; N=N+1; CODE=ONCODE(); END;
+ (STRINGSIZE): C='ABC';
+ CALL ZCHECK('STRINGSIZE-RAISED', N=1 & CODE=150 & C='AB');
+ C='XYZ';
+ CALL ZCHECK('STRINGSIZE-DISABLED', N=1 & C='XY');
+ (STRINGSIZE): V='ABC';
+ (STRINGSIZE): BT='101'B;
+ CALL ZCHECK('STRINGSIZE-VAR-BIT', N=3 & V='AB' & BT='10'B);
+ (STRINGSIZE): C='AB';
+ CALL ZCHECK('STRINGSIZE-FITS', N=3);
+ REVERT STRINGSIZE;
+ CODE=0;
+ ON FIXEDOVERFLOW BEGIN; CODE=ONCODE(); GO TO L1; END;
+ D=D*10;
+ L1:
+ CALL ZCHECK('FIXEDOVERFLOW-DEC', CODE=310);
+ CODE=0;
+ ON UNDEFINEDFILE(NOFILE) BEGIN; CODE=ONCODE(); GO TO L2; END;
+ OPEN FILE(NOFILE) TITLE('NOSUCHDD');
+ L2:
+ CALL ZCHECK('UNDEFINEDFILE-RAISED', CODE^=0);
+ CALL ZCHECK('UNDEFINEDFILE-ONCODE', CODE=84);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC111A;

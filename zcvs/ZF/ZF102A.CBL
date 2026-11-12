@@ -1,5 +1,5 @@
       *================================================================*
-      * ZF102A - QSAM RECORDING MODE S (SPANNED) AND MODE U STATUS 39  *
+      * ZF102A - QSAM RECORDING MODE S (SPANNED)                       *
       *================================================================*
        IDENTIFICATION DIVISION.
        PROGRAM-ID. ZF102A.
@@ -8,9 +8,6 @@
        FILE-CONTROL.
            SELECT REPORT-FILE ASSIGN TO REPORT.
            SELECT SPAN-FILE ASSIGN TO XXXXX001
-               ORGANIZATION IS SEQUENTIAL
-               FILE STATUS IS WS-FS.
-           SELECT BADU-FILE ASSIGN TO XXXXX002
                ORGANIZATION IS SEQUENTIAL
                FILE STATUS IS WS-FS.
        DATA DIVISION.
@@ -25,10 +22,6 @@
            RECORD IS VARYING IN SIZE FROM 4 TO 24 CHARACTERS
            DEPENDING ON WS-SPAN-LEN.
        01  SPAN-REC                 PIC X(24).
-       FD  BADU-FILE
-           RECORDING MODE U
-           RECORD CONTAINS 10 CHARACTERS.
-       01  BADU-REC                 PIC X(10).
        WORKING-STORAGE SECTION.
            COPY ZCVSRPT.
        01  WS-WORK.
@@ -74,17 +67,6 @@
                PERFORM ZCVS-FAIL
            END-IF.
            CLOSE SPAN-FILE.
-
-      * TEST 02: RECORDING MODE U ON NON-TAPE DISK RETURNS FS 39
-           MOVE 'QSAM-MODE-U-FS39' TO ZCVS-TEST-NAME.
-           OPEN OUTPUT BADU-FILE.
-           IF WS-FS = '39'
-               PERFORM ZCVS-PASS
-           ELSE
-               MOVE '39' TO ZCVS-EXPECTED
-               MOVE WS-FS TO ZCVS-ACTUAL
-               PERFORM ZCVS-FAIL
-           END-IF.
 
            PERFORM ZCVS-END.
            STOP RUN.

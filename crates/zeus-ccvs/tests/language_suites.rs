@@ -19,6 +19,24 @@ struct Scenario {
     tests: Vec<String>,
 }
 
+mod common {
+    pub mod basis;
+}
+
+#[test]
+fn basis_ledgers_cover_every_check() {
+    for (suite, ledger) in [
+        ("zpvs", include_str!("../../../zpvs/basis.json")),
+        ("zhvs", include_str!("../../../zhvs/basis.json")),
+    ] {
+        let coverage = inventory(suite)
+            .into_iter()
+            .map(|(k, v)| (k, v.tests))
+            .collect();
+        common::basis::verify(suite, ledger, &coverage);
+    }
+}
+
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")
@@ -86,8 +104,15 @@ fn inventories_pair_diagnostics_and_cover_every_source_in_report_order() {
                 found.insert(name.to_string());
                 let source = fs::read_to_string(&path).unwrap();
                 for (index, line) in source.lines().enumerate() {
+                    // assembler columns 73-80 are the sequence field
+                    // (&SYSSEQF reads it), not source text
+                    let sequence = ext == "ASM"
+                        && line.len() <= 80
+                        && line
+                            .get(72..)
+                            .is_some_and(|f| f.bytes().all(|b| b.is_ascii_alphanumeric()));
                     assert!(
-                        line.len() <= 72,
+                        line.len() <= 72 || sequence,
                         "{}:{} exceeds margins",
                         path.display(),
                         index + 1
@@ -228,6 +253,8 @@ fn check(suite: &str, native: bool, format: AsmFormat) {
             );
             match (program.outcome, spec.expect.as_str()) {
                 (Outcome::Compiled, "compile-only") => {}
+                // the manifest's object_formats: never the Zeus format itself
+                (Outcome::NotWritable { format }, _) => assert_ne!(format, "zeus"),
                 (Outcome::Ran { counts }, "compile-error") => {
                     assert_eq!((counts.total, counts.pass), (1, 1))
                 }

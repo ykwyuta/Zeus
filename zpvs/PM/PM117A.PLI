@@ -1,0 +1,109 @@
+%PROCESS LIMITS(FIXEDDEC(15,31));
+ %DCL (T1, T2, T3, Q1, C1, SV, VERS, SYS, SPM, LC, UC) CHAR;
+ %DCL (N1, N2, N3, N4, N5, N6, N7, N8, N9, N10) FIXED;
+ %DCL (K1, K2, D1, D2) CHAR;
+ %T1 = QUOTE(TRIM('**AB*', '*', '*'));
+ %T2 = QUOTE(TRIM('  AB  '));
+ %T3 = QUOTE(COPY('AB', 3) || REPEAT('C', 2) || SUBSTR('ABCDEF', 2, 3));
+ %N1 = INDEX('ABCABC', 'BC', 3);
+ %N2 = VERIFY('AAB', 'A', 2);
+ %N3 = LENGTH(COLLATE);
+ %N4 = MAX(1, 7, 3) * 10 + MIN(4, 2, 9);
+ %N5 = MACLMAR * 100 + MACRMAR;
+ %N6 = SYSDIMSIZE * 100 + SYSOFFSETSIZE * 10 + SYSPOINTERSIZE;
+ %N7 = LENGTH(COMPILEDATE) * 100 + LENGTH(COMPILETIME);
+ %Q1 = QUOTE(QUOTE('IT''S'));
+ %C1 = QUOTE(COMMENT('X*/Y'));
+ %VERS = QUOTE(SUBSTR(SYSVERSION, 1, 15));
+ %N8 = LENGTH(SYSVERSION);
+ %SYS = QUOTE(TRIM(SYSTEM));
+ %SPM = QUOTE(SYSPARM);
+ %LC = QUOTE(LOWERCASE('AbC') || UPPERCASE('dEf'));
+ %UC = QUOTE(TRANSLATE('ABCA', 'xy', 'AB'));
+ %K1 = QUOTE(COUNTER);
+ %K2 = QUOTE(COUNTER);
+ %D1 = QUOTE(SUBSTR(COMPILEDATE, 1, 2));
+ %D2 = QUOTE(SUBSTR(COMPILETIME, 3, 1) || SUBSTR(COMPILETIME, 7, 1));
+ %MN: PROC RETURNS(CHAR);
+   RETURN(QUOTE(MACNAME));
+ %END MN;
+ %PS: PROC(A, B) RETURNS(FIXED);
+   IF PARMSET(B) THEN RETURN(1);
+   RETURN(0);
+ %END PS;
+ %N9 = PS(1) * 10 + PS(1, 2);
+ %DCL MNV CHAR;
+ %MNV = MN();
+ %GEN: PROC(X);
+   ANSWER('S2=''' || X || ''';');
+ %END GEN;
+ %OUTER: PROC;
+   ANSWER('S3=''A'';');
+   CALL INNER;
+ %END OUTER;
+ %INNER: PROC;
+   ANS('S4=''B'';') SKIP;
+ %END INNER;
+ %SELECT(N1);
+   %WHEN(4) %SV = '''FOUR''';
+   %WHEN(5) %SV = '''FIVE''';
+   %OTHERWISE %SV = '''OTHER''';
+ %END;
+ %DCL FN CHAR;
+ %FN = 'PMINSC';
+ PM117A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* Preprocessor built-in functions and statements of the Enterprise
+    PL/I 6.1 Language Reference ("Preprocessor facilities"). Values
+    computed by the preprocessor are inserted into the source as
+    constants: TRIM with the characters to remove, INDEX and VERIFY
+    from position n, COPY (y copies), REPEAT (y+1 copies), QUOTE
+    doubling quotes, COMMENT replacing the end of a comment by
+    </, COLLATE (256),
+    COMPILEDATE (17: yyyymmddhhmmssttt), COMPILETIME (18:
+    DD.MMM.YY HH.MM.SS), SYSVERSION (22, PL/I for z/OS ...),
+    COUNTER (00001, 00002), the defaults MARGINS(2,72), CMPAT(V2),
+    SYSTEM(MVS) and SYSPARM('') of the Programming Guide, MACNAME,
+    PARMSET, the ANSWER and CALL statements of preprocessor
+    procedures, %SELECT, %INSCAN and %XINSCAN, %NOPRINT. */
+ DCL (S, S2, S3, S4) CHAR(32) VARYING;
+ DCL INSC FIXED BIN(31) INIT(0);
+ %NOPRINT;
+ %PRINT;
+
+ OPEN FILE(REPORT);
+
+ CALL ZCHECK('PP-TRIM', T1='AB' & T2='AB');
+ CALL ZCHECK('PP-COPY-REPEAT-SUBSTR', T3='ABABABCCCBCD');
+ CALL ZCHECK('PP-INDEX-FROM', N1=5);
+ CALL ZCHECK('PP-VERIFY-FROM', N2=3);
+ CALL ZCHECK('PP-COLLATE', N3=256);
+ CALL ZCHECK('PP-MAX-MIN', N4=72);
+ CALL ZCHECK('PP-MARGINS', N5=272);
+ CALL ZCHECK('PP-SIZES', N6=444);
+ CALL ZCHECK('PP-COMPILE-DATE-TIME', N7=1718 & D1='20' &
+   D2='..');
+ S=Q1;
+ CALL ZCHECK('PP-QUOTE', S='''IT''''S''');
+ CALL ZCHECK('PP-COMMENT', C1='/*X</Y*/');
+ CALL ZCHECK('PP-SYSVERSION', VERS='PL/I for z/OS V' & N8=22);
+ CALL ZCHECK('PP-SYSTEM-SYSPARM', SYS='MVS' & SPM='');
+ CALL ZCHECK('PP-CASE-TRANSLATE', LC='abcDEF' & UC='xyCx');
+ CALL ZCHECK('PP-COUNTER', K1='00001' & K2='00002');
+ CALL ZCHECK('PP-MACNAME', MNV='MN');
+ CALL ZCHECK('PP-PARMSET', N9=1);
+ %ACTIVATE GEN, OUTER;
+ GEN(HI);
+ CALL ZCHECK('PP-ANSWER', S2='HI');
+ OUTER;
+ CALL ZCHECK('PP-CALL-ANSWER', S3='A' & S4='B');
+ CALL ZCHECK('PP-SELECT', SV='FIVE');
+ %INSCAN FN;
+ %XINSCAN FN;
+ %XINCLUDE PMINSC;
+ CALL ZCHECK('PP-INSCAN-XINSCAN', INSC=1);
+
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM117A;

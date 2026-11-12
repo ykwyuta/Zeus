@@ -150,6 +150,9 @@ pub struct Var {
     pub level: u32,
     /// Bit-packed (unaligned) bit string.
     pub packed_bits: bool,
+    /// A BYVALUE parameter: the procedure receives a copy of the argument.
+    #[serde(default)]
+    pub byvalue: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -268,6 +271,7 @@ pub enum Cond {
     UndefinedFile(FileId),
     Name(FileId),
     Condition(u32),
+    Assertion,
 }
 
 impl Cond {
@@ -289,6 +293,7 @@ impl Cond {
             Cond::Attention => "ATTENTION",
             Cond::InvalidOp => "INVALIDOP",
             Cond::AnyCondition => "ANYCONDITION",
+            Cond::Assertion => "ASSERTION",
             Cond::EndFile(_) => "ENDFILE",
             Cond::EndPage(_) => "ENDPAGE",
             Cond::Key(_) => "KEY",
@@ -547,6 +552,18 @@ pub enum Stmt {
     Iterate(LoopId),
     On(Vec<Cond>, Option<BlockId>, bool),
     Signal(Cond),
+    /// ASSERT: the kind, the test (BIT; for COMPARE the comparison), the
+    /// TEXT, the COMPARE operands as character strings and the operator;
+    /// the condition code when it fails.
+    Assert {
+        kind: crate::ast::AssertKind,
+        test: Option<Expr>,
+        text: Option<Expr>,
+        actual: Option<Expr>,
+        expected: Option<Expr>,
+        op: String,
+        code: i32,
+    },
     Revert(Vec<Cond>),
     Resignal,
     Stop,

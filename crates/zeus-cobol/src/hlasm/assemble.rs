@@ -285,6 +285,7 @@ pub(super) fn canonical_operation(op: &str) -> &str {
         "STCY" => "STC",
         "AY" => "A",
         "SY" => "S",
+        "MSY" => "MS",
         "CY" => "C",
         "CLY" => "CL",
         "ALY" => "AL",
@@ -305,6 +306,7 @@ pub(super) fn canonical_operation(op: &str) -> &str {
         "TMY" => "TM",
         "CVBY" => "CVB",
         "CVDY" => "CVD",
+        "LAY" => "LA",
         _ => op,
     }
 }
@@ -386,6 +388,10 @@ fn wide_memory(op: &str) -> bool {
             | "MSG"
             | "LMG"
             | "STMG"
+            | "LPQ"
+            | "STPQ"
+            | "CVBG"
+            | "CVDG"
     )
 }
 
@@ -436,13 +442,17 @@ pub(super) fn instruction_size(op: &str) -> Option<u32> {
         "MVCL" | "CLCL" | "BCTR" | "LR" | "SR" | "AR" | "CR" | "LTR" | "BR" | "BCR" | "XR"
         | "NR" | "OR" | "CLR" | "ALR" | "SLR" | "LCR" | "LPR" | "LNR" | "MR" | "DR" | "BALR"
         | "BASR" | "BASSM" | "BSM" | "SAM24" | "SAM31" | "SAM64" | "SPM" | "NOPR" => 2,
-        "EX" | "L" | "ST" | "LA" | "STM" | "LM" | "CLI" | "MVI" | "B" | "BE" | "BNE" | "BH"
-        | "BL" | "BCT" | "AHI" | "A" | "S" | "C" | "CL" | "AL" | "SL" | "N" | "O" | "X" | "AH"
-        | "SH" | "CH" | "MH" | "M" | "D" | "LH" | "STH" | "IC" | "STC" | "SLL" | "SRL" | "SLA"
-        | "SRA" | "NI" | "OI" | "XI" | "TM" | "BC" | "BAL" | "BAS" | "NOP" | "BNH" | "BNL"
-        | "BO" | "BNO" | "BP" | "BM" | "BZ" | "BNZ" | "BNP" | "BNM" | "CVB" | "CVD" => 4,
+        "LAM" | "STAM" => 4,
+        "EX" | "L" | "ST" | "LA" | "STM" | "LM" | "BXH" | "BXLE" | "CLI" | "MVI" | "B" | "BE"
+        | "BNE" | "BH" | "BL" | "BCT" | "AHI" | "A" | "S" | "C" | "CL" | "AL" | "SL" | "N"
+        | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "MS" | "M" | "D" | "LH" | "STH" | "IC"
+        | "STC" | "SLL" | "SRL" | "SLA" | "SRA" | "NI" | "OI" | "XI" | "TM" | "BC" | "BAL"
+        | "BAS" | "NOP" | "BNH" | "BNL" | "BO" | "BNO" | "BP" | "BM" | "BZ" | "BNZ" | "BNP"
+        | "BNM" | "CVB" | "CVD" => 4,
         "MVC" | "CLC" | "XC" | "NC" | "OC" | "MVN" | "MVZ" | "TR" | "ZAP" | "AP" | "SP" | "CP"
-        | "MP" | "DP" | "PACK" | "UNPK" | "TRT" | "TRTR" | "SRP" | "TP" | "ED" | "EDMK" => 6,
+        | "MP" | "DP" | "PACK" | "UNPK" | "MVO" | "TRT" | "TRTR" | "SRP" | "TP" | "ED" | "EDMK" => {
+            6
+        }
         // STIMER is implemented as an OS service, not an IBM macro expansion.
         "STIMER" | "GETMAIN" | "FREEMAIN" | "STORAGE" | "LINK" | "LINKX" | "XCTL" | "XCTLX"
         | "LOAD" | "DELETE" | "WTO" | "WAIT" | "POST" | "OPEN" | "CLOSE" | "GET" | "PUT"
@@ -3285,13 +3295,13 @@ fn compile_layout(
                     1
                 }
                 "EX" | "L" | "ST" | "LA" | "BCT" | "A" | "S" | "C" | "CL" | "AL" | "SL" | "N"
-                | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "M" | "D" | "LH" | "STH" | "IC"
-                | "STC" | "SLL" | "SRL" | "SLA" | "SRA" | "BAL" | "BAS" | "CVB" | "CVD" => {
+                | "O" | "X" | "AH" | "SH" | "CH" | "MH" | "MS" | "M" | "D" | "LH" | "STH"
+                | "IC" | "STC" | "SLL" | "SRL" | "SLA" | "SRA" | "BAL" | "BAS" | "CVB" | "CVD" => {
                     i.registers = vec![reg(0)?];
                     i.address = Some(addr(1, false)?.0);
                     2
                 }
-                "STM" | "LM" => {
+                "STM" | "LM" | "BXH" | "BXLE" | "LAM" | "STAM" => {
                     i.registers = vec![reg(0)?, reg(1)?];
                     i.address = Some(addr(2, false)?.0);
                     3
@@ -3356,6 +3366,9 @@ fn compile_layout(
                 "MVC" | "CLC" | "XC" | "NC" | "OC" | "MVN" | "MVZ" | "TR" | "TRT" | "TRTR"
                 | "ED" | "EDMK" => {
                     let (a, len) = addr(0, true)?;
+                    // An explicit length of 0 assembles as length code 0, the same as 1; it is
+                    // the usual form of an EX target (HLASM Language Reference, "Lengths").
+                    let len = if len == 0 { 1 } else { len };
                     if !(1..=256).contains(&len) {
                         return Err("SS length must be 1..256".into());
                     }
@@ -3397,7 +3410,7 @@ fn compile_layout(
                     i.immediate = rounding.value as u32;
                     3
                 }
-                "ZAP" | "AP" | "SP" | "CP" | "MP" | "DP" | "PACK" | "UNPK" => {
+                "ZAP" | "AP" | "SP" | "CP" | "MP" | "DP" | "PACK" | "UNPK" | "MVO" => {
                     let (a, len) = addr(0, true)?;
                     let (b, len2) = addr(1, true)?;
                     if !(1..=16).contains(&len) || !(1..=16).contains(&len2) {
@@ -3424,7 +3437,17 @@ fn compile_layout(
             }
             if matches!(
                 canonical_operation(&s.op),
-                "LM" | "STM" | "CLI" | "MVI" | "NI" | "OI" | "XI" | "TM"
+                "LM" | "STM"
+                    | "LAM"
+                    | "STAM"
+                    | "BXH"
+                    | "BXLE"
+                    | "CLI"
+                    | "MVI"
+                    | "NI"
+                    | "OI"
+                    | "XI"
+                    | "TM"
             ) && i.address.as_ref().is_some_and(|a| a.index != 0)
             {
                 return Err("index not permitted for RS/SI instruction".into());

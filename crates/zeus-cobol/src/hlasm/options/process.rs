@@ -173,7 +173,7 @@ pub(in crate::hlasm) fn apply_process(
         },
     };
     let mut optable = Selection {
-        value: super::parse_optable(options.optable.as_deref().unwrap_or("ZEUS"))
+        value: super::parse_optable(options.optable.as_deref().unwrap_or("UNI"))
             .expect("invocation options were validated before applying *PROCESS"),
         precedence: if options.optable.is_some() { 4 } else { 6 },
     };

@@ -1,0 +1,74 @@
+ PM119A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* XMLCHAR, XMLSCRUB and XMLSCRUB16 (Enterprise PL/I 6.1 Language
+    Reference). XMLCHAR writes each name of a structure in upper
+    case between < > and </ >, converts numbers to character and
+    trims blanks; the LRM example gives 72 bytes. When the buffer
+    is too small the text is truncated and the bytes needed are
+    returned. The XMLSCRUB functions replace " ' & < > with entity
+    references and carriage return with &#xD;, return the length
+    needed for a zero target address and -1 when it does not fit. */
+ DCL BUFFER CHAR(800);
+ DCL SMALL CHAR(10);
+ DCL (WRITTEN, LEFT, K) FIXED BIN(31);
+ DCL NEXT POINTER;
+ DCL
+   1 A,
+     2 A1,
+       3 B1 CHAR(8),
+       3 B2 CHAR(8),
+     2 A2,
+       3 C1 FIXED BIN,
+       3 C2 FIXED DEC(5,1);
+ DCL
+   1 S,
+     2 * CHAR(4) INIT('SKIP'),
+     2 F BIT(1) INIT('1'B),
+     2 G FIXED BIN(31) INIT(0);
+ DCL SRC CHAR(9);
+ DCL OUT CHAR(64);
+ DCL W WIDECHAR(4);
+ DCL WB CHAR(8) BASED(ADDR(W));
+ DCL WOUT WIDECHAR(16);
+
+ OPEN FILE(REPORT);
+
+ B1 = ' t1';
+ B2 = 't2';
+ C1 = 17;
+ C2 = -29;
+ NEXT = ADDR(BUFFER);
+ LEFT = STG(BUFFER);
+ WRITTEN = XMLCHAR(A, NEXT, LEFT);
+ CALL ZCHECK('XMLCHAR-LRM-LENGTH', WRITTEN = 72);
+ CALL ZCHECK('XMLCHAR-LRM-TEXT', SUBSTR(BUFFER, 1, 72) =
+   '<A><A1><B1>t1</B1><B2>t2</B2></A1><A2><C1>17</C1>' ||
+   '<C2>-29.0</C2></A2></A>');
+ SMALL = '';
+ K = XMLCHAR(A, ADDR(SMALL), STG(SMALL));
+ CALL ZCHECK('XMLCHAR-TRUNCATED', K = 72 & SMALL = '<A><A1><B1');
+ K = XMLCHAR(S, ADDR(BUFFER), LEFT);
+ CALL ZCHECK('XMLCHAR-STAR-BIT', SUBSTR(BUFFER, 1, K) =
+   '<S><F>1</F><G>0</G></S>');
+
+ SRC = 'A<B>&"''' || '0D'X || '00'X;
+ CALL ZCHECK('XMLSCRUB-SIZE', XMLSCRUB(SYSNULL(), 0,
+   ADDR(SRC), STG(SRC)) = 33);
+ OUT = '';
+ K = XMLSCRUB(ADDR(OUT), STG(OUT), ADDR(SRC), STG(SRC));
+ CALL ZCHECK('XMLSCRUB-TEXT', K = 33 & SUBSTR(OUT, 1, K) =
+   'A&lt;B&gt;&amp;&quot;&apos;&#xD; ');
+ CALL ZCHECK('XMLSCRUB-SMALL', XMLSCRUB(ADDR(OUT), 32,
+   ADDR(SRC), STG(SRC)) = -1);
+
+ WB = '0041003CD800000D'X;
+ WOUT = '';
+ K = XMLSCRUB16(ADDR(WOUT), STG(WOUT), ADDR(W), STG(W));
+ CALL ZCHECK('XMLSCRUB16', K = 22 & HEX(WOUT) =
+   '00410026006C0074003B0020002600230078004400' ||
+   '3B00200020002000200020');
+
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM119A;

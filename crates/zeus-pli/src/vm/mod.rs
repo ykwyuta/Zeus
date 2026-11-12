@@ -4,6 +4,8 @@
 mod bif;
 mod cics;
 mod conv;
+mod datefmt;
+mod digest;
 mod record;
 mod sql;
 mod stream;
@@ -99,11 +101,41 @@ pub struct Binding {
 #[derive(Debug, Clone, Default)]
 struct CondInfo {
     code: i32,
+    /// ONCONDID: the condition's number in the Language Reference table
+    condid: i32,
+    /// ONCONDCOND: the name of a CONDITION condition
+    condname: String,
     onchar: u8,
     onsource: Vec<u8>,
     onkey: Vec<u8>,
     onfile: String,
     onloc: String,
+    /// ASSERTION: TEXT, COMPARE operands and operator, package
+    ontext: Vec<u8>,
+    onactual: Vec<u8>,
+    onexpected: Vec<u8>,
+    onoperator: String,
+    onpackage: String,
+    /// SUBSCRIPTRANGE: the subscript and the bounds
+    onsub: (i64, i64, i64),
+    online: u32,
+    onarea: String,
+}
+
+/// Information of the condition being raised that only its raising
+/// statement knows (ASSERTION, SUBSCRIPTRANGE, AREA).
+#[derive(Default, Clone)]
+struct OnExtra {
+    text: Vec<u8>,
+    actual: Vec<u8>,
+    expected: Vec<u8>,
+    operator: String,
+    sub: (i64, i64, i64),
+    area: String,
+}
+
+thread_local! {
+    static ON_EXTRA: std::cell::RefCell<OnExtra> = std::cell::RefCell::new(OnExtra::default());
 }
 
 struct Act {
@@ -152,6 +184,9 @@ pub struct Machine {
     pub env: RunEnv,
     files: Vec<stream::FileState>,
     rc: i32,
+    /// Heap allocations of ALLOCATE (address, size), each followed by
+    /// eight 'FF'X bytes (CHECKSTG, ALLOCSIZE, UNALLOCATED).
+    pub(crate) allocs: std::collections::BTreeMap<u32, u32>,
     random: u64,
     depth: usize,
     /// The program's instance for the CICS host (its HANDLE CONDITION
@@ -210,6 +245,7 @@ impl Machine {
             env,
             files,
             rc: 0,
+            allocs: std::collections::BTreeMap::new(),
             random: 0x2545_F491_4F6C_DD1D,
             depth: 0,
             cics_instance: 0,
@@ -309,6 +345,8 @@ impl Machine {
         // doubleword boundaries within the area
         let at = used.div_ceil(8) * 8;
         if at + size > cap {
+            let name = self.module.vars[area.var as usize].name.clone();
+            ON_EXTRA.with(|e| e.borrow_mut().area = name);
             self.raise(Cond::Area, 360, act)?;
             return Ok(None);
         }
@@ -317,6 +355,113 @@ impl Machine {
         let p = addr + AREA_HEADER + at;
         self.write(p, &vec![0u8; size as usize])?;
         Ok(Some(p))
+    }
+
+    /// Heap storage of an ALLOCATE statement or built-in: recorded, and
+    /// followed by eight 'FF'X bytes that CHECKSTG looks at (Language
+    /// Reference, CHECKSTG).
+    pub(crate) fn heap_allocate(&mut self, size: u32) -> R<u32> {
+        let p = self.heap_alloc(size + 8);
+        self.write(p + size, &[0xFF; 8])?;
+        self.allocs.insert(p, size);
+        Ok(p)
+    }
+
+    /// The allocation whose start is p, both rounded down to a doubleword.
+    pub(crate) fn allocation_at(&self, p: u32) -> Option<(u32, u32)> {
+        self.allocs
+            .iter()
+            .find(|(a, _)| **a & !7 == p & !7)
+            .map(|(a, n)| (*a, *n))
+    }
+
+    /// AREA built-ins: allocate n bytes (rounded up to 8) in an area;
+    /// `quiet` gives None instead of raising AREA (ALLOCNEXT).
+    pub(crate) fn area_allocate(
+        &mut self,
+        area: &Ref,
+        n: u32,
+        quiet: bool,
+        act: usize,
+    ) -> R<Option<u32>> {
+        let n = n.div_ceil(8) * 8;
+        if quiet && self.area_available(area, act)? < n {
+            return Ok(None);
+        }
+        self.area_alloc(area, n, act)
+    }
+
+    /// The largest single allocation the area can still give.
+    pub(crate) fn area_available(&mut self, area: &Ref, act: usize) -> R<u32> {
+        let l = self.locate(area, act)?;
+        let Ty::Area(cap) = l.ty else {
+            return err("not an AREA");
+        };
+        let h = self.read((l.bit / 8) as u32, 8)?;
+        let used = u32::from_be_bytes([h[4], h[5], h[6], h[7]]);
+        Ok(cap.saturating_sub(used.div_ceil(8) * 8))
+    }
+
+    /// XMLCHAR text of a structure or a member: each name in upper case
+    /// between < > and </ >, members in order, leaves converted to
+    /// character and trimmed of blanks (Language Reference, XMLCHAR). An
+    /// element named * is not written. Zeus escapes & < > " ' in values as
+    /// XMLSCRUB does; that has not been compared with z/OS.
+    pub(crate) fn xml_of(&mut self, r: &Ref, act: usize, out: &mut Vec<u8>) -> R<()> {
+        let m = self.module.clone();
+        let var = &m.vars[r.var as usize];
+        let name = zeus_cobol::ebcdic::encode(&var.name.to_ascii_uppercase());
+        let tag = |out: &mut Vec<u8>, close: bool| {
+            out.extend(zeus_cobol::ebcdic::encode(if close { "</" } else { "<" }));
+            out.extend(&name);
+            out.extend(zeus_cobol::ebcdic::encode(">"));
+        };
+        if var.ty.is_none() {
+            if var.dims.len() > r.subs.len() {
+                return err(format!(
+                    "XMLCHAR of the structure array {} is not supported",
+                    var.name
+                ));
+            }
+            tag(out, false);
+            for &mem in &var.members {
+                let mut subs = r.subs.clone();
+                subs.resize(m.vars[mem as usize].dims.len(), None);
+                let mr = Ref {
+                    var: mem,
+                    subs,
+                    locator: r.locator.clone(),
+                };
+                self.xml_of(&mr, act, out)?;
+            }
+            tag(out, true);
+            return Ok(());
+        }
+        if var.name.starts_with('*') {
+            return Ok(());
+        }
+        for l in self.elements(r, act)? {
+            let v = self.load(&l)?;
+            let Value::Char(c) = self.convert(v, &l.ty, &crate::sema::expr::char_any(), act)?
+            else {
+                return err("XMLCHAR: a value is not computational");
+            };
+            let a = c.iter().position(|b| *b != 0x40).unwrap_or(c.len());
+            let z = c.iter().rposition(|b| *b != 0x40).map_or(a, |k| k + 1);
+            tag(out, false);
+            for &ch in &c[a..z] {
+                match ch {
+                    0x7F => out.extend(zeus_cobol::ebcdic::encode("&quot;")),
+                    0x7D => out.extend(zeus_cobol::ebcdic::encode("&apos;")),
+                    0x50 => out.extend(zeus_cobol::ebcdic::encode("&amp;")),
+                    0x4C => out.extend(zeus_cobol::ebcdic::encode("&lt;")),
+                    0x6E => out.extend(zeus_cobol::ebcdic::encode("&gt;")),
+                    _ => out.push(ch),
+                }
+            }
+            tag(out, true);
+        }
+        Ok(())
     }
 
     fn heap_alloc(&mut self, size: u32) -> u32 {
@@ -966,6 +1111,7 @@ impl Machine {
             };
             if enabled && (i < lb || i > ub) {
                 if self.enabled_now(act, cond::SUBSCRIPTRANGE) {
+                    ON_EXTRA.with(|e| e.borrow_mut().sub = (i, lb, ub));
                     self.raise(Cond::SubscriptRange, 520, act)?;
                     self.raise(Cond::Error, 520, act)?;
                 }
@@ -1261,6 +1407,20 @@ impl Machine {
 
     /// Converts and stores a value of type `from` into a location.
     pub fn assign_loc(&mut self, loc: &Loc, v: Value, from: &Ty, act: usize) -> R<()> {
+        // STRINGSIZE (disabled by default): a string source longer than a
+        // fixed-length or VARYING target is truncated; the condition is raised
+        // first and a normal return completes the truncated assignment
+        // (Language Reference, "STRINGSIZE condition").
+        if let Some(crate::types::Ext::Const(max)) = loc.ty.str_len() {
+            let long = match &v {
+                Value::Char(s) if loc.ty.is_char() => s.len() > max as usize,
+                Value::Bit(b) if loc.ty.is_bit() => b.len() > max as usize,
+                _ => false,
+            };
+            if long && self.enabled_now(act, cond::STRINGSIZE) {
+                self.raise(Cond::StringSize, 150, act)?;
+            }
+        }
         let v = self.convert(v, from, &loc.ty, act)?;
         self.store(loc, &v)
     }
@@ -1557,6 +1717,47 @@ impl Machine {
                 self.acts[act].on.retain(|x| !conds.contains(&x.0));
                 Ok(())
             }
+            Stmt::Assert {
+                kind,
+                test,
+                text,
+                actual,
+                expected,
+                op,
+                code,
+            } => {
+                use crate::ast::AssertKind as K;
+                let bits = |v: Value| match v {
+                    Value::Bit(b) => b,
+                    v => vec![v.as_f64() != 0.0],
+                };
+                let ok = match (kind, test) {
+                    (K::False, Some(t)) => !bits(self.eval(t, act)?).iter().any(|x| *x),
+                    (_, Some(t)) => bits(self.eval(t, act)?).iter().any(|x| *x),
+                    _ => false,
+                };
+                if ok {
+                    return Ok(());
+                }
+                let chars = |me: &mut Self, e: &Option<Expr>| -> R<Vec<u8>> {
+                    Ok(match e {
+                        Some(e) => match me.eval(e, act)? {
+                            Value::Char(c) => c,
+                            _ => Vec::new(),
+                        },
+                        None => Vec::new(),
+                    })
+                };
+                let extra = OnExtra {
+                    text: chars(self, text)?,
+                    actual: chars(self, actual)?,
+                    expected: chars(self, expected)?,
+                    operator: op.clone(),
+                    ..Default::default()
+                };
+                ON_EXTRA.with(|e| *e.borrow_mut() = extra);
+                self.signal(Cond::Assertion, *code, act, false)
+            }
             Stmt::Signal(c) => {
                 let code = signal_code(c);
                 let enabled = match c {
@@ -1634,7 +1835,7 @@ impl Machine {
                             Some(p) => p,
                             None => continue,
                         },
-                        None => self.heap_alloc(size as u32),
+                        None => self.heap_allocate(size as u32)?,
                     };
                     for &n in &refers {
                         let obj = &m.vars[m.refers[n].object as usize];
@@ -1690,8 +1891,10 @@ impl Machine {
                     let known = self.sys().load_program(&module)
                         || self.env.linker.as_ref().is_some_and(|l| l.load(&module));
                     if !known {
-                        // the module cannot be loaded: ERROR
-                        self.raise(Cond::Error, 9251, act)?;
+                        // the module cannot be found: ERROR with condition code
+                        // 9250 (Messages and Codes, "Procedure to be fetched
+                        // cannot be found"; 9251 is a transmission error)
+                        self.raise(Cond::Error, 9250, act)?;
                         continue;
                     }
                     if module != *name {
@@ -1715,8 +1918,19 @@ impl Machine {
                 Ok(())
             }
             Stmt::Free(items) => {
-                for (v, _) in items {
+                for (v, loc) in items {
                     let root = self.module.vars[*v as usize].root;
+                    // a BASED generation: no longer allocated (UNALLOCATED)
+                    if let Storage::Based(..) = self.module.vars[root as usize].storage {
+                        let r = Ref {
+                            var: *v,
+                            subs: Vec::new(),
+                            locator: loc.clone().map(Box::new),
+                        };
+                        if let Ok(l) = self.locate(&r, act) {
+                            self.allocs.remove(&((l.bit / 8) as u32));
+                        }
+                    }
                     if let Storage::Controlled(..) = self.module.vars[root as usize].storage {
                         let anchor = self.anchor_addr(root, act)?;
                         let g = self.generation(anchor)?;
@@ -2097,6 +2311,19 @@ impl Machine {
     ) -> R<Option<Binding>> {
         let m = self.module.clone();
         let pvar = &m.vars[param as usize];
+        // BYVALUE: the procedure works on a copy, so its assignments do not
+        // reach the argument (Language Reference, BYVALUE attribute)
+        if pvar.byvalue
+            && let Arg::Ref(r) = a
+            && r.subs.iter().all(Option::is_some)
+            && let Some(ty) = m.vars[r.var as usize].ty.clone()
+        {
+            let copy = Expr {
+                k: Box::new(crate::ir::Ek::Load(r.clone())),
+                ty,
+            };
+            return self.bind_arg(&Arg::Dummy(copy), param, act, dummies);
+        }
         Ok(match a {
             Arg::Omitted => None,
             Arg::Ref(r) => {
@@ -2514,6 +2741,9 @@ impl Machine {
                 self.rc = self.eval(&args[0], act)?.as_i64() as i32;
             }
             PliDump => {}
+            QuickSort | QuickSortX => {
+                self.eval(&args[0], act)?;
+            }
             PliFill => {
                 let p = self.eval(&args[0], act)?;
                 let c = self.eval(&args[1], act)?;
@@ -2634,6 +2864,62 @@ impl Machine {
             info.onchar = x.1;
         }
         info.onloc = self.proc_name(act);
+        info.online = CUR_LINE.with(|l| l.get());
+        let extra = ON_EXTRA.with(|e| e.borrow().clone());
+        if matches!(c, Cond::Assertion) {
+            info.ontext = extra.text;
+            info.onactual = extra.actual;
+            info.onexpected = extra.expected;
+            info.onoperator = extra.operator;
+            // no PACKAGE statement: the outermost procedure
+            info.onpackage = self
+                .module
+                .main
+                .or_else(|| self.module.procs.first().map(|_| 0))
+                .map(|p| self.module.procs[p as usize].name.clone())
+                .unwrap_or_default();
+        }
+        if matches!(c, Cond::SubscriptRange) {
+            info.onsub = extra.sub;
+        }
+        if matches!(c, Cond::Area) {
+            info.onarea = extra.area;
+        }
+        info.condid = match c {
+            Cond::Assertion => 24,
+            Cond::Area => 1,
+            Cond::Attention => 2,
+            Cond::Condition(_) => 3,
+            Cond::Conversion => 4,
+            Cond::EndFile(_) => 5,
+            Cond::EndPage(_) => 6,
+            Cond::Error => 7,
+            Cond::Finish => 8,
+            Cond::FixedOverflow => 9,
+            Cond::InvalidOp => 10,
+            Cond::Key(_) => 11,
+            Cond::Name(_) => 12,
+            Cond::Overflow => 13,
+            Cond::Record(_) => 14,
+            Cond::Size => 15,
+            Cond::Storage => 16,
+            Cond::StringRange => 17,
+            Cond::StringSize => 18,
+            Cond::SubscriptRange => 19,
+            Cond::Transmit(_) => 20,
+            Cond::UndefinedFile(_) => 21,
+            Cond::Underflow => 22,
+            Cond::ZeroDivide => 23,
+            Cond::AnyCondition => 0,
+        };
+        if let Cond::Condition(n) = c {
+            info.condname = self
+                .module
+                .conditions
+                .get(*n as usize)
+                .cloned()
+                .unwrap_or_default();
+        }
         info
     }
 
@@ -2661,6 +2947,7 @@ impl Machine {
             {
                 self.raise(Cond::Error, code, act)
             }
+            // 正常な戻りは次の文から続ける (Language Reference, ASSERTION condition)
             Cond::Conversion if !signalled => {
                 let repaired = PENDING_CONV.with(|p| {
                     p.borrow().as_ref().is_some_and(|(source, _)| {
@@ -3120,6 +3407,21 @@ impl Machine {
             OnKey => Value::Char(info.onkey),
             OnFile => Value::Char(zeus_cobol::ebcdic::encode(&info.onfile)),
             OnLoc => Value::Char(zeus_cobol::ebcdic::encode(&info.onloc)),
+            OnCondId => Value::int(i64::from(info.condid)),
+            OnCondCond => Value::Char(zeus_cobol::ebcdic::encode(&info.condname)),
+            OnText => Value::Char(info.ontext),
+            OnActual => Value::Char(info.onactual),
+            OnExpected => Value::Char(info.onexpected),
+            OnOperator => Value::Char(zeus_cobol::ebcdic::encode(&format!(
+                "{:2}",
+                info.onoperator
+            ))),
+            OnPackage => Value::Char(zeus_cobol::ebcdic::encode(&info.onpackage)),
+            OnSubscript => Value::int(info.onsub.0),
+            OnLbound => Value::int(info.onsub.1),
+            OnHbound => Value::int(info.onsub.2),
+            OnLine => Value::int(i64::from(info.online)),
+            OnArea => Value::Char(zeus_cobol::ebcdic::encode(&info.onarea)),
             _ => Value::int(0),
         }
     }
@@ -3177,6 +3479,7 @@ fn signal_code(c: &Cond) -> i32 {
         Cond::Attention => 400,
         Cond::InvalidOp => 290,
         Cond::AnyCondition => 0,
+        Cond::Assertion => 430,
     }
 }
 

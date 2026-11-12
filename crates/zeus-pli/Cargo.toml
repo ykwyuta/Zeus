@@ -13,6 +13,7 @@ zeus-db2 = { path = "../zeus-db2" }
 zeus-decimal = { path = "../zeus-decimal", features = ["serde"] }
 zeus-ds = { path = "../zeus-ds" }
 serde.workspace = true
+sha2.workspace = true
 serde_json = { workspace = true, features = ["unbounded_depth"] }
 
 [dev-dependencies]

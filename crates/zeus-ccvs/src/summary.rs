@@ -133,6 +133,9 @@ pub fn program_report(r: &SuiteResult) -> String {
                     code.map_or("signal".to_string(), |c| c.to_string())
                 ),
                 Outcome::Timeout => "***** timeout *****".to_string(),
+                Outcome::NotWritable { format } => {
+                    format!("----- Zeus cannot write {format} for this program -----")
+                }
             };
             let _ = writeln!(out, "{:<11} {}", p.program, line.trim_end());
         }

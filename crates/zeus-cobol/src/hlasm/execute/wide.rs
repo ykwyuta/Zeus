@@ -76,6 +76,10 @@ pub(super) fn execute(
             | "CGFI"
             | "LMG"
             | "STMG"
+            | "LPQ"
+            | "STPQ"
+            | "CVBG"
+            | "CVDG"
     ) {
         return Ok(false);
     }
@@ -105,6 +109,38 @@ pub(super) fn execute(
                 mem[addr + n * 8..addr + (n + 1) * 8]
                     .copy_from_slice(&read(low, high, target).to_be_bytes());
             }
+        }
+        return Ok(true);
+    }
+    if matches!(op, "CVBG" | "CVDG") {
+        // CONVERT TO BINARY / TO DECIMAL on 64 bits: a 16-byte packed operand
+        let addr = ea()?;
+        let dest = range(mem, addr, 16)?;
+        if op == "CVBG" {
+            let n = i64::try_from(super::packed(&mem[dest])?)
+                .map_err(|_| "CVBG fixed-point divide exception")?;
+            write(low, high, r, n as u64);
+        } else {
+            storage.check_write(addr, 16)?;
+            super::store_packed(&mut mem[dest], i128::from(a as i64))?;
+        }
+        return Ok(true);
+    }
+    if matches!(op, "LPQ" | "STPQ") {
+        // LOAD/STORE PAIR FROM/TO QUADWORD: an even-odd pair and a
+        // quadword-aligned operand (specification exception otherwise)
+        let addr = ea()?;
+        if !addr.is_multiple_of(16) || !r.is_multiple_of(2) {
+            return Err("specification exception: quadword alignment or odd register".into());
+        }
+        range(mem, addr, 16)?;
+        if op == "LPQ" {
+            write(low, high, r, doubleword(mem, addr)?);
+            write(low, high, r + 1, doubleword(mem, addr + 8)?);
+        } else {
+            storage.check_write(addr, 16)?;
+            mem[addr..addr + 8].copy_from_slice(&read(low, high, r).to_be_bytes());
+            mem[addr + 8..addr + 16].copy_from_slice(&read(low, high, r + 1).to_be_bytes());
         }
         return Ok(true);
     }

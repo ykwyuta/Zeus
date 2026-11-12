@@ -351,6 +351,56 @@ impl Compiler {
         ))
     }
 
+    /// The program-information built-ins, as constants.
+    fn program_info(&self, b: crate::builtin::Bif, pos: Pos) -> Result<Expr> {
+        use crate::builtin::Bif::*;
+        let proc_of = |mut blk: BlockId| loop {
+            let block = &self.m.blocks[blk as usize];
+            if let Some(p) = block.proc {
+                break Some(p);
+            }
+            match block.parent {
+                Some(p) => blk = p,
+                None => break None,
+            }
+        };
+        let text = |t: &str| {
+            let b = zeus_cobol::ebcdic::encode(t);
+            let n = b.len() as u32;
+            mk(Ek::Char(b), Ty::char(n))
+        };
+        Ok(match b {
+            ProcedureName => {
+                let p = proc_of(self.cur)
+                    .ok_or_else(|| self.err(pos, "PROCEDURENAME outside a procedure"))?;
+                text(&self.m.procs[p as usize].name)
+            }
+            // no PACKAGE statement: the outermost procedure
+            PackageName => {
+                let p = proc_of(self.outer)
+                    .ok_or_else(|| self.err(pos, "PACKAGENAME outside a procedure"))?;
+                text(&self.m.procs[p as usize].name)
+            }
+            SourceFile => text(
+                self.m
+                    .sources
+                    .get(pos.file as usize)
+                    .map_or("", |s| s.as_str()),
+            ),
+            SourceLine => mk(Ek::Fixed(i128::from(pos.line), 0), Ty::fixed_bin(31, 0)),
+            IsMain => {
+                let main = proc_of(self.cur).is_some_and(|p| self.m.procs[p as usize].main);
+                mk(Ek::Bit(vec![main]), Ty::bit(1))
+            }
+            _ => {
+                let p = self.m.main.ok_or_else(|| {
+                    self.err(pos, "MAINNAME outside the compilation unit of the MAIN procedure is not supported")
+                })?;
+                text(&self.m.procs[p as usize].name)
+            }
+        })
+    }
+
     fn string(&self, text: &str, kind: StrKind, pos: Pos) -> Result<Expr> {
         let bad = || self.err(pos, format!("invalid string constant '{text}'"));
         Ok(match kind {
@@ -1109,6 +1159,11 @@ impl Compiler {
                 }
                 Ok(Stmt::CallBuiltin(PliDump, Vec::new()))
             }
+            // CALL QUICKSORT(x [,n [,m]]): sorts x in place
+            QuickSort | QuickSortX => {
+                let e = self.array_search(b, args, pos)?;
+                Ok(Stmt::CallBuiltin(b, vec![e]))
+            }
             PliFill | PliMove => {
                 let mut v = Vec::new();
                 for a in args {
@@ -1118,6 +1173,55 @@ impl Compiler {
             }
             _ => Err(self.err(pos, format!("built-in subroutine {b:?} is not supported"))),
         }
+    }
+
+    /// QUICKSORT(x [,n [,m]]) and BINSEARCH(x, y [,n [,m]]) on a
+    /// one-dimensional array x: the key y keeps its type, n and m are
+    /// FIXED BIN(31).
+    fn array_search(&mut self, b: Bif, args: &[ast::Expr], pos: Pos) -> Result<Expr> {
+        let Some(ast::Expr::Ref(arr)) = args.first() else {
+            return Err(self.err(pos, format!("{b:?} needs an array")));
+        };
+        let ar = self.reference(arr, true)?;
+        let v = &self.m.vars[ar.var as usize];
+        let free = ar.subs.iter().filter(|s| s.is_none()).count();
+        let rank = if ar.subs.is_empty() {
+            v.dims.len()
+        } else {
+            free
+        };
+        if rank != 1 || v.ty.is_none() {
+            return Err(self.err(
+                pos,
+                format!("{b:?} needs a one-dimensional array of scalars"),
+            ));
+        }
+        let mut rest = Vec::new();
+        let mut it = args[1..].iter();
+        // the key (BINSEARCH), the key's address (BINSEARCHX) and the
+        // compare function (the X forms) keep their types
+        let fixed = match b {
+            Bif::BinSearch | Bif::QuickSortX => 1,
+            Bif::BinSearchX => 2,
+            _ => 0,
+        };
+        for k in 0..fixed {
+            let y = it
+                .next()
+                .ok_or_else(|| self.err(pos, format!("{b:?} needs more arguments")))?;
+            // the compare function is an entry value, not invoked here
+            let last = k + 1 == fixed && matches!(b, Bif::QuickSortX | Bif::BinSearchX);
+            match self.entry_constant(y).filter(|_| last) {
+                Some(e) => rest.push(e),
+                None => rest.push(self.expr(y)?),
+            }
+        }
+        for a in it {
+            let x = self.expr(a)?;
+            let x = self.to_arith(x);
+            rest.push(self.conv(x, &Ty::fixed_bin(31, 0)));
+        }
+        Ok(mk(Ek::RefBuiltin(b, ar, rest), Ty::fixed_bin(31, 0)))
     }
 
     /// A built-in function reference.
@@ -1270,7 +1374,101 @@ impl Compiler {
                 let rr = self.reference(&ast::Ref::simple(&format!("%{t}"), pos), true)?;
                 return Ok(mk(Ek::RefBuiltin(b, rr, Vec::new()), Ty::Pointer));
             }
-            OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField => {
+            // program information known at compile time (Language Reference:
+            // PROCEDURENAME, PACKAGENAME, SOURCEFILE, SOURCELINE, ISMAIN,
+            // MAINNAME)
+            ProcedureName | PackageName | SourceFile | SourceLine | IsMain | MainName => {
+                return self.program_info(b, pos);
+            }
+            // CODEPAGE: the CODEPAGE compiler option (Programming Guide: the
+            // default CCSID is 1140)
+            CodePage => {
+                return Ok(mk(
+                    Ek::Fixed(i128::from(self.m.ccsid), 0),
+                    Ty::fixed_bin(31, 0),
+                ));
+            }
+            // BINSEARCH(x, y [,n [,m]]): the relative index of y in x, or 0
+            BinSearch | BinSearchX => return self.array_search(b, args, pos),
+            QuickSort | QuickSortX => {
+                return Err(self.err(pos, format!("{b:?} is invoked with the CALL statement")));
+            }
+            // ALLOCATE(n [,x]), ALLOCNEXT(n, x), AVAILABLEAREA(x): x is an
+            // AREA reference
+            Allocate | AllocNext | AvailableArea => {
+                let (n, area) = match (b, args) {
+                    (Allocate, [n]) => (Some(n), None),
+                    (Allocate | AllocNext, [n, ast::Expr::Ref(x)]) => (Some(n), Some(x)),
+                    (AvailableArea, [ast::Expr::Ref(x)]) => (None, Some(x)),
+                    _ => return Err(self.err(pos, format!("{b:?}: wrong arguments"))),
+                };
+                let mut rest = Vec::new();
+                if let Some(n) = n {
+                    let n = self.expr(n)?;
+                    let n = self.to_arith(n);
+                    rest.push(self.conv(n, &Ty::fixed_bin(31, 0)));
+                }
+                let rt = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
+                let Some(x) = area else {
+                    return Ok(mk(Ek::Builtin(b, rest), rt));
+                };
+                let ar = self.reference(x, true)?;
+                if !matches!(self.m.vars[ar.var as usize].ty, Some(Ty::Area(_))) {
+                    return Err(self.err(pos, format!("{b:?}: the area argument is not an AREA")));
+                }
+                return Ok(mk(Ek::RefBuiltin(b, ar, rest), rt));
+            }
+            // XMLCHAR(x, p, n): x is a structure reference
+            XmlChar => {
+                let [ast::Expr::Ref(x), p, n] = args else {
+                    return Err(self.err(pos, "XMLCHAR needs a structure, an address and a length"));
+                };
+                let xr = self.reference(x, true)?;
+                if self.m.vars[xr.var as usize].ty.is_some() {
+                    return Err(self.err(pos, "XMLCHAR: the first argument is not a structure"));
+                }
+                let p = self.expr(p)?;
+                let p = self.conv(p, &Ty::Pointer);
+                let n = self.expr(n)?;
+                let n = self.to_arith(n);
+                let n = self.conv(n, &Ty::fixed_bin(31, 0));
+                return Ok(mk(Ek::RefBuiltin(b, xr, vec![p, n]), Ty::fixed_bin(31, 0)));
+            }
+            // INARRAY(x, y): x compared with each element of the array y
+            InArray => {
+                let [x, ast::Expr::Ref(arr)] = args else {
+                    return Err(self.err(pos, "INARRAY needs a scalar and an array"));
+                };
+                let ar = self.reference(arr, true)?;
+                if !self.is_aggregate(&ar) {
+                    return Err(self.err(pos, "INARRAY: the second argument is not an array"));
+                }
+                let x = self.expr(x)?;
+                return Ok(mk(Ek::RefBuiltin(b, ar, vec![x]), Ty::bit(1)));
+            }
+            // PICSPEC(x, 'pic'): only the type of x changes; nothing is
+            // converted or checked (Language Reference, PICSPEC)
+            PicSpec => {
+                let [x, ast::Expr::Str { text: spec, .. }] = args else {
+                    return Err(self.err(pos, "PICSPEC needs an expression and a picture literal"));
+                };
+                let x = self.expr(x)?;
+                let p = crate::picture::Picture::parse(spec).map_err(|e| self.err(pos, e))?;
+                let ok = matches!(&x.ty, Ty::Char { len: Ext::Const(n), var: crate::types::Var::Fixed } if *n as usize == p.len);
+                if !ok {
+                    return Err(self.err(
+                        pos,
+                        format!("PICSPEC needs a CHARACTER({}) NONVARYING argument", p.len),
+                    ));
+                }
+                return Ok(Expr {
+                    k: x.k,
+                    ty: Ty::Pic(Box::new(p)),
+                });
+            }
+            OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField | OnText
+            | OnActual | OnExpected | OnOperator | OnPackage | OnSubscript | OnLbound
+            | OnHbound | OnLine | OnArea | OnCondCond | OnCondId => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
                 return Ok(mk(Ek::OnValue(b), ty));
             }
@@ -1321,6 +1519,9 @@ impl Compiler {
                             | Lbound
                             | Hbound
                             | Addr
+                            | AddrData
+                            | BitLocation
+                            | Location
                             | Size
                             | CurrentSize
                             | String
@@ -1328,6 +1529,18 @@ impl Compiler {
                             | Present
                             | Omitted
                             | Unspec
+                            | Poly
+                            | Valid
+                            | PliStck
+                            | PliStckE
+                            | PliStckF
+                            | PliStckLocal
+                            | PliStckUtc
+                            | PliStckELocal
+                            | PliStckEUtc
+                            | PliStckP
+                            | PliStckPLocal
+                            | PliStckPUtc
                     ) || aggregate
                     {
                         return Ok(mk(Ek::RefBuiltin(b, rr, rest), ty));
@@ -1343,7 +1556,7 @@ impl Compiler {
         // value arguments (HEX: the bytes of GRAPHIC and WIDECHAR)
         let mut xs = Vec::new();
         for a in args {
-            xs.push(if b == Hex {
+            xs.push(if matches!(b, Hex | Unspec | Rank) {
                 self.expr_wide(a)?
             } else {
                 self.expr(a)?
@@ -1407,14 +1620,113 @@ impl Compiler {
                 v.extend(it.map(|x| int(self, x)));
                 v
             }
-            Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin
-            | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => xs
+            WHigh | WLow | WcharVal | Alloc31 => xs.into_iter().map(|x| int(self, x)).collect(),
+            SubTo => {
+                let mut it = xs.into_iter();
+                let mut v = vec![it.next().unwrap()];
+                v.extend(it.map(|x| int(self, x)));
+                v
+            }
+            Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+            | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => xs
                 .into_iter()
                 .map(|x| {
                     let x = self.to_arith(x);
                     self.conv(x, &rt)
                 })
                 .collect(),
+            // the floating-point inquiry functions look only at the attributes
+            // of their argument; converting it could raise a condition
+            Huge
+            | Tiny
+            | Epsilon
+            | MaxExp
+            | MinExp
+            | Radix
+            | Exponent
+            | Between
+            | BetweenExclusive
+            | BetweenLeftExclusive
+            | BetweenRightExclusive
+            | InList
+            | IfThenElse
+            | MaxVal
+            | MinVal
+            | Pred
+            | Succ
+            | Places
+            | PrecVal
+            | ScaleVal
+            | Iclz
+            | Popcnt
+            | ISigned
+            | IUnsigned
+            | ReplaceBy2
+            | Y4Date
+            | Sha(..)
+            | AllocSize
+            | CheckStg
+            | Unallocated
+            | WsCollapse16
+            | XmlScrub
+            | XmlScrub16
+            | WsReplace16
+            | Base64Encode16
+            | Base64Decode16
+            | GetEnv
+            | PutEnv
+            | Microsecs
+            | Secs
+            | MicrosecsToDate
+            | DaysToMicrosecs
+            | MicrosecsToDays
+            | MaxDate
+            | MinDate
+            | StckToDate
+            | StckeToDate
+            | JulianToSmf
+            | SmfToJulian
+            | Y4Julian
+            | Y4Year
+            | Collapse
+            | Squeeze
+            | IndexR
+            | Replace
+            | Scrubout
+            | Unhex
+            | MemIndex
+            | MemSearch
+            | MemSearchR
+            | MemVerify
+            | MemVerifyR
+            | MemCollapse
+            | MemSqueeze
+            | MemReplace
+            | WsCollapse
+            | WsReplace
+            | HexEncode
+            | HexDecode
+            | HexEncode8
+            | HexDecode8
+            | Base64Encode
+            | Base64Decode
+            | Base64Encode8
+            | Base64Decode8
+            | WhereDiff
+            | Hex8
+            | HexImage8 => xs,
+            Irll | Irrl | Lower2 | RoundAwayFromZero | RoundToEven => {
+                let mut it = xs.into_iter();
+                let mut v = vec![it.next().unwrap()];
+                v.extend(it.map(|x| int(self, x)));
+                v
+            }
+            Scale => {
+                let mut it = xs.into_iter();
+                let mut v = vec![it.next().unwrap()];
+                v.extend(it.map(|x| int(self, x)));
+                v
+            }
             Substr | Index | Search | Verify | Tally | Copy | Repeat | Left | Right | Center
             | CenterRight | Trim | Translate | Lowercase | Uppercase | Reverse | Length
             | MaxLength | Hex | Bool | High | Low | Unspec => {

@@ -1,0 +1,60 @@
+ PA106A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* QUICKSORT, QUICKSORTX, BINSEARCH and BINSEARCHX (Enterprise PL/I
+    6.1 Language Reference). The sorts store the elements in
+    increasing order of a simple compare or of the compare
+    function. n is the first element examined (LBOUND by default)
+    and m the number of elements. The searches return the relative
+    index (the index if the lower bound were 1) of the key, or 0.
+    The compare functions get two POINTER BYVALUE arguments and
+    return -1, 0 or +1. */
+ DCL A(5) FIXED BIN(31) INIT(42, -7, 19, 0, 8);
+ DCL B(0:5) FIXED BIN(31) INIT(9, 6, 5, 4, 3, 1);
+ DCL C(4) CHAR(3) INIT('PEA', 'FIG', 'YAM', 'BEAN');
+ DCL D(-2:2) FIXED DEC(5,1) INIT(-3.5, -1, 0, 2.5, 7);
+ DCL E(5) FIXED BIN(31) INIT(3, 1, 4, 1, 5);
+ DCL K FIXED BIN(31);
+ DCL I FIXED BIN(31);
+
+ OPEN FILE(REPORT);
+
+ CALL QUICKSORT(A);
+ CALL ZCHECK('QUICKSORT-ALL', A(1) = -7 & A(2) = 0 & A(3) = 8 &
+   A(4) = 19 & A(5) = 42);
+ CALL QUICKSORT(B, 2, 3);
+ CALL ZCHECK('QUICKSORT-N-M', B(0) = 9 & B(1) = 6 & B(2) = 3 &
+   B(3) = 4 & B(4) = 5 & B(5) = 1);
+ CALL QUICKSORT(C);
+ CALL ZCHECK('QUICKSORT-CHAR', C(1) = 'BEA' & C(2) = 'FIG' &
+   C(3) = 'PEA' & C(4) = 'YAM');
+ CALL QUICKSORTX(E, DOWN);
+ CALL ZCHECK('QUICKSORTX-DOWN', E(1) = 5 & E(2) = 4 & E(3) = 3 &
+   E(4) = 1 & E(5) = 1);
+
+ CALL ZCHECK('BINSEARCH-FOUND', BINSEARCH(A, 19) = 4);
+ CALL ZCHECK('BINSEARCH-MISSING', BINSEARCH(A, 20) = 0);
+ CALL ZCHECK('BINSEARCH-CHAR', BINSEARCH(C, 'PEA') = 3);
+ CALL ZCHECK('BINSEARCH-RELATIVE', BINSEARCH(D, 2.5) = 4 &
+   BINSEARCH(D, -3.5) = 1);
+ CALL ZCHECK('BINSEARCH-N-M', BINSEARCH(A, -7, 2) = 0 &
+   BINSEARCH(A, 8, 2, 2) = 3 & BINSEARCH(A, 42, 2, 2) = 0);
+ K = 4;
+ CALL ZCHECK('BINSEARCHX-FOUND', BINSEARCHX(E, ADDR(K), DOWN) = 2);
+ K = 2;
+ CALL ZCHECK('BINSEARCHX-MISSING', BINSEARCHX(E, ADDR(K), DOWN) = 0);
+
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+
+ /* descending order: the reverse of the simple compare */
+ DOWN: PROC(P, Q) RETURNS(BYVALUE FIXED BIN(31))
+   OPTIONS(LINKAGE(OPTLINK));
+   DCL (P, Q) POINTER BYVALUE;
+   DCL X FIXED BIN(31) BASED(P);
+   DCL Y FIXED BIN(31) BASED(Q);
+   IF X > Y THEN RETURN(-1);
+   IF X < Y THEN RETURN(+1);
+   RETURN(0);
+ END DOWN;
+ END PA106A;

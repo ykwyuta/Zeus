@@ -1244,6 +1244,7 @@ version = "0.1.0"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "tempfile",
  "zeus-cobol",
  "zeus-db2",

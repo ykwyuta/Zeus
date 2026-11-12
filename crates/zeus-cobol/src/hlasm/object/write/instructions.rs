@@ -401,6 +401,7 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("AH", 0x4a),
         ("SH", 0x4b),
         ("MH", 0x4c),
+        ("MS", 0x71),
         ("BAS", 0x4d),
         ("CVD", 0x4e),
         ("CVB", 0x4f),
@@ -510,6 +511,11 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("CY", 0x59),
         ("AY", 0x5a),
         ("SY", 0x5b),
+        ("STPQ", 0x8e),
+        ("CVBG", 0x0e),
+        ("CVDG", 0x2e),
+        ("LPQ", 0x8f),
+        ("MSY", 0x51),
         ("LAY", 0x71),
         ("NG", 0x80),
         ("OG", 0x81),
@@ -610,9 +616,22 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("SLDA", 0x8f),
         ("STM", 0x90),
         ("LM", 0x98),
+        ("LAM", 0x9a),
+        ("STAM", 0x9b),
+        ("MVCLE", 0xa8),
+        ("CLCLE", 0xa9),
+        ("BXH", 0x86),
+        ("BXLE", 0x87),
     ];
     if let Some((_, opcode)) = rs.iter().find(|(name, _)| *name == op) {
-        let second = if matches!(op, "STM" | "LM") { r(1)? } else { 0 };
+        let second = if matches!(
+            op,
+            "STM" | "LM" | "LAM" | "STAM" | "MVCLE" | "CLCLE" | "BXH" | "BXLE"
+        ) {
+            r(1)?
+        } else {
+            0
+        };
         let mut b = vec![*opcode, r(0)? << 4 | second];
         b.extend(address(i.address.as_ref(), false)?);
         return Ok(b);
@@ -620,6 +639,8 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
     let si = [
         ("TM", 0x91),
         ("MVI", 0x92),
+        // TEST AND SET is S format: no immediate, the second byte is zero
+        ("TS", 0x93),
         ("NI", 0x94),
         ("CLI", 0x95),
         ("OI", 0x96),
@@ -633,7 +654,16 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         b.extend(address(i.address.as_ref(), false)?);
         return Ok(b);
     }
+    // SSF: C8, R3 and the opcode extension, then two base-displacement operands
+    let ssf = [("CSST", 2u8), ("LPD", 4), ("LPDG", 5)];
+    if let Some((_, extension)) = ssf.iter().find(|(name, _)| *name == op) {
+        let mut b = vec![0xc8, r(0)? << 4 | extension];
+        b.extend(address(i.address.as_ref(), false)?);
+        b.extend(address(i.source.as_ref(), false)?);
+        return Ok(b);
+    }
     let ss = [
+        ("TRTR", 0xd0),
         ("MVN", 0xd1),
         ("MVC", 0xd2),
         ("MVZ", 0xd3),
@@ -645,6 +675,7 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("TRT", 0xdd),
         ("ED", 0xde),
         ("EDMK", 0xdf),
+        ("MVO", 0xf1),
         ("PACK", 0xf2),
         ("UNPK", 0xf3),
         ("ZAP", 0xf8),

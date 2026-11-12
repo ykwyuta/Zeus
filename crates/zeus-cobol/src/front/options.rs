@@ -14,6 +14,8 @@ pub(super) struct Effective {
     pub numeric: crate::numeric::Settings,
     pub defines: std::collections::HashMap<String, String>,
     pub apost: bool,
+    pub nozwb: bool,
+    pub lilian: bool,
     pub awo: bool,
     pub block0: bool,
     pub ssrange: bool,
@@ -39,6 +41,8 @@ impl Effective {
             numeric: self.numeric,
             defines: self.defines.clone(),
             apost: self.apost,
+            nozwb: self.nozwb,
+            lilian: self.lilian,
             awo: self.awo,
             block0: self.block0,
             ssrange: self.ssrange,
@@ -66,6 +70,8 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
     let mut numeric = defaults.numeric;
     let mut defines = defaults.defines.clone();
     let mut apost = defaults.apost;
+    let mut nozwb = defaults.nozwb;
+    let mut lilian = defaults.lilian;
     let mut awo = defaults.awo;
     let mut block0 = defaults.block0;
     let mut ssrange = defaults.ssrange;
@@ -186,6 +192,10 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
             ("NOSSRANGE" | "NOSSR", None) => ssrange = false,
             ("APOST", None) => apost = true,
             ("QUOTE", None) => apost = false,
+            ("ZWB", None) => nozwb = false,
+            ("NOZWB", None) => nozwb = true,
+            ("INTDATE", Some("ANSI")) => lilian = false,
+            ("INTDATE", Some("LILIAN")) => lilian = true,
             ("AWO", None) => awo = true,
             ("NOAWO", None) => awo = false,
             ("BLOCK0", None) => block0 = true,
@@ -326,6 +336,8 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         numeric,
         defines,
         apost,
+        nozwb,
+        lilian,
         awo,
         block0,
     })

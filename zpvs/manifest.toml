@@ -121,6 +121,9 @@ expect = "compile-only"
 [programs.PF102A]
 jcl = "PF102A.JCL"
 
+[programs.PM115A]
+jcl = "PM115A.JCL"
+
 [programs.PM107A]
 parm = "RUNTIME/HELLO"
 expect_exit_code = 4
@@ -128,3 +131,9 @@ expect_exit_code = 4
 [programs.PM108A]
 parm = "RUNTIME/HELLO"
 expect_exit_code = 4
+
+[programs.PF106A]
+jcl = "PF106A.JCL"
+
+[programs.PF107A]
+jcl = "PF107A.JCL"
