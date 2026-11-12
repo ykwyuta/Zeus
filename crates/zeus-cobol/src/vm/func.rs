@@ -452,6 +452,19 @@ impl Machine {
                     super::func6::bit_to_char(&s)?
                 }
             }
+            Func::FormattedCurrentDate => {
+                // the clock CURRENT-DATE uses (UTC, offset +0000)
+                let format = self.text_arg(cur, vals.first())?;
+                let now = crate::clock::now();
+                let secs = now.as_secs() as i64;
+                let date = unix_days_to_int(secs.div_euclid(86400));
+                let seconds = Dec::new(
+                    i128::from(secs.rem_euclid(86400) as i32) * 1000
+                        + i128::from(now.subsec_millis()),
+                    3,
+                );
+                ebcdic::encode(&super::func6::formatted_datetime(&format, date, seconds)?)
+            }
             Func::FormattedDate | Func::FormattedTime | Func::FormattedDatetime => {
                 let format = self.text_arg(cur, vals.first())?;
                 let num =

@@ -773,6 +773,7 @@ pub enum Func {
     CombinedDatetime,
     TestFormattedDatetime,
     SecondsPastMidnight,
+    FormattedCurrentDate,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]

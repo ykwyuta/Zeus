@@ -805,6 +805,19 @@
       "FN-TEST-FMT-DT-BAD"
     ]
   },
+  "ZA126A": {
+    "expect": "run",
+    "tests": [
+      "LILIAN-DAY-ONE",
+      "LILIAN-ANSI-DAY-ONE",
+      "LILIAN-DATE-OF-INT",
+      "LILIAN-DAY-OF-INT",
+      "LILIAN-INT-OF-DAY",
+      "NOZWB-UNSIGNED-NE",
+      "NOZWB-SIGN-BYTE",
+      "NOZWB-POSITIVE-SIGN"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [
@@ -2172,6 +2185,21 @@
       "UPSI-DEFAULT-OFF",
       "VOLATILE-VALUE",
       "SECONDS-PAST-MIDNT"
+    ]
+  },
+  "ZS109A": {
+    "expect": "run",
+    "tests": [
+      "SHIFT-OUT-IN",
+      "SORT-RETURN-INITIAL",
+      "SORT-CONTROL-INITIAL",
+      "SORT-CORE-SIZE-INIT",
+      "SORT-FILE-SIZE-INIT",
+      "SORT-MODE-SIZE-INIT",
+      "SORT-MESSAGE-INITIAL",
+      "ZWB-DEFAULT-NEGATIVE",
+      "ZWB-DEFAULT-POSITIVE",
+      "FMT-CURRENT-DATE"
     ]
   },
   "ZX101A": {

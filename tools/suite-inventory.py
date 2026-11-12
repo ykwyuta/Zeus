@@ -160,7 +160,9 @@ def cobol_pattern(category, name):
         if symbol == 'P':
             return r'\bPIC(TURE)?\s+(IS\s+)?S?[9V]*P'
         return r'\bPIC(TURE)?\s+(IS\s+)?\S*' + re.escape(symbol)
-    return r'\b' + r'\s+'.join(re.escape(w) for w in name.split()) + r'\b'
+    # a word boundary only before a word character (>>DEFINE starts with '>')
+    lead = r'\b' if re.match(r'\w', name) else ''
+    return lead + r'\s+'.join(re.escape(w) for w in name.split()) + r'\b'
 
 
 def cobol_text(path):
@@ -399,21 +401,25 @@ def table(title, groups, texts, pattern_of, out_path, ccvs=None, note=''):
     header = '| 分類 | 要素 | 状態 | スイートでの使用 | CCVS85 | 確認 |' if ccvs is not None else \
         '| 分類 | 要素 | 状態 | スイートでの使用 | - | 確認 |'
     lines += [header, '| --- | --- | --- | --- | --- | --- |']
-    totals = {'used': 0, 'missing': 0}
+    totals = {'used': 0, 'ccvs85': 0, 'missing': 0}
     for category, names in groups.items():
         for name in names:
             rx = re.compile(pattern_of(category, name), re.M)
             used = sorted({os.path.splitext(os.path.basename(p))[0] for p, t in texts.items() if rx.search(t)})
-            state = '使用あり' if used else '未網羅'
-            totals['used' if used else 'missing'] += 1
             shown = ', '.join(used[:6]) + (f' ほか {len(used) - 6}' if len(used) > 6 else '')
             c = '-'
+            hits = []
             if ccvs is not None:
                 hits = [n for n, t in ccvs if rx.search(t)]
                 c = str(len(hits)) if hits else '0'
+            # an element only NIST CCVS85 uses is measured there (CCVS85 also runs on z/OS)
+            state = '使用あり' if used else ('CCVS85' if hits else '未網羅')
+            totals[{'使用あり': 'used', 'CCVS85': 'ccvs85', '未網羅': 'missing'}[state]] += 1
             mark = marks.get((category, name.replace('|', '\\|')), '')
             lines.append(f'| {category} | {name.replace("|", chr(92) + "|")} | {state} | {shown} | {c} | {mark} |')
-    lines[2] = note + f' 要素 {totals["used"] + totals["missing"]}、使用あり {totals["used"]}、未網羅 {totals["missing"]}。'
+    lines[2] = note + (f' 要素 {sum(totals.values())}、使用あり {totals["used"]}、'
+                       + (f'CCVS85 だけが測る {totals["ccvs85"]}、' if ccvs is not None else '')
+                       + f'未網羅 {totals["missing"]}。')
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
     return totals
@@ -427,10 +433,17 @@ def main():
     os.makedirs(inv, exist_ok=True)
     ccvs = ccvs85_programs(a.ccvs85) if a.ccvs85 else None
     cob = {p: cobol_text(f) for p, f in sources('zcvs', {'.CBL', '.CPY'}).items()}
-    t1 = table('ZCVS 網羅台帳 (Enterprise COBOL for z/OS)', COBOL, cob, cobol_pattern,
-               os.path.join(inv, 'zcvs-elements.md'), ccvs,
-               'Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、'
-               'その要素を使う CCVS85 のプログラム数 (道具に newcob.val を渡したときだけ数える)。')
+    t1 = None
+    if ccvs is None:
+        # without the CCVS85 corpus the COBOL table would lose its CCVS85 column
+        # and classification; leave the committed table as it is
+        print('zcvs: not regenerated (pass --ccvs85 newcob.val)')
+    else:
+        t1 = table('ZCVS 網羅台帳 (Enterprise COBOL for z/OS)', COBOL, cob, cobol_pattern,
+                   os.path.join(inv, 'zcvs-elements.md'), ccvs,
+                   'Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、'
+                   'その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は'
+                   '状態を「CCVS85」とする (CCVS85 も z/OS で流す)。')
     pli = {p: pli_text(f) for p, f in sources('zpvs', {'.PLI', '.INC'}).items()}
     t2 = table('ZPVS 網羅台帳 (Enterprise PL/I for z/OS)', PLI, pli, pli_pattern,
                os.path.join(inv, 'zpvs-elements.md'), None,
@@ -443,7 +456,9 @@ def main():
                'HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を'
                '列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。')
     for name, t in [('zcvs', t1), ('zpvs', t2), ('zhvs', t3)]:
-        print(f'{name}: used {t["used"]}, missing {t["missing"]}')
+        if t is not None:
+            extra = f', ccvs85 {t["ccvs85"]}' if t["ccvs85"] else ''
+            print(f'{name}: used {t["used"]}{extra}, missing {t["missing"]}')
 
 
 if __name__ == '__main__':

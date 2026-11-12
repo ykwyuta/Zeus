@@ -115,6 +115,7 @@
 | S07 特殊レジスター | `ZS101A` のTALLY/RETURN-CODE、`ZP113A` 1検査 | 部分 | CALL成功/失敗/RETURNINGによるRC保持、ジョブRCへの伝播、SORT成功/失敗時SORT-RETURN。2026-11-12: 別コンパイルの被呼出しが設定したRETURN-CODEが呼出し元に届くことを追加 |
 | S08 LE | `ZS102A` のCEEDAYS等 | 部分 | 日付下限/閏日/不正月日/書式不一致、feedback全体、失敗時出力保持、CEE3ABDの異常終了をプロセス/JCL結果で観測 |
 | S09 指示文・USAGE 綴り・UPSI | `ZS108A` 11検査 | 部分 | 2026-11-12: CCVS85 に無い `>>DEFINE`・`>>IF`/`>>ELSE`・`>>EVALUATE`/`WHEN OTHER`・`IS NOT DEFINED`・`OVERRIDE`、PACKED-DECIMAL の符号ニブル、UPSI の既定 (全 OFF)、VOLATILE、SECONDS-PAST-MIDNIGHT を追加。Zeus に VOLATILE と SECONDS-PAST-MIDNIGHT が無かったので実装した。`>>DEFINE` の算術式・`PARAMETER`、UPSI を実行時に ON にする形は残る |
+| S10 特殊レジスター・既定のオプション | `ZS109A` 10検査、`ZA126A` 8検査 | 部分 | 2026-11-12: SHIFT-OUT/SHIFT-IN、SORT 系の特殊レジスターの初期値、既定の ZWB の比較、FORMATTED-CURRENT-DATE、INTDATE(LILIAN) の整数日、NOZWB の比較 (符号のバイトのまま)。Zeus に FORMATTED-CURRENT-DATE と ZWB/NOZWB・INTDATE オプションが無かったので実装した。NUMCHECK・INITCHECK・QUALIFY は残る |
 
 ## ZX: 5.x/6.x拡張
 
