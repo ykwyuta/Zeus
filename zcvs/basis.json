@@ -1,0 +1,492 @@
+{
+  "ZA101A": {
+    "basis": "spec"
+  },
+  "ZA102A": {
+    "basis": "spec"
+  },
+  "ZA103A": {
+    "basis": "spec"
+  },
+  "ZA104A": {
+    "basis": "spec"
+  },
+  "ZA105A": {
+    "basis": "spec"
+  },
+  "ZA106A": {
+    "basis": "spec"
+  },
+  "ZA107A": {
+    "basis": "spec"
+  },
+  "ZA108A": {
+    "basis": "spec"
+  },
+  "ZA109A": {
+    "basis": "spec"
+  },
+  "ZA110A": {
+    "basis": "spec"
+  },
+  "ZA111A": {
+    "basis": "zeus",
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+  },
+  "ZA112A": {
+    "basis": "zeus",
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+  },
+  "ZA113A": {
+    "basis": "zeus",
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+  },
+  "ZA114A": {
+    "basis": "zeus",
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+  },
+  "ZA115A": {
+    "basis": "spec"
+  },
+  "ZA116A": {
+    "basis": "spec"
+  },
+  "ZA117A": {
+    "basis": "spec"
+  },
+  "ZA118A": {
+    "basis": "spec"
+  },
+  "ZA119A": {
+    "basis": "spec"
+  },
+  "ZA120A": {
+    "basis": "spec"
+  },
+  "ZA121A": {
+    "basis": "spec"
+  },
+  "ZA122A": {
+    "basis": "spec"
+  },
+  "ZD101A": {
+    "basis": "spec"
+  },
+  "ZD102A": {
+    "basis": "spec"
+  },
+  "ZD103A": {
+    "basis": "spec"
+  },
+  "ZD104A": {
+    "basis": "spec"
+  },
+  "ZD105A": {
+    "basis": "spec"
+  },
+  "ZD106A": {
+    "basis": "spec"
+  },
+  "ZD107A": {
+    "basis": "spec"
+  },
+  "ZD108A": {
+    "basis": "spec"
+  },
+  "ZD109A": {
+    "basis": "spec"
+  },
+  "ZD110A": {
+    "basis": "spec"
+  },
+  "ZD111A": {
+    "basis": "spec"
+  },
+  "ZD112A": {
+    "basis": "spec"
+  },
+  "ZD113A": {
+    "basis": "spec"
+  },
+  "ZD114A": {
+    "basis": "spec"
+  },
+  "ZD115A": {
+    "basis": "spec"
+  },
+  "ZE101N": {
+    "basis": "spec"
+  },
+  "ZE102N": {
+    "basis": "spec"
+  },
+  "ZE103N": {
+    "basis": "spec"
+  },
+  "ZE104N": {
+    "basis": "spec"
+  },
+  "ZE105N": {
+    "basis": "spec"
+  },
+  "ZE106N": {
+    "basis": "spec"
+  },
+  "ZE107N": {
+    "basis": "spec"
+  },
+  "ZE108N": {
+    "basis": "spec"
+  },
+  "ZE109N": {
+    "basis": "spec"
+  },
+  "ZE110N": {
+    "basis": "spec"
+  },
+  "ZE111N": {
+    "basis": "spec"
+  },
+  "ZE112N": {
+    "basis": "spec"
+  },
+  "ZE113N": {
+    "basis": "spec"
+  },
+  "ZE114N": {
+    "basis": "spec"
+  },
+  "ZE115N": {
+    "basis": "spec"
+  },
+  "ZE116N": {
+    "basis": "spec"
+  },
+  "ZE117N": {
+    "basis": "spec"
+  },
+  "ZE118N": {
+    "basis": "spec"
+  },
+  "ZE119N": {
+    "basis": "spec"
+  },
+  "ZE120N": {
+    "basis": "spec"
+  },
+  "ZE121N": {
+    "basis": "spec"
+  },
+  "ZE122N": {
+    "basis": "spec"
+  },
+  "ZE123N": {
+    "basis": "spec"
+  },
+  "ZE124N": {
+    "basis": "spec"
+  },
+  "ZE125N": {
+    "basis": "spec"
+  },
+  "ZE126N": {
+    "basis": "spec"
+  },
+  "ZE126P": {
+    "basis": "spec"
+  },
+  "ZE127N": {
+    "basis": "spec"
+  },
+  "ZE127P": {
+    "basis": "spec"
+  },
+  "ZE128N": {
+    "basis": "spec"
+  },
+  "ZE128P": {
+    "basis": "spec"
+  },
+  "ZE129N": {
+    "basis": "spec"
+  },
+  "ZE129P": {
+    "basis": "spec"
+  },
+  "ZE130N": {
+    "basis": "spec"
+  },
+  "ZE130P": {
+    "basis": "spec"
+  },
+  "ZE131N": {
+    "basis": "spec"
+  },
+  "ZE131P": {
+    "basis": "spec"
+  },
+  "ZE132N": {
+    "basis": "spec"
+  },
+  "ZE132P": {
+    "basis": "spec"
+  },
+  "ZE133N": {
+    "basis": "spec"
+  },
+  "ZE133P": {
+    "basis": "spec"
+  },
+  "ZE134N": {
+    "basis": "spec"
+  },
+  "ZE134P": {
+    "basis": "spec"
+  },
+  "ZE135N": {
+    "basis": "spec"
+  },
+  "ZE135P": {
+    "basis": "spec"
+  },
+  "ZE136N": {
+    "basis": "spec"
+  },
+  "ZE136P": {
+    "basis": "spec"
+  },
+  "ZE137N": {
+    "basis": "spec"
+  },
+  "ZE137P": {
+    "basis": "spec"
+  },
+  "ZE138N": {
+    "basis": "spec"
+  },
+  "ZE138P": {
+    "basis": "spec"
+  },
+  "ZE139N": {
+    "basis": "spec"
+  },
+  "ZE139P": {
+    "basis": "spec"
+  },
+  "ZE140N": {
+    "basis": "spec"
+  },
+  "ZE140P": {
+    "basis": "spec"
+  },
+  "ZE141N": {
+    "basis": "spec"
+  },
+  "ZE141P": {
+    "basis": "spec"
+  },
+  "ZE142N": {
+    "basis": "spec"
+  },
+  "ZE142P": {
+    "basis": "spec"
+  },
+  "ZE143N": {
+    "basis": "spec"
+  },
+  "ZE143P": {
+    "basis": "spec"
+  },
+  "ZE144N": {
+    "basis": "spec"
+  },
+  "ZE144P": {
+    "basis": "spec"
+  },
+  "ZE145N": {
+    "basis": "spec"
+  },
+  "ZE145P": {
+    "basis": "spec"
+  },
+  "ZF101A": {
+    "basis": "spec"
+  },
+  "ZF102A": {
+    "basis": "spec"
+  },
+  "ZF103A": {
+    "basis": "spec"
+  },
+  "ZF104A": {
+    "basis": "spec"
+  },
+  "ZF105A": {
+    "basis": "spec"
+  },
+  "ZF106A": {
+    "basis": "spec"
+  },
+  "ZF107A": {
+    "basis": "spec"
+  },
+  "ZF108A": {
+    "basis": "spec"
+  },
+  "ZF109A": {
+    "basis": "spec"
+  },
+  "ZF110A": {
+    "basis": "spec"
+  },
+  "ZF111A": {
+    "basis": "spec"
+  },
+  "ZF112A": {
+    "basis": "spec"
+  },
+  "ZF113A": {
+    "basis": "spec"
+  },
+  "ZF114A": {
+    "basis": "spec"
+  },
+  "ZF201M": {
+    "basis": "spec"
+  },
+  "ZF202M": {
+    "basis": "spec"
+  },
+  "ZN101A": {
+    "basis": "spec"
+  },
+  "ZN102A": {
+    "basis": "spec"
+  },
+  "ZN102B": {
+    "basis": "spec"
+  },
+  "ZN103A": {
+    "basis": "spec"
+  },
+  "ZN104A": {
+    "basis": "spec"
+  },
+  "ZN105A": {
+    "basis": "spec"
+  },
+  "ZN106M": {
+    "basis": "spec"
+  },
+  "ZN107A": {
+    "basis": "spec"
+  },
+  "ZN108A": {
+    "basis": "spec"
+  },
+  "ZN109A": {
+    "basis": "spec"
+  },
+  "ZN110A": {
+    "basis": "spec"
+  },
+  "ZN111A": {
+    "basis": "spec"
+  },
+  "ZN112A": {
+    "basis": "spec"
+  },
+  "ZN113A": {
+    "basis": "spec"
+  },
+  "ZP101A": {
+    "basis": "spec"
+  },
+  "ZP102A": {
+    "basis": "spec"
+  },
+  "ZP103A": {
+    "basis": "spec"
+  },
+  "ZP104A": {
+    "basis": "spec"
+  },
+  "ZP105A": {
+    "basis": "spec"
+  },
+  "ZP106A": {
+    "basis": "spec"
+  },
+  "ZP107A": {
+    "basis": "spec"
+  },
+  "ZP108A": {
+    "basis": "spec"
+  },
+  "ZP109A": {
+    "basis": "spec"
+  },
+  "ZP110A": {
+    "basis": "spec"
+  },
+  "ZP111A": {
+    "basis": "spec"
+  },
+  "ZP112A": {
+    "basis": "spec"
+  },
+  "ZP113A": {
+    "basis": "spec"
+  },
+  "ZS101A": {
+    "basis": "spec"
+  },
+  "ZS102A": {
+    "basis": "spec"
+  },
+  "ZS103M": {
+    "basis": "spec"
+  },
+  "ZS104A": {
+    "basis": "spec"
+  },
+  "ZS105A": {
+    "basis": "spec"
+  },
+  "ZS106A": {
+    "basis": "spec"
+  },
+  "ZS107A": {
+    "basis": "spec"
+  },
+  "ZX101A": {
+    "basis": "spec"
+  },
+  "ZX102A": {
+    "basis": "spec"
+  },
+  "ZX103A": {
+    "basis": "spec"
+  },
+  "ZX104A": {
+    "basis": "spec"
+  },
+  "ZX105A": {
+    "basis": "spec"
+  },
+  "ZX106A": {
+    "basis": "spec"
+  },
+  "ZX107A": {
+    "basis": "spec"
+  },
+  "ZX108A": {
+    "basis": "spec"
+  },
+  "ZX109A": {
+    "basis": "spec"
+  },
+  "ZX110A": {
+    "basis": "spec"
+  }
+}

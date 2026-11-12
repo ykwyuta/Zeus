@@ -19,6 +19,24 @@ struct Scenario {
     tests: Vec<String>,
 }
 
+mod common {
+    pub mod basis;
+}
+
+#[test]
+fn basis_ledgers_cover_every_check() {
+    for (suite, ledger) in [
+        ("zpvs", include_str!("../../../zpvs/basis.json")),
+        ("zhvs", include_str!("../../../zhvs/basis.json")),
+    ] {
+        let coverage = inventory(suite)
+            .into_iter()
+            .map(|(k, v)| (k, v.tests))
+            .collect();
+        common::basis::verify(suite, ledger, &coverage);
+    }
+}
+
 fn root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../..")

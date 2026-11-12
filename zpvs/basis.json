@@ -1,0 +1,228 @@
+{
+  "PA101A": {
+    "basis": "spec"
+  },
+  "PA102A": {
+    "basis": "spec"
+  },
+  "PA103A": {
+    "basis": "spec"
+  },
+  "PA104A": {
+    "basis": "spec"
+  },
+  "PA105A": {
+    "basis": "spec"
+  },
+  "PC101A": {
+    "basis": "spec"
+  },
+  "PC102A": {
+    "basis": "spec"
+  },
+  "PC103A": {
+    "basis": "spec"
+  },
+  "PC104A": {
+    "basis": "spec"
+  },
+  "PC105A": {
+    "basis": "spec"
+  },
+  "PC106A": {
+    "basis": "spec"
+  },
+  "PC107A": {
+    "basis": "spec"
+  },
+  "PC108A": {
+    "basis": "spec"
+  },
+  "PC109A": {
+    "basis": "spec"
+  },
+  "PD101A": {
+    "basis": "spec"
+  },
+  "PD102A": {
+    "basis": "spec"
+  },
+  "PD103A": {
+    "basis": "spec"
+  },
+  "PD104A": {
+    "basis": "spec"
+  },
+  "PD105A": {
+    "basis": "spec"
+  },
+  "PD106A": {
+    "basis": "spec"
+  },
+  "PD107A": {
+    "basis": "spec"
+  },
+  "PD108A": {
+    "basis": "spec"
+  },
+  "PE101N": {
+    "basis": "spec"
+  },
+  "PE101P": {
+    "basis": "spec"
+  },
+  "PE102N": {
+    "basis": "spec"
+  },
+  "PE102P": {
+    "basis": "spec"
+  },
+  "PE103N": {
+    "basis": "spec"
+  },
+  "PE103P": {
+    "basis": "spec"
+  },
+  "PE104N": {
+    "basis": "spec"
+  },
+  "PE104P": {
+    "basis": "spec"
+  },
+  "PE105N": {
+    "basis": "spec"
+  },
+  "PE105P": {
+    "basis": "spec"
+  },
+  "PE106N": {
+    "basis": "spec"
+  },
+  "PE106P": {
+    "basis": "spec"
+  },
+  "PE107N": {
+    "basis": "spec"
+  },
+  "PE107P": {
+    "basis": "spec"
+  },
+  "PE108N": {
+    "basis": "spec"
+  },
+  "PE108P": {
+    "basis": "spec"
+  },
+  "PE109N": {
+    "basis": "spec"
+  },
+  "PE109P": {
+    "basis": "spec"
+  },
+  "PE110N": {
+    "basis": "spec"
+  },
+  "PE110P": {
+    "basis": "spec"
+  },
+  "PE111N": {
+    "basis": "spec"
+  },
+  "PE111P": {
+    "basis": "spec"
+  },
+  "PE112N": {
+    "basis": "spec"
+  },
+  "PE112P": {
+    "basis": "spec"
+  },
+  "PE113N": {
+    "basis": "spec"
+  },
+  "PE113P": {
+    "basis": "spec"
+  },
+  "PE114N": {
+    "basis": "spec"
+  },
+  "PE114P": {
+    "basis": "spec"
+  },
+  "PE115N": {
+    "basis": "spec"
+  },
+  "PE115P": {
+    "basis": "spec"
+  },
+  "PF101A": {
+    "basis": "spec"
+  },
+  "PF102A": {
+    "basis": "spec"
+  },
+  "PF103A": {
+    "basis": "spec"
+  },
+  "PF104M": {
+    "basis": "spec"
+  },
+  "PF105A": {
+    "basis": "spec"
+  },
+  "PF106A": {
+    "basis": "spec",
+    "tests": {
+      "KEY-DUPLICATE-ONCODE": {
+        "basis": "zos",
+        "note": "The ONCODE values for KEY (51 key not found, 52 duplicate key) follow the current Zeus implementation; confirm on Enterprise PL/I."
+      },
+      "KEY-MISSING-ONCODE": {
+        "basis": "zos",
+        "note": "The ONCODE values for KEY (51 key not found, 52 duplicate key) follow the current Zeus implementation; confirm on Enterprise PL/I."
+      }
+    }
+  },
+  "PM101A": {
+    "basis": "spec"
+  },
+  "PM102A": {
+    "basis": "spec"
+  },
+  "PM103A": {
+    "basis": "spec"
+  },
+  "PM104M": {
+    "basis": "spec"
+  },
+  "PM105A": {
+    "basis": "spec"
+  },
+  "PM106A": {
+    "basis": "spec"
+  },
+  "PM107A": {
+    "basis": "spec"
+  },
+  "PM108A": {
+    "basis": "spec"
+  },
+  "PS101A": {
+    "basis": "spec"
+  },
+  "PS102A": {
+    "basis": "spec"
+  },
+  "PS103A": {
+    "basis": "spec"
+  },
+  "PS104A": {
+    "basis": "spec"
+  },
+  "PS105A": {
+    "basis": "spec"
+  },
+  "PS106A": {
+    "basis": "spec"
+  }
+}

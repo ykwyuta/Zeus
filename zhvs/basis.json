@@ -1,0 +1,386 @@
+{
+  "HA101A": {
+    "basis": "spec"
+  },
+  "HA102A": {
+    "basis": "spec"
+  },
+  "HA103A": {
+    "basis": "spec"
+  },
+  "HA104A": {
+    "basis": "spec"
+  },
+  "HA105A": {
+    "basis": "spec"
+  },
+  "HD101A": {
+    "basis": "spec"
+  },
+  "HD102A": {
+    "basis": "spec"
+  },
+  "HD103A": {
+    "basis": "spec"
+  },
+  "HD104A": {
+    "basis": "spec"
+  },
+  "HD105A": {
+    "basis": "spec"
+  },
+  "HD106A": {
+    "basis": "spec"
+  },
+  "HE101N": {
+    "basis": "spec"
+  },
+  "HE101P": {
+    "basis": "spec"
+  },
+  "HE102N": {
+    "basis": "spec"
+  },
+  "HE102P": {
+    "basis": "spec"
+  },
+  "HE103N": {
+    "basis": "spec"
+  },
+  "HE103P": {
+    "basis": "spec"
+  },
+  "HE104N": {
+    "basis": "spec"
+  },
+  "HE104P": {
+    "basis": "spec"
+  },
+  "HE105N": {
+    "basis": "spec"
+  },
+  "HE105P": {
+    "basis": "spec"
+  },
+  "HE106N": {
+    "basis": "spec"
+  },
+  "HE106P": {
+    "basis": "spec"
+  },
+  "HE107N": {
+    "basis": "spec"
+  },
+  "HE107P": {
+    "basis": "spec"
+  },
+  "HE108N": {
+    "basis": "spec"
+  },
+  "HE108P": {
+    "basis": "spec"
+  },
+  "HE109N": {
+    "basis": "spec"
+  },
+  "HE109P": {
+    "basis": "spec"
+  },
+  "HE110N": {
+    "basis": "spec"
+  },
+  "HE110P": {
+    "basis": "spec"
+  },
+  "HE111N": {
+    "basis": "spec"
+  },
+  "HE111P": {
+    "basis": "spec"
+  },
+  "HE112N": {
+    "basis": "spec"
+  },
+  "HE112P": {
+    "basis": "spec"
+  },
+  "HE113N": {
+    "basis": "spec"
+  },
+  "HE113P": {
+    "basis": "spec"
+  },
+  "HE114N": {
+    "basis": "spec"
+  },
+  "HE114P": {
+    "basis": "spec"
+  },
+  "HE115N": {
+    "basis": "spec"
+  },
+  "HE115P": {
+    "basis": "spec"
+  },
+  "HE116N": {
+    "basis": "spec"
+  },
+  "HE116P": {
+    "basis": "spec"
+  },
+  "HE117N": {
+    "basis": "spec"
+  },
+  "HE117P": {
+    "basis": "spec"
+  },
+  "HE118N": {
+    "basis": "spec"
+  },
+  "HE118P": {
+    "basis": "spec"
+  },
+  "HE119N": {
+    "basis": "spec"
+  },
+  "HE119P": {
+    "basis": "spec"
+  },
+  "HE120N": {
+    "basis": "spec"
+  },
+  "HE120P": {
+    "basis": "spec"
+  },
+  "HF101A": {
+    "basis": "spec"
+  },
+  "HF102A": {
+    "basis": "spec"
+  },
+  "HF103A": {
+    "basis": "spec"
+  },
+  "HF201A": {
+    "basis": "spec"
+  },
+  "HF202A": {
+    "basis": "spec"
+  },
+  "HF203A": {
+    "basis": "spec"
+  },
+  "HF204A": {
+    "basis": "spec"
+  },
+  "HF205A": {
+    "basis": "spec"
+  },
+  "HF206A": {
+    "basis": "spec"
+  },
+  "HF207A": {
+    "basis": "spec"
+  },
+  "HF208A": {
+    "basis": "spec"
+  },
+  "HF209A": {
+    "basis": "spec"
+  },
+  "HF210A": {
+    "basis": "spec"
+  },
+  "HF211A": {
+    "basis": "spec"
+  },
+  "HF212A": {
+    "basis": "spec"
+  },
+  "HF213A": {
+    "basis": "spec"
+  },
+  "HF214A": {
+    "basis": "spec"
+  },
+  "HF215A": {
+    "basis": "spec"
+  },
+  "HF216A": {
+    "basis": "spec"
+  },
+  "HF217A": {
+    "basis": "spec"
+  },
+  "HF218A": {
+    "basis": "spec"
+  },
+  "HF219A": {
+    "basis": "spec"
+  },
+  "HF220A": {
+    "basis": "spec"
+  },
+  "HF221A": {
+    "basis": "spec"
+  },
+  "HF222A": {
+    "basis": "spec"
+  },
+  "HF223A": {
+    "basis": "spec"
+  },
+  "HF224A": {
+    "basis": "spec"
+  },
+  "HF225A": {
+    "basis": "spec"
+  },
+  "HF226A": {
+    "basis": "spec"
+  },
+  "HF227A": {
+    "basis": "spec"
+  },
+  "HF228A": {
+    "basis": "spec"
+  },
+  "HF229A": {
+    "basis": "spec"
+  },
+  "HF230A": {
+    "basis": "spec"
+  },
+  "HF231A": {
+    "basis": "spec"
+  },
+  "HF232A": {
+    "basis": "spec"
+  },
+  "HF233A": {
+    "basis": "spec"
+  },
+  "HF234A": {
+    "basis": "spec"
+  },
+  "HF235A": {
+    "basis": "spec"
+  },
+  "HF236A": {
+    "basis": "spec"
+  },
+  "HF237A": {
+    "basis": "spec"
+  },
+  "HF238A": {
+    "basis": "spec"
+  },
+  "HF239A": {
+    "basis": "spec"
+  },
+  "HF240A": {
+    "basis": "spec"
+  },
+  "HF241A": {
+    "basis": "spec"
+  },
+  "HF242A": {
+    "basis": "spec"
+  },
+  "HF243A": {
+    "basis": "spec"
+  },
+  "HF244A": {
+    "basis": "spec"
+  },
+  "HF245A": {
+    "basis": "spec"
+  },
+  "HF246A": {
+    "basis": "spec"
+  },
+  "HF247A": {
+    "basis": "spec"
+  },
+  "HF248A": {
+    "basis": "spec"
+  },
+  "HF249A": {
+    "basis": "spec"
+  },
+  "HF250A": {
+    "basis": "spec"
+  },
+  "HF251A": {
+    "basis": "spec"
+  },
+  "HF252A": {
+    "basis": "spec"
+  },
+  "HF253A": {
+    "basis": "spec"
+  },
+  "HF254A": {
+    "basis": "spec"
+  },
+  "HI101A": {
+    "basis": "spec"
+  },
+  "HI102A": {
+    "basis": "spec"
+  },
+  "HI103A": {
+    "basis": "spec"
+  },
+  "HI104A": {
+    "basis": "spec"
+  },
+  "HI105A": {
+    "basis": "spec"
+  },
+  "HI106A": {
+    "basis": "spec"
+  },
+  "HI107A": {
+    "basis": "spec"
+  },
+  "HI108A": {
+    "basis": "spec"
+  },
+  "HI109A": {
+    "basis": "spec"
+  },
+  "HI110A": {
+    "basis": "spec"
+  },
+  "HI111A": {
+    "basis": "spec"
+  },
+  "HM101A": {
+    "basis": "spec"
+  },
+  "HM102A": {
+    "basis": "spec"
+  },
+  "HM103A": {
+    "basis": "spec"
+  },
+  "HM104A": {
+    "basis": "spec"
+  },
+  "HM105A": {
+    "basis": "spec"
+  },
+  "HS101A": {
+    "basis": "spec"
+  },
+  "HS102A": {
+    "basis": "spec"
+  },
+  "HS103A": {
+    "basis": "spec"
+  },
+  "HS104A": {
+    "basis": "spec"
+  }
+}

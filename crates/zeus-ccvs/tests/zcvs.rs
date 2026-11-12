@@ -19,6 +19,16 @@ struct Coverage {
     tests: Vec<String>,
 }
 
+mod common {
+    pub mod basis;
+}
+
+#[test]
+fn zcvs_basis_ledger_covers_every_check() {
+    let coverage = coverage().into_iter().map(|(k, v)| (k, v.tests)).collect();
+    common::basis::verify("zcvs", include_str!("../../../zcvs/basis.json"), &coverage);
+}
+
 fn coverage() -> BTreeMap<String, Coverage> {
     serde_json::from_str(include_str!("../../../zcvs/coverage.json"))
         .expect("parse reviewed ZCVS coverage inventory")
