@@ -12,7 +12,7 @@ impl Machine {
     pub(crate) fn open_records(&mut self, f: FileId, act: usize) -> R<()> {
         let st = &mut self.files[f as usize];
         let Some(path) = st.path.clone() else {
-            return self.undefined_file(f, act).map(|_| ());
+            return self.undefined_file(f, 84, act).map(|_| ());
         };
         if st.relative {
             st.relative_ds = Some(

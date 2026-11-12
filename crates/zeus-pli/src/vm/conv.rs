@@ -81,7 +81,7 @@ impl Machine {
                 match p.value_float(&ebcdic_text(img)) {
                     Some(f) => Ok(Value::Float(f)),
                     None => {
-                        self.conversion(img, act)?;
+                        self.conversion(img, 612, act)?;
                         Ok(Value::Float(0.0))
                     }
                 }
@@ -91,7 +91,7 @@ impl Machine {
                 match p.value(&text) {
                     Some(d) => Ok(Value::fixed(d.coef, d.scale as i16, true)),
                     None => {
-                        self.conversion(img, act)?;
+                        self.conversion(img, 612, act)?;
                         Ok(Value::fixed(0, 0, true))
                     }
                 }
@@ -101,7 +101,7 @@ impl Machine {
                 match value::parse_number(&text) {
                     Some(v) => Ok(v),
                     None => {
-                        let repaired = self.conversion(s, act)?;
+                        let repaired = self.conversion(s, 612, act)?;
                         if repaired != *s {
                             self.arith_value(Value::Char(repaired), from, act)
                         } else {
@@ -123,8 +123,10 @@ impl Machine {
         }
     }
 
-    /// CONVERSION: raised for an invalid character string.
-    fn conversion(&mut self, src: &[u8], act: usize) -> R<Vec<u8>> {
+    /// CONVERSION: raised for an invalid character string. `code` is the
+    /// condition code of Messages and Codes: 612 character to arithmetic,
+    /// 615 character to bit, 618 character to picture.
+    fn conversion(&mut self, src: &[u8], code: i32, act: usize) -> R<Vec<u8>> {
         let bad = src
             .iter()
             .copied()
@@ -132,7 +134,7 @@ impl Machine {
             .unwrap_or(SPACE);
         let previous = PENDING_CONV.with(|p| p.replace(Some((src.to_vec(), bad))));
         let r = if self.enabled_now(act, cond::CONVERSION) {
-            self.raise(Cond::Conversion, 600, act)
+            self.raise(Cond::Conversion, code, act)
         } else {
             Ok(())
         };
@@ -285,7 +287,7 @@ impl Machine {
                                 0xF0 => out.push(false),
                                 0xF1 => out.push(true),
                                 _ => {
-                                    self.conversion(s, act)?;
+                                    self.conversion(s, 615, act)?;
                                     return Ok(Value::Bit(Vec::new()));
                                 }
                             }
@@ -307,7 +309,7 @@ impl Machine {
                     };
                     let s = fit_chars(s, Ext::Const(p.len as u32), Varying::Fixed);
                     if !p.valid_char(&ebcdic_text(&s)) {
-                        self.conversion(&s, act)?;
+                        self.conversion(&s, 618, act)?;
                     }
                     return Ok(Value::Char(s));
                 }

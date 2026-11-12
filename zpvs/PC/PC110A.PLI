@@ -3,9 +3,9 @@
  /* Condition codes and the HFP range conditions. OVERFLOW and
     UNDERFLOW are raised when a floating-point result leaves the
     hexadecimal range (below 16**63, at least 16**-65); UNDERFLOW
-    gives zero (Language Reference, basis spec). The ONCODE values
-    are the current Zeus values (basis zos); a run on z/OS confirms
-    or corrects them against the runtime. */
+    gives zero (Language Reference). The ONCODE values follow the
+    condition codes of Enterprise PL/I Messages and Codes: 612 is a
+    character to arithmetic conversion error (600 is SIGNAL). */
  DCL F6 FLOAT DEC(6);
  DCL S CHAR(6) INIT('ABCDEF');
  DCL D3 FIXED DEC(3);
@@ -42,7 +42,7 @@
  ON CONVERSION BEGIN; CODE=ONCODE(); GO TO L3; END;
  R='1X';
  L3:
- CALL ZCHECK('ONCODE-CONVERSION', CODE=600);
+ CALL ZCHECK('ONCODE-CONVERSION', CODE=612);
 
  CODE=0;
  ON STRINGRANGE BEGIN; CODE=ONCODE(); GO TO L4; END;

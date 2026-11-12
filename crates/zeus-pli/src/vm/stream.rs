@@ -199,7 +199,7 @@ impl Machine {
                                 .open(&d.path);
                             match file {
                                 Ok(f) => Sink::Text(Box::new(f)),
-                                Err(_) => return self.undefined_file(f, act),
+                                Err(_) => return self.undefined_file(f, 93, act),
                             }
                         }
                     });
@@ -241,7 +241,7 @@ impl Machine {
                 st.rec = 0;
                 st.pos = 0;
             }
-            None => return self.undefined_file(f, act),
+            None => return self.undefined_file(f, 84, act),
         }
         let st = &mut self.files[f as usize];
         st.open = true;
@@ -253,8 +253,11 @@ impl Machine {
         Ok(true)
     }
 
-    pub(crate) fn undefined_file(&mut self, f: FileId, act: usize) -> R<bool> {
-        self.raise(Cond::UndefinedFile(f), 80, act)?;
+    /// UNDEFINEDFILE with the condition code of Messages and Codes: 84 when
+    /// no DD statement associates the file with a data set, 93 when the
+    /// operating system reports an error opening it (80 is SIGNAL only).
+    pub(crate) fn undefined_file(&mut self, f: FileId, code: i32, act: usize) -> R<bool> {
+        self.raise(Cond::UndefinedFile(f), code, act)?;
         Ok(self.files[f as usize].open)
     }
 

@@ -1,91 +1,402 @@
 {
   "PA101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Table 28. Results of arithmetic operations between two FIXED operands under RULES(IBM) | N is the maximum precision for FIXED DECIMAL.",
+      "PLI-PG: LIMITS | If FIXEDDEC(15,31) is specified, you can declare FIXED DECIMAL variables with precision greater than 15, but unless an expression contains an operand with precision greater than 15, the compiler uses 15 as the maximum precision for all arithmetic.",
+      "PLI-PG: RULES"
+    ],
+    "tests": {
+      "EXPLICIT-ADD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ADD"
+        ]
+      },
+      "EXPLICIT-MULTIPLY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MULTIPLY"
+        ]
+      },
+      "EXPLICIT-DIVIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIVIDE"
+        ]
+      },
+      "POWER-NEG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Arithmetic operations"
+        ]
+      },
+      "POWER-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Arithmetic operations"
+        ]
+      }
+    }
   },
   "PA102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Source-to-target rules"
+    ],
+    "tests": {
+      "AND-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Bit operations"
+        ]
+      },
+      "OR-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Bit operations"
+        ]
+      },
+      "NOT-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Bit operations"
+        ]
+      },
+      "BOOL-XOR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BOOL"
+        ]
+      }
+    }
   },
   "PA103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Picture characters for numeric character data",
+      "PLI-LRM: Exponent characters | The value of the exponent is adjusted in the character value so that the first significant digit of the first field (the mantissa) appears in the position associated with the first digit specifier of the specification"
+    ],
+    "tests": {
+      "FLOAT-PIC-NORMAL": {
+        "basis": "zos",
+        "note": "1234.5 has five significant digits and the mantissa field holds four; the Language Reference does not say whether the dropped digit 5 truncates (1.234) or rounds (1.235) on the way to a float picture. Expected is the current Zeus value (truncation)."
+      }
+    }
   },
   "PA104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "ARRAY-BROADCAST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Array expressions"
+        ]
+      },
+      "ARRAY-ARITH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Array expressions"
+        ]
+      },
+      "ARRAY-SECTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Array expressions"
+        ]
+      },
+      "ARRAY-BOUNDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIM"
+        ]
+      },
+      "BY-NAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BY NAME"
+        ]
+      },
+      "SUBSTR-PSEUDO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SUBSTR"
+        ]
+      },
+      "UNSPEC-PSEUDO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNSPEC"
+        ]
+      }
+    }
   },
   "PA105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Picture characters for numeric character data"
+    ],
+    "tests": {
+      "PIC-POINT-INSERTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Insertion characters"
+        ]
+      },
+      "PIC-POINT-WITH-V": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Insertion characters"
+        ]
+      },
+      "PIC-DRIFT-CURRENCY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Drifting use"
+        ]
+      },
+      "PIC-CREDIT-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Credit, debit, overpunched, and zero replacement characters"
+        ]
+      },
+      "PIC-CREDIT-POSITIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Credit, debit, overpunched, and zero replacement characters"
+        ]
+      },
+      "PIC-OVERPUNCH-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Credit, debit, overpunched, and zero replacement characters"
+        ]
+      },
+      "PIC-EDITED-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Numeric character data"
+        ]
+      }
+    }
   },
   "PC101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DO statement"
+    ],
+    "tests": {
+      "DO-ITERATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ITERATE statement"
+        ]
+      },
+      "DO-LEAVE-LABEL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LEAVE statement"
+        ]
+      },
+      "SELECT-WHEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SELECT statement"
+        ]
+      },
+      "SELECT-OTHER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SELECT statement"
+        ]
+      }
+    }
   },
   "PC102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Recursive procedures",
+      "PLI-LRM: Scope of declarations"
+    ]
   },
   "PC103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ENTRY attribute"
+    ],
+    "tests": {
+      "GENERIC-FIXED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GENERIC attribute"
+        ]
+      },
+      "GENERIC-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GENERIC attribute"
+        ]
+      }
+    }
   },
   "PC104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: FETCH statement",
+      "PLI-LRM: RELEASE statement"
+    ],
+    "tests": {
+      "FETCH-MISSING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 4001 through 9999 | 9250 Procedure to be fetched cannot be found."
+        ]
+      }
+    }
   },
   "PC105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ON statement",
+      "PLI-LRM: REVERT statement",
+      "PLI-LRM: SIGNAL statement"
+    ]
   },
   "PC106A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "ZERODIVIDE-HANDLER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ZERODIVIDE condition",
+          "PLI-MC: Condition codes 1 through 500 | 320 SIGNAL ZERODIVIDE statement executed or ZERODIVIDE condition occurred."
+        ]
+      },
+      "SIZE-HANDLER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIZE condition"
+        ]
+      },
+      "RECOVER-ARITH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIZE condition"
+        ]
+      }
+    }
   },
   "PC107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONVERSION condition",
+      "PLI-LRM: ONCHAR"
+    ]
   },
   "PC108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONVERSION condition",
+      "PLI-LRM: ONSOURCE"
+    ]
   },
   "PC109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Scope of declarations"
+    ],
+    "tests": {
+      "STATIC-PERSIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC"
+        ]
+      },
+      "STATIC-INIT-ONCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC"
+        ]
+      },
+      "AUTOMATIC-REINIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: AUTOMATIC"
+        ]
+      }
+    }
   },
   "PC110A": {
-    "basis": "zos",
-    "note": "ONCODE values are the current Zeus values; the HFP range conditions follow the Language Reference.",
+    "basis": "spec",
     "tests": {
       "OVERFLOW-HFP-RANGE": {
-        "basis": "spec"
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: OVERFLOW condition",
+          "POP: HFP Number Representation"
+        ]
       },
       "UNDERFLOW-HFP-RANGE": {
-        "basis": "spec"
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNDERFLOW condition",
+          "POP: HFP Number Representation"
+        ]
       },
       "ONCODE-OVERFLOW": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 300 SIGNAL OVERFLOW statement executed or OVERFLOW condition occurred."
+        ]
       },
       "ONCODE-UNDERFLOW": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 330 SIGNAL UNDERFLOW statement executed or UNDERFLOW condition occurred."
+        ]
       },
       "ONCODE-ZERODIVIDE": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 320 SIGNAL ZERODIVIDE statement executed or ZERODIVIDE condition occurred."
+        ]
       },
       "ONCODE-CONVERSION": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 501 through 1000 | 612 Error during character value to arithmetic conversion."
+        ]
       },
       "ONCODE-STRINGRANGE": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 350 SIGNAL STRINGRANGE statement executed or STRINGRANGE condition occurred."
+        ]
       },
       "ONCODE-SUBSCRIPTRNG": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 501 through 1000 | 520 SIGNAL SUBSCRIPTRANGE statement executed, or subscript has been evaluated and found to lie outside its specified bounds."
+        ]
       },
       "ONCODE-SIZE": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | high-order nonzero digits have been lost in an assignment to a variable or temporary"
+        ]
       },
       "ONCODE-SIGNAL-ERROR": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 9 SIGNAL ERROR statement executed."
+        ]
       },
       "ONCODE-CONDITION": {
-        "basis": "zos",
-        "note": "ONCODE value: the current Zeus value; confirm against the z/OS runtime (PL/I Messages and Codes)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 500 SIGNAL CONDITION (name) statement executed."
+        ]
       }
     }
   },
@@ -93,8 +404,47 @@
     "basis": "spec",
     "tests": {
       "UNDEFINEDFILE-ONCODE": {
-        "basis": "zos",
-        "note": "ONCODE of UNDEFINEDFILE for a missing DD: Zeus 80. Record the z/OS value (PL/I Messages and Codes lists 80-89 by cause)."
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: Condition codes 1 through 500 | 84 No DD statement associating file with a data set."
+        ]
+      },
+      "STRINGSIZE-RAISED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "STRINGSIZE-DISABLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "STRINGSIZE-VAR-BIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "STRINGSIZE-FITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STRINGSIZE condition"
+        ]
+      },
+      "FIXEDOVERFLOW-DEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FIXEDOVERFLOW condition",
+          "PLI-MC: Condition codes 1 through 500 | 310 SIGNAL FIXEDOVERFLOW statement executed or FIXEDOVERFLOW condition occurred."
+        ]
+      },
+      "UNDEFINEDFILE-RAISED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNDEFINEDFILE condition"
+        ]
       }
     }
   },

@@ -1708,8 +1708,10 @@ impl Machine {
                     let known = self.sys().load_program(&module)
                         || self.env.linker.as_ref().is_some_and(|l| l.load(&module));
                     if !known {
-                        // the module cannot be loaded: ERROR
-                        self.raise(Cond::Error, 9251, act)?;
+                        // the module cannot be found: ERROR with condition code
+                        // 9250 (Messages and Codes, "Procedure to be fetched
+                        // cannot be found"; 9251 is a transmission error)
+                        self.raise(Cond::Error, 9250, act)?;
                         continue;
                     }
                     if module != *name {

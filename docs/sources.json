@@ -29,6 +29,12 @@
     "url": "https://www.ibm.com/docs/en/SSY2V3_6.1/pdf/pg.pdf",
     "sha256": "f8fa0927872f080c41f367fc7ec36129b58c3de70e147ff40d4703869c4d5fa1"
   },
+  "PLI-MC": {
+    "title": "Enterprise PL/I for z/OS 6.1 Messages and Codes",
+    "form": "GC31-5717-00",
+    "url": "https://www.ibm.com/docs/en/SSY2V3_6.1/pdf/mc.pdf",
+    "sha256": "f2aa56452e8606d30bf3c2928ea280d5253f0086abceeb666922f2c4e5c168a9"
+  },
   "HLASM-LR": {
     "title": "High Level Assembler for z/OS & z/VM & z/VSE 1.6 Language Reference",
     "form": "SC26-4940-09",

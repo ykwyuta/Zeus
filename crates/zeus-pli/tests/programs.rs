@@ -87,7 +87,7 @@ fn conditions() {
     assert_eq!(end, RunEnd::Abend("U4038".into()));
     assert_eq!(out, expected("conditions"));
     assert!(
-        msg.contains("ONCODE=600 The CONVERSION condition was raised"),
+        msg.contains("ONCODE=612 The CONVERSION condition was raised"),
         "{msg}"
     );
     assert!(
@@ -260,7 +260,7 @@ fn fetch_and_release() {
             "SUBA TWO 2",
             "SUBA AGAIN 1",
             "SUBA TITLE 2",
-            "ERROR 9251",
+            "ERROR 9250",
             "END"
         ],
         "{m}"

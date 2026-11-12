@@ -94,7 +94,11 @@
 | プログラム | 内容 | 実機で記録すること |
 |---|---|---|
 | `PD109A` 19判定 | 10進 0.1 の短/長 HFP (Zeus は短形式を切り捨て)、HFP から FIXED DEC と CHAR への変換、ENTRY/LABEL/FILE/HANDLE/OFFSET/AREA の STORAGE、NULL と SYSNULL、空の AREA の管理域、重なりの SUBSTR 代入、SIZE 無効での FIXED DEC 桁あふれ、INITIAL 無しの STATIC、RANDOM | コンパイラーの版と DEFAULT オプション (NULLSYS/NULL370、HEXADEC) |
-| `PC110A` 11判定 | ONCODE の値 (OVERFLOW 300、UNDERFLOW 330、ZERODIVIDE 320、CONVERSION 600、STRINGRANGE 350、SUBSCRIPTRANGE 520、SIZE 340、SIGNAL ERROR 9、CONDITION 500)。HFP の範囲を出た結果での OVERFLOW/UNDERFLOW の発生は `spec` | 各 ONCODE。違えば PL/I Messages and Codes の表と照らす |
+
+2026-11-12: Enterprise PL/I Messages and Codes (GC31-5717) の条件コードの表で ONCODE を
+照合した。`PC110A` の 11 判定と `PC111A`・`PF106A` の ONCODE は文書で決まるので `spec` に移した。
+CONVERSION は文字から算術への変換誤りが 612 (600 は SIGNAL CONVERSION)、DD が無い UNDEFINEDFILE は
+84 (80 は SIGNAL)、見つからない FETCH は 9250 (9251 は転送エラー) で、Zeus と検査を直した。
 
 2026-11-12: `PC110A` を書いて、Zeus が浮動小数点を f64 で計算し、無限大になったとき
 だけ OVERFLOW を起こしていたことが分かった。HFP の範囲 (16**63 未満、16**-65 以上)
