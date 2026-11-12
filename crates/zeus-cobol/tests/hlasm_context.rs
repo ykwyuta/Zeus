@@ -29,7 +29,12 @@ fn assembly_context_supplies_real_identity_options_date_and_dataset_values() {
     );
     let report = hlasm::compile_report_with_options(&path, &[], &options);
     assert!(report.module.is_some(), "{:?}", report.diagnostics);
-    assert_eq!(report.diagnostics[0].message, "APP.SOURCE|MAIN|APP.OBJECT|");
+    // CONTEXT is a source macro definition: &SYSLIB_DSN is that of SYSIN
+    // (Language Reference, &SYSLIB_DSN System Variable Symbol)
+    assert_eq!(
+        report.diagnostics[0].message,
+        "APP.SOURCE|MAIN|APP.OBJECT|APP.SOURCE"
+    );
 }
 
 #[test]

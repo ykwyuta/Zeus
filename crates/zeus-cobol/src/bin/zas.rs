@@ -262,6 +262,15 @@ fn run() -> Result<i32, String> {
                 },
             );
         }
+        if let Some(path) = &listing {
+            assembly_options.data_sets.insert(
+                "SYSPRINT".into(),
+                hlasm::AssemblyDataSet {
+                    name: path.display().to_string(),
+                    ..Default::default()
+                },
+            );
+        }
         if let Some(path) = &adata {
             assembly_options.data_sets.insert(
                 "SYSADATA".into(),

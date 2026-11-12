@@ -983,8 +983,29 @@ impl Expansion {
         for dd in [
             "SYSIN", "SYSLIB", "SYSLIN", "SYSPRINT", "SYSPUNCH", "SYSTERM", "SYSADATA",
         ] {
+            // a source macro definition: &SYSLIB_DSN/MEMBER/VOLUME are those
+            // of SYSIN (Language Reference, &SYSLIB_DSN System Variable
+            // Symbol); SYSIN comes first in this loop
             let mut data = if dd == "SYSLIB" && definition_file == self.input_file {
-                super::AssemblyDataSet::default()
+                let get = |suffix: &str| {
+                    scope
+                        .values
+                        .get(&format!("&SYSIN_{suffix}"))
+                        .cloned()
+                        .unwrap_or_default()
+                };
+                super::AssemblyDataSet {
+                    name: get("DSN"),
+                    member: get("MEMBER"),
+                    volume: get("VOLUME"),
+                }
+            } else if dd == "SYSPRINT" && !self.options.data_sets.contains_key(dd) {
+                // no listing file: as a SYSPRINT allocated to DUMMY, whose
+                // &SYSPRINT_DSN is NULLFILE (Language Reference)
+                super::AssemblyDataSet {
+                    name: "NULLFILE".into(),
+                    ..Default::default()
+                }
             } else {
                 let library = if dd == "SYSLIB" {
                     Path::new(definition_file)

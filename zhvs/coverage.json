@@ -1743,6 +1743,18 @@
       "SYSJOB-SYSSTEP-TYPE"
     ]
   },
+  "HM110A": {
+    "expect": "run",
+    "tests": [
+      "SYSIN-DSN-SET",
+      "SYSLIB-SOURCE-MACRO",
+      "SYSLIB-LIB-MEMBER",
+      "VOLUME-AT-MOST-6",
+      "SYSLIN-OBJECT",
+      "SYSPRINT-LISTING",
+      "UNUSED-DD-NULL"
+    ]
+  },
   "HS101A": {
     "expect": "run",
     "tests": [

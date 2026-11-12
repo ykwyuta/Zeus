@@ -5124,6 +5124,60 @@
       }
     }
   },
+  "HM110A": {
+    "basis": "spec",
+    "tests": {
+      "SYSIN-DSN-SET": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSIN_DSN System Variable Symbol | Use &SYSIN_DSN in a macro definition to obtain the name of the data set from which the assembler is reading the source module."
+        ]
+      },
+      "SYSLIB-SOURCE-MACRO": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIB_DSN System Variable Symbol | If the macro definition is a source macro definition, &SYSLIB_DSN is assigned the same value as &SYSIN_DSN.",
+          "HLASM-LR: &SYSLIB_MEMBER System Variable Symbol | If the macro definition is a source macro definition, &SYSLIB_MEMBER is assigned the same value as &SYSIN_MEMBER.",
+          "HLASM-LR: &SYSLIB_VOLUME System Variable Symbol | If the macro definition is a source macro definition, &SYSLIB_VOLUME is assigned the same value as &SYSIN_VOLUME."
+        ]
+      },
+      "SYSLIB-LIB-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIB_MEMBER System Variable Symbol | Use &SYSLIB_MEMBER in a macro definition to obtain the name of the data set member from which the assembler read the macro definition statements."
+        ]
+      },
+      "VOLUME-AT-MOST-6": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSIN_VOLUME System Variable Symbol | The maximum length of this system variable symbol is 6."
+        ]
+      },
+      "SYSLIN-OBJECT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSLIN_DSN System Variable Symbol | Use &SYSLIN_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the object records when assembler option OBJECT, GOFF, or XOBJECT is specified.",
+          "HLASM-LR: &SYSLIN_MEMBER System Variable Symbol | If the library to which the assembler is writing the object records is not a z/OS partitioned data set, &SYSLIN_MEMBER is assigned a null character string."
+        ]
+      },
+      "SYSPRINT-LISTING": {
+        "basis": "zos",
+        "note": "SYSOUT の SYSPRINT の &SYSPRINT_DSN が空でなく、&SYSPRINT_MEMBER が空であることを実機で確かめる (JFCB の値を LRM は例示していない)。Zeus は一覧ファイルが無いとき DUMMY とみなして NULLFILE を返す",
+        "refs": [
+          "HLASM-LR: &SYSPRINT_DSN System Variable Symbol | If SYSPRINT is allocated to DUMMY, or a NULLFILE, the value in &SYSPRINT_DSN is NULLFILE."
+        ]
+      },
+      "UNUSED-DD-NULL": {
+        "basis": "zos",
+        "note": "DECK・TERM・ADATA を指定せず DD も無いとき、これらの値が空になることを実機で確かめる (LRM は書いていない)",
+        "refs": [
+          "HLASM-LR: &SYSPUNCH_DSN System Variable Symbol | Use &SYSPUNCH_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the object records when assembler option DECK is specified.",
+          "HLASM-LR: &SYSTERM_DSN System Variable Symbol | Use &SYSTERM_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the terminal records.",
+          "HLASM-LR: &SYSADATA_DSN System Variable Symbol | Use &SYSADATA_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the associated data."
+        ]
+      }
+    }
+  },
   "HS101A": {
     "basis": "spec",
     "tests": {
