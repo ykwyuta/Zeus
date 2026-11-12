@@ -50,6 +50,18 @@
       "UNSPEC-PSEUDO"
     ]
   },
+  "PA105A": {
+    "expect": "run",
+    "tests": [
+      "PIC-POINT-INSERTION",
+      "PIC-POINT-WITH-V",
+      "PIC-DRIFT-CURRENCY",
+      "PIC-CREDIT-NEGATIVE",
+      "PIC-CREDIT-POSITIVE",
+      "PIC-OVERPUNCH-NEGATIVE",
+      "PIC-EDITED-VALUE"
+    ]
+  },
   "PC101A": {
     "expect": "run",
     "tests": [
@@ -131,6 +143,17 @@
       "ONSOURCE-REPAIR",
       "ONSOURCE-INPUT-KEPT",
       "ONSOURCE-REPEAT"
+    ]
+  },
+  "PC109A": {
+    "expect": "run",
+    "tests": [
+      "SCOPE-CALLER-SHADOW",
+      "SCOPE-NESTED-PARENT",
+      "SCOPE-MAIN-UNCHANGED",
+      "STATIC-PERSIST",
+      "AUTOMATIC-REINIT",
+      "STATIC-INIT-ONCE"
     ]
   },
   "PD101A": {
@@ -299,6 +322,17 @@
       "U63-BOUND-0",
       "U63-BOUND-1",
       "U63-BOUND-2"
+    ]
+  },
+  "PD108A": {
+    "expect": "run",
+    "tests": [
+      "DEFAULT-NOT-INHERITED",
+      "DEFAULT-I-TO-N",
+      "FIXED-ALONE-DECIMAL",
+      "ATTRIBUTE-ORDER",
+      "VALUE-CONSTANT",
+      "BUILTIN-NOT-VARIABLE"
     ]
   },
   "PE101N": {
@@ -475,6 +509,14 @@
       "RECORD-EOF",
       "RECORD-REOPEN",
       "RECORD-CLOSE"
+    ]
+  },
+  "PF106A": {
+    "expect": "run",
+    "tests": [
+      "ENDPAGE-DEFAULT-NEWPAGE",
+      "KEY-DUPLICATE-ONCODE",
+      "KEY-MISSING-ONCODE"
     ]
   },
   "PM101A": {

@@ -1,0 +1,47 @@
+ PD108A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* Attributes are not inherited across commas: a name declared
+    without data attributes takes the language defaults (I-N: FIXED
+    BINARY(15), others: FLOAT DECIMAL(6)); FIXED alone is DECIMAL(5);
+    attribute order is free; VALUE names a constant; a BUILTIN
+    declaration does not create a variable. */
+ DCL A FIXED DEC(15), B;
+ DCL IVAL;
+ DCL F5 FIXED;
+ DCL Q BIN FIXED(31);
+ DCL K FIXED BIN(31) VALUE(10);
+ DCL SUBSTR BUILTIN;
+ DCL S CHAR(4) INIT('ABCD');
+
+ OPEN FILE(REPORT);
+
+ /* DEFAULT-NOT-INHERITED */
+ CALL ZCHECK('DEFAULT-NOT-INHERITED',
+   STG(A)=8 & STG(B)=4);
+
+ /* DEFAULT-I-TO-N */
+ CALL ZCHECK('DEFAULT-I-TO-N',
+   STG(IVAL)=2);
+
+ /* FIXED-ALONE-DECIMAL */
+ F5=12345;
+ CALL ZCHECK('FIXED-ALONE-DECIMAL',
+   STG(F5)=3 & F5=12345);
+
+ /* ATTRIBUTE-ORDER */
+ Q=2147483647;
+ CALL ZCHECK('ATTRIBUTE-ORDER',
+   STG(Q)=4 & Q=2147483647);
+
+ /* VALUE-CONSTANT */
+ CALL ZCHECK('VALUE-CONSTANT',
+   K=10 & K*2=20);
+
+ /* BUILTIN-NOT-VARIABLE */
+ SUBSTR(S,2,2)='XY';
+ CALL ZCHECK('BUILTIN-NOT-VARIABLE',
+   S='AXYD');
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PD108A;
