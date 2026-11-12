@@ -336,10 +336,14 @@ def hlasm_pattern(category, name):
         return r'^\S*\s+D[CS]\s+(\S*,)?[0-9()]*' + re.escape(name) + r"(L[0-9.]+)?['(]"
     if name.startswith('&') or name.endswith("'"):
         return re.escape(name)
-    if name in ('AND', 'OR', 'XOR', 'NOT'):
-        return r'\(\s*[^)]*\s' + name + r'\s'
+    if name in ('AND', 'OR', 'XOR', 'SLA', 'SLL', 'SRA', 'SRL'):
+        # a binary operator of a conditional-assembly expression, (1 SLL 4),
+        # on a SETx or AIF statement (SRA alone is also a machine instruction)
+        return r'^\S*\s+(SET[ABC]|AIF)\s.*[\w)]\s+' + name + r'\s'
+    if name == 'NOT':
+        return r'\(\s*NOT\s|\(\s*[^)]*\sNOT\s'
     if name in ('INDEX', 'FIND', 'BYTE', 'UPPER', 'LOWER', 'DOUBLE', 'SIGNED') or name[1:2] == '2' or \
-            name.startswith('IS') or name in ('DCLEN', 'DCVAL', 'DEQUOTE', 'SLA', 'SLL', 'SRA', 'SRL'):
+            name.startswith('IS') or name in ('DCLEN', 'DCVAL', 'DEQUOTE'):
         return r'\b' + name + r"\s*\(|\(\s*" + name + r'\s'
     return r'^\S*\s+' + re.escape(name) + r'(\s|$)'
 
@@ -401,7 +405,7 @@ def table(title, groups, texts, pattern_of, out_path, ccvs=None, note=''):
     header = '| 分類 | 要素 | 状態 | スイートでの使用 | CCVS85 | 確認 |' if ccvs is not None else \
         '| 分類 | 要素 | 状態 | スイートでの使用 | - | 確認 |'
     lines += [header, '| --- | --- | --- | --- | --- | --- |']
-    totals = {'used': 0, 'ccvs85': 0, 'missing': 0}
+    totals = {'used': 0, 'ccvs85': 0, 'excluded': 0, 'missing': 0}
     for category, names in groups.items():
         for name in names:
             rx = re.compile(pattern_of(category, name), re.M)
@@ -414,11 +418,16 @@ def table(title, groups, texts, pattern_of, out_path, ccvs=None, note=''):
                 c = str(len(hits)) if hits else '0'
             # an element only NIST CCVS85 uses is measured there (CCVS85 also runs on z/OS)
             state = '使用あり' if used else ('CCVS85' if hits else '未網羅')
-            totals[{'使用あり': 'used', 'CCVS85': 'ccvs85', '未網羅': 'missing'}[state]] += 1
             mark = marks.get((category, name.replace('|', '\\|')), '')
+            if state == '未網羅' and mark.startswith('対象外'):
+                # a reviewed exclusion (the reason is in the review column)
+                state = '対象外'
+            totals[{'使用あり': 'used', 'CCVS85': 'ccvs85', '未網羅': 'missing',
+                    '対象外': 'excluded'}[state]] += 1
             lines.append(f'| {category} | {name.replace("|", chr(92) + "|")} | {state} | {shown} | {c} | {mark} |')
     lines[2] = note + (f' 要素 {sum(totals.values())}、使用あり {totals["used"]}、'
                        + (f'CCVS85 だけが測る {totals["ccvs85"]}、' if ccvs is not None else '')
+                       + (f'対象外 {totals["excluded"]}、' if totals['excluded'] else '')
                        + f'未網羅 {totals["missing"]}。')
     with open(out_path, 'w', encoding='utf-8') as f:
         f.write('\n'.join(lines) + '\n')
@@ -458,6 +467,7 @@ def main():
     for name, t in [('zcvs', t1), ('zpvs', t2), ('zhvs', t3)]:
         if t is not None:
             extra = f', ccvs85 {t["ccvs85"]}' if t["ccvs85"] else ''
+            extra += f', excluded {t["excluded"]}' if t["excluded"] else ''
             print(f'{name}: used {t["used"]}{extra}, missing {t["missing"]}')
 
 

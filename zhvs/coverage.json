@@ -66,6 +66,19 @@
       "CCW-LENGTH-ATTR"
     ]
   },
+  "HA107A": {
+    "expect": "run",
+    "tests": [
+      "CCW0-LAYOUT",
+      "S-CON-BASE",
+      "S-CON-DISPLACEMENT",
+      "SY-CON-SAME-LOW",
+      "WXTRN-UNRESOLVED",
+      "V-CON-ENTRY",
+      "VD-CON-ENTRY",
+      "LOCTR-ORDER"
+    ]
+  },
   "HD101A": {
     "expect": "run",
     "tests": [
@@ -1650,6 +1663,7 @@
       "IS-FUNCTIONS",
       "ISSYM-DIGIT-FIRST",
       "SHIFT-LOGICAL",
+      "SLA-OPERATOR",
       "SRA-NEGATIVE",
       "SIGNED-NEGATIVE",
       "NEGATIVE-SUBSTITUTE",

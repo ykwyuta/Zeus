@@ -123,3 +123,4 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | 2026-11-12 | 機械命令 `HI125A`–`HI131A` (変換・長い移動・TRTR・アクセスレジスター・AMODE、HFP 短/長/拡張、BFP、DFP、spec 113 検査)。Zeus に CVBG/CVDG・LAM/STAM と、MVCLE/CLCLE/TRTR の OBJ/GOFF の書き出しと解読を実装。機械命令の未網羅は CSST と TDG*T の 4 個 (理由を台帳に記載) | | | 153 本 / 983 |
 | 2026-11-12 | 網羅台帳の道具: `>>DEFINE` 等の照合漏れを直し、CCVS85 だけが測る要素を状態「CCVS85」に分けた。`ZS109A`/`ZA126A` (spec 18 検査)。Zeus に FORMATTED-CURRENT-DATE、ZWB/NOZWB、INTDATE を実装。ZCVS の未網羅 100 → 34 (CCVS85 50) | 169 本 / 1,546 | | |
 | 2026-11-12 | `PM110A`/`PD110A`/`PC111A` (spec 35、zos 1)。Zeus の STRINGSIZE・PRESENT/OMITTED・BYVALUE を直し、IEEE/LITTLEENDIAN/NONNATIVE を黙って読み捨てず断るようにした。ZPVS の未網羅 144 → 107 | | 78 本 / 442 | |
+| 2026-11-12 | `HA107A` (LOCTR・CCW0・S/SY/V/VD 型・WXTRN、spec 8)、`HM107A` に SLA。網羅台帳に「対象外」の区分 (確認列が対象外で始まる行) を足し、リスト・目的コード・出口の制御 16 個を対象外にした。ZHVS の未網羅 55 → 27 | | | 154 本 / 992 |

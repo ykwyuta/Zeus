@@ -1,0 +1,101 @@
+* HA107A: assembler instructions and address constants the suite did
+* not use (HLASM Language Reference). LOCTR: the statements of a second
+* location counter follow everything of the first in the section.
+* CCW0 is the format-0 CCW. S(X) holds the base register (12, from
+* USING) and the displacement of X; SY(X) adds an 8-bit high
+* displacement (0 here). A weak external (WXTRN) left unresolved
+* addresses zero. V and VD address an external entry (ZHVRPT).
+HA107A CSECT
+         WXTRN WEAKSYM
+         ZHVSHDR
+* CCW0-LAYOUT
+         XC ACTUAL(16),ACTUAL
+         MVC ACTUAL(8),KCCW0
+         ZHVSCHK CCW0-LAYOUT,ACTUAL,ZE000,16
+* S-CON-BASE
+         XC ACTUAL(16),ACTUAL
+         LLH 3,KS
+         SRL 3,12
+         ST 3,ACTUAL
+         ZHVSCHK S-CON-BASE,ACTUAL,ZE001,16
+* S-CON-DISPLACEMENT
+         XC ACTUAL(16),ACTUAL
+         LH 3,KS
+         N 3,=X'00000FFF'
+         LA 4,TGT
+         LA 5,HA107A
+         SR 4,5
+         CR 3,4
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK S-CON-DISPLACEMENT,ACTUAL,ZE002,16
+* SY-CON-SAME-LOW
+         XC ACTUAL(16),ACTUAL
+         CLC KSY(2),KS
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         MVC ACTUAL(1),KSY+2
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK SY-CON-SAME-LOW,ACTUAL,ZE003,16
+* WXTRN-UNRESOLVED
+         XC ACTUAL(16),ACTUAL
+         L 3,KW
+         ST 3,ACTUAL
+         ZHVSCHK WXTRN-UNRESOLVED,ACTUAL,ZE004,16
+* V-CON-ENTRY
+         XC ACTUAL(16),ACTUAL
+         CLC KV,=V(ZHVRPT)
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK V-CON-ENTRY,ACTUAL,ZE005,16
+* VD-CON-ENTRY
+         XC ACTUAL(16),ACTUAL
+         CLC KVD+4(4),=V(ZHVRPT)
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         MVC ACTUAL(4),KVD
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK VD-CON-ENTRY,ACTUAL,ZE006,16
+* LOCTR-ORDER
+         XC ACTUAL(16),ACTUAL
+         LA 3,LOCY
+         LA 4,LOCEND
+         CR 3,4
+         IPM 0
+         SRL 0,28
+         ST 0,ACTUAL+12
+         ZHVSCHK LOCTR-ORDER,ACTUAL,ZE007,16
+         ZHVSSUM
+ACTUAL DS 2D
+ZE000 DC XL16'02000008200000500000000000000000'
+ZE001 DC XL16'0000000C000000000000000000000000'
+ZE002 DC XL16'00000000000000000000000000000000'
+ZE003 DC XL16'00000000000000000000000000000000'
+ZE004 DC XL16'00000000000000000000000000000000'
+ZE005 DC XL16'00000000000000000000000000000000'
+ZE006 DC XL16'00000000000000000000000000000000'
+ZE007 DC XL16'00000000000000000000000000000000'
+TBASE DS 0D
+KCCW0 CCW0 X'02',TGT-TBASE,X'20',80
+TGT DS XL4
+KS DC S(TGT)
+KSY DC SY(TGT)
+KW DC A(WEAKSYM)
+KV DC V(ZHVRPT)
+KVD DC VD(ZHVRPT)
+         LTORG
+LOC1 DC C'1'
+LOC2 LOCTR
+LOCY DC C'2'
+HA107A LOCTR
+LOCEND DS 0C
+
+         END
