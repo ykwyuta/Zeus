@@ -47,7 +47,7 @@ fn zos_results_sorts_failures_by_basis() {
     // text download
     fs::write(
         reports.join("HD107A.txt"),
-        "PASS  E-TENTH\nFAIL* F-FRACTION\nPASS  FS-SCALE\n",
+        "FAIL* E-TENTH\nPASS  F-FRACTION\nPASS  FS-SCALE\n",
     )
     .unwrap();
     let steps = tmp.path().join("steps.txt");
@@ -74,7 +74,7 @@ fn zos_results_sorts_failures_by_basis() {
     assert_eq!(hs["TP-BAD-SIGN-CC"], "PASS");
     assert_eq!(hs["TP-BAD-DIGIT-CC"], "FAIL");
     let hd = &recorded["programs"]["HD107A"]["tests"];
-    assert_eq!(hd["F-FRACTION"], "FAIL");
+    assert_eq!(hd["E-TENTH"], "FAIL");
     assert_eq!(hd["D-TENTH"], "MISSING");
 
     let out = Command::new("python3")
@@ -98,8 +98,8 @@ fn zos_results_sorts_failures_by_basis() {
     };
     // TP's condition code is fixed by Principles of Operation: the check is wrong
     assert!(section("spec FAIL").contains("HS105A TP-BAD-DIGIT-CC"));
-    // the F'1.5' rounding is the current Zeus value: Zeus differs from z/OS
-    assert!(section("zos FAIL").contains("HD107A F-FRACTION"));
+    // E'0.1' rounding is the current Zeus value: Zeus differs from z/OS
+    assert!(section("zos FAIL").contains("HD107A E-TENTH"));
     // a manifest exit code means the step must not end with RC 0
     assert!(section("STEP").contains("HS105A"));
     // a negative check must be rejected (RC 8 or more)
