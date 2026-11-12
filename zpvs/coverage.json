@@ -796,6 +796,36 @@
       "ONCONDID-OUTSIDE"
     ]
   },
+  "PM113A": {
+    "expect": "run",
+    "tests": [
+      "COLLAPSE",
+      "SQUEEZE",
+      "INDEXR",
+      "REPLACE-ONCE",
+      "REPLACE-ALL",
+      "SCRUBOUT",
+      "UNHEX",
+      "HEX8-UTF8-DIGITS",
+      "MEMINDEX",
+      "MEMSEARCH",
+      "MEMVERIFY",
+      "MEMCOLLAPSE",
+      "MEMSQUEEZE",
+      "MEMREPLACE-ALL",
+      "WSREPLACE",
+      "WSCOLLAPSE",
+      "HEXENCODE",
+      "HEXDECODE",
+      "HEXENCODE8",
+      "BASE64ENCODE",
+      "BASE64DECODE",
+      "BASE64ENCODE8",
+      "BUFFER-MEASURE",
+      "BUFFER-TOO-SHORT",
+      "WHEREDIFF"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

@@ -1448,7 +1448,34 @@ impl Compiler {
             | ReplaceBy2
             | Y4Date
             | Y4Julian
-            | Y4Year => xs,
+            | Y4Year
+            | Collapse
+            | Squeeze
+            | IndexR
+            | Replace
+            | Scrubout
+            | Unhex
+            | MemIndex
+            | MemSearch
+            | MemSearchR
+            | MemVerify
+            | MemVerifyR
+            | MemCollapse
+            | MemSqueeze
+            | MemReplace
+            | WsCollapse
+            | WsReplace
+            | HexEncode
+            | HexDecode
+            | HexEncode8
+            | HexDecode8
+            | Base64Encode
+            | Base64Decode
+            | Base64Encode8
+            | Base64Decode8
+            | WhereDiff
+            | Hex8
+            | HexImage8 => xs,
             Irll | Irrl | Lower2 | RoundAwayFromZero | RoundToEven => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];

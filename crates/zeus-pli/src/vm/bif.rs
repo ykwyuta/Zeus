@@ -250,6 +250,83 @@ fn widen_year(d: &str, w: i64) -> String {
     format!("{:04}{}", century * 100 + yy, d.get(2..).unwrap_or(""))
 }
 
+const B64: &[u8; 64] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+
+fn base64_encode(src: &[u8]) -> Vec<u8> {
+    let mut out = Vec::new();
+    for chunk in src.chunks(3) {
+        let b = [
+            chunk[0],
+            *chunk.get(1).unwrap_or(&0),
+            *chunk.get(2).unwrap_or(&0),
+        ];
+        let n = (u32::from(b[0]) << 16) | (u32::from(b[1]) << 8) | u32::from(b[2]);
+        for k in 0..4 {
+            out.push(if k <= chunk.len() {
+                B64[(n >> (18 - 6 * k) & 63) as usize]
+            } else {
+                b'='
+            });
+        }
+    }
+    out
+}
+
+fn base64_decode(src: &[u8]) -> Option<Vec<u8>> {
+    let mut bits = 0u32;
+    let mut n = 0;
+    let mut out = Vec::new();
+    for &c in src {
+        if c == b'=' {
+            break;
+        }
+        let v = B64.iter().position(|&d| d == c)? as u32;
+        bits = (bits << 6) | v;
+        n += 6;
+        if n >= 8 {
+            n -= 8;
+            out.push((bits >> n) as u8);
+        }
+    }
+    Some(out)
+}
+
+fn hex_decode(src: &[u8]) -> Option<Vec<u8>> {
+    if !src.len().is_multiple_of(2) {
+        return None;
+    }
+    src.chunks(2)
+        .map(|p| u8::from_str_radix(std::str::from_utf8(p).ok()?, 16).ok())
+        .collect()
+}
+
+/// COLLAPSE and SQUEEZE: runs of y become one y from position n on; COLLAPSE
+/// also trims leading and trailing y (of that part).
+fn squeeze(x: &[u8], y: u8, n: usize, trim: bool) -> Vec<u8> {
+    let start = n.max(1) - 1;
+    if start >= x.len() {
+        return x.to_vec();
+    }
+    let mut out = x[..start].to_vec();
+    let mut part: Vec<u8> = Vec::new();
+    for &c in &x[start..] {
+        if c == y && part.last() == Some(&y) {
+            continue;
+        }
+        part.push(c);
+    }
+    if trim {
+        while part.first() == Some(&y) {
+            part.remove(0);
+        }
+        while part.last() == Some(&y) {
+            part.pop();
+        }
+    }
+    out.extend(part);
+    out
+}
+
 fn ebcdic(s: &str) -> Vec<u8> {
     zeus_cobol::ebcdic::encode(s)
 }
@@ -1080,6 +1157,228 @@ impl Machine {
                     std::cmp::Ordering::Equal => 0,
                     std::cmp::Ordering::Greater => 1,
                 })
+            }
+            Collapse | Squeeze => {
+                let (x, y) = (chars(&v[0]), chars(&v[1]));
+                let n = int(2).unwrap_or(1).max(1) as usize;
+                Value::Char(squeeze(
+                    &x,
+                    y.first().copied().unwrap_or(b' '),
+                    n,
+                    b == Collapse,
+                ))
+            }
+            IndexR => {
+                let (x, y) = (chars(&v[0]), chars(&v[1]));
+                let n = int(2).unwrap_or(x.len() as i64);
+                if n < 0 || n as usize > x.len() {
+                    if self.enabled_now(act, cond::STRINGRANGE) {
+                        self.raise(Cond::StringRange, 350, act)?;
+                    }
+                    return Ok(Value::int(0));
+                }
+                // the rightmost match starting at or before position n
+                let found = if y.is_empty() || y.len() > x.len() {
+                    None
+                } else {
+                    (0..=(x.len() - y.len()).min((n.max(1) - 1) as usize))
+                        .rev()
+                        .find(|&i| x[i..i + y.len()] == y[..])
+                };
+                Value::int(found.map_or(0, |i| i as i64 + 1))
+            }
+            Replace => {
+                let (x, f, t) = (chars(&v[0]), chars(&v[1]), chars(&v[2]));
+                let n = int(3).unwrap_or(1);
+                // at most i replacements; i = 0 replaces all, the default is 1
+                let limit = int(4).unwrap_or(1);
+                if n < 1 || n as usize > x.len() {
+                    if self.enabled_now(act, cond::STRINGRANGE) {
+                        self.raise(Cond::StringRange, 350, act)?;
+                    }
+                    return Ok(Value::Char(Vec::new()));
+                }
+                let mut out = x[..(n - 1) as usize].to_vec();
+                let mut i = (n - 1) as usize;
+                let mut done = 0;
+                while i < x.len() {
+                    if !f.is_empty() && (limit == 0 || done < limit) && x[i..].starts_with(&f) {
+                        out.extend_from_slice(&t);
+                        i += f.len();
+                        done += 1;
+                    } else {
+                        out.push(x[i]);
+                        i += 1;
+                    }
+                }
+                Value::Char(out)
+            }
+            Scrubout => {
+                let (x, f) = (chars(&v[0]), chars(&v[1]));
+                let n = (int(2).unwrap_or(1).max(1) as usize - 1).min(x.len());
+                let mut out = x[..n].to_vec();
+                out.extend(x.iter().skip(n).filter(|c| !f.contains(c)));
+                Value::Char(out)
+            }
+            Unhex => {
+                let mut x = chars(&v[0]);
+                if let Some(c) = v.get(1).map(chars).and_then(|c| c.first().copied()) {
+                    x.retain(|b| *b != c);
+                }
+                let text = zeus_cobol::ebcdic::decode(&x);
+                match hex_decode(text.as_bytes()) {
+                    Some(b) => Value::Char(b),
+                    None => {
+                        self.raise(Cond::Conversion, 600, act)?;
+                        Value::Char(Vec::new())
+                    }
+                }
+            }
+            // HEX8 / HEXIMAGE8: the HEX / HEXIMAGE digits as UTF-8 (ASCII)
+            Hex8 | HexImage8 => {
+                let base = if b == Hex8 { Hex } else { HexImage };
+                let h = self.builtin(base, args, &Ty::char_var(65_535), act)?;
+                let Value::Char(c) = h else {
+                    return err(format!("{b:?}: no hexadecimal image"));
+                };
+                Value::Char(zeus_cobol::ebcdic::decode(&c).into_bytes())
+            }
+            MemIndex | MemSearch | MemSearchR | MemVerify | MemVerifyR => {
+                let Value::Ptr(p) = &v[0] else {
+                    return err(format!("{b:?} requires a locator"));
+                };
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let buf = self.read(*p, n)?.to_vec();
+                let target = match (b, v.get(3)) {
+                    (MemIndex, Some(m)) => {
+                        let Value::Ptr(q) = &v[2] else {
+                            return err("MEMINDEX requires a locator");
+                        };
+                        self.read(*q, m.as_i64().max(0) as usize)?.to_vec()
+                    }
+                    _ => chars(&v[2]),
+                };
+                let pos = if n == 0 || target.is_empty() {
+                    None
+                } else {
+                    match b {
+                        MemIndex => buf
+                            .windows(target.len())
+                            .position(|w| w == target.as_slice()),
+                        MemSearch => buf.iter().position(|c| target.contains(c)),
+                        MemSearchR => buf.iter().rposition(|c| target.contains(c)),
+                        MemVerify => buf.iter().position(|c| !target.contains(c)),
+                        _ => buf.iter().rposition(|c| !target.contains(c)),
+                    }
+                };
+                Value::int(pos.map_or(0, |i| i as i64 + 1))
+            }
+            MemCollapse | MemSqueeze | MemReplace | WsCollapse | WsReplace | HexEncode
+            | HexDecode | HexEncode8 | HexDecode8 | Base64Encode | Base64Decode | Base64Encode8
+            | Base64Decode8 => {
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[2]) else {
+                    return err(format!("{b:?} requires locators"));
+                };
+                let (p, q) = (*p, *q);
+                let m = int(1).unwrap_or(0).max(0) as usize;
+                let n = int(3).unwrap_or(0).max(0) as usize;
+                let src = self.read(q, n)?.to_vec();
+                // the forms without 8 use the program's (EBCDIC) characters
+                let enc = |s: &[u8]| ebcdic(std::str::from_utf8(s).unwrap_or(""));
+                let dec = |s: &[u8]| zeus_cobol::ebcdic::decode(s).into_bytes();
+                let out: Option<Vec<u8>> = match b {
+                    MemCollapse | MemSqueeze => {
+                        let z = chars(&v[4]).first().copied().unwrap_or(b' ');
+                        let i = int(5).unwrap_or(1).max(1) as usize;
+                        Some(squeeze(&src, z, i, b == MemCollapse))
+                    }
+                    MemReplace => {
+                        let (Value::Ptr(f), Value::Ptr(t)) = (&v[4], &v[6]) else {
+                            return err("MEMREPLACE requires locators");
+                        };
+                        let x = int(5).unwrap_or(0).max(0) as usize;
+                        let y = int(7).unwrap_or(0).max(0) as usize;
+                        let fb = self.read(*f, x)?.to_vec();
+                        let tb = self.read(*t, y)?.to_vec();
+                        let s = int(8).unwrap_or(1);
+                        let limit = int(9).unwrap_or(1);
+                        if s < 1 || s as usize > n + 1 {
+                            Some(Vec::new())
+                        } else {
+                            let mut out = src[..(s - 1) as usize].to_vec();
+                            let mut i = (s - 1) as usize;
+                            let mut done = 0;
+                            while i < src.len() {
+                                if !fb.is_empty()
+                                    && (limit == 0 || done < limit)
+                                    && src[i..].starts_with(&fb)
+                                {
+                                    out.extend_from_slice(&tb);
+                                    i += fb.len();
+                                    done += 1;
+                                } else {
+                                    out.push(src[i]);
+                                    i += 1;
+                                }
+                            }
+                            Some(out)
+                        }
+                    }
+                    WsCollapse | WsReplace => {
+                        // \t \f \v \n \r in EBCDIC: 05 0C 0B 15 (or 25) 0D
+                        let ws = [0x05u8, 0x0c, 0x0b, 0x15, 0x25, 0x0d];
+                        let blank = ebcdic(" ")[0];
+                        let mut s: Vec<u8> = src
+                            .iter()
+                            .map(|c| if ws.contains(c) { blank } else { *c })
+                            .collect();
+                        if b == WsCollapse {
+                            s = squeeze(&s, blank, 1, true);
+                        }
+                        Some(s)
+                    }
+                    HexEncode | HexEncode8 => {
+                        let h: std::string::String =
+                            src.iter().map(|c| format!("{c:02X}")).collect();
+                        Some(if b == HexEncode {
+                            enc(h.as_bytes())
+                        } else {
+                            h.into_bytes()
+                        })
+                    }
+                    HexDecode => hex_decode(&dec(&src)),
+                    HexDecode8 => hex_decode(&src),
+                    Base64Encode => Some(enc(&base64_encode(&src))),
+                    Base64Encode8 => Some(base64_encode(&src)),
+                    Base64Decode => base64_decode(&dec(&src)),
+                    _ => base64_decode(&src),
+                };
+                let Some(out) = out else {
+                    return Ok(Value::int(-1));
+                };
+                // a zero target only measures; a short target gives -1
+                if p == 0 {
+                    Value::int(out.len() as i64)
+                } else if out.len() > m {
+                    Value::int(-1)
+                } else {
+                    self.write(p, &out)?;
+                    Value::int(out.len() as i64)
+                }
+            }
+            WhereDiff => {
+                let (Value::Ptr(x), Value::Ptr(y)) = (&v[0], &v[1]) else {
+                    return err("WHEREDIFF requires two locators");
+                };
+                let n = int(2).unwrap_or(0).max(0) as usize;
+                let a = self.read(*x, n)?.to_vec();
+                let c = self.read(*y, n)?.to_vec();
+                Value::int(
+                    a.iter()
+                        .zip(&c)
+                        .position(|(l, r)| l != r)
+                        .map_or(0, |i| i as i64 + 1),
+                )
             }
             Erf => Value::Float(erf(v[0].as_f64())),
             Erfc => Value::Float(erfc(v[0].as_f64())),
