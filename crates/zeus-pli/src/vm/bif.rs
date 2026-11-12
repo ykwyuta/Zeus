@@ -661,6 +661,88 @@ impl Machine {
                     _ => Value::int(16),
                 }
             }
+            PointerSubtract | OffsetAdd | OffsetSubtract => match (&v[0], int(1)) {
+                (Value::Ptr(p), Some(n)) => Value::Ptr(if b == OffsetAdd {
+                    (i64::from(*p) + n) as u32
+                } else {
+                    (i64::from(*p) - n) as u32
+                }),
+                _ => return err(format!("{b:?} arguments")),
+            },
+            OffsetValue => Value::Ptr(int(0).unwrap_or(0) as u32),
+            OffsetDiff => match (&v[0], &v[1]) {
+                (Value::Ptr(p), Value::Ptr(q)) => Value::int(i64::from(*p) - i64::from(*q)),
+                _ => return err("OFFSETDIFF requires two offsets"),
+            },
+            // the position of a character in the collating sequence (its code)
+            Rank => match &v[0] {
+                Value::Char(c) if c.len() == 1 => Value::int(i64::from(c[0])),
+                _ => return err("RANK requires a single character"),
+            },
+            // the hexadecimal model: x = f * 16**e with 1/16 <= |f| < 1
+            Exponent | Scale => {
+                let x = v[0].as_f64();
+                if b == Scale {
+                    Value::Float(x * 16f64.powi(int(1).unwrap_or(0) as i32))
+                } else if x == 0.0 {
+                    Value::int(0)
+                } else {
+                    let mut e = 0;
+                    let mut a = x.abs();
+                    while a >= 1.0 {
+                        a /= 16.0;
+                        e += 1;
+                    }
+                    while a < 1.0 / 16.0 {
+                        a *= 16.0;
+                        e -= 1;
+                    }
+                    Value::int(e)
+                }
+            }
+            // seconds since 00:00:00 14 October 1582 (DAYSTOSECS(1) = 86400)
+            SecsToDate => {
+                let s = int(0).unwrap_or(0);
+                let day = s.div_euclid(86_400);
+                let (y, m, d) = civil(day - 141_428);
+                let p = v
+                    .get(1)
+                    .map(|p| zeus_cobol::ebcdic::decode(&chars(p)))
+                    .unwrap_or_else(|| "YYYYMMDDHHMISS999".into());
+                let rem = s.rem_euclid(86_400);
+                let mut out = format_date(y, m, d, &p);
+                for (k, val) in [
+                    ("HH", format!("{:02}", rem / 3600)),
+                    ("MI", format!("{:02}", rem / 60 % 60)),
+                    ("SS", format!("{:02}", rem % 60)),
+                ] {
+                    // format_date put zeros where the time fields were
+                    if let Some(at) = p.find(k) {
+                        out.replace_range(at..at + 2, &val);
+                    }
+                }
+                Value::Char(ebcdic(&out))
+            }
+            // COMPARE AND SWAP: the word (CS) or doubleword (CDS) at p against
+            // the one at q; equal: store x at p, 0; otherwise copy p to q, 1
+            Cs | Cds => {
+                let n = if b == Cs { 4 } else { 8 };
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[1]) else {
+                    return err(format!("{b:?} requires two pointers"));
+                };
+                let (p, q) = (*p, *q);
+                let old = self.read(p, n)?.to_vec();
+                let cmp = self.read(q, n)?.to_vec();
+                if old == cmp {
+                    let x = v[2].as_i64();
+                    let bytes = x.to_be_bytes();
+                    self.write(p, &bytes[8 - n..])?;
+                    Value::int(0)
+                } else {
+                    self.write(q, &old)?;
+                    Value::int(1)
+                }
+            }
             PointerDiff => match (&v[0], &v[1]) {
                 (Value::Ptr(p), Value::Ptr(q)) => Value::int(i64::from(*p) - i64::from(*q)),
                 _ => return err("POINTERDIFF requires two pointers"),
@@ -774,9 +856,16 @@ impl Machine {
                 let size = self.var_size(r.var, act, None)?;
                 Value::Ptr(self.heap_alloc(size as u32))
             }
-            Addr => {
+            // ADDRDATA: the address of the data (Zeus passes no descriptors, so
+            // it is ADDR)
+            Addr | AddrData => {
                 let (bit, _) = self.element_or_start(r, act)?;
                 Value::Ptr((bit / 8) as u32)
+            }
+            // the bit offset of the reference within its byte
+            BitLocation => {
+                let (bit, _) = self.element_or_start(r, act)?;
+                Value::int((bit % 8) as i64)
             }
             PointerOf | OffsetOf => {
                 let base = self.area_base(r.var, act)?;

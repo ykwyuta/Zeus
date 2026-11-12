@@ -138,6 +138,19 @@ pub enum Bif {
     MinExp,
     Radix,
     PointerDiff,
+    PointerSubtract,
+    OffsetValue,
+    OffsetAdd,
+    OffsetSubtract,
+    OffsetDiff,
+    AddrData,
+    BitLocation,
+    Rank,
+    Exponent,
+    Scale,
+    SecsToDate,
+    Cs,
+    Cds,
     // conditions
     OnCode,
     OnChar,
@@ -325,6 +338,19 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "MINEXP" => MinExp,
         "RADIX" => Radix,
         "POINTERDIFF" => PointerDiff,
+        "POINTERSUBTRACT" | "PTRSUBTRACT" => PointerSubtract,
+        "OFFSETVALUE" => OffsetValue,
+        "OFFSETADD" => OffsetAdd,
+        "OFFSETSUBTRACT" => OffsetSubtract,
+        "OFFSETDIFF" => OffsetDiff,
+        "ADDRDATA" => AddrData,
+        "BITLOCATION" | "BITLOC" => BitLocation,
+        "RANK" => Rank,
+        "EXPONENT" => Exponent,
+        "SCALE" => Scale,
+        "SECSTODATE" => SecsToDate,
+        "CS" => Cs,
+        "CDS" => Cds,
         _ => return None,
     })
 }
@@ -361,7 +387,9 @@ impl Bif {
         use Bif::*;
         matches!(
             self,
-            Addr | Dim
+            Addr | AddrData
+                | BitLocation
+                | Dim
                 | Lbound
                 | Hbound
                 | Size
@@ -471,7 +499,15 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
                 .any(|t| t.arith().is_some_and(|a| a.precision().0 > 31));
             Ty::fixed_bin(if wide { 63 } else { BIFPREC }, 0)
         }
-        SearchR | VerifyR | MaxExp | MinExp | Radix | PointerDiff | SecsToDays => fixed_bin31(),
+        SearchR | VerifyR | MaxExp | MinExp | Radix | PointerDiff | SecsToDays | OffsetDiff
+        | BitLocation | Rank | Exponent | Cs | Cds => fixed_bin31(),
+        PointerSubtract | AddrData => Ty::Pointer,
+        OffsetValue | OffsetAdd | OffsetSubtract => Ty::Offset(None),
+        SecsToDate => Ty::char_var(26),
+        Scale => match operand_arith(&arg(0)?) {
+            t @ Ty::Float { .. } => t,
+            _ => return Err("SCALE requires a floating-point argument".into()),
+        },
         CharVal => Ty::char(1),
         ValidDate => Ty::bit(1),
         DaysToSecs => Ty::Float { dec: true, p: 16 },

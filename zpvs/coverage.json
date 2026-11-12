@@ -736,6 +736,24 @@
       "PP-REPLACE"
     ]
   },
+  "PM111A": {
+    "expect": "run",
+    "tests": [
+      "ADDRDATA",
+      "BITLOCATION",
+      "CS-EQUAL",
+      "CS-UNEQUAL",
+      "CDS-EQUAL",
+      "POINTERSUBTRACT",
+      "OFFSETADD-DIFF",
+      "OFFSETSUBTRACT",
+      "RANK-CHAR",
+      "EXPONENT-ONE",
+      "SCALE-BY-16",
+      "SECSTODATE-DAY-ONE",
+      "SECSTODATE-TIME"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

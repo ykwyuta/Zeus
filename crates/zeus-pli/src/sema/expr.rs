@@ -1321,6 +1321,8 @@ impl Compiler {
                             | Lbound
                             | Hbound
                             | Addr
+                            | AddrData
+                            | BitLocation
                             | Size
                             | CurrentSize
                             | String
@@ -1417,7 +1419,13 @@ impl Compiler {
                 .collect(),
             // the floating-point inquiry functions look only at the attributes
             // of their argument; converting it could raise a condition
-            Huge | Tiny | Epsilon | MaxExp | MinExp | Radix => xs,
+            Huge | Tiny | Epsilon | MaxExp | MinExp | Radix | Exponent => xs,
+            Scale => {
+                let mut it = xs.into_iter();
+                let mut v = vec![it.next().unwrap()];
+                v.extend(it.map(|x| int(self, x)));
+                v
+            }
             Substr | Index | Search | Verify | Tally | Copy | Repeat | Left | Right | Center
             | CenterRight | Trim | Translate | Lowercase | Uppercase | Reverse | Length
             | MaxLength | Hex | Bool | High | Low | Unspec => {

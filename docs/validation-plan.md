@@ -124,3 +124,4 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | 2026-11-12 | 網羅台帳の道具: `>>DEFINE` 等の照合漏れを直し、CCVS85 だけが測る要素を状態「CCVS85」に分けた。`ZS109A`/`ZA126A` (spec 18 検査)。Zeus に FORMATTED-CURRENT-DATE、ZWB/NOZWB、INTDATE を実装。ZCVS の未網羅 100 → 34 (CCVS85 50) | 169 本 / 1,546 | | |
 | 2026-11-12 | `PM110A`/`PD110A`/`PC111A` (spec 35、zos 1)。Zeus の STRINGSIZE・PRESENT/OMITTED・BYVALUE を直し、IEEE/LITTLEENDIAN/NONNATIVE を黙って読み捨てず断るようにした。ZPVS の未網羅 144 → 107 | | 78 本 / 442 | |
 | 2026-11-12 | `HA107A` (LOCTR・CCW0・S/SY/V/VD 型・WXTRN、spec 8)、`HM107A` に SLA。網羅台帳に「対象外」の区分 (確認列が対象外で始まる行) を足し、リスト・目的コード・出口の制御 16 個を対象外にした。ZHVS の未網羅 55 → 27 | | | 154 本 / 992 |
+| 2026-11-12 | `PM111A` (spec 13)。Zeus に ADDRDATA・BITLOCATION・CS/CDS・POINTERSUBTRACT・OFFSET 系・RANK・EXPONENT・SCALE・SECSTODATE を実装。リスト制御・ダンプ・再始動など 14 個を対象外にした。ZPVS の未網羅 107 → 80 | | 79 本 / 455 | |
