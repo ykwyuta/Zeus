@@ -144,6 +144,21 @@
       "TP-INPUT-KEPT"
     ]
   },
+  "HD107A": {
+    "expect": "run",
+    "tests": [
+      "E-TENTH",
+      "D-TENTH",
+      "L-TENTH",
+      "F-FRACTION",
+      "H-NEG-FRACTION",
+      "FS-SCALE",
+      "P-DECIMAL-POINT",
+      "Z-NEGATIVE",
+      "E-ROUND-HALF",
+      "DS-UNINITIALIZED"
+    ]
+  },
   "HE101N": {
     "expect": "compile-error",
     "tests": []
@@ -1179,6 +1194,13 @@
       "HLASM-PLI-TEXT",
       "HLASM-COBOL-SHARED",
       "HLASM-COBOL-TEXT"
+    ]
+  },
+  "HS105A": {
+    "expect": "run",
+    "tests": [
+      "TP-BAD-SIGN-CC",
+      "TP-BAD-DIGIT-CC"
     ]
   }
 }

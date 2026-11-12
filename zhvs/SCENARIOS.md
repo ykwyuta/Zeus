@@ -48,6 +48,7 @@
 | [HD104A](HD/HD104A.ASM) | run | `ZAP`, `AP`, `SP`, `CP`, `MP`, `DP`, `PACK`, `UNPK`, `TP-VALID` |
 | [HD105A](HD/HD105A.ASM) | run | `TP-SIGN-0`, `TP-SIGN-1`, `TP-SIGN-2`, `TP-SIGN-3`, `TP-SIGN-4`, `TP-SIGN-5`, `TP-SIGN-6`, `TP-SIGN-7`, `TP-SIGN-8`, `TP-SIGN-9`, `TP-SIGN-A`, `TP-SIGN-B`, `TP-SIGN-C`, `TP-SIGN-D`, `TP-SIGN-E`, `TP-SIGN-F`, `TP-INPUT-KEPT` |
 | [HD106A](HD/HD106A.ASM) | run | `TP-SIGN-0`, `TP-SIGN-1`, `TP-SIGN-2`, `TP-SIGN-3`, `TP-SIGN-4`, `TP-SIGN-5`, `TP-SIGN-6`, `TP-SIGN-7`, `TP-SIGN-8`, `TP-SIGN-9`, `TP-SIGN-A`, `TP-SIGN-B`, `TP-SIGN-C`, `TP-SIGN-D`, `TP-SIGN-E`, `TP-SIGN-F`, `TP-INPUT-KEPT` |
+| [HD107A](HD/HD107A.ASM) | run | `E-TENTH`, `D-TENTH`, `L-TENTH`, `F-FRACTION`, `H-NEG-FRACTION`, `FS-SCALE`, `P-DECIMAL-POINT`, `Z-NEGATIVE`, `E-ROUND-HALF`, `DS-UNINITIALIZED` |
 
 ## HF — HFP/BFP/DFP・PFPO全54変換方向×正/負/ゼロ・FPC/CC/レジスター保存
 
@@ -119,6 +120,22 @@
 | [HS102A](HS/HS102A.ASM) | run | `STORAGE-DATA`, `FREEMAIN-STATUS`, `POST-ECB` |
 | [HS103A](HS/HS103A.ASM) | run | `QSAM-EODAD-COUNT`, `QSAM-PAYLOAD-SUM` |
 | [HS104A](HS/HS104A.ASM) | run | `HLASM-PLI-SHARED`, `HLASM-PLI-TEXT`, `HLASM-COBOL-SHARED`, `HLASM-COBOL-TEXT` |
+| [HS105A](HS/HS105A.ASM) | run | `TP-BAD-SIGN-CC`, `TP-BAD-DIGIT-CC` |
+
+## 実機確認シナリオ (根拠 `zos`)
+
+公式文書から値が決まらない挙動は `basis.json` の根拠 `zos` として書き、期待値は
+2026-11-12 時点の Zeus の振る舞いとする。z/OS で FAIL したら実機の値を正解にして
+検査と Zeus を直す (`docs/validation-plan.md`)。
+
+| プログラム | 内容 | 実機で記録すること |
+|---|---|---|
+| `HD107A` 10判定 | `E'0.1'`/`D'0.1'`/`L'0.1'` の丸め、小数を持つ `F'1.5'`/`H'-1.5'`、`E'0.33333333'`、DS の中身 (zos)。`FS4'1.5'`、`P'1.25'`、`Z'-12'` は spec | HLASM の版。小数を持つ F/H に警告が出るか。DS の中身はローダーの指定ごと |
+| `HS105A` 2判定 + 終了コード | 報告を閉じたあと不正なパック 10 進の AP でステップが終わること (Zeus は RC 16、manifest `expect_exit_code`)。TP の CC 2 件は spec | 完了コード (S0C7 のはず) |
+
+未決: Zeus は `EB'0.1'`/`DB'0.1'` (正確に表せない BFP 定数) に重大度 4 の
+`FLOAT_CONVERSION` を出し、ランナーはそれをコンパイル失敗と数える。HLASM が
+この場合に警告を出すかを確かめるまで、BFP の丸めは `HD107A` に入れていない。
 
 ## HE — レジスター/対・変位・即値・長さ・マクロ・USING等の診断と正常対照
 

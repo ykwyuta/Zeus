@@ -4,6 +4,10 @@ language = "hlasm"
 required_modules = ["HA", "HM", "HI", "HD", "HF", "HS", "HE"]
 optional_modules = []
 
+[programs.HS105A]
+# A data exception ends the step (Zeus RC 16; z/OS S0C7 to be recorded)
+expect_exit_code = 16
+
 [programs.HE101N]
 expect = "compile-error"
 diagnostic_contains = "register"

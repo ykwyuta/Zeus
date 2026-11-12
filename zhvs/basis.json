@@ -32,6 +32,52 @@
   "HD106A": {
     "basis": "spec"
   },
+  "HD107A": {
+    "basis": "zos",
+    "note": "Assembled constant bytes the HLASM Language Reference does not pin down to the bit; expected bytes are the current Zeus assembler.",
+    "tests": {
+      "E-TENTH": {
+        "basis": "zos",
+        "note": "E'0.1': Zeus rounds the 6-digit fraction to nearest (X4019999A)."
+      },
+      "D-TENTH": {
+        "basis": "zos",
+        "note": "D'0.1': Zeus rounds (X401999999999999A)."
+      },
+      "L-TENTH": {
+        "basis": "zos",
+        "note": "L'0.1': Zeus rounds the 28-digit fraction; the low-order characteristic is the high one minus 14."
+      },
+      "F-FRACTION": {
+        "basis": "zos",
+        "note": "F'1.5' without a scale modifier: Zeus rounds the fraction (2). Record whether HLASM rounds, truncates, or warns."
+      },
+      "H-NEG-FRACTION": {
+        "basis": "zos",
+        "note": "H'-1.5': Zeus rounds half away from zero (-2, XFFFE)."
+      },
+      "FS-SCALE": {
+        "basis": "spec",
+        "note": "FS4'1.5' is 1.5 times 2**4 = 24 (HLASM Language Reference, scale modifier)."
+      },
+      "P-DECIMAL-POINT": {
+        "basis": "spec",
+        "note": "The decimal point in P'1.25' does not affect the assembled value (X125C)."
+      },
+      "Z-NEGATIVE": {
+        "basis": "spec",
+        "note": "Z'-12' puts the minus sign in the zone of the last byte (XF1D2)."
+      },
+      "E-ROUND-HALF": {
+        "basis": "zos",
+        "note": "E'0.33333333': Zeus X40555555."
+      },
+      "DS-UNINITIALIZED": {
+        "basis": "zos",
+        "note": "DS storage is not initialized by the assembler; Zeus loads it as zeros. On z/OS the loader may leave other contents; record them."
+      }
+    }
+  },
   "HE101N": {
     "basis": "spec"
   },
@@ -382,5 +428,17 @@
   },
   "HS104A": {
     "basis": "spec"
+  },
+  "HS105A": {
+    "basis": "zos",
+    "note": "After the report is closed, AP on an invalid packed operand must take a data exception and end the step. Zeus ends with RC 16 (manifest expect_exit_code). On z/OS record the completion code (S0C7 expected) and how the runner should express it in JCL.",
+    "tests": {
+      "TP-BAD-SIGN-CC": {
+        "basis": "spec"
+      },
+      "TP-BAD-DIGIT-CC": {
+        "basis": "spec"
+      }
+    }
   }
 }
