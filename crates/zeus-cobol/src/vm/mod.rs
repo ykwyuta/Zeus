@@ -1375,14 +1375,36 @@ impl Machine {
         let module = Rc::new(module);
         let main = self.instantiate(&module, 0);
         self.bind_static_calls(main);
+        let explicit = self.main_args.is_some();
         if let Some(args) = self.main_args.take() {
             let using = self.instances[main].code.using.clone();
             for (k, slot) in using.iter().enumerate() {
                 self.instances[main].linkage[*slot as usize] = args.get(k).copied().flatten();
             }
-        } else if let Some(&slot) = self.instances[main].code.using.first() {
+        }
+        // PARM of a COBOL main program under CBLOPTS(ON), the default:
+        // program_arguments/runtime_options (Programming Guide, Accessing
+        // main program parameters under z/OS). Zeus splits at the last slash
+        // (not compared with z/OS for arguments that hold a slash) and
+        // honours DEBUG/NODEBUG, the object-time switch of USE FOR DEBUGGING
+        // (Language Environment Programming Reference, DEBUG).
+        let parm = self.step.parm.clone();
+        let args = match parm.rfind('/') {
+            Some(k) => {
+                for opt in parm[k + 1..].split([' ', ',']) {
+                    match opt.trim().to_ascii_uppercase().as_str() {
+                        "DEBUG" => self.debug = true,
+                        "NODEBUG" => self.debug = false,
+                        _ => {}
+                    }
+                }
+                parm[..k].to_string()
+            }
+            None => parm,
+        };
+        if !explicit && let Some(&slot) = self.instances[main].code.using.first() {
             // PARM: the first USING parameter of the main program
-            let text = ebcdic::encode(&self.step.parm);
+            let text = ebcdic::encode(&args);
             let mut area = (text.len() as u16).to_be_bytes().to_vec();
             area.extend(text);
             area.resize(area.len().max(102), ebcdic::SPACE);

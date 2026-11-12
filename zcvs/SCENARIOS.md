@@ -85,6 +85,7 @@
 | P05 CALL引数 | `ZP104A`、`ZP107A` 4検査、`ZP113A` 3検査 | 部分 | 今回0/負値/OMITTED→PRESENTの再束縛、CONTENT/VALUE/非対象領域保持を追加。同一項目を複数引数へ渡すalias、集団、別名入口との組合せは残る。2026-11-12: 同一項目を2引数へ参照渡しする別名、CONTENTの複写側の変更と呼出し元保持を追加 |
 | P06 ポインター | `ZP105A`、`ZP108A` 7検査 | 部分 | 既存のPROCEDURE→FUNCTIONコピー後のNULL化に加え、データポインターのコピー、別名ENTRYの動的入口名、NULL化・別入口への再束縛後もコピーが有効、別バッファ保持を追加。ABI別サイズ、引数個数の異なる複数ENTRY、再帰フレーム別ポインターは残る |
 | P07 可視性 | `ZP106A` のCOMMON/GLOBAL/EXTERNAL、`ZP113A` 3検査 | 部分 | 非COMMON兄弟の拒否、同名の遮蔽、GLOBAL条件名/ファイル、EXTERNALの再呼出し/別プログラム/CANCEL後。2026-11-12: 入れ子での同名局所項目によるGLOBALの遮蔽と親の値保持、GLOBAL条件名のSETを追加 |
+| P08 デバッグ宣言 | `ZP114A` 6検査 | 部分 | USE FOR DEBUGGING の PERFORM/GO TO/FALL THROUGH と DEBUG-ITEM、デバッグ行、PARM の `/DEBUG` (CBLOPTS(ON))。ALTER/SORT/USE 手続きの起動、START PROGRAM、DEBUG-LINE の値、NODEBUG で動かないことは残る |
 
 ## ZF: ファイル・VSAM・テープ
 

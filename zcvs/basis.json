@@ -1645,6 +1645,18 @@
       "COB-LRM: LOCAL-STORAGE SECTION"
     ]
   },
+  "ZE146N": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Valid and invalid elementary moves | Table 51. Valid and invalid elementary moves"
+    ]
+  },
+  "ZE146P": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DISPLAY-OF"
+    ]
+  },
   "ZF101A": {
     "basis": "spec",
     "refs": [
@@ -2394,6 +2406,56 @@
       }
     }
   },
+  "ZP114A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: WITH DEBUGGING MODE | When WITH DEBUGGING MODE is specified, all debugging sections and debugging lines are compiled.",
+      "COB-LRM: Activate object-time switch | The USE FOR DEBUGGING declarative procedures are activated when DEBUG is in effect and inhibited when NODEBUG is in effect.",
+      "LE-PR: DEBUG | Activates the COBOL batch debugging features."
+    ],
+    "tests": {
+      "PARM-RUNTIME-SPLIT": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Accessing main program parameters under z/OS | If CBLOPTS(ON) (the default) is in effect, and program arguments and runtime options are both passed in the parameter string, they must appear in the following order, separated by a forward slash:",
+          "COB-PG: Accessing main program parameters under z/OS | parm-len=002"
+        ]
+      },
+      "DEBUG-PERFORM-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DEBUG-ITEM | The first 30 characters of the name that caused execution of the debugging section.",
+          "COB-LRM: DEBUG-ITEM | PERFORM statement This PERFORM statement procedure-name-n \"PERFORM LOOP\""
+        ]
+      },
+      "DEBUG-GO-TO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DEBUG-ITEM | The first 30 characters of the name that caused execution of the debugging section.",
+          "COB-LRM: DEBUG-ITEM | GO TO procedure-name-n GO TO statement procedure-name-n Spaces"
+        ]
+      },
+      "DEBUG-FALL-THROUGH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DEBUG-ITEM | The first 30 characters of the name that caused execution of the debugging section.",
+          "COB-LRM: DEBUG-ITEM | \"FALL THROUGH\""
+        ]
+      },
+      "DEBUG-SUB-SPACES": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DEBUG-ITEM | Always set to spaces. These subfields are documented for compatibility with previous COBOL products."
+        ]
+      },
+      "DEBUGGING-LINE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Debugging lines | To specify a debugging line in your program, code a D in column 7 (the indicator area)."
+        ]
+      }
+    }
+  },
   "ZS101A": {
     "basis": "spec",
     "tests": {
@@ -2960,17 +3022,5 @@
         ]
       }
     }
-  },
-  "ZE146N": {
-    "basis": "spec",
-    "refs": [
-      "COB-LRM: Valid and invalid elementary moves | Table 51. Valid and invalid elementary moves"
-    ]
-  },
-  "ZE146P": {
-    "basis": "spec",
-    "refs": [
-      "COB-LRM: DISPLAY-OF"
-    ]
   }
 }

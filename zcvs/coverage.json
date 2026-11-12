@@ -1517,6 +1517,14 @@
     "expect": "compile-only",
     "tests": []
   },
+  "ZE146N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE146P": {
+    "expect": "compile-only",
+    "tests": []
+  },
   "ZF101A": {
     "expect": "run",
     "tests": [
@@ -2098,6 +2106,17 @@
       "GLOBAL-COND-NAME"
     ]
   },
+  "ZP114A": {
+    "expect": "run",
+    "tests": [
+      "PARM-RUNTIME-SPLIT",
+      "DEBUG-PERFORM-LOOP",
+      "DEBUG-SUB-SPACES",
+      "DEBUG-GO-TO",
+      "DEBUG-FALL-THROUGH",
+      "DEBUGGING-LINE"
+    ]
+  },
   "ZS101A": {
     "expect": "run",
     "tests": [
@@ -2326,13 +2345,5 @@
       "SET-TRUE-RANGE-FIRST",
       "SET-FALSE-RANGE"
     ]
-  },
-  "ZE146N": {
-    "expect": "compile-error",
-    "tests": []
-  },
-  "ZE146P": {
-    "expect": "compile-only",
-    "tests": []
   }
 }

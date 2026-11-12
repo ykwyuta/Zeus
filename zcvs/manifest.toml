@@ -21,6 +21,9 @@ ccsid = 939
 [programs.ZF201M]
 jcl = "ZF201M.JCL"
 
+[programs.ZP114A]
+parm = "/DEBUG"
+
 [programs.ZS103M]
 parm = "NIGHTLY,20261016"
 expect_exit_code = 4
