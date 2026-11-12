@@ -51,6 +51,15 @@ fn alnum_function(f: Func) -> bool {
             | Func::UpperCase
             | Func::Reverse
             | Func::Trim
+            | Func::TrimL
+            | Func::TrimR
+            | Func::HexOf
+            | Func::HexToChar
+            | Func::BitOf
+            | Func::BitToChar
+            | Func::FormattedDate
+            | Func::FormattedTime
+            | Func::FormattedDatetime
             | Func::WhenCompiled
             | Func::WhenCompiledRegister
             | Func::NationalOf
@@ -113,6 +122,28 @@ pub fn function(name: &str) -> Option<Func> {
         "TRIM" => Func::Trim,
         "TEST-NUMVAL" => Func::TestNumVal,
         "TEST-NUMVAL-C" => Func::TestNumValC,
+        "E" => Func::E,
+        "PI" => Func::Pi,
+        "EXP" => Func::Exp,
+        "EXP10" => Func::Exp10,
+        "SIGN" => Func::Sign,
+        "HEX-OF" => Func::HexOf,
+        "HEX-TO-CHAR" => Func::HexToChar,
+        "BIT-OF" => Func::BitOf,
+        "BIT-TO-CHAR" => Func::BitToChar,
+        "TRIML" => Func::TrimL,
+        "TRIMR" => Func::TrimR,
+        "NUMVAL-F" => Func::NumValF,
+        "TEST-NUMVAL-F" => Func::TestNumValF,
+        "TEST-DATE-YYYYMMDD" => Func::TestDateYyyymmdd,
+        "TEST-DAY-YYYYDDD" => Func::TestDayYyyyddd,
+        "FORMATTED-DATE" => Func::FormattedDate,
+        "FORMATTED-TIME" => Func::FormattedTime,
+        "FORMATTED-DATETIME" => Func::FormattedDatetime,
+        "INTEGER-OF-FORMATTED-DATE" => Func::IntegerOfFormattedDate,
+        "SECONDS-FROM-FORMATTED-TIME" => Func::SecondsFromFormattedTime,
+        "COMBINED-DATETIME" => Func::CombinedDatetime,
+        "TEST-FORMATTED-DATETIME" => Func::TestFormattedDatetime,
         _ => return None,
     })
 }
@@ -221,6 +252,8 @@ impl Gen<'_> {
                             | Func::LowerCase
                             | Func::Reverse
                             | Func::Trim
+                            | Func::TrimL
+                            | Func::TrimR
                             | Func::Max
                             | Func::Min
                     ) && call.args.first().is_some_and(|arg| self.national_expr(arg))
@@ -246,7 +279,17 @@ impl Gen<'_> {
                 | Func::PresentValue
         );
         let (min, max) = match func {
-            Func::CurrentDate | Func::WhenCompiled | Func::WhenCompiledRegister => (0, 0),
+            Func::CurrentDate
+            | Func::WhenCompiled
+            | Func::WhenCompiledRegister
+            | Func::E
+            | Func::Pi => (0, 0),
+            Func::FormattedDatetime => (3, 4),
+            Func::FormattedDate | Func::FormattedTime => (2, 3),
+            Func::IntegerOfFormattedDate
+            | Func::SecondsFromFormattedTime
+            | Func::TestFormattedDatetime
+            | Func::CombinedDatetime => (2, 2),
             Func::Random => (0, 1),
             Func::Annuity | Func::Mod | Func::Rem => (2, 2),
             Func::PresentValue => (2, usize::MAX),
@@ -286,6 +329,21 @@ impl Gen<'_> {
                 | Func::TestNumVal
                 | Func::TestNumValC
                 | Func::Ord
+                | Func::TrimL
+                | Func::TrimR
+                | Func::HexOf
+                | Func::HexToChar
+                | Func::BitOf
+                | Func::BitToChar
+                | Func::NumValF
+                | Func::TestNumValF
+                // a format literal followed by numeric or text arguments
+                | Func::FormattedDate
+                | Func::FormattedTime
+                | Func::FormattedDatetime
+                | Func::IntegerOfFormattedDate
+                | Func::SecondsFromFormattedTime
+                | Func::TestFormattedDatetime
         ) && !polymorphic;
         let first_numeric = call.args.first().is_some_and(|a| self.is_numeric_expr(a));
         for arg in &call.args {

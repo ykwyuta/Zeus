@@ -10,6 +10,7 @@ pub mod exec;
 mod files;
 pub use files::dataset_layout;
 mod func;
+mod func6;
 mod le;
 mod numeric;
 mod report;
