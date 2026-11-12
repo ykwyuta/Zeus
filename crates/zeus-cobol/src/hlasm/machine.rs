@@ -269,6 +269,8 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
             match b[0] {
                 0x91 => "TM",
                 0x92 => "MVI",
+                // TEST AND SET: S format, the second byte is unused
+                0x93 => "TS",
                 0x94 => "NI",
                 0x95 => "CLI",
                 0x96 => "OI",
@@ -474,6 +476,18 @@ fn decode(b: &[u8], offset: u32) -> Result<Instruction, String> {
                 });
             }
             op
+        }
+        // SSF: C8 with R3 and a 4-bit opcode extension, two storage operands
+        0xc8 => {
+            i.registers = vec![r1];
+            i.address = Some(address(&b[2..4], 0));
+            i.source = Some(address(&b[4..6], 0));
+            match r2 {
+                2 => "CSST",
+                4 => "LPD",
+                5 => "LPDG",
+                _ => "",
+            }
         }
         0xc0 => {
             let op = match r2 {

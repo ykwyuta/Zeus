@@ -388,6 +388,8 @@ fn wide_memory(op: &str) -> bool {
             | "MSG"
             | "LMG"
             | "STMG"
+            | "LPQ"
+            | "STPQ"
     )
 }
 

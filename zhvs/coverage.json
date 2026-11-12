@@ -1349,6 +1349,73 @@
       "NXGRK"
     ]
   },
+  "HI122A": {
+    "expect": "run",
+    "tests": [
+      "SLA-OVERFLOW",
+      "SLA-NEGATIVE",
+      "SLAG",
+      "SRA-NEGATIVE",
+      "SRAG",
+      "SLDL",
+      "SRDL",
+      "RLL",
+      "RISBGN-INSERT",
+      "RISBGN-ZERO-REST",
+      "RISBHG",
+      "RISBLG-ZERO",
+      "RNSBG",
+      "ROSBG",
+      "RXSBG-ZERO",
+      "RXSBG-TEST-ONLY"
+    ]
+  },
+  "HI123A": {
+    "expect": "run",
+    "tests": [
+      "BAL-LINK",
+      "BALR-LINK",
+      "BAS-LINK",
+      "BRAS-LINK",
+      "BRASL-LINK",
+      "BC-TAKEN",
+      "BC-NOT-TAKEN",
+      "BCR-TAKEN",
+      "BRC-TAKEN",
+      "BRCL-NOT-TAKEN",
+      "BCTR-LOOP",
+      "BCTR-ZERO-COUNTS",
+      "BCTG-LOOP",
+      "BCTGR-LOOP",
+      "BRCT-LOOP",
+      "BRCTG-LOOP",
+      "BRCTH-LOOP",
+      "EXRL-LENGTH"
+    ]
+  },
+  "HI124A": {
+    "expect": "run",
+    "tests": [
+      "LAA-OVERFLOW",
+      "LAAL-CARRY",
+      "LAALG",
+      "LAN-ZERO",
+      "LAO",
+      "LAX-ZERO",
+      "LANG-LAOG-LAXG",
+      "CSY-EQUAL",
+      "CSY-UNEQUAL",
+      "CSG",
+      "CDS-EQUAL",
+      "CDSY-UNEQUAL",
+      "CDSG",
+      "TS-ZERO",
+      "TS-SET",
+      "LPD",
+      "LPDG",
+      "LPQ-STPQ"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [

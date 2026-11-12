@@ -511,6 +511,8 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
         ("CY", 0x59),
         ("AY", 0x5a),
         ("SY", 0x5b),
+        ("STPQ", 0x8e),
+        ("LPQ", 0x8f),
         ("MSY", 0x51),
         ("LAY", 0x71),
         ("NG", 0x80),
@@ -628,6 +630,8 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
     let si = [
         ("TM", 0x91),
         ("MVI", 0x92),
+        // TEST AND SET is S format: no immediate, the second byte is zero
+        ("TS", 0x93),
         ("NI", 0x94),
         ("CLI", 0x95),
         ("OI", 0x96),
@@ -639,6 +643,14 @@ pub(in crate::hlasm::object) fn encode(i: &Instruction) -> Result<Vec<u8>, Strin
             u8::try_from(i.immediate).map_err(|_| "byte immediate out of range")?,
         ];
         b.extend(address(i.address.as_ref(), false)?);
+        return Ok(b);
+    }
+    // SSF: C8, R3 and the opcode extension, then two base-displacement operands
+    let ssf = [("CSST", 2u8), ("LPD", 4), ("LPDG", 5)];
+    if let Some((_, extension)) = ssf.iter().find(|(name, _)| *name == op) {
+        let mut b = vec![0xc8, r(0)? << 4 | extension];
+        b.extend(address(i.address.as_ref(), false)?);
+        b.extend(address(i.source.as_ref(), false)?);
         return Ok(b);
     }
     let ss = [
