@@ -327,7 +327,9 @@ def hlasm_pattern(category, name):
     if category == 'Machine instructions' or category == 'Assembler instructions':
         return r'^\S*\s+' + re.escape(name) + r'(\s|$)'
     if category == 'DC types':
-        return r'^\S*\s+D[CS]\s+(\S*,)?[0-9()]*' + re.escape(name) + r"(L[0-9.]+)?'"
+        # nominal values are quoted; address constants (A, V, S, Y, Q, R, J ...) are
+        # parenthesized
+        return r'^\S*\s+D[CS]\s+(\S*,)?[0-9()]*' + re.escape(name) + r"(L[0-9.]+)?['(]"
     if name.startswith('&') or name.endswith("'"):
         return re.escape(name)
     if name in ('AND', 'OR', 'XOR', 'NOT'):

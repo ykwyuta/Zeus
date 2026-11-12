@@ -214,6 +214,30 @@ fn expand_scope(
             }
         }
         let macro_invocation = !builtin_alias && macros.contains_key(&s.op);
+        if !macro_invocation && matches!(s.op.as_str(), "CCW" | "CCW0" | "CCW1") {
+            // A channel command word is a doubleword of constants (Principles
+            // of Operation, "Channel-Command Word"): format 0 is command,
+            // 24-bit data address, flags, zero, count; format 1 is command,
+            // flags, count, 31-bit data address. HLASM aligns it on a
+            // doubleword. Written as the equivalent DC so that layout,
+            // attributes and listing need nothing new.
+            let ops = operands(&s.args);
+            if ops.len() != 4 {
+                return Err(s.error(format!("{} requires four operands", s.op)));
+            }
+            s.args = if s.op == "CCW1" {
+                format!(
+                    "0D,AL1({}),AL1({}),AL2({}),AL4({})",
+                    ops[0], ops[2], ops[3], ops[1]
+                )
+            } else {
+                format!(
+                    "0D,AL1({}),AL3({}),AL1({}),AL1(0),AL2({})",
+                    ops[0], ops[1], ops[2], ops[3]
+                )
+            };
+            s.op = "DC".into();
+        }
         if open_code
             && (macro_invocation
                 || matches!(s.op.as_str(), "SETA" | "SETB" | "SETC" | "AIF" | "AGO"))

@@ -14,6 +14,9 @@
   "HA105A": {
     "basis": "spec"
   },
+  "HA106A": {
+    "basis": "spec"
+  },
   "HD101A": {
     "basis": "spec"
   },
@@ -415,6 +418,12 @@
     "basis": "spec"
   },
   "HM105A": {
+    "basis": "spec"
+  },
+  "HM106A": {
+    "basis": "spec"
+  },
+  "HM107A": {
     "basis": "spec"
   },
   "HS101A": {

@@ -1,6 +1,6 @@
 # ZHVS 網羅台帳 (HLASM と z/Architecture)
 
-HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 623、使用あり 180、未網羅 443。
+HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 623、使用あり 233、未網羅 390。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -14,22 +14,22 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Assembler instructions | ALIAS | 使用あり | HA102A | - |  |
 | Assembler instructions | AMODE | 未網羅 |  | - |  |
 | Assembler instructions | CATTR | 未網羅 |  | - |  |
-| Assembler instructions | CCW | 未網羅 |  | - |  |
+| Assembler instructions | CCW | 使用あり | HA106A | - |  |
 | Assembler instructions | CCW0 | 未網羅 |  | - |  |
-| Assembler instructions | CCW1 | 未網羅 |  | - |  |
+| Assembler instructions | CCW1 | 使用あり | HA106A | - |  |
 | Assembler instructions | CEJECT | 未網羅 |  | - |  |
 | Assembler instructions | CNOP | 使用あり | HA104A | - |  |
 | Assembler instructions | COM | 未網羅 |  | - |  |
 | Assembler instructions | COPY | 未網羅 |  | - |  |
-| Assembler instructions | CSECT | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HD101A ほか 128 | - |  |
+| Assembler instructions | CSECT | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 131 | - |  |
 | Assembler instructions | CXD | 未網羅 |  | - |  |
-| Assembler instructions | DC | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HD101A ほか 89 | - |  |
+| Assembler instructions | DC | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 92 | - |  |
 | Assembler instructions | DROP | 使用あり | HA105A, HE118N, HSS02A, HSS03A, HSS04A | - |  |
-| Assembler instructions | DS | 使用あり | HA101A, HA102A, HA104A, HA105A, HD101A, HD102A ほか 125 | - |  |
+| Assembler instructions | DS | 使用あり | HA101A, HA102A, HA104A, HA105A, HA106A, HD101A ほか 128 | - |  |
 | Assembler instructions | DSECT | 使用あり | HA104A | - |  |
 | Assembler instructions | DXD | 未網羅 |  | - |  |
 | Assembler instructions | EJECT | 未網羅 |  | - |  |
-| Assembler instructions | END | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HD101A ほか 128 | - |  |
+| Assembler instructions | END | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 131 | - |  |
 | Assembler instructions | ENTRY | 未網羅 |  | - |  |
 | Assembler instructions | EQU | 使用あり | HA101A, HA102A, HA104A, HE120N, HE120P | - |  |
 | Assembler instructions | EXITCTL | 未網羅 |  | - |  |
@@ -37,7 +37,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Assembler instructions | ICTL | 未網羅 |  | - |  |
 | Assembler instructions | ISEQ | 未網羅 |  | - |  |
 | Assembler instructions | LOCTR | 未網羅 |  | - |  |
-| Assembler instructions | LTORG | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HD101A ほか 87 | - |  |
+| Assembler instructions | LTORG | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 90 | - |  |
 | Assembler instructions | MNOTE | 使用あり | HE119N, HE119P | - |  |
 | Assembler instructions | OPSYN | 使用あり | HM104A | - |  |
 | Assembler instructions | ORG | 使用あり | HA104A, HI110A | - |  |
@@ -54,13 +54,13 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Assembler instructions | USING | 使用あり | HA105A, HE101N, HE101P, HE102N, HE102P, HE103N ほか 38 | - |  |
 | Assembler instructions | WXTRN | 未網羅 |  | - |  |
 | Assembler instructions | XATTR | 未網羅 |  | - |  |
-| DC types | A | 未網羅 |  | - |  |
-| DC types | AD | 未網羅 |  | - |  |
+| DC types | A | 使用あり | HA106A, HS102A, HS103A, HS104A, HS105A | - |  |
+| DC types | AD | 使用あり | HA106A | - |  |
 | DC types | B | 使用あり | HA103A, HE111N, HE111P | - |  |
-| DC types | C | 使用あり | HA103A, HD101A, HI110A, HI111A, HM102A, HM103A ほか 5 | - |  |
-| DC types | CA | 未網羅 |  | - |  |
-| DC types | CE | 未網羅 |  | - |  |
-| DC types | CU | 未網羅 |  | - |  |
+| DC types | C | 使用あり | HA103A, HD101A, HI110A, HI111A, HM102A, HM103A ほか 7 | - |  |
+| DC types | CA | 使用あり | HA106A | - |  |
+| DC types | CE | 使用あり | HA106A | - |  |
+| DC types | CU | 使用あり | HA106A | - |  |
 | DC types | D | 使用あり | HD107A | - |  |
 | DC types | DB | 使用あり | HF102A, HF225A, HF226A, HF227A, HF228A, HF229A ほか 1 | - |  |
 | DC types | DD | 使用あり | HF103A, HF243A, HF244A, HF245A, HF246A, HF247A ほか 1 | - |  |
@@ -69,7 +69,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | DC types | EB | 使用あり | HF219A, HF220A, HF221A, HF222A, HF223A, HF224A | - |  |
 | DC types | ED | 使用あり | HF103A, HF237A, HF238A, HF239A, HF240A, HF241A ほか 1 | - |  |
 | DC types | EH | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A | - |  |
-| DC types | F | 使用あり | HA102A, HA103A, HA105A, HD107A, HI106A, HS102A ほか 4 | - |  |
+| DC types | F | 使用あり | HA102A, HA103A, HA105A, HA106A, HD107A, HI106A ほか 7 | - |  |
 | DC types | FD | 使用あり | HA103A, HI105A, HI106A | - |  |
 | DC types | G | 未網羅 |  | - |  |
 | DC types | H | 使用あり | HA103A, HD107A, HI106A | - |  |
@@ -90,92 +90,92 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | DC types | SY | 未網羅 |  | - |  |
 | DC types | V | 未網羅 |  | - |  |
 | DC types | VD | 未網羅 |  | - |  |
-| DC types | X | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HD101A ほか 83 | - |  |
-| DC types | Y | 未網羅 |  | - |  |
+| DC types | X | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 85 | - |  |
+| DC types | Y | 使用あり | HA106A | - |  |
 | DC types | Z | 使用あり | HA103A, HD107A | - |  |
-| Conditional assembly | ACTR | 未網羅 |  | - |  |
+| Conditional assembly | ACTR | 使用あり | HM106A, HM107A | - |  |
 | Conditional assembly | AEJECT | 未網羅 |  | - |  |
 | Conditional assembly | AGO | 使用あり | HM105A | - |  |
 | Conditional assembly | AIF | 使用あり | HM102A, HM105A | - |  |
 | Conditional assembly | ANOP | 使用あり | HM102A, HM105A | - |  |
 | Conditional assembly | AREAD | 未網羅 |  | - |  |
 | Conditional assembly | ASPACE | 未網羅 |  | - |  |
-| Conditional assembly | GBLA | 使用あり | HM105A | - |  |
-| Conditional assembly | GBLB | 未網羅 |  | - |  |
-| Conditional assembly | GBLC | 使用あり | HM105A | - |  |
-| Conditional assembly | LCLA | 使用あり | HM102A, HM103A, HM104A, HM105A | - |  |
+| Conditional assembly | GBLA | 使用あり | HM105A, HM106A, HM107A | - |  |
+| Conditional assembly | GBLB | 使用あり | HM106A, HM107A | - |  |
+| Conditional assembly | GBLC | 使用あり | HM105A, HM106A, HM107A | - |  |
+| Conditional assembly | LCLA | 使用あり | HM102A, HM103A, HM104A, HM105A, HM106A, HM107A | - |  |
 | Conditional assembly | LCLB | 使用あり | HM102A, HM105A | - |  |
-| Conditional assembly | LCLC | 使用あり | HM102A, HM103A, HM105A | - |  |
-| Conditional assembly | MACRO | 使用あり | HM101A, HM105A | - |  |
-| Conditional assembly | MEND | 使用あり | HM101A, HM105A | - |  |
+| Conditional assembly | LCLC | 使用あり | HM102A, HM103A, HM105A, HM106A, HM107A | - |  |
+| Conditional assembly | MACRO | 使用あり | HM101A, HM105A, HM106A, HM107A | - |  |
+| Conditional assembly | MEND | 使用あり | HM101A, HM105A, HM106A, HM107A | - |  |
 | Conditional assembly | MEXIT | 使用あり | HM105A | - |  |
 | Conditional assembly | MHELP | 未網羅 |  | - |  |
-| Conditional assembly | SETA | 使用あり | HM102A, HM103A, HM104A, HM105A | - |  |
-| Conditional assembly | SETB | 使用あり | HM102A, HM105A | - |  |
-| Conditional assembly | SETC | 使用あり | HM102A, HM103A, HM105A | - |  |
+| Conditional assembly | SETA | 使用あり | HM102A, HM103A, HM104A, HM105A, HM106A, HM107A | - |  |
+| Conditional assembly | SETB | 使用あり | HM102A, HM105A, HM107A | - |  |
+| Conditional assembly | SETC | 使用あり | HM102A, HM103A, HM105A, HM106A, HM107A | - |  |
 | Conditional assembly | SETAF | 未網羅 |  | - |  |
 | Conditional assembly | SETCF | 未網羅 |  | - |  |
 | Conditional assembly | &SYSNDX | 使用あり | HM105A | - |  |
-| Conditional assembly | &SYSECT | 未網羅 |  | - |  |
+| Conditional assembly | &SYSECT | 使用あり | HM106A, HM107A | - |  |
 | Conditional assembly | &SYSLIST | 使用あり | HM105A | - |  |
-| Conditional assembly | &SYSDATE | 未網羅 |  | - |  |
-| Conditional assembly | &SYSDATC | 未網羅 |  | - |  |
-| Conditional assembly | &SYSTIME | 未網羅 |  | - |  |
-| Conditional assembly | &SYSPARM | 未網羅 |  | - |  |
-| Conditional assembly | &SYSLOC | 未網羅 |  | - |  |
-| Conditional assembly | &SYSNEST | 未網羅 |  | - |  |
-| Conditional assembly | &SYSMAC | 未網羅 |  | - |  |
-| Conditional assembly | &SYSSTYP | 未網羅 |  | - |  |
-| Conditional assembly | &SYSOPT_RENT | 未網羅 |  | - |  |
-| Conditional assembly | T' | 使用あり | HM102A, HS104A | - |  |
-| Conditional assembly | L' | 使用あり | HA102A, HD107A, HE120N, HE120P, HM104A, HS104A | - |  |
+| Conditional assembly | &SYSDATE | 使用あり | HM107A | - |  |
+| Conditional assembly | &SYSDATC | 使用あり | HM107A | - |  |
+| Conditional assembly | &SYSTIME | 使用あり | HM107A | - |  |
+| Conditional assembly | &SYSPARM | 使用あり | HM107A | - |  |
+| Conditional assembly | &SYSLOC | 使用あり | HM106A, HM107A | - |  |
+| Conditional assembly | &SYSNEST | 使用あり | HM106A, HM107A | - |  |
+| Conditional assembly | &SYSMAC | 使用あり | HM106A, HM107A | - |  |
+| Conditional assembly | &SYSSTYP | 使用あり | HM106A, HM107A | - |  |
+| Conditional assembly | &SYSOPT_RENT | 使用あり | HM106A, HM107A | - |  |
+| Conditional assembly | T' | 使用あり | HM102A, HM106A, HM107A, HS104A | - |  |
+| Conditional assembly | L' | 使用あり | HA102A, HA106A, HD107A, HE120N, HE120P, HM104A ほか 1 | - |  |
 | Conditional assembly | S' | 使用あり | HA102A | - |  |
 | Conditional assembly | I' | 使用あり | HA102A | - |  |
-| Conditional assembly | K' | 使用あり | HE119P, HM101A | - |  |
-| Conditional assembly | N' | 使用あり | HM101A, HM105A | - |  |
+| Conditional assembly | K' | 使用あり | HE119P, HM101A, HM106A, HM107A | - |  |
+| Conditional assembly | N' | 使用あり | HM101A, HM105A, HM106A, HM107A | - |  |
 | Conditional assembly | D' | 使用あり | HA102A, HA103A, HD102A, HD104A, HD105A, HD106A ほか 32 | - |  |
-| Conditional assembly | O' | 未網羅 |  | - |  |
-| Conditional assembly | A2B | 未網羅 |  | - |  |
-| Conditional assembly | A2C | 未網羅 |  | - |  |
-| Conditional assembly | A2D | 未網羅 |  | - |  |
-| Conditional assembly | A2X | 未網羅 |  | - |  |
-| Conditional assembly | B2A | 未網羅 |  | - |  |
-| Conditional assembly | B2C | 未網羅 |  | - |  |
-| Conditional assembly | B2D | 未網羅 |  | - |  |
-| Conditional assembly | B2X | 未網羅 |  | - |  |
-| Conditional assembly | BYTE | 未網羅 |  | - |  |
-| Conditional assembly | C2A | 未網羅 |  | - |  |
-| Conditional assembly | C2B | 未網羅 |  | - |  |
-| Conditional assembly | C2D | 未網羅 |  | - |  |
+| Conditional assembly | O' | 使用あり | HM107A | - |  |
+| Conditional assembly | A2B | 使用あり | HM106A | - |  |
+| Conditional assembly | A2C | 使用あり | HM106A | - |  |
+| Conditional assembly | A2D | 使用あり | HM106A | - |  |
+| Conditional assembly | A2X | 使用あり | HM106A | - |  |
+| Conditional assembly | B2A | 使用あり | HM106A | - |  |
+| Conditional assembly | B2C | 使用あり | HM106A | - |  |
+| Conditional assembly | B2D | 使用あり | HM106A | - |  |
+| Conditional assembly | B2X | 使用あり | HM106A | - |  |
+| Conditional assembly | BYTE | 使用あり | HM107A | - |  |
+| Conditional assembly | C2A | 使用あり | HM106A | - |  |
+| Conditional assembly | C2B | 使用あり | HM106A | - |  |
+| Conditional assembly | C2D | 使用あり | HM106A | - |  |
 | Conditional assembly | C2X | 使用あり | HM103A | - |  |
-| Conditional assembly | D2A | 使用あり | HM105A | - |  |
-| Conditional assembly | D2B | 未網羅 |  | - |  |
-| Conditional assembly | D2C | 未網羅 |  | - |  |
-| Conditional assembly | D2X | 使用あり | HM103A | - |  |
-| Conditional assembly | DCLEN | 未網羅 |  | - |  |
-| Conditional assembly | DCVAL | 未網羅 |  | - |  |
-| Conditional assembly | DEQUOTE | 未網羅 |  | - |  |
-| Conditional assembly | DOUBLE | 未網羅 |  | - |  |
-| Conditional assembly | FIND | 未網羅 |  | - |  |
+| Conditional assembly | D2A | 使用あり | HM105A, HM106A | - |  |
+| Conditional assembly | D2B | 使用あり | HM106A | - |  |
+| Conditional assembly | D2C | 使用あり | HM106A | - |  |
+| Conditional assembly | D2X | 使用あり | HM103A, HM106A | - |  |
+| Conditional assembly | DCLEN | 使用あり | HM107A | - |  |
+| Conditional assembly | DCVAL | 使用あり | HM107A | - |  |
+| Conditional assembly | DEQUOTE | 使用あり | HM107A | - |  |
+| Conditional assembly | DOUBLE | 使用あり | HM107A | - |  |
+| Conditional assembly | FIND | 使用あり | HM107A | - |  |
 | Conditional assembly | INDEX | 使用あり | HM103A | - |  |
-| Conditional assembly | ISBIN | 未網羅 |  | - |  |
-| Conditional assembly | ISDEC | 未網羅 |  | - |  |
-| Conditional assembly | ISHEX | 未網羅 |  | - |  |
-| Conditional assembly | ISSYM | 未網羅 |  | - |  |
-| Conditional assembly | LOWER | 未網羅 |  | - |  |
-| Conditional assembly | SIGNED | 未網羅 |  | - |  |
+| Conditional assembly | ISBIN | 使用あり | HM107A | - |  |
+| Conditional assembly | ISDEC | 使用あり | HM107A | - |  |
+| Conditional assembly | ISHEX | 使用あり | HM107A | - |  |
+| Conditional assembly | ISSYM | 使用あり | HM107A | - |  |
+| Conditional assembly | LOWER | 使用あり | HM107A | - |  |
+| Conditional assembly | SIGNED | 使用あり | HM106A, HM107A | - |  |
 | Conditional assembly | SLA | 未網羅 |  | - |  |
 | Conditional assembly | SLL | 未網羅 |  | - |  |
 | Conditional assembly | SRA | 未網羅 |  | - |  |
 | Conditional assembly | SRL | 未網羅 |  | - |  |
 | Conditional assembly | UPPER | 使用あり | HM103A | - |  |
-| Conditional assembly | X2A | 未網羅 |  | - |  |
-| Conditional assembly | X2B | 未網羅 |  | - |  |
-| Conditional assembly | X2C | 未網羅 |  | - |  |
-| Conditional assembly | X2D | 未網羅 |  | - |  |
-| Conditional assembly | AND | 未網羅 |  | - |  |
-| Conditional assembly | OR | 未網羅 |  | - |  |
-| Conditional assembly | XOR | 未網羅 |  | - |  |
+| Conditional assembly | X2A | 使用あり | HM106A | - |  |
+| Conditional assembly | X2B | 使用あり | HM106A | - |  |
+| Conditional assembly | X2C | 使用あり | HM106A | - |  |
+| Conditional assembly | X2D | 使用あり | HM106A | - |  |
+| Conditional assembly | AND | 使用あり | HM107A | - |  |
+| Conditional assembly | OR | 使用あり | HM107A | - |  |
+| Conditional assembly | XOR | 使用あり | HM107A | - |  |
 | Conditional assembly | NOT | 未網羅 |  | - |  |
 | Machine instructions | A | 使用あり | HE101N, HE101P, HE102N, HE102P, HE103N, HE103P ほか 35 | - |  |
 | Machine instructions | AD | 使用あり | HF101A | - |  |
@@ -328,7 +328,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | KDB | 未網羅 |  | - |  |
 | Machine instructions | KEB | 未網羅 |  | - |  |
 | Machine instructions | L | 使用あり | HA105A, HD102A, HE101N, HE101P, HE102N, HE102P ほか 69 | - |  |
-| Machine instructions | LA | 使用あり | HA104A, HI102A, HI110A, HI111A, HS102A, HS103A ほか 3 | - |  |
+| Machine instructions | LA | 使用あり | HA104A, HA106A, HI102A, HI110A, HI111A, HS102A ほか 4 | - |  |
 | Machine instructions | LAA | 未網羅 |  | - |  |
 | Machine instructions | LAAG | 使用あり | HI105A | - |  |
 | Machine instructions | LAAL | 未網羅 |  | - |  |
@@ -442,7 +442,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | MSG | 未網羅 |  | - |  |
 | Machine instructions | MSGR | 未網羅 |  | - |  |
 | Machine instructions | MSY | 未網羅 |  | - |  |
-| Machine instructions | MVC | 使用あり | HD101A, HD103A, HD105A, HD106A, HD107A, HI110A ほか 3 | - |  |
+| Machine instructions | MVC | 使用あり | HA106A, HD101A, HD103A, HD105A, HD106A, HD107A ほか 6 | - |  |
 | Machine instructions | MVCL | 使用あり | HI110A | - |  |
 | Machine instructions | MVCLE | 未網羅 |  | - |  |
 | Machine instructions | MVI | 使用あり | HE106N, HE106P | - |  |
@@ -455,7 +455,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | MXDB | 未網羅 |  | - |  |
 | Machine instructions | MXDR | 未網羅 |  | - |  |
 | Machine instructions | MXR | 未網羅 |  | - |  |
-| Machine instructions | N | 使用あり | HA104A, HD101A, HD103A, HD104A, HD105A, HD106A ほか 62 | - |  |
+| Machine instructions | N | 使用あり | HA104A, HA106A, HD101A, HD103A, HD104A, HD105A ほか 63 | - |  |
 | Machine instructions | NC | 使用あり | HD101A | - |  |
 | Machine instructions | NCGRK | 未網羅 |  | - |  |
 | Machine instructions | NCRK | 未網羅 |  | - |  |
@@ -564,7 +564,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | SRP | 使用あり | HE115N, HE115P | - |  |
 | Machine instructions | SRST | 使用あり | HI110A | - |  |
 | Machine instructions | SRXT | 未網羅 |  | - |  |
-| Machine instructions | ST | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A ほか 52 | - |  |
+| Machine instructions | ST | 使用あり | HA106A, HF201A, HF202A, HF203A, HF204A, HF205A ほか 53 | - |  |
 | Machine instructions | STAM | 未網羅 |  | - |  |
 | Machine instructions | STC | 未網羅 |  | - |  |
 | Machine instructions | STCM | 使用あり | HI111A | - |  |
