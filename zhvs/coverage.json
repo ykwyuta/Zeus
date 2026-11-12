@@ -1702,6 +1702,23 @@
       "SYSATTRP"
     ]
   },
+  "HM109A": {
+    "expect": "run",
+    "tests": [
+      "SYSCLOCK-FORMAT",
+      "SYSSEQF",
+      "SYSIN-MEMBER",
+      "SYSM-SEV",
+      "SYSM-HSEV",
+      "SYSSTMT-FORM",
+      "SYSSTMT-NEXT",
+      "SYSOPT-DBCS",
+      "SYSOPT-XOBJECT",
+      "SYSOPT-OPTABLE",
+      "SYSVER-SYSASM-TYPE",
+      "SYSJOB-SYSSTEP-TYPE"
+    ]
+  },
   "HS101A": {
     "expect": "run",
     "tests": [

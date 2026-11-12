@@ -4955,6 +4955,94 @@
       }
     }
   },
+  "HM109A": {
+    "basis": "spec",
+    "tests": {
+      "SYSCLOCK-FORMAT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSCLOCK System Variable Symbol | The value of &SYSCLOCK is a 26-character string in the format: YYYY-MM-DD HH:MM:SS.mmmmmm",
+          "HLASM-LR: &SYSCLOCK System Variable Symbol | The value of the type attribute of &SYSCLOCK (T'&SYSCLOCK) is always U."
+        ]
+      },
+      "SYSSEQF": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSSEQF System Variable Symbol | If no ICTL instruction has been specified and sequence checking is not active, the contents of columns 73 to 80 inclusive of the source statement are assigned to &SYSSEQF."
+        ]
+      },
+      "SYSIN-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSIN_MEMBER System Variable Symbol | You can use &SYSIN_MEMBER in a macro definition to obtain the name of the data set member from which the assembler is reading the source module."
+        ]
+      },
+      "SYSM-SEV": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSM_SEV System Variable Symbol | the highest severity of all MNOTE assembler instructions executed in the called macro is used to update the variable.",
+          "HLASM-LR: &SYSM_SEV System Variable Symbol | The value of the variable symbol is supplied as three numeric characters, not as an arithmetic (binary) value."
+        ]
+      },
+      "SYSM-HSEV": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSM_SEV System Variable Symbol | The value of the variable symbol is supplied as three numeric characters, not as an arithmetic (binary) value.",
+          "HLASM-LR: &SYSM_HSEV System Variable Symbol | Use &SYSM_HSEV to get the highest MNOTE severity so far for the assembly."
+        ]
+      },
+      "SYSSTMT-FORM": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSSTMT System Variable Symbol | Use &SYSSTMT to obtain the next statement number that is assigned to a statement by the assembler.",
+          "HLASM-LR: &SYSSTMT System Variable Symbol | The value of the count attribute of &SYSSTMT (K'&SYSSTMT) is always 8."
+        ]
+      },
+      "SYSSTMT-NEXT": {
+        "basis": "zos",
+        "note": "条件付きアセンブリの文 (SETC) も 1 つずつ文番号を取るとみなす。LRM の例は DC 文だけ",
+        "refs": [
+          "HLASM-LR: &SYSSTMT System Variable Symbol | Use &SYSSTMT to obtain the next statement number that is assigned to a statement by the assembler.",
+          "HLASM-LR: &SYSSTMT System Variable Symbol | It assumes that the DC statement is in open code, and is the 23rd statement in the source module."
+        ]
+      },
+      "SYSOPT-DBCS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_DBCS System Variable Symbol | If the DBCS assembler option was not specified, &SYSOPT_DBCS is assigned a value of 0.",
+          "HLASM-LR: &SYSOPT_DBCS System Variable Symbol | The value of the type attribute of &SYSOPT_DBCS (T'&SYSOPT_DBCS) is always N."
+        ]
+      },
+      "SYSOPT-XOBJECT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_XOBJECT System Variable Symbol | The value of the count attribute (K'&SYSOPT_XOBJECT) is always 1."
+        ]
+      },
+      "SYSOPT-OPTABLE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_OPTABLE System Variable Symbol | The value of the type attribute of &SYSOPT_OPTABLE (T'&SYSOPT_OPTABLE) is always U.",
+          "HLASM-PG: OPTABLE | OPTABLE(UNI,NOLIST)"
+        ]
+      },
+      "SYSVER-SYSASM-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSVER System Variable Symbol | The value of the type attribute of &SYSVER (T'&SYSVER) is always U.",
+          "HLASM-LR: &SYSASM System Variable Symbol | The value of the type attribute of &SYSASM (T'&SYSASM) is always U.",
+          "HLASM-LR: &SYSTEM_ID System Variable Symbol | Use &SYSTEM_ID to obtain the name and release of the operating system under which your source module is being assembled."
+        ]
+      },
+      "SYSJOB-SYSSTEP-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSJOB System Variable Symbol | The value of the type attribute of &SYSJOB (T'&SYSJOB) is always U.",
+          "HLASM-LR: &SYSSTEP System Variable Symbol | The value of the type attribute of &SYSSTEP (T'&SYSSTEP) is always U."
+        ]
+      }
+    }
+  },
   "HS101A": {
     "basis": "spec",
     "tests": {

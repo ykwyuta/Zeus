@@ -104,8 +104,15 @@ fn inventories_pair_diagnostics_and_cover_every_source_in_report_order() {
                 found.insert(name.to_string());
                 let source = fs::read_to_string(&path).unwrap();
                 for (index, line) in source.lines().enumerate() {
+                    // assembler columns 73-80 are the sequence field
+                    // (&SYSSEQF reads it), not source text
+                    let sequence = ext == "ASM"
+                        && line.len() <= 80
+                        && line.get(72..).is_some_and(|f| {
+                            f.bytes().all(|b| b.is_ascii_alphanumeric())
+                        });
                     assert!(
-                        line.len() <= 72,
+                        line.len() <= 72 || sequence,
                         "{}:{} exceeds margins",
                         path.display(),
                         index + 1

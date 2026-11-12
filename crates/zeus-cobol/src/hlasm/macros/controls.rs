@@ -26,7 +26,7 @@ impl Default for Controls {
             ]),
             print_stack: Vec::new(),
             pcontrol: Default::default(),
-            optable: "ZEUS".into(),
+            optable: "UNI".into(),
             afpr: true,
             macrocase: false,
             acontrol_stack: Vec::new(),

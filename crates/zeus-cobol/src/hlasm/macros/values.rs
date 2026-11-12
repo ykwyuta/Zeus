@@ -539,11 +539,11 @@ impl Scope {
                     .filter(|d| d.category == "MNOTE")
                     .map(|d| d.severity)
                     .max()
-                    .unwrap_or(0)
-                    .to_string());
+                    .map_or_else(|| "000".to_string(), |v| format!("{v:03}")));
             }
+            // three numeric characters (Language Reference, &SYSM_SEV)
             if r.name == "&SYSM_SEV" {
-                return Ok(self.last_macro_severity.to_string());
+                return Ok(format!("{:03}", self.last_macro_severity));
             }
             if r.name == "&SYSLIST" {
                 let Some((&index, tail)) = r.indices.split_first() else {
@@ -571,7 +571,8 @@ impl Scope {
                 return Ok(self.macro_names.len().to_string());
             }
             if r.name == "&SYSSTMT" {
-                return Ok(format!("{:08}", state.generated + 1));
+                // the next statement number (Language Reference, &SYSSTMT)
+                return Ok(format!("{:08}", state.listed + 1));
             }
             if r.name == "&SYSOPT_CURR_OPTABLE" {
                 return Ok(state.controls.optable.clone());

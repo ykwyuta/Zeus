@@ -22,7 +22,7 @@ pub(super) fn expand(
     state.controls.macrocase = options.macrocase.unwrap_or(false);
     state
         .controls
-        .set_optable(options.optable.as_deref().unwrap_or("ZEUS"))?;
+        .set_optable(options.optable.as_deref().unwrap_or("UNI"))?;
     state.initialize_context(input.first().map(|s| Path::new(&s.file)));
     let result = expand_scope(
         input,
@@ -190,6 +190,7 @@ fn expand_scope(
         pc += 1;
         if open_code {
             state.forward.last_mut().unwrap().1 = pc;
+            state.listed += 1;
         }
         let mut s = original.clone();
         s.op = substitute(&s.op, vars, state)
@@ -574,6 +575,9 @@ fn expand_scope(
             }
             out.push(s);
             state.generated += 1;
+            if !open_code {
+                state.listed += 1;
+            }
         } else {
             if open_code {
                 state.open_variables = Some(vars.clone());
@@ -818,6 +822,10 @@ struct Expansion {
     serial: usize,
     steps: usize,
     generated: usize,
+    /// Statement numbers given so far: every open-code statement
+    /// (conditional assembly ones too) and every generated statement
+    /// (&SYSSTMT is the next one).
+    listed: usize,
     ended: bool,
     attribute_values: super::assemble::Symbols,
     attributes: HashMap<String, Result<super::expression::EquAttributes, String>>,

@@ -195,7 +195,9 @@ TEST CSECT
         run(
             "TEST CSECT\n         USING *,15\n&NEXT SETA &SYSSTMT\n         LA 15,&NEXT\n         BR 14\n         END\n"
         ),
-        3
+        // the SETA is statement 3, so the next statement number is 4
+        // (Language Reference, &SYSSTMT: DC at 23 gives 00000024)
+        4
     );
 }
 

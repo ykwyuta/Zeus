@@ -317,8 +317,11 @@ fn run_program(
         };
     }
 
+    // The exported JCL links and runs after a compile return code up to 4
+    // (COND=(4,LT,C...)): warnings, or an MNOTE of severity 1-4, do not stop
+    // the program.
     match compile_status {
-        Some(status) if status.success() => {}
+        Some(status) if status.code().is_some_and(|c| (0..=4).contains(&c)) => {}
         Some(_) => return Ok(Outcome::CompileError),
         None => return Ok(Outcome::Timeout),
     }
