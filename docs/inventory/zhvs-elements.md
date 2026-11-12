@@ -1,6 +1,6 @@
 # ZHVS 網羅台帳 (HLASM と z/Architecture)
 
-HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 621、使用あり 322、未網羅 299。
+HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 621、使用あり 411、未網羅 210。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -21,15 +21,15 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Assembler instructions | CNOP | 使用あり | HA104A | - |  |
 | Assembler instructions | COM | 未網羅 |  | - |  |
 | Assembler instructions | COPY | 未網羅 |  | - |  |
-| Assembler instructions | CSECT | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 136 | - |  |
+| Assembler instructions | CSECT | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 141 | - |  |
 | Assembler instructions | CXD | 未網羅 |  | - |  |
-| Assembler instructions | DC | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 97 | - |  |
+| Assembler instructions | DC | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 102 | - |  |
 | Assembler instructions | DROP | 使用あり | HA105A, HE118N, HSS02A, HSS03A, HSS04A | - |  |
-| Assembler instructions | DS | 使用あり | HA101A, HA102A, HA104A, HA105A, HA106A, HD101A ほか 133 | - |  |
+| Assembler instructions | DS | 使用あり | HA101A, HA102A, HA104A, HA105A, HA106A, HD101A ほか 138 | - |  |
 | Assembler instructions | DSECT | 使用あり | HA104A | - |  |
 | Assembler instructions | DXD | 未網羅 |  | - |  |
 | Assembler instructions | EJECT | 未網羅 |  | - |  |
-| Assembler instructions | END | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 136 | - |  |
+| Assembler instructions | END | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 141 | - |  |
 | Assembler instructions | ENTRY | 未網羅 |  | - |  |
 | Assembler instructions | EQU | 使用あり | HA101A, HA102A, HA104A, HE120N, HE120P | - |  |
 | Assembler instructions | EXITCTL | 未網羅 |  | - |  |
@@ -37,7 +37,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Assembler instructions | ICTL | 未網羅 |  | - |  |
 | Assembler instructions | ISEQ | 未網羅 |  | - |  |
 | Assembler instructions | LOCTR | 未網羅 |  | - |  |
-| Assembler instructions | LTORG | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 95 | - |  |
+| Assembler instructions | LTORG | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 100 | - |  |
 | Assembler instructions | MNOTE | 使用あり | HE119N, HE119P | - |  |
 | Assembler instructions | OPSYN | 使用あり | HM104A | - |  |
 | Assembler instructions | ORG | 使用あり | HA104A, HI110A | - |  |
@@ -57,7 +57,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | DC types | A | 使用あり | HA106A, HS102A, HS103A, HS104A, HS105A | - |  |
 | DC types | AD | 使用あり | HA106A | - |  |
 | DC types | B | 使用あり | HA103A, HE111N, HE111P | - |  |
-| DC types | C | 使用あり | HA103A, HD101A, HI110A, HI111A, HI114A, HM102A ほか 8 | - |  |
+| DC types | C | 使用あり | HA103A, HD101A, HI110A, HI111A, HI114A, HI117A ほか 9 | - |  |
 | DC types | CA | 使用あり | HA106A | - |  |
 | DC types | CE | 使用あり | HA106A | - |  |
 | DC types | CU | 使用あり | HA106A | - |  |
@@ -70,7 +70,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | DC types | ED | 使用あり | HF103A, HF237A, HF238A, HF239A, HF240A, HF241A ほか 1 | - |  |
 | DC types | EH | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A | - |  |
 | DC types | F | 使用あり | HA102A, HA103A, HA105A, HA106A, HD107A, HI106A ほか 11 | - |  |
-| DC types | FD | 使用あり | HA103A, HI105A, HI106A, HI112A, HI113A, HI114A ほか 1 | - |  |
+| DC types | FD | 使用あり | HA103A, HI105A, HI106A, HI112A, HI113A, HI114A ほか 2 | - |  |
 | DC types | G | 未網羅 |  | - |  |
 | DC types | H | 使用あり | HA103A, HD107A, HI106A, HI112A, HI114A, HI115A ほか 1 | - |  |
 | DC types | HD | 未網羅 |  | - |  |
@@ -90,7 +90,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | DC types | SY | 未網羅 |  | - |  |
 | DC types | V | 未網羅 |  | - |  |
 | DC types | VD | 未網羅 |  | - |  |
-| DC types | X | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 90 | - |  |
+| DC types | X | 使用あり | HA101A, HA102A, HA103A, HA104A, HA105A, HA106A ほか 95 | - |  |
 | DC types | Y | 使用あり | HA106A | - |  |
 | DC types | Z | 使用あり | HA103A, HD107A | - |  |
 | Conditional assembly | ACTR | 使用あり | HM106A, HM107A | - |  |
@@ -133,7 +133,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Conditional assembly | I' | 使用あり | HA102A | - |  |
 | Conditional assembly | K' | 使用あり | HE119P, HM101A, HM106A, HM107A | - |  |
 | Conditional assembly | N' | 使用あり | HM101A, HM105A, HM106A, HM107A | - |  |
-| Conditional assembly | D' | 使用あり | HA102A, HA103A, HD102A, HD104A, HD105A, HD106A ほか 37 | - |  |
+| Conditional assembly | D' | 使用あり | HA102A, HA103A, HD102A, HD104A, HD105A, HD106A ほか 38 | - |  |
 | Conditional assembly | O' | 使用あり | HM107A | - |  |
 | Conditional assembly | A2B | 使用あり | HM106A | - |  |
 | Conditional assembly | A2C | 使用あり | HM106A | - |  |
@@ -248,7 +248,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | CGF | 使用あり | HI114A | - |  |
 | Machine instructions | CGFI | 使用あり | HI114A | - |  |
 | Machine instructions | CGFR | 使用あり | HI114A | - |  |
-| Machine instructions | CGHI | 使用あり | HI114A | - |  |
+| Machine instructions | CGHI | 使用あり | HI114A, HI118A | - |  |
 | Machine instructions | CGR | 使用あり | HI107A | - |  |
 | Machine instructions | CH | 使用あり | HI114A | - |  |
 | Machine instructions | CHI | 使用あり | HI114A | - |  |
@@ -270,7 +270,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | CP | 使用あり | HD104A | - |  |
 | Machine instructions | CPDT | 未網羅 |  | - |  |
 | Machine instructions | CPXT | 未網羅 |  | - |  |
-| Machine instructions | CR | 使用あり | HI114A | - |  |
+| Machine instructions | CR | 使用あり | HI114A, HI117A | - |  |
 | Machine instructions | CS | 使用あり | HI105A | - |  |
 | Machine instructions | CSG | 未網羅 |  | - |  |
 | Machine instructions | CSST | 未網羅 |  | - |  |
@@ -316,19 +316,19 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | IC | 使用あり | HI111A, HSS03A | - |  |
 | Machine instructions | ICM | 使用あり | HE117N, HE117P, HI104A | - |  |
 | Machine instructions | ICMH | 使用あり | HI109A | - |  |
-| Machine instructions | ICMY | 未網羅 |  | - |  |
-| Machine instructions | ICY | 未網羅 |  | - |  |
+| Machine instructions | ICMY | 使用あり | HI117A | - |  |
+| Machine instructions | ICY | 使用あり | HI117A | - |  |
 | Machine instructions | IIHF | 使用あり | HI102A | - |  |
-| Machine instructions | IIHH | 未網羅 |  | - |  |
-| Machine instructions | IIHL | 未網羅 |  | - |  |
+| Machine instructions | IIHH | 使用あり | HI117A | - |  |
+| Machine instructions | IIHL | 使用あり | HI117A | - |  |
 | Machine instructions | IILF | 使用あり | HI102A | - |  |
-| Machine instructions | IILH | 未網羅 |  | - |  |
-| Machine instructions | IILL | 未網羅 |  | - |  |
-| Machine instructions | IPM | 使用あり | HD101A, HD103A, HD104A, HD105A, HD106A, HF201A ほか 62 | - |  |
+| Machine instructions | IILH | 使用あり | HI117A | - |  |
+| Machine instructions | IILL | 使用あり | HI117A | - |  |
+| Machine instructions | IPM | 使用あり | HD101A, HD103A, HD104A, HD105A, HD106A, HF201A ほか 66 | - |  |
 | Machine instructions | KDB | 未網羅 |  | - |  |
 | Machine instructions | KEB | 未網羅 |  | - |  |
 | Machine instructions | L | 使用あり | HA105A, HD102A, HE101N, HE101P, HE102N, HE102P ほか 69 | - |  |
-| Machine instructions | LA | 使用あり | HA104A, HA106A, HI102A, HI110A, HI111A, HS102A ほか 4 | - |  |
+| Machine instructions | LA | 使用あり | HA104A, HA106A, HI102A, HI110A, HI111A, HI117A ほか 5 | - |  |
 | Machine instructions | LAA | 未網羅 |  | - |  |
 | Machine instructions | LAAG | 使用あり | HI105A | - |  |
 | Machine instructions | LAAL | 未網羅 |  | - |  |
@@ -338,10 +338,10 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | LANG | 未網羅 |  | - |  |
 | Machine instructions | LAO | 未網羅 |  | - |  |
 | Machine instructions | LAOG | 未網羅 |  | - |  |
-| Machine instructions | LARL | 未網羅 |  | - |  |
+| Machine instructions | LARL | 使用あり | HI117A | - |  |
 | Machine instructions | LAX | 未網羅 |  | - |  |
 | Machine instructions | LAXG | 未網羅 |  | - |  |
-| Machine instructions | LAY | 未網羅 |  | - |  |
+| Machine instructions | LAY | 使用あり | HI117A | - |  |
 | Machine instructions | LB | 使用あり | HI116A | - |  |
 | Machine instructions | LBR | 使用あり | HI116A | - |  |
 | Machine instructions | LCDR | 未網羅 |  | - |  |
@@ -355,14 +355,14 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | LEDR | 未網羅 |  | - |  |
 | Machine instructions | LER | 未網羅 |  | - |  |
 | Machine instructions | LFPC | 未網羅 |  | - |  |
-| Machine instructions | LG | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A ほか 61 | - |  |
+| Machine instructions | LG | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A ほか 66 | - |  |
 | Machine instructions | LGB | 使用あり | HI116A | - |  |
 | Machine instructions | LGBR | 使用あり | HI116A | - |  |
 | Machine instructions | LGF | 使用あり | HI106A | - |  |
 | Machine instructions | LGFI | 使用あり | HI116A | - |  |
 | Machine instructions | LGFR | 使用あり | HD102A | - |  |
 | Machine instructions | LGH | 使用あり | HI106A | - |  |
-| Machine instructions | LGHI | 使用あり | HA101A, HA102A, HA104A, HE107N, HE107P, HI101A ほか 14 | - |  |
+| Machine instructions | LGHI | 使用あり | HA101A, HA102A, HA104A, HE107N, HE107P, HI101A ほか 15 | - |  |
 | Machine instructions | LGR | 使用あり | HS101A | - |  |
 | Machine instructions | LH | 使用あり | HI116A | - |  |
 | Machine instructions | LHI | 使用あり | HI111A | - |  |
@@ -381,21 +381,21 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | LLILH | 使用あり | HI116A | - |  |
 | Machine instructions | LLILL | 使用あり | HI116A | - |  |
 | Machine instructions | LM | 使用あり | HSS02A, HSS03A, HSS04A | - |  |
-| Machine instructions | LMG | 未網羅 |  | - |  |
-| Machine instructions | LMY | 未網羅 |  | - |  |
+| Machine instructions | LMG | 使用あり | HI117A | - |  |
+| Machine instructions | LMY | 使用あり | HI117A | - |  |
 | Machine instructions | LNDR | 未網羅 |  | - |  |
 | Machine instructions | LNER | 未網羅 |  | - |  |
 | Machine instructions | LNGR | 使用あり | HI106A | - |  |
 | Machine instructions | LNR | 使用あり | HI116A | - |  |
-| Machine instructions | LOC | 未網羅 |  | - |  |
-| Machine instructions | LOCFH | 未網羅 |  | - |  |
-| Machine instructions | LOCFHR | 未網羅 |  | - |  |
-| Machine instructions | LOCG | 未網羅 |  | - |  |
-| Machine instructions | LOCGHI | 未網羅 |  | - |  |
-| Machine instructions | LOCGR | 未網羅 |  | - |  |
-| Machine instructions | LOCHHI | 未網羅 |  | - |  |
-| Machine instructions | LOCHI | 未網羅 |  | - |  |
-| Machine instructions | LOCR | 未網羅 |  | - |  |
+| Machine instructions | LOC | 使用あり | HI118A | - |  |
+| Machine instructions | LOCFH | 使用あり | HI118A | - |  |
+| Machine instructions | LOCFHR | 使用あり | HI118A | - |  |
+| Machine instructions | LOCG | 使用あり | HI118A | - |  |
+| Machine instructions | LOCGHI | 使用あり | HI118A | - |  |
+| Machine instructions | LOCGR | 使用あり | HI118A | - |  |
+| Machine instructions | LOCHHI | 使用あり | HI118A | - |  |
+| Machine instructions | LOCHI | 使用あり | HI118A | - |  |
+| Machine instructions | LOCR | 使用あり | HI118A | - |  |
 | Machine instructions | LPD | 未網羅 |  | - |  |
 | Machine instructions | LPDG | 未網羅 |  | - |  |
 | Machine instructions | LPDR | 未網羅 |  | - |  |
@@ -405,11 +405,11 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | LPR | 使用あり | HI116A | - |  |
 | Machine instructions | LR | 使用あり | HA105A, HE101N, HE101P, HE102N, HE102P, HE103N ほか 38 | - |  |
 | Machine instructions | LRDR | 未網羅 |  | - |  |
-| Machine instructions | LRV | 未網羅 |  | - |  |
+| Machine instructions | LRV | 使用あり | HI118A | - |  |
 | Machine instructions | LRVG | 使用あり | HI102A | - |  |
-| Machine instructions | LRVGR | 未網羅 |  | - |  |
-| Machine instructions | LRVH | 未網羅 |  | - |  |
-| Machine instructions | LRVR | 未網羅 |  | - |  |
+| Machine instructions | LRVGR | 使用あり | HI118A | - |  |
+| Machine instructions | LRVH | 使用あり | HI118A | - |  |
+| Machine instructions | LRVR | 使用あり | HI118A | - |  |
 | Machine instructions | LTDR | 未網羅 |  | - |  |
 | Machine instructions | LTER | 未網羅 |  | - |  |
 | Machine instructions | LTGR | 使用あり | HI116A | - |  |
@@ -443,7 +443,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | MSG | 使用あり | HI115A | - |  |
 | Machine instructions | MSGR | 使用あり | HI115A | - |  |
 | Machine instructions | MSY | 使用あり | HI115A | - |  |
-| Machine instructions | MVC | 使用あり | HA106A, HD101A, HD103A, HD105A, HD106A, HD107A ほか 6 | - |  |
+| Machine instructions | MVC | 使用あり | HA106A, HD101A, HD103A, HD105A, HD106A, HD107A ほか 9 | - |  |
 | Machine instructions | MVCL | 使用あり | HI110A | - |  |
 | Machine instructions | MVCLE | 未網羅 |  | - |  |
 | Machine instructions | MVI | 使用あり | HE106N, HE106P | - |  |
@@ -456,48 +456,48 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | MXDB | 未網羅 |  | - |  |
 | Machine instructions | MXDR | 未網羅 |  | - |  |
 | Machine instructions | MXR | 未網羅 |  | - |  |
-| Machine instructions | N | 使用あり | HA104A, HA106A, HD101A, HD103A, HD104A, HD105A ほか 63 | - |  |
+| Machine instructions | N | 使用あり | HA104A, HA106A, HD101A, HD103A, HD104A, HD105A ほか 64 | - |  |
 | Machine instructions | NC | 使用あり | HD101A | - |  |
-| Machine instructions | NCGRK | 未網羅 |  | - |  |
-| Machine instructions | NCRK | 未網羅 |  | - |  |
-| Machine instructions | NG | 未網羅 |  | - |  |
-| Machine instructions | NGR | 使用あり | HI116A | - |  |
-| Machine instructions | NGRK | 未網羅 |  | - |  |
-| Machine instructions | NI | 未網羅 |  | - |  |
-| Machine instructions | NIHF | 未網羅 |  | - |  |
-| Machine instructions | NIHH | 未網羅 |  | - |  |
-| Machine instructions | NIHL | 未網羅 |  | - |  |
-| Machine instructions | NILF | 未網羅 |  | - |  |
-| Machine instructions | NILH | 未網羅 |  | - |  |
-| Machine instructions | NILL | 未網羅 |  | - |  |
-| Machine instructions | NIY | 未網羅 |  | - |  |
-| Machine instructions | NNGRK | 未網羅 |  | - |  |
-| Machine instructions | NNRK | 未網羅 |  | - |  |
-| Machine instructions | NOGRK | 未網羅 |  | - |  |
-| Machine instructions | NORK | 未網羅 |  | - |  |
-| Machine instructions | NR | 未網羅 |  | - |  |
-| Machine instructions | NRK | 未網羅 |  | - |  |
-| Machine instructions | NXGRK | 未網羅 |  | - |  |
-| Machine instructions | NXRK | 未網羅 |  | - |  |
-| Machine instructions | NY | 未網羅 |  | - |  |
-| Machine instructions | O | 未網羅 |  | - |  |
+| Machine instructions | NCGRK | 使用あり | HI121A | - |  |
+| Machine instructions | NCRK | 使用あり | HI121A | - |  |
+| Machine instructions | NG | 使用あり | HI119A | - |  |
+| Machine instructions | NGR | 使用あり | HI116A, HI119A | - |  |
+| Machine instructions | NGRK | 使用あり | HI121A | - |  |
+| Machine instructions | NI | 使用あり | HI119A | - |  |
+| Machine instructions | NIHF | 使用あり | HI119A | - |  |
+| Machine instructions | NIHH | 使用あり | HI119A | - |  |
+| Machine instructions | NIHL | 使用あり | HI119A | - |  |
+| Machine instructions | NILF | 使用あり | HI119A | - |  |
+| Machine instructions | NILH | 使用あり | HI119A | - |  |
+| Machine instructions | NILL | 使用あり | HI119A | - |  |
+| Machine instructions | NIY | 使用あり | HI119A | - |  |
+| Machine instructions | NNGRK | 使用あり | HI121A | - |  |
+| Machine instructions | NNRK | 使用あり | HI121A | - |  |
+| Machine instructions | NOGRK | 使用あり | HI121A | - |  |
+| Machine instructions | NORK | 使用あり | HI121A | - |  |
+| Machine instructions | NR | 使用あり | HI119A | - |  |
+| Machine instructions | NRK | 使用あり | HI121A | - |  |
+| Machine instructions | NXGRK | 使用あり | HI121A | - |  |
+| Machine instructions | NXRK | 使用あり | HI121A | - |  |
+| Machine instructions | NY | 使用あり | HI119A | - |  |
+| Machine instructions | O | 使用あり | HI120A | - |  |
 | Machine instructions | OC | 使用あり | HD101A | - |  |
-| Machine instructions | OCGRK | 未網羅 |  | - |  |
-| Machine instructions | OCRK | 未網羅 |  | - |  |
-| Machine instructions | OG | 未網羅 |  | - |  |
-| Machine instructions | OGR | 使用あり | HI116A | - |  |
-| Machine instructions | OGRK | 未網羅 |  | - |  |
+| Machine instructions | OCGRK | 使用あり | HI121A | - |  |
+| Machine instructions | OCRK | 使用あり | HI121A | - |  |
+| Machine instructions | OG | 使用あり | HI120A | - |  |
+| Machine instructions | OGR | 使用あり | HI116A, HI120A | - |  |
+| Machine instructions | OGRK | 使用あり | HI121A | - |  |
 | Machine instructions | OI | 使用あり | HS105A | - |  |
-| Machine instructions | OIHF | 未網羅 |  | - |  |
-| Machine instructions | OIHH | 未網羅 |  | - |  |
-| Machine instructions | OIHL | 未網羅 |  | - |  |
-| Machine instructions | OILF | 未網羅 |  | - |  |
-| Machine instructions | OILH | 未網羅 |  | - |  |
-| Machine instructions | OILL | 未網羅 |  | - |  |
-| Machine instructions | OIY | 未網羅 |  | - |  |
-| Machine instructions | OR | 未網羅 |  | - |  |
-| Machine instructions | ORK | 未網羅 |  | - |  |
-| Machine instructions | OY | 未網羅 |  | - |  |
+| Machine instructions | OIHF | 使用あり | HI120A | - |  |
+| Machine instructions | OIHH | 使用あり | HI120A | - |  |
+| Machine instructions | OIHL | 使用あり | HI120A | - |  |
+| Machine instructions | OILF | 使用あり | HI120A | - |  |
+| Machine instructions | OILH | 使用あり | HI120A | - |  |
+| Machine instructions | OILL | 使用あり | HI120A | - |  |
+| Machine instructions | OIY | 使用あり | HI120A | - |  |
+| Machine instructions | OR | 使用あり | HI120A | - |  |
+| Machine instructions | ORK | 使用あり | HI121A | - |  |
+| Machine instructions | OY | 使用あり | HI120A | - |  |
 | Machine instructions | PACK | 使用あり | HD104A | - |  |
 | Machine instructions | PFPO | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A ほか 48 | - |  |
 | Machine instructions | POPCNT | 使用あり | HI103A | - |  |
@@ -519,9 +519,9 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | SDR | 未網羅 |  | - |  |
 | Machine instructions | SE | 未網羅 |  | - |  |
 | Machine instructions | SEB | 未網羅 |  | - |  |
-| Machine instructions | SELFHR | 未網羅 |  | - |  |
-| Machine instructions | SELGR | 未網羅 |  | - |  |
-| Machine instructions | SELR | 未網羅 |  | - |  |
+| Machine instructions | SELFHR | 使用あり | HI118A | - |  |
+| Machine instructions | SELGR | 使用あり | HI118A | - |  |
+| Machine instructions | SELR | 使用あり | HI118A | - |  |
 | Machine instructions | SER | 未網羅 |  | - |  |
 | Machine instructions | SFPC | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A ほか 48 | - |  |
 | Machine instructions | SG | 使用あり | HI106A | - |  |
@@ -557,7 +557,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | SRDA | 使用あり | HI111A | - |  |
 | Machine instructions | SRDL | 未網羅 |  | - |  |
 | Machine instructions | SRDT | 未網羅 |  | - |  |
-| Machine instructions | SRL | 使用あり | HD101A, HD103A, HD104A, HD105A, HD106A, HF201A ほか 62 | - |  |
+| Machine instructions | SRL | 使用あり | HD101A, HD103A, HD104A, HD105A, HD106A, HF201A ほか 66 | - |  |
 | Machine instructions | SRLG | 使用あり | HI108A | - |  |
 | Machine instructions | SRNM | 未網羅 |  | - |  |
 | Machine instructions | SRNMB | 未網羅 |  | - |  |
@@ -565,30 +565,30 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | SRP | 使用あり | HE115N, HE115P | - |  |
 | Machine instructions | SRST | 使用あり | HI110A | - |  |
 | Machine instructions | SRXT | 未網羅 |  | - |  |
-| Machine instructions | ST | 使用あり | HA106A, HF201A, HF202A, HF203A, HF204A, HF205A ほか 58 | - |  |
+| Machine instructions | ST | 使用あり | HA106A, HF201A, HF202A, HF203A, HF204A, HF205A ほか 62 | - |  |
 | Machine instructions | STAM | 未網羅 |  | - |  |
-| Machine instructions | STC | 未網羅 |  | - |  |
+| Machine instructions | STC | 使用あり | HI117A | - |  |
 | Machine instructions | STCM | 使用あり | HI111A | - |  |
-| Machine instructions | STCMH | 未網羅 |  | - |  |
-| Machine instructions | STCMY | 未網羅 |  | - |  |
-| Machine instructions | STCY | 未網羅 |  | - |  |
+| Machine instructions | STCMH | 使用あり | HI117A | - |  |
+| Machine instructions | STCMY | 使用あり | HI117A | - |  |
+| Machine instructions | STCY | 使用あり | HI117A | - |  |
 | Machine instructions | STD | 使用あり | HF101A, HF102A, HF103A, HF201A, HF202A, HF203A ほか 51 | - |  |
 | Machine instructions | STE | 未網羅 |  | - |  |
 | Machine instructions | STFPC | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A ほか 48 | - |  |
-| Machine instructions | STG | 使用あり | HA101A, HA102A, HA104A, HA105A, HD101A, HD102A ほか 80 | - |  |
-| Machine instructions | STH | 未網羅 |  | - |  |
-| Machine instructions | STHY | 未網羅 |  | - |  |
+| Machine instructions | STG | 使用あり | HA101A, HA102A, HA104A, HA105A, HD101A, HD102A ほか 85 | - |  |
+| Machine instructions | STH | 使用あり | HI117A | - |  |
+| Machine instructions | STHY | 使用あり | HI117A | - |  |
 | Machine instructions | STM | 使用あり | HI111A, HSS02A, HSS03A, HSS04A | - |  |
-| Machine instructions | STMG | 未網羅 |  | - |  |
-| Machine instructions | STMY | 未網羅 |  | - |  |
-| Machine instructions | STOC | 未網羅 |  | - |  |
-| Machine instructions | STOCFH | 未網羅 |  | - |  |
-| Machine instructions | STOCG | 未網羅 |  | - |  |
+| Machine instructions | STMG | 使用あり | HI117A | - |  |
+| Machine instructions | STMY | 使用あり | HI117A | - |  |
+| Machine instructions | STOC | 使用あり | HI118A | - |  |
+| Machine instructions | STOCFH | 使用あり | HI118A | - |  |
+| Machine instructions | STOCG | 使用あり | HI118A | - |  |
 | Machine instructions | STPQ | 未網羅 |  | - |  |
-| Machine instructions | STRV | 未網羅 |  | - |  |
+| Machine instructions | STRV | 使用あり | HI118A | - |  |
 | Machine instructions | STRVG | 使用あり | HI102A | - |  |
-| Machine instructions | STRVH | 未網羅 |  | - |  |
-| Machine instructions | STY | 未網羅 |  | - |  |
+| Machine instructions | STRVH | 使用あり | HI118A | - |  |
+| Machine instructions | STY | 使用あり | HI117A | - |  |
 | Machine instructions | SU | 未網羅 |  | - |  |
 | Machine instructions | SUR | 未網羅 |  | - |  |
 | Machine instructions | SW | 未網羅 |  | - |  |
@@ -605,27 +605,27 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Machine instructions | TDGET | 未網羅 |  | - |  |
 | Machine instructions | TDGXT | 未網羅 |  | - |  |
 | Machine instructions | TM | 使用あり | HI110A | - |  |
-| Machine instructions | TMHH | 未網羅 |  | - |  |
-| Machine instructions | TMHL | 未網羅 |  | - |  |
-| Machine instructions | TMLH | 未網羅 |  | - |  |
-| Machine instructions | TMLL | 未網羅 |  | - |  |
-| Machine instructions | TMY | 未網羅 |  | - |  |
+| Machine instructions | TMHH | 使用あり | HI119A | - |  |
+| Machine instructions | TMHL | 使用あり | HI119A | - |  |
+| Machine instructions | TMLH | 使用あり | HI119A | - |  |
+| Machine instructions | TMLL | 使用あり | HI119A | - |  |
+| Machine instructions | TMY | 使用あり | HI119A | - |  |
 | Machine instructions | TP | 使用あり | HD104A, HD105A, HD106A, HE109N, HE109P, HS105A | - |  |
 | Machine instructions | TR | 使用あり | HI110A | - |  |
 | Machine instructions | TRT | 使用あり | HI110A | - |  |
 | Machine instructions | TRTR | 未網羅 |  | - |  |
 | Machine instructions | TS | 未網羅 |  | - |  |
 | Machine instructions | UNPK | 使用あり | HD104A, HS105A | - |  |
-| Machine instructions | X | 使用あり | HE120N, HE120P | - |  |
-| Machine instructions | XC | 使用あり | HD101A, HI112A, HI113A, HI114A, HI115A, HI116A | - |  |
-| Machine instructions | XG | 未網羅 |  | - |  |
-| Machine instructions | XGR | 未網羅 |  | - |  |
-| Machine instructions | XGRK | 使用あり | HI103A | - |  |
-| Machine instructions | XI | 未網羅 |  | - |  |
-| Machine instructions | XIHF | 未網羅 |  | - |  |
-| Machine instructions | XILF | 未網羅 |  | - |  |
-| Machine instructions | XIY | 未網羅 |  | - |  |
+| Machine instructions | X | 使用あり | HE120N, HE120P, HI120A | - |  |
+| Machine instructions | XC | 使用あり | HD101A, HI112A, HI113A, HI114A, HI115A, HI116A ほか 5 | - |  |
+| Machine instructions | XG | 使用あり | HI120A | - |  |
+| Machine instructions | XGR | 使用あり | HI120A | - |  |
+| Machine instructions | XGRK | 使用あり | HI103A, HI121A | - |  |
+| Machine instructions | XI | 使用あり | HI120A | - |  |
+| Machine instructions | XIHF | 使用あり | HI120A | - |  |
+| Machine instructions | XILF | 使用あり | HI120A | - |  |
+| Machine instructions | XIY | 使用あり | HI120A | - |  |
 | Machine instructions | XR | 使用あり | HF201A, HF202A, HF203A, HF204A, HF205A, HF206A ほか 52 | - |  |
-| Machine instructions | XRK | 未網羅 |  | - |  |
-| Machine instructions | XY | 未網羅 |  | - |  |
+| Machine instructions | XRK | 使用あり | HI121A | - |  |
+| Machine instructions | XY | 使用あり | HI120A | - |  |
 | Machine instructions | ZAP | 使用あり | HD104A, HE108N, HE108P | - |  |

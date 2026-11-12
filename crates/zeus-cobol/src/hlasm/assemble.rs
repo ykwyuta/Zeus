@@ -306,6 +306,7 @@ pub(super) fn canonical_operation(op: &str) -> &str {
         "TMY" => "TM",
         "CVBY" => "CVB",
         "CVDY" => "CVD",
+        "LAY" => "LA",
         _ => op,
     }
 }

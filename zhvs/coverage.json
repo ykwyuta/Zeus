@@ -1243,6 +1243,112 @@
       "LTGR"
     ]
   },
+  "HI117A": {
+    "expect": "run",
+    "tests": [
+      "STMG-LMG",
+      "STMY-LMY",
+      "STC-LOW-BYTE",
+      "STCY",
+      "STH-STHY",
+      "STY",
+      "STCMH-MASK",
+      "STCMY-MASK",
+      "ICMY-LEFT-ONE",
+      "ICMY-ZERO-MASK",
+      "ICY",
+      "IIHH-IIHL",
+      "IILH-IILL",
+      "LAY-NEGATIVE-DISP",
+      "LARL-SAME-AS-LA"
+    ]
+  },
+  "HI118A": {
+    "expect": "run",
+    "tests": [
+      "LRV",
+      "LRVR",
+      "LRVGR",
+      "LRVH",
+      "STRV-STRVH",
+      "LOCR-TAKEN",
+      "LOCR-NOT-TAKEN",
+      "LOCGR",
+      "LOC-LOCG",
+      "LOCHI-LOCGHI",
+      "LOCHHI",
+      "LOCFH-LOCFHR",
+      "STOC-STOCG",
+      "STOCFH",
+      "SELR",
+      "SELGR",
+      "SELFHR"
+    ]
+  },
+  "HI119A": {
+    "expect": "run",
+    "tests": [
+      "N",
+      "NR-ZERO",
+      "NY",
+      "NG",
+      "NGR",
+      "NI-NIY",
+      "NIHF",
+      "NIHH-ZERO",
+      "NIHL",
+      "NILF",
+      "NILH-NILL",
+      "TMLL-MIXED-LEFT-ONE",
+      "TMLL-MIXED-LEFT-ZERO",
+      "TMLH-ONES",
+      "TMHH-ZEROS",
+      "TMHL",
+      "TMY-MIXED"
+    ]
+  },
+  "HI120A": {
+    "expect": "run",
+    "tests": [
+      "O",
+      "OR-ZERO",
+      "OY",
+      "OG",
+      "OGR",
+      "OIY",
+      "OIHF",
+      "OIHH-OIHL",
+      "OILF",
+      "OILH-OILL",
+      "X",
+      "XY-ZERO",
+      "XG",
+      "XGR-SELF",
+      "XI-XIY",
+      "XIHF-XILF"
+    ]
+  },
+  "HI121A": {
+    "expect": "run",
+    "tests": [
+      "NRK",
+      "NGRK",
+      "ORK",
+      "OGRK",
+      "XRK",
+      "XGRK",
+      "NCRK",
+      "NCGRK",
+      "OCRK",
+      "OCGRK",
+      "NNRK",
+      "NNGRK",
+      "NORK",
+      "NOGRK",
+      "NXRK",
+      "NXGRK"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [
