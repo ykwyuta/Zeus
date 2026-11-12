@@ -30,6 +30,29 @@
 した。ただしこれは README の主張をそのまま写したもので、網羅台帳を作るときに
 モジュールごとに読み直し、公式文書から決まらないものは `zos` に移す。
 
+## 出典 (裏付け)
+
+根拠が `spec` でも、どの文書のどこで値が決まるかを書かなければ裏付けにならない。
+各検査は `basis.json` の `refs` に出典を持つ (検査に無ければプログラムの出典を使う)。
+
+```json
+"ZA118A": {
+  "basis": "spec",
+  "refs": [
+    "COB-LRM: SIZE ERROR phrases | If the resultant identifier is defined with usage BINARY, ..."
+  ]
+}
+```
+
+- 出典は `"文書ID: 見出し"` か `"文書ID: 見出し | 本文の引用"`。文書 ID は
+  [`docs/sources.json`](sources.json) に版 (資料番号) と URL と sha256 で固定する。
+- `zos` の検査は、値を決めていない (未定義・処理系定義と書いてある、または書いていない)
+  箇所を出典にする。
+- 文書はリポジトリに入れない。`tools/basis-refs.py fetch --docs DIR` で取り、
+  `tools/basis-refs.py check --docs DIR` で見出しが文書にあること、引用がその見出しの
+  あとの本文にそのままあることを確かめる。`report` は出典の付いた検査を数える。
+- 照合で文書と食い違った検査は、文書に合わせて検査と Zeus を直す (例: `ZA118A`)。
+
 ## 網羅台帳
 
 `docs/inventory/` に言語ごとの台帳を置き、`tools/suite-inventory.py [--ccvs85 newcob.val]`
@@ -127,3 +150,4 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | 2026-11-12 | `PM111A` (spec 13)。Zeus に ADDRDATA・BITLOCATION・CS/CDS・POINTERSUBTRACT・OFFSET 系・RANK・EXPONENT・SCALE・SECSTODATE を実装。リスト制御・ダンプ・再始動など 14 個を対象外にした。ZPVS の未網羅 107 → 80 | | 79 本 / 455 | |
 | 2026-11-12 | `PM112A` (spec 37)。Zeus に BETWEEN 系・INLIST・IFTHENELSE・ICLZ・IRLL/IRRL・LOWER2・POPCNT・ISIGNED/IUNSIGNED・ROUNDAWAYFROMZERO/ROUNDTOEVEN・MAXVAL/MINVAL・PRED/SUCC・PLACES・PRECVAL/SCALEVAL・Y4DATE 系・REPLACEBY2・HEXIMAGE・COMPARE・LOCATION・ERF/ERFC/GAMMA/LOGGAMMA・ONCONDID/ONCONDCOND を実装 (期待値は LRM 6.1 の本文と例) | | 80 本 / 492 | |
 | 2026-11-12 | `PM113A` (spec 25)。Zeus に文字列とバッファーの関数 27 個 (COLLAPSE・SQUEEZE・INDEXR・REPLACE・SCRUBOUT・UNHEX・HEX8・MEM 系・WS 系・HEXENCODE/DECODE・BASE64 系・WHEREDIFF) を実装 | | 81 本 / 517 | |
+| 2026-11-12 | 出典の仕組み (`docs/sources.json`・`tools/basis-refs.py`・`refs`)。ZA/ZD の 41 本を文書と照合。`ZA118A` は LRM「SIZE ERROR phrases」(BINARY/COMP-5 の上限は TRUNC に依らず PICTURE) と食い違っていたので検査と Zeus を直した。`ZA120A` の表示形 (仮数の桁の置き方は文書に無い)、`ZA113A`/`ZA114A` の +0 を `zos`/注記つきにした | 169 本 / 1,555 | | |

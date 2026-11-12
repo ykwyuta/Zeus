@@ -12,6 +12,13 @@
 //!
 //! A program entry gives the default; `tests` overrides single checks.
 //! `zos` and `zeus` need a `note` that says what must be confirmed or adapted.
+//!
+//! `refs` cite the published documents (`docs/sources.json`) that decide the
+//! value, or, for `zos`, the place that leaves it open: `"DOC: heading"` or
+//! `"DOC: heading | quotation"`. A check's refs are its own, else its
+//! program's. `tools/basis-refs.py check` confirms the headings and the
+//! quotations against the documents themselves, which the repository does
+//! not hold.
 
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -19,6 +26,8 @@ use std::collections::{BTreeMap, BTreeSet};
 pub struct TestBasis {
     pub basis: String,
     pub note: Option<String>,
+    #[serde(default)]
+    pub refs: Vec<String>,
 }
 
 #[derive(Debug, serde::Deserialize)]
@@ -26,7 +35,34 @@ pub struct ProgramBasis {
     pub basis: String,
     pub note: Option<String>,
     #[serde(default)]
+    pub refs: Vec<String>,
+    #[serde(default)]
     pub tests: BTreeMap<String, TestBasis>,
+}
+
+/// The document identifiers of `docs/sources.json`.
+fn documents() -> BTreeSet<String> {
+    let sources: BTreeMap<String, serde_json::Value> =
+        serde_json::from_str(include_str!("../../../../docs/sources.json"))
+            .expect("parse docs/sources.json");
+    sources.into_keys().collect()
+}
+
+fn check_refs(what: &str, refs: &[String], docs: &BTreeSet<String>) {
+    for r in refs {
+        let (doc, rest) = r
+            .split_once(':')
+            .unwrap_or_else(|| panic!("{what}: reference without a document: {r}"));
+        assert!(
+            docs.contains(doc.trim()),
+            "{what}: {doc} is not in docs/sources.json"
+        );
+        let heading = rest.split('|').next().unwrap_or("").trim();
+        assert!(
+            !heading.is_empty(),
+            "{what}: reference without a heading: {r}"
+        );
+    }
 }
 
 fn check_kind(what: &str, basis: &str, note: &Option<String>) {
@@ -57,9 +93,11 @@ pub fn verify(
         programs, based,
         "{suite}/basis.json must name every program"
     );
+    let docs = documents();
     let mut counts = BTreeMap::new();
     for (program, entry) in &ledger {
         check_kind(program, &entry.basis, &entry.note);
+        check_refs(program, &entry.refs, &docs);
         let tests = &coverage[program];
         for (id, test) in &entry.tests {
             assert!(
@@ -67,13 +105,22 @@ pub fn verify(
                 "{suite}/basis.json: {program} has no check {id}"
             );
             check_kind(&format!("{program} {id}"), &test.basis, &test.note);
+            check_refs(&format!("{program} {id}"), &test.refs, &docs);
         }
         for id in tests {
-            let basis = entry.tests.get(id).map_or(&entry.basis, |t| &t.basis);
+            let test = entry.tests.get(id);
+            let basis = test.map_or(&entry.basis, |t| &t.basis);
             *counts.entry(basis.clone()).or_insert(0) += 1;
+            let cited = test.is_some_and(|t| !t.refs.is_empty()) || !entry.refs.is_empty();
+            if cited {
+                *counts.entry("cited".into()).or_insert(0) += 1;
+            }
         }
         if tests.is_empty() {
             *counts.entry(entry.basis.clone()).or_insert(0) += 1;
+            if !entry.refs.is_empty() {
+                *counts.entry("cited".into()).or_insert(0) += 1;
+            }
         }
     }
     counts

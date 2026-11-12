@@ -201,7 +201,9 @@ pub fn would_overflow(t: &NumType, len: usize, v: Dec, rounded: bool) -> bool {
     if t.usage == NumUsage::Native {
         let (lo, hi) = binary::range(len, t.signed);
         let raw = if t.signed { raw } else { raw.abs() };
-        return raw < lo || raw > hi;
+        // the PICTURE limits the size error test even for native binary
+        // (Language Reference, SIZE ERROR phrases)
+        return raw < lo || raw > hi || raw.abs() >= capacity(t);
     }
     raw.abs() >= capacity(t)
 }
@@ -218,9 +220,11 @@ pub fn store_raw(t: &NumType, bytes: &mut [u8], raw: i128) -> bool {
     if t.usage == NumUsage::Native {
         let raw = if t.signed { raw } else { raw.abs() };
         let (lo, hi) = binary::range(bytes.len(), t.signed);
-        // MOVE truncates at the storage boundary, including the sign bit.
+        // MOVE truncates at the storage boundary, including the sign bit;
+        // the size error test still uses the PICTURE (Language Reference,
+        // SIZE ERROR phrases).
         binary::write(bytes, raw);
-        return raw < lo || raw > hi;
+        return raw < lo || raw > hi || raw.abs() >= capacity(t);
     }
     let cap = capacity(t);
     let overflow = raw.abs() >= cap;

@@ -19,7 +19,7 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 | `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX110A` (10) |
 | `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE145N`, `ZE126P` .. `ZE145P` (65) |
 
-The suite contains 169 main programs: 104 runtime programs with 1,546 assertions,
+The suite contains 169 main programs: 104 runtime programs with 1,555 assertions,
 45 negative compile checks, and 20 successful-compilation controls. Cargo tests
 run both Zeus backends and require the exact program set, assertion IDs in
 report order, counts, and zero deleted/manual checks. They rebuild `zcobc` and

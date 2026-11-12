@@ -1,73 +1,642 @@
 {
   "ZA101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: TRUNC | When TRUNC(STD) is in effect, the final result of an arithmetic expression, or the sending field in the MOVE statement, is truncated to the number of digits in the PICTURE clause of the BINARY receiving field.",
+      "COB-LRM: BINARY | 1 through 4 2 bytes (halfword)"
+    ],
+    "tests": {
+      "TSTD-S4-ADD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the ON SIZE ERROR phrase is not specified and a size error condition occurs, truncation rules apply and the value of the affected resultant identifier is computed."
+        ]
+      },
+      "TSTD-S2-SZERR": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | the largest value that the resultant data item can contain is the value implied by the item's decimal PICTURE character-string, regardless of the TRUNC compiler option in effect."
+        ]
+      },
+      "TSTD-COMP5-EXEMPT": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: TRUNC | TRUNC has no effect on COMP-5 data items; COMP-5 items are handled as if TRUNC(BIN) is in effect"
+        ]
+      }
+    }
   },
   "ZA102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: TRUNC | When TRUNC(OPT) is in effect, the compiler assumes that data conforms to PICTURE specifications in USAGE BINARY receiving fields",
+      "COB-LRM: BINARY | 5 through 9 4 bytes (fullword)"
+    ],
+    "tests": {
+      "TOPT-FW-DIV": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: REMAINDER phrase | The result of subtracting the product of the quotient and the divisor from the dividend is stored in identifier-4."
+        ]
+      }
+    }
   },
   "ZA103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: TRUNC | BINARY receiving fields are truncated only at halfword, fullword, or doubleword boundaries.",
+      "COB-LRM: BINARY | 1 through 4 2 bytes (halfword)"
+    ],
+    "tests": {
+      "TBIN-HW-ARITH": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: TRUNC | DISPLAY will convert the entire content of binary fields with no truncation."
+        ]
+      }
+    }
   },
   "ZA104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: Appendix A. Intermediate results and arithmetic",
+      "COB-LRM: Arithmetic statements"
+    ],
+    "tests": {
+      "DEC-INTERM-PREC": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+        ]
+      },
+      "DEC-DIV-REM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: REMAINDER phrase | The result of subtracting the product of the quotient and the divisor from the dividend is stored in identifier-4."
+        ]
+      }
+    }
   },
   "ZA105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIZE ERROR phrases | If the ON SIZE ERROR phrase is specified and a size error condition occurs, the value of the resultant identifier affected by the size error is not altered"
+    ],
+    "tests": {
+      "RND-POS-HALFUP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | When the size of the fractional result exceeds the number of places provided for its storage, truncation occurs unless ROUNDED is specified."
+        ]
+      },
+      "RND-NEG-HALFUP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | When the size of the fractional result exceeds the number of places provided for its storage, truncation occurs unless ROUNDED is specified."
+        ]
+      },
+      "NOSZERR-ADD-OK": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the NOT ON SIZE ERROR phrase has been specified and, after execution of an arithmetic operation, a size error condition does not exist, the NOT ON SIZE ERROR phrase is executed."
+        ]
+      },
+      "SZERR-DIV-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | When division by zero occurs."
+        ]
+      },
+      "SZERR-RND-CARRY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the ROUNDED phrase is specified, rounding takes place before size error checking."
+        ]
+      }
+    }
   },
   "ZA106A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Class condition | If its PICTURE does contain an operational sign, the identifier being tested is determined to be numeric only if the item is an elementary item, the contents are numeric, and a valid operational sign is present.",
+      "COB-PG: Checking for incompatible data (numeric class test) | Signed C, D, F C, D, +0 (positive zero)",
+      "COB-PG: NUMPROC | Default is: NUMPROC(NOPFD)"
+    ],
+    "tests": {
+      "NUM-SEP-CHECK": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Checking for incompatible data (numeric class test) | Separate sign +, - +, -, +0 (positive zero)"
+        ]
+      },
+      "SIGN-COND-CHECK": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Sign condition"
+        ]
+      }
+    }
   },
   "ZA107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: COMPUTATIONAL-1 or COMP-1 (floating-point) | COMP-1 items are 4 bytes long.",
+      "COB-PG: Formats for numeric data",
+      "POP: HFP Number Representation"
+    ]
   },
   "ZA108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "FN-SQRT-C2": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SQRT | The SQRT function returns a numeric value that approximates the square root of the argument specified."
+        ]
+      },
+      "FN-SIN-COS-0": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIN | The SIN function returns a numeric value that approximates the sine of the angle or arc specified by the",
+          "COB-LRM: COS | The COS function returns a numeric value that approximates the cosine of the angle or arc specified by"
+        ]
+      },
+      "FN-LOG10-FACT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LOG10",
+          "COB-LRM: FACTORIAL | The FACTORIAL function returns an integer that is the factorial of the argument specified."
+        ]
+      },
+      "FN-INT-MOD-REM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INTEGER | The INTEGER function returns the greatest integer value that is less than or equal to the argument",
+          "COB-LRM: INTEGER-PART | The INTEGER-PART function returns an integer that is the integer portion of the argument specified.",
+          "COB-LRM: MOD | The MOD function returns an integer value that is argument-1 modulo argument-2.",
+          "COB-LRM: REM | The REM function returns a numeric value that is the remainder of argument-1 divided by argument-2."
+        ]
+      },
+      "FN-NUMVAL-C": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NUMVAL",
+          "COB-LRM: NUMVAL-C"
+        ]
+      },
+      "FN-STATS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: MEAN | The MEAN function returns a numeric value that approximates the arithmetic average of its arguments.",
+          "COB-LRM: MEDIAN | The MEDIAN function returns the content of the argument whose value is the middle value in the list",
+          "COB-LRM: MAX | The MAX function returns the content of the argument that contains the maximum value.",
+          "COB-LRM: MIN | The MIN function returns the content of the argument that contains the minimum value."
+        ]
+      }
+    }
   },
   "ZA109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIZE ERROR phrases | If the ON SIZE ERROR phrase is specified and a size error condition occurs, the value of the resultant identifier affected by the size error is not altered"
+    ],
+    "tests": {
+      "ADD-UPPER": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the NOT ON SIZE ERROR phrase has been specified and, after execution of an arithmetic operation, a size error condition does not exist, the NOT ON SIZE ERROR phrase is executed."
+        ]
+      },
+      "SUB-LOWER": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the NOT ON SIZE ERROR phrase has been specified and, after execution of an arithmetic operation, a size error condition does not exist, the NOT ON SIZE ERROR phrase is executed."
+        ]
+      },
+      "MUL-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the NOT ON SIZE ERROR phrase has been specified and, after execution of an arithmetic operation, a size error condition does not exist, the NOT ON SIZE ERROR phrase is executed."
+        ]
+      },
+      "DIV-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the NOT ON SIZE ERROR phrase has been specified and, after execution of an arithmetic operation, a size error condition does not exist, the NOT ON SIZE ERROR phrase is executed."
+        ]
+      },
+      "DIV-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | When division by zero occurs."
+        ]
+      },
+      "COMP-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | When division by zero occurs."
+        ]
+      },
+      "ROUND-0": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+        ]
+      },
+      "ROUND-1": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+        ]
+      },
+      "ROUND-2": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+        ]
+      },
+      "ROUND-3": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+        ]
+      },
+      "ROUND-4": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+        ]
+      },
+      "ROUND-5": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ROUNDED phrase | the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+        ]
+      },
+      "REM-POS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: REMAINDER phrase | The result of subtracting the product of the quotient and the divisor from the dividend is stored in identifier-4."
+        ]
+      },
+      "REM-NEG": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: REMAINDER phrase | The result of subtracting the product of the quotient and the divisor from the dividend is stored in identifier-4."
+        ]
+      },
+      "REM-NEG-DIV": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: REMAINDER phrase | The result of subtracting the product of the quotient and the divisor from the dividend is stored in identifier-4."
+        ]
+      }
+    }
   },
   "ZA110A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: ARITH | The maximum number of digit positions that you can specify in the PICTURE clause for packed-decimal, external-decimal, and numeric-edited data items is raised from 18 to 31.",
+      "COB-PG: Appendix A. Intermediate results and arithmetic"
+    ],
+    "tests": {
+      "EXTEND-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the ON SIZE ERROR phrase is specified and a size error condition occurs, the value of the resultant identifier affected by the size error is not altered"
+        ]
+      },
+      "EXTEND-INTERMEDIATE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: ARITH | Intermediate results in arithmetic statements use extended mode."
+        ]
+      }
+    }
   },
   "ZA111A": {
     "basis": "zeus",
-    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS.",
+    "refs": [
+      "COB-PG: Checking for incompatible data (numeric class test) | Signed C, D, F C, D, +0 (positive zero)",
+      "COB-PG: Sign representation of zoned and packed-decimal data | The preferred sign is always generated in the receiver.",
+      "COB-PG: Sign representation of zoned and packed-decimal data | Positive: C, A, E, and F Negative: D and B",
+      "COB-LRM: Sign condition"
+    ]
   },
   "ZA112A": {
     "basis": "zeus",
-    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS.",
+    "refs": [
+      "COB-PG: Checking for incompatible data (numeric class test) | Signed A to F C, D, +0 (positive zero)",
+      "COB-PG: Sign representation of zoned and packed-decimal data | The preferred sign is always generated in the receiver.",
+      "COB-PG: Sign representation of zoned and packed-decimal data | Positive: C, A, E, and F Negative: D and B",
+      "COB-LRM: Sign condition"
+    ]
   },
   "ZA113A": {
     "basis": "zeus",
-    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS.",
+    "refs": [
+      "COB-PG: Checking for incompatible data (numeric class test) | Signed C, D, F C, D, +0 (positive zero)",
+      "COB-PG: Sign representation of zoned and packed-decimal data | Signed positive or 0: X'C' Signed negative: X'D' Unsigned or alphanumeric: X'F'",
+      "COB-LRM: Sign condition"
+    ],
+    "tests": {
+      "SP-UNSIGNED-ZERO": {
+        "basis": "zeus",
+        "note": "NUMCLS is an installation setting (see the program note). The Programming Guide lists \"+0 (positive zero)\" as valid under NUMPROC(PFD) without giving its sign nibble; this check reads it as zero with sign X'F'. Confirm on z/OS."
+      },
+      "SZ-UNSIGNED-ZERO": {
+        "basis": "zeus",
+        "note": "NUMCLS is an installation setting (see the program note). The Programming Guide lists \"+0 (positive zero)\" as valid under NUMPROC(PFD) without giving its sign nibble; this check reads it as zero with sign X'F'. Confirm on z/OS."
+      }
+    }
   },
   "ZA114A": {
     "basis": "zeus",
-    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS."
+    "note": "NUMCLS is an installation setting on z/OS; these sources select it with a Zeus-only CBL option. Remove the CBL selection and align the installation default before running on z/OS.",
+    "refs": [
+      "COB-PG: Checking for incompatible data (numeric class test) | Signed A to F C, D, +0 (positive zero)",
+      "COB-PG: Sign representation of zoned and packed-decimal data | Signed positive or 0: X'C' Signed negative: X'D' Unsigned or alphanumeric: X'F'",
+      "COB-LRM: Sign condition"
+    ],
+    "tests": {
+      "SP-UNSIGNED-ZERO": {
+        "basis": "zeus",
+        "note": "NUMCLS is an installation setting (see the program note). The Programming Guide lists \"+0 (positive zero)\" as valid under NUMPROC(PFD) without giving its sign nibble; this check reads it as zero with sign X'F'. Confirm on z/OS."
+      },
+      "SZ-UNSIGNED-ZERO": {
+        "basis": "zeus",
+        "note": "NUMCLS is an installation setting (see the program note). The Programming Guide lists \"+0 (positive zero)\" as valid under NUMPROC(PFD) without giving its sign nibble; this check reads it as zero with sign X'F'. Confirm on z/OS."
+      }
+    }
   },
   "ZA115A": {
-    "basis": "spec"
+    "basis": "spec",
+    "note": "NUMPROC(MIG) exists only up to Enterprise COBOL 4.2; Enterprise COBOL 5 and later do not accept it. Run this program with the 4.2 compiler.",
+    "refs": [
+      "COB42-PG: NUMPROC(MIG) | When NUMPROC(MIG) is in effect, the compiler generates code that is similar to that produced by OS/VS COBOL.",
+      "COB42-PG: Checking for incompatible data (numeric class test)"
+    ]
   },
   "ZA116A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: TRUNC | When TRUNC(STD) is in effect, the final result of an arithmetic expression, or the sending field in the MOVE statement, is truncated to the number of digits in the PICTURE clause of the BINARY receiving field.",
+      "COB-LRM: BINARY | 10 through 18 8 bytes (doubleword)"
+    ]
   },
   "ZA117A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: TRUNC | When TRUNC(OPT) is in effect, the compiler assumes that data conforms to PICTURE specifications in USAGE BINARY receiving fields",
+      "COB-LRM: BINARY | 10 through 18 8 bytes (doubleword)"
+    ]
   },
   "ZA118A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIZE ERROR phrases | If the resultant identifier is defined with usage BINARY, COMPUTATIONAL, COMPUTATIONAL-4, or COMPUTATIONAL-5, the largest value that the resultant data item can contain is the value implied by the item's decimal PICTURE character-string, regardless of the TRUNC compiler option in effect.",
+      "COB-PG: TRUNC | BINARY receiving fields are truncated only at halfword, fullword, or doubleword boundaries."
+    ]
   },
   "ZA119A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIZE ERROR phrases | If the ON SIZE ERROR phrase is specified and a size error condition occurs, the value of the resultant identifier affected by the size error is not altered"
+    ],
+    "tests": {
+      "REM-ONLY-OVERFLOW": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DIVIDE statement | If size error occurs in the remainder, the contents of the remainder field (identifier-4) are unchanged."
+        ]
+      }
+    }
   },
   "ZA120A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: External floating-point items | The mantissa can contain from 1 to 16 numeric characters.",
+      "COB-LRM: MOVE statement | For other sending items, the numeric value is treated as though that value were converted to internal floating-point and then converted to the usage of the receiving external floating-point item.",
+      "COB-PG: External floating-point (DISPLAY and NATIONAL) items | When USAGE NATIONAL is in effect for a floating-point data item, each PICTURE character position (except for v, if used) takes 2 bytes of storage."
+    ],
+    "tests": {
+      "EXT-0-DISPLAY": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-0-NATIONAL": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-1-DISPLAY": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-1-NATIONAL": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-2-DISPLAY": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-2-NATIONAL": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-3-DISPLAY": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-3-NATIONAL": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-4-DISPLAY": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-4-NATIONAL": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-5-DISPLAY": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-5-NATIONAL": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-6-DISPLAY": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      },
+      "EXT-6-NATIONAL": {
+        "basis": "zos",
+        "note": "The Language Reference defines the external floating-point PICTURE but not where the mantissa digits are placed (here +12.50E-01 rather than +01.25E+00). Expected text is the current Zeus result."
+      }
+    }
   },
   "ZA121A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "LOG-ONE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LOG | The LOG function returns a numeric value that approximates the logarithm to the base e (natural log) of"
+        ]
+      },
+      "LOG-E": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LOG | The LOG function returns a numeric value that approximates the logarithm to the base e (natural log) of"
+        ]
+      },
+      "TAN-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TAN | The TAN function returns a numeric value that approximates the tangent of the angle or arc that is"
+        ]
+      },
+      "ASIN-HALF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ASIN | The ASIN function returns a numeric value in radians that approximates the arcsine of the argument"
+        ]
+      },
+      "ACOS-HALF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ACOS | The ACOS function returns a numeric value in radians that approximates the arccosine of the argument"
+        ]
+      },
+      "ATAN-ONE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ATAN | The ATAN function returns a numeric value in radians that approximates the arctangent of the argument"
+        ]
+      },
+      "SIN-PI-HALF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIN | The SIN function returns a numeric value that approximates the sine of the angle or arc specified by the"
+        ]
+      },
+      "COS-PI": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: COS | The COS function returns a numeric value that approximates the cosine of the angle or arc specified by"
+        ]
+      },
+      "ANNUITY-TWO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ANNUITY | The ANNUITY function returns a numeric value that approximates the ratio of an annuity paid at the end"
+        ]
+      },
+      "PRESENT-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: PRESENT-VALUE | The PRESENT-VALUE function returns a value that approximates the present value of a series of future"
+        ]
+      },
+      "POWER-NEGEXP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Arithmetic expressions",
+          "COB-PG: Appendix A. Intermediate results and arithmetic"
+        ]
+      },
+      "POWER-ZEROEXP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Arithmetic expressions",
+          "COB-PG: Appendix A. Intermediate results and arithmetic"
+        ]
+      },
+      "POWER-NEGBASE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Arithmetic expressions",
+          "COB-PG: Appendix A. Intermediate results and arithmetic"
+        ]
+      },
+      "POWER-FRACTION": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Arithmetic expressions",
+          "COB-PG: Appendix A. Intermediate results and arithmetic"
+        ]
+      }
+    }
   },
   "ZA122A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ROUNDED phrase | When ROUNDED is specified, the least significant digit of the resultant identifier is increased by 1 whenever the most significant digit of the excess is greater than or equal to 5."
+    ],
+    "tests": {
+      "ROUND-CARRY-DISPLAY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the ROUNDED phrase is specified, rounding takes place before size error checking."
+        ]
+      },
+      "ROUND-CARRY-PACKED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the ROUNDED phrase is specified, rounding takes place before size error checking."
+        ]
+      },
+      "ROUND-CARRY-TRUNCATE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | If the ON SIZE ERROR phrase is not specified and a size error condition occurs, truncation rules apply and the value of the affected resultant identifier is computed."
+        ]
+      },
+      "SIGN-LEAD-SEP-HEX": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "SIGN-TRAIL-SEP-HEX": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "SIGN-SEP-ARITH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "SIGN-SEP-MOVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "SIGN-LEAD-OVER-HEX": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | The operational sign is presumed to be associated with the LEADING or TRAILING digit position, whichever is specified, of the elementary numeric data item.",
+          "COB-PG: Sign representation of zoned and packed-decimal data"
+        ]
+      },
+      "SIGN-TRAIL-OVER-HEX": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | The operational sign is presumed to be associated with the LEADING or TRAILING digit position, whichever is specified, of the elementary numeric data item.",
+          "COB-PG: Sign representation of zoned and packed-decimal data"
+        ]
+      }
+    }
   },
   "ZA123A": {
     "basis": "zos",
@@ -75,61 +644,107 @@
     "tests": {
       "OVERLAP-MOVE-RIGHT": {
         "basis": "zos",
-        "note": "Overlapping MOVE: the result is undefined in the Language Reference. Zeus moves left to right byte by byte (propagation)."
+        "note": "Overlapping MOVE: the result is undefined in the Language Reference. Zeus moves left to right byte by byte (propagation).",
+        "refs": [
+          "COB-LRM: Data manipulation statements | When the sending and receiving fields of a data manipulation statement share a part of their storage (that is, when the operands overlap), the result of the execution of such a statement is unpredictable."
+        ]
       },
       "OVERLAP-MOVE-LEFT": {
         "basis": "zos",
-        "note": "Overlapping MOVE toward lower addresses: undefined in the Language Reference; Zeus value."
+        "note": "Overlapping MOVE toward lower addresses: undefined in the Language Reference; Zeus value.",
+        "refs": [
+          "COB-LRM: Data manipulation statements | When the sending and receiving fields of a data manipulation statement share a part of their storage (that is, when the operands overlap), the result of the execution of such a statement is unpredictable."
+        ]
       },
       "DIVIDE-ZERO-NO-SIZE": {
         "basis": "zos",
-        "note": "Divide by zero without ON SIZE ERROR: Zeus leaves the receiver unchanged. z/OS may end abnormally instead; record what happens."
+        "note": "Divide by zero without ON SIZE ERROR: Zeus leaves the receiver unchanged. z/OS may end abnormally instead; record what happens.",
+        "refs": [
+          "COB-LRM: SIZE ERROR phrases | When division by zero occurs."
+        ]
       },
       "TRUNC-OPT-OVER-PIC": {
         "basis": "zos",
-        "note": "TRUNC(OPT) with a value beyond the PICTURE: IBM documents the result as unpredictable. Zeus truncates to the PICTURE digits (X0929), not to the halfword (X3039)."
+        "note": "TRUNC(OPT) with a value beyond the PICTURE: IBM documents the result as unpredictable. Zeus truncates to the PICTURE digits (X0929), not to the halfword (X3039).",
+        "refs": [
+          "COB-PG: TRUNC | Otherwise, unpredictable results could occur."
+        ]
       },
       "WS-NO-VALUE-BINARY": {
         "basis": "zos",
-        "note": "WORKING-STORAGE without VALUE: contents are undefined unless an initialization option applies. Zeus initializes by category."
+        "note": "WORKING-STORAGE without VALUE: contents are undefined unless an initialization option applies. Zeus initializes by category.",
+        "refs": [
+          "COB-LRM: INITIAL | If a VALUE clause is not associated with a data item, the initial value of the data item is undefined."
+        ]
       },
       "WS-NO-VALUE-PACKED": {
         "basis": "zos",
-        "note": "WORKING-STORAGE without VALUE (packed): Zeus gives a positive zero."
+        "note": "WORKING-STORAGE without VALUE (packed): Zeus gives a positive zero.",
+        "refs": [
+          "COB-LRM: INITIAL | If a VALUE clause is not associated with a data item, the initial value of the data item is undefined."
+        ]
       },
       "WS-NO-VALUE-ALNUM": {
         "basis": "zos",
-        "note": "WORKING-STORAGE without VALUE (alphanumeric): Zeus gives spaces."
+        "note": "WORKING-STORAGE without VALUE (alphanumeric): Zeus gives spaces.",
+        "refs": [
+          "COB-LRM: INITIAL | If a VALUE clause is not associated with a data item, the initial value of the data item is undefined."
+        ]
       },
       "RANDOM-SEED-ONE": {
         "basis": "zos",
-        "note": "FUNCTION RANDOM: the generator is not published; Zeus value for seed 1."
+        "note": "FUNCTION RANDOM: the generator is not published; Zeus value for seed 1.",
+        "refs": [
+          "COB-LRM: RANDOM | The RANDOM function returns a numeric value that is a pseudorandom number from a rectangular"
+        ]
       },
       "RANDOM-NEXT": {
         "basis": "zos",
-        "note": "FUNCTION RANDOM without a seed after RANDOM(1): Zeus value."
+        "note": "FUNCTION RANDOM without a seed after RANDOM(1): Zeus value.",
+        "refs": [
+          "COB-LRM: RANDOM | The RANDOM function returns a numeric value that is a pseudorandom number from a rectangular"
+        ]
       },
       "COMP1-DECIMAL-TENTH": {
         "basis": "zos",
-        "note": "Decimal 0.1 to short HFP: the rounding of the conversion is not stated; Zeus rounds (X4019999A)."
+        "note": "Decimal 0.1 to short HFP: the rounding of the conversion is not stated; Zeus rounds (X4019999A).",
+        "refs": [
+          "COB-PG: Fixed-point contrasted with floating-point arithmetic",
+          "POP: HFP Number Representation"
+        ]
       },
       "COMP2-DECIMAL-TENTH": {
         "basis": "zos",
-        "note": "Decimal 0.1 to long HFP: Zeus rounds (X401999999999999A)."
+        "note": "Decimal 0.1 to long HFP: Zeus rounds (X401999999999999A).",
+        "refs": [
+          "COB-PG: Fixed-point contrasted with floating-point arithmetic",
+          "POP: HFP Number Representation"
+        ]
       },
       "COMP1-BACK-TO-DEC": {
         "basis": "zos",
-        "note": "Short HFP back to PIC 9V9(9): Zeus truncates the exact binary value."
+        "note": "Short HFP back to PIC 9V9(9): Zeus truncates the exact binary value.",
+        "refs": [
+          "COB-PG: Fixed-point contrasted with floating-point arithmetic",
+          "POP: HFP Number Representation"
+        ]
       },
       "DATE-INVALID-DAY": {
         "basis": "zos",
-        "note": "INTEGER-OF-DATE with day 30 of February: Zeus carries into March (154193). z/OS may return 0 or end abnormally; record what happens."
+        "note": "INTEGER-OF-DATE with day 30 of February: Zeus carries into March (154193). z/OS may return 0 or end abnormally; record what happens.",
+        "refs": [
+          "COB-LRM: INTEGER-OF-DATE | The INTEGER-OF-DATE function converts a date in the Gregorian calendar from standard date form"
+        ]
       }
     }
   },
   "ZA124A": {
     "basis": "zos",
     "note": "After the report is closed, NUMVAL('12X') must end the run unit. The Language Reference only requires a valid argument; the run-time action and the step completion code are not stated. Zeus ends with RC 16 (manifest expect_exit_code). On z/OS record the LE message and completion code; the TEST-NUMVAL checks themselves follow the Language Reference.",
+    "refs": [
+      "COB-LRM: TEST-NUMVAL",
+      "COB-LRM: NUMVAL"
+    ],
     "tests": {
       "TEST-NUMVAL-INVALID": {
         "basis": "spec"
@@ -140,55 +755,492 @@
     }
   },
   "ZA125A": {
-    "basis": "spec"
+    "basis": "spec",
+    "tests": {
+      "FN-E": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: E"
+        ]
+      },
+      "FN-PI": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: PI"
+        ]
+      },
+      "FN-EXP-ONE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: EXP"
+        ]
+      },
+      "FN-EXP10-TWO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: EXP10"
+        ]
+      },
+      "FN-EXP10-HALF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: EXP10"
+        ]
+      },
+      "FN-SIGN-NEG": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN"
+        ]
+      },
+      "FN-SIGN-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN"
+        ]
+      },
+      "FN-SIGN-POS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN"
+        ]
+      },
+      "FN-HEX-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: HEX-OF"
+        ]
+      },
+      "FN-HEX-TO-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: HEX-TO-CHAR"
+        ]
+      },
+      "FN-BIT-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BIT-OF"
+        ]
+      },
+      "FN-BIT-TO-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BIT-TO-CHAR"
+        ]
+      },
+      "FN-TRIM-LEADING-LEN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "FN-TRIM-LEADING-TXT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "FN-TRIM-TRAILNG-LEN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TRIM"
+        ]
+      },
+      "FN-NUMVAL-F": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NUMVAL-F"
+        ]
+      },
+      "FN-NUMVAL-F-NEG": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NUMVAL-F"
+        ]
+      },
+      "FN-TEST-NUMVAL-F-OK": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL-F"
+        ]
+      },
+      "FN-TEST-NUMVAL-F-BAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-NUMVAL-F"
+        ]
+      },
+      "FN-TEST-DATE-OK": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-DATE-YYYYMMDD"
+        ]
+      },
+      "FN-TEST-DATE-YEAR": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-DATE-YYYYMMDD"
+        ]
+      },
+      "FN-TEST-DATE-MONTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-DATE-YYYYMMDD"
+        ]
+      },
+      "FN-TEST-DATE-DAY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-DATE-YYYYMMDD"
+        ]
+      },
+      "FN-TEST-DAY-OK": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-DAY-YYYYDDD"
+        ]
+      },
+      "FN-TEST-DAY-BAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-DAY-YYYYDDD"
+        ]
+      },
+      "FN-FMT-DATE-EXT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FORMATTED-DATE"
+        ]
+      },
+      "FN-FMT-DATE-ORD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FORMATTED-DATE"
+        ]
+      },
+      "FN-FMT-DATE-WEEK": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FORMATTED-DATE"
+        ]
+      },
+      "FN-FMT-TIME": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FORMATTED-TIME"
+        ]
+      },
+      "FN-FMT-TIME-EXT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FORMATTED-TIME"
+        ]
+      },
+      "FN-FMT-DATETIME": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FORMATTED-DATETIME"
+        ]
+      },
+      "FN-INT-OF-FMT-DATE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INTEGER-OF-FORMATTED-DATE"
+        ]
+      },
+      "FN-SEC-FROM-FMT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SECONDS-FROM-FORMATTED-TIME"
+        ]
+      },
+      "FN-COMBINED-DT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: COMBINED-DATETIME"
+        ]
+      },
+      "FN-TEST-FMT-DT-OK": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-FORMATTED-DATETIME"
+        ]
+      },
+      "FN-TEST-FMT-DT-BAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: TEST-FORMATTED-DATETIME"
+        ]
+      }
+    }
   },
   "ZA126A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INTDATE | INTDATE(LILIAN) instructs the compiler to use the Language Environment Lilian starting date for integer dates used with date intrinsic functions. Day 1 is Oct 15, 1582."
+    ],
+    "tests": {
+      "LILIAN-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INTEGER-OF-DATE"
+        ]
+      },
+      "LILIAN-ANSI-DAY-ONE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INTEGER-OF-DATE"
+        ]
+      },
+      "LILIAN-INT-OF-DAY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INTEGER-OF-DATE",
+          "COB-LRM: INTEGER-OF-DAY"
+        ]
+      },
+      "LILIAN-DATE-OF-INT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DATE-OF-INTEGER"
+        ]
+      },
+      "LILIAN-DAY-OF-INT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DAY-OF-INTEGER"
+        ]
+      },
+      "NOZWB-UNSIGNED-NE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: ZWB | If you compile using ZWB, the compiler removes the sign from a signed zoned decimal (DISPLAY) field before comparing this field to an alphanumeric elementary field during execution."
+        ]
+      },
+      "NOZWB-SIGN-BYTE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: ZWB | If you compile using ZWB, the compiler removes the sign from a signed zoned decimal (DISPLAY) field before comparing this field to an alphanumeric elementary field during execution."
+        ]
+      },
+      "NOZWB-POSITIVE-SIGN": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: ZWB | If you compile using ZWB, the compiler removes the sign from a signed zoned decimal (DISPLAY) field before comparing this field to an alphanumeric elementary field during execution."
+        ]
+      }
+    }
   },
   "ZD101A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: COMPUTATIONAL-3 or COMP-3 (internal decimal) | This is the equivalent of PACKED-DECIMAL.",
+      "COB-PG: NUMPROC | Internal decimal, unsigned: Low-order 4 bits of the low-order byte contain X'F'.",
+      "COB-PG: NUMPROC | Internal decimal, signed: Low-order 4 bits of the low-order byte contain X'C' if a number is positive or 0, and X'D' if it is not."
+    ],
+    "tests": {
+      "NORM-SIGN-A": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMPROC | Data produced by COBOL arithmetic statements conforms to the IBM system standards described above."
+        ]
+      },
+      "NORM-SIGN-E": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMPROC | Data produced by COBOL arithmetic statements conforms to the IBM system standards described above."
+        ]
+      },
+      "NORM-SIGN-F": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMPROC | Data produced by COBOL arithmetic statements conforms to the IBM system standards described above."
+        ]
+      },
+      "NORM-SIGN-B": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMPROC | Data produced by COBOL arithmetic statements conforms to the IBM system standards described above."
+        ]
+      },
+      "NORM-NEG-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMPROC | Data produced by COBOL arithmetic statements conforms to the IBM system standards described above."
+        ]
+      }
+    }
   },
   "ZD102A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIGN clause | The operational sign is presumed to be associated with the LEADING or TRAILING digit position, whichever is specified, of the elementary numeric data item.",
+      "COB-PG: NUMPROC | Zoned decimal, signed overpunch: High-order 4 bits of the sign byte contain X'C' if a number is positive or 0, and X'D' if it is not."
+    ],
+    "tests": {
+      "SZ4-TRS-POS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "SZ4-TRS-NEG": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "SZ4-LDS-POS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "SZ4-LDS-NEG": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      },
+      "RT-SEP-TO-COMP3": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: SIGN clause | + is the character used for the positive operational sign."
+        ]
+      }
+    }
   },
   "ZD103A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: BINARY | 1 through 4 2 bytes (halfword)",
+      "COB-LRM: COMPUTATIONAL-5 or COMP-5 (native binary) | The data items can contain values up to the capacity of the native binary representation (2, 4, or 8 bytes)"
+    ]
   },
   "ZD104A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SYNCHRONIZED clause",
+      "COB-LRM: Slack bytes within records",
+      "COB-LRM: REDEFINES clause",
+      "COB-LRM: RENAMES clause"
+    ]
   },
   "ZD105A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: OCCURS DEPENDING ON clause",
+      "COB-LRM: SEARCH statement",
+      "COB-LRM: SET statement"
+    ]
   },
   "ZD106A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: PICTURE clause editing"
+    ],
+    "tests": {
+      "ED-BWZ": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BLANK WHEN ZERO clause"
+        ]
+      }
+    }
   },
   "ZD107A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Figurative constants"
+    ],
+    "tests": {
+      "INIT-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      },
+      "INIT-REPLACING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement rules"
+        ]
+      }
+    }
   },
   "ZD108A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: COMPUTATIONAL-5 or COMP-5 (native binary) | The data items can contain values up to the capacity of the native binary representation (2, 4, or 8 bytes), rather than being limited to the value implied by the number of nines in the picture for the item",
+      "COB-PG: ARITH | The maximum number of digits that you can specify in a fixed-point numeric literal is raised from 18 to 31."
+    ]
   },
   "ZD109A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Alphanumeric comparisons",
+      "COB-LRM: Operands of unequal size",
+      "COB-LRM: Figurative constants"
+    ]
   },
   "ZD110A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: OBJECT-COMPUTER paragraph | PROGRAM COLLATING SEQUENCE determines the truth value of the following alphanumeric",
+      "COB-LRM: ALPHABET clause"
+    ]
   },
   "ZD111A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: COMPUTATIONAL-3 or COMP-3 (internal decimal)",
+      "COB-PG: ARITH | The maximum number of digit positions that you can specify in the PICTURE clause for packed-decimal, external-decimal, and numeric-edited data items is raised from 18 to 31.",
+      "COB-PG: NUMPROC | Internal decimal, signed: Low-order 4 bits of the low-order byte contain X'C' if a number is positive or 0, and X'D' if it is not."
+    ]
   },
   "ZD112A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: SIGN clause | - is the character used for the negative operational sign.",
+      "COB-PG: NUMPROC | Zoned decimal, signed overpunch: High-order 4 bits of the sign byte contain X'C' if a number is positive or 0, and X'D' if it is not.",
+      "COB-LRM: Class condition"
+    ]
   },
   "ZD113A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: OCCURS DEPENDING ON clause",
+      "COB-PG: Complex OCCURS DEPENDING ON"
+    ]
   },
   "ZD114A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Slack bytes within records | The slack bytes are inserted at the end of each occurrence of the group item that contains the OCCURS",
+      "COB-LRM: SYNCHRONIZED clause"
+    ],
+    "tests": {
+      "SYNC-FLOAT-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "POP: HFP Number Representation"
+        ]
+      },
+      "SYNC-FLOAT-OFFSETS": {
+        "basis": "spec",
+        "refs": [
+          "POP: HFP Number Representation"
+        ]
+      }
+    }
   },
   "ZD115A": {
-    "basis": "spec"
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: Slack bytes within records | This sum is divided by the largest m required by any elementary item within the group.",
+      "COB-LRM: SYNCHRONIZED clause"
+    ]
   },
   "ZE101N": {
     "basis": "spec"
