@@ -4847,6 +4847,114 @@
       }
     }
   },
+  "HM108A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Type attribute (T') | The type attribute has a value of a single alphabetic character that shows the type of data represented by:"
+    ],
+    "tests": {
+      "T-FULLWORD-HALF": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | F Fullword fixed-point constant, implicit length, aligned",
+          "HLASM-LR: Type attribute (T') | H Halfword fixed-point constant, implicit length, aligned"
+        ]
+      },
+      "T-CHAR-PACKED-HEX": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | C Character constant",
+          "HLASM-LR: Type attribute (T') | P Packed decimal constant"
+        ]
+      },
+      "T-EXPLICIT-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | G Fixed-point constant, explicit length"
+        ]
+      },
+      "T-ADDRESS-LONG": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | D Long floating-point constant, implicit length, aligned"
+        ]
+      },
+      "T-CSECT-INSTR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | I Machine instruction J Control section name"
+        ]
+      },
+      "T-WXTRN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | $ Identified as an external symbol by WXTRN instruction"
+        ]
+      },
+      "T-UNDEFINED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | U Undefined, unknown, or unassigned"
+        ]
+      },
+      "T-SETA-NUMERIC": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | N refers to a numeric value."
+        ]
+      },
+      "T-MACRO-OPERANDS": {
+        "basis": "zos",
+        "note": "10 進の自己定義項のマクロ・オペランドを数値 (N) とみなす。LRM は「変数記号の値」について N を書いており、オペランドの例は載っていない",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | N refers to a numeric value.",
+          "HLASM-LR: Type attribute (T') | O refers to an omitted operand (has a value of a null character string)."
+        ]
+      },
+      "D-DEFINED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Defined attribute (D') | equal to 1 if the symbol has been defined, or 0 if the symbol has not been defined."
+        ]
+      },
+      "D-SETC-SYMBOL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Defined attribute (D') | equal to 1 if the symbol has been defined, or 0 if the symbol has not been defined.",
+          "HLASM-LR: Defined attribute (D') | SETC symbols whose value is an ordinary symbol"
+        ]
+      },
+      "SYSATTRA": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SYSATTRA | SYSATTRA('symbol') returns the assembler-type value for the specified symbol.",
+          "HLASM-LR: EQU instruction | The program type is always null, and the assembler type is always null, except when the appropriate operand is specified."
+        ]
+      },
+      "SYSATTRA-NONE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: SYSATTRA | SYSATTRA('symbol') returns the assembler-type value for the specified symbol.",
+          "HLASM-LR: SYSATTRA | Symbols without an assigned assembler type, undefined symbols, and null arguments return null."
+        ]
+      },
+      "SYSATTRA-DS": {
+        "basis": "zos",
+        "note": "DS F の記号の assembler type を F とみなす。LRM は DC/DS の記号が型拡張を含むと書くだけで、値の例は無い",
+        "refs": [
+          "HLASM-LR: SYSATTRA | SYSATTRA('symbol') returns the assembler-type value for the specified symbol.",
+          "HLASM-LR: SYSATTRA | For symbols defined in DC and DS statements, the assembler type includes the type extensions, if any."
+        ]
+      },
+      "SYSATTRP": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: EQU instruction | The program type is always null, and the assembler type is always null, except when the appropriate operand is specified.",
+          "HLASM-LR: SYSATTRP | SYSATTRP('symbol') returns the program-type value for the specified symbol."
+        ]
+      }
+    }
+  },
   "HS101A": {
     "basis": "spec",
     "tests": {

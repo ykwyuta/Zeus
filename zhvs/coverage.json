@@ -1682,6 +1682,26 @@
       "GBLB-SETB"
     ]
   },
+  "HM108A": {
+    "expect": "run",
+    "tests": [
+      "T-FULLWORD-HALF",
+      "T-CHAR-PACKED-HEX",
+      "T-EXPLICIT-LENGTH",
+      "T-ADDRESS-LONG",
+      "T-CSECT-INSTR",
+      "T-WXTRN",
+      "T-UNDEFINED",
+      "T-SETA-NUMERIC",
+      "T-MACRO-OPERANDS",
+      "D-DEFINED",
+      "D-SETC-SYMBOL",
+      "SYSATTRA",
+      "SYSATTRA-NONE",
+      "SYSATTRA-DS",
+      "SYSATTRP"
+    ]
+  },
   "HS101A": {
     "expect": "run",
     "tests": [
