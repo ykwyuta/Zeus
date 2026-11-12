@@ -63,11 +63,45 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 
 1. `zeus-ccvs export-jcl --suite <suite> --out work/<suite>-zos --hlq <HLQ>` で
    COPY/SRCLIB/JCL を作る。`zeus` の検査は注記に従って直す。
-2. z/OS で流し、各プログラムの REPORT (120 byte の PASS/FAIL 行) を回収する。
-3. `<suite>/zos-results/<日付>.json` に、検査 ID ごとの PASS/FAIL と環境
-   (コンパイラーの版・オプション・CCSID) を記録する。
-4. `zos` の検査が PASS ならその根拠を「実機で確定」とし、FAIL なら実機の値を正解に
-   して検査と Zeus を直す。`spec` が FAIL なら検査を読み直す。
+2. z/OS で流し、各プログラムの REPORT メンバー (120 byte の PASS/FAIL 行) を
+   プログラム名のファイルとして 1 つのディレクトリーに回収する。データセットの
+   まま (EBCDIC の固定長レコード) でも、テキストとしてダウンロードしたものでもよい。
+3. ジョブの出力から、プログラムごとのコンパイルの RC と実行ステップの完了
+   (RC の数、または `S0C7`・`U4038` のような異常終了コード) を step ファイルに書く。
+
+   ```
+   PROGRAM  COMPILE-RC  COMPLETION
+   ZA124A   0           U4038
+   HS105A   0           S0C7
+   ZE101N   12          -
+   ```
+
+4. 記録する。検査 ID ごとに PASS / FAIL / MISSING (報告に無い) が付く。
+
+   ```sh
+   tools/zos-results.py record --suite zcvs --reports DIR --steps steps.txt \
+       --env compiler="Enterprise COBOL 6.4" --env options="ARITH(EXTEND)" \
+       --env ccsid=1140 --date 2026-12-01
+   ```
+
+   `<suite>/zos-results/<日付>.json` ができる。これはコミットする。
+5. 突き合わせる。`tools/zos-results.py compare --suite zcvs --results <file>` が
+   根拠ごとに数え、FAIL の意味を分けて出す。
+
+   | 出力 | 意味 | すること |
+   | --- | --- | --- |
+   | `spec FAIL` | 文書の読みが実機と合わない | 文書を読み直して検査を直す |
+   | `zos FAIL` | Zeus が実機と違う | 実機の値を正解にして検査と Zeus を直す |
+   | `zos PASS` | Zeus の値が実機で確かめられた | 根拠を `spec` 相当に移し、注記に実行日を書く |
+   | `STEP` | 負系が受理された、異常終了するはずのものが RC 0 で終わった等 | manifest と検査を見直す |
+   | `MISSING` | 報告が無い・途中で終わった | ジョブの出力を見る |
+
+   manifest の `expect_exit_code` は Zeus の終了コードである。z/OS では異常終了
+   コードになるので、比較では「RC 0 で終わらないこと」だけを見る。
+
+道具そのものは `crates/zeus-ccvs/tests/zos_results.rs` が検査する。Zeus の実行結果
+(`zeus-ccvs run --work W` の W) も同じ道具で記録でき、2026-11-12 に 3 スイートを
+記録したところ `spec`・`zos` の FAIL と MISSING は 0 件だった。
 
 ## 進め方と記録
 
@@ -75,6 +109,7 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | --- | --- | --- | --- | --- |
 | 2026-11-12 | 根拠台帳を置く。既存は既定 `spec`、`zeus` 4 本 (NUMCLS)、`zos` 2 検査 (KEY の ONCODE) | 162 本 / 1,464 | 72 本 / 340 | 128 本 / 582 |
 | 2026-11-12 | 網羅台帳を作る (`tools/suite-inventory.py`)。要素のうち検査が使うもの / 未網羅 | 208 / 129 | 212 / 199 | 176 / 447 |
-| 2026-11-12 | ZCVS の実機確認シナリオ `ZA123A`/`ZA124A`/`ZN114A` (根拠 `zos`、期待値は Zeus) | 165 本 / 1,482 | | |
+| 2026-11-12 | ZCVS の実機確認シナリオ `ZA123A`/`ZA124A`/`ZN114A` (根拠 `zos`、期待値は Zeus) | 165 本 / 1,481 | | |
 | 2026-11-12 | ZPVS の実機確認シナリオ `PD109A`/`PC110A`。Zeus の浮動小数点が HFP の範囲で OVERFLOW/UNDERFLOW を起こさない不備を直す | | 74 本 / 370 | |
 | 2026-11-12 | ZHVS の実機確認シナリオ `HD107A`/`HS105A` | | | 130 本 / 594 |
+| 2026-11-12 | z/OS の結果を記録・突き合わせる道具 `tools/zos-results.py`。Zeus の実行を記録して `spec`/`zos` の FAIL 0 件を確認 | 165 本 / 1,481 | 74 本 / 370 | 130 本 / 594 |
