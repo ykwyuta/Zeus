@@ -144,6 +144,7 @@ pub fn function(name: &str) -> Option<Func> {
         "SECONDS-FROM-FORMATTED-TIME" => Func::SecondsFromFormattedTime,
         "COMBINED-DATETIME" => Func::CombinedDatetime,
         "TEST-FORMATTED-DATETIME" => Func::TestFormattedDatetime,
+        "SECONDS-PAST-MIDNIGHT" => Func::SecondsPastMidnight,
         _ => return None,
     })
 }
@@ -283,7 +284,8 @@ impl Gen<'_> {
             | Func::WhenCompiled
             | Func::WhenCompiledRegister
             | Func::E
-            | Func::Pi => (0, 0),
+            | Func::Pi
+            | Func::SecondsPastMidnight => (0, 0),
             Func::FormattedDatetime => (3, 4),
             Func::FormattedDate | Func::FormattedTime => (2, 3),
             Func::IntegerOfFormattedDate

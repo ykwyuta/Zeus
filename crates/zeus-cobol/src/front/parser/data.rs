@@ -643,6 +643,10 @@ impl Parser {
                 } else {
                     e.value = Some(ValueClause::Literal(self.operand()?));
                 }
+            } else if self.accept("VOLATILE") {
+                // VOLATILE only keeps the compiler from holding the item in a
+                // register across statements (Language Reference); every
+                // reference already reads storage here.
             } else if self.accept("RENAMES") {
                 let a = self.data_ref()?;
                 let b = if self.accept("THRU") || self.accept("THROUGH") {

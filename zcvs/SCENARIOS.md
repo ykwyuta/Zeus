@@ -114,6 +114,7 @@
 | S06 PARM | `ZS103M` の固定文字列・2バイト長 | 部分 | 空/1/最大長、カンマ/空白/引用符、DDとPARMの独立、切詰め規則。exportしたJCLでも同じ値を受領 |
 | S07 特殊レジスター | `ZS101A` のTALLY/RETURN-CODE、`ZP113A` 1検査 | 部分 | CALL成功/失敗/RETURNINGによるRC保持、ジョブRCへの伝播、SORT成功/失敗時SORT-RETURN。2026-11-12: 別コンパイルの被呼出しが設定したRETURN-CODEが呼出し元に届くことを追加 |
 | S08 LE | `ZS102A` のCEEDAYS等 | 部分 | 日付下限/閏日/不正月日/書式不一致、feedback全体、失敗時出力保持、CEE3ABDの異常終了をプロセス/JCL結果で観測 |
+| S09 指示文・USAGE 綴り・UPSI | `ZS108A` 11検査 | 部分 | 2026-11-12: CCVS85 に無い `>>DEFINE`・`>>IF`/`>>ELSE`・`>>EVALUATE`/`WHEN OTHER`・`IS NOT DEFINED`・`OVERRIDE`、PACKED-DECIMAL の符号ニブル、UPSI の既定 (全 OFF)、VOLATILE、SECONDS-PAST-MIDNIGHT を追加。Zeus に VOLATILE と SECONDS-PAST-MIDNIGHT が無かったので実装した。`>>DEFINE` の算術式・`PARAMETER`、UPSI を実行時に ON にする形は残る |
 
 ## ZX: 5.x/6.x拡張
 

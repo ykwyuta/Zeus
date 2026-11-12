@@ -786,6 +786,14 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
     };
     Ok(match func {
         Func::Abs => a(0)?.abs(),
+        Func::SecondsPastMidnight => {
+            // the clock CURRENT-DATE uses (UTC, offset +0000)
+            let now = crate::clock::now();
+            Dec::new(
+                i128::from(now.as_secs() % 86400) * 100 + i128::from(now.subsec_millis() / 10),
+                2,
+            )
+        }
         Func::E => super::func6::constant(false),
         Func::Pi => super::func6::constant(true),
         Func::Exp => f(a(0)?.to_f64().exp())?,

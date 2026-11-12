@@ -2158,6 +2158,22 @@
       "NATIONAL-SET-FALSE"
     ]
   },
+  "ZS108A": {
+    "expect": "run",
+    "tests": [
+      "DIR-IF-TRUE",
+      "DIR-IF-ELSE",
+      "DIR-EVALUATE-WHEN",
+      "DIR-EVALUATE-OTHER",
+      "DIR-NOT-DEFINED",
+      "DIR-REDEFINE",
+      "PACKED-DECIMAL-SIGN",
+      "PACKED-DECIMAL-NOSGN",
+      "UPSI-DEFAULT-OFF",
+      "VOLATILE-VALUE",
+      "SECONDS-PAST-MIDNT"
+    ]
+  },
   "ZX101A": {
     "expect": "run",
     "tests": [
