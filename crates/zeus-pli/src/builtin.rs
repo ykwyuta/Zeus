@@ -189,6 +189,10 @@ pub enum Bif {
     Sha(u8, u16, u8),
     WHigh,
     WLow,
+    InArray,
+    WcharVal,
+    PicSpec,
+    CodePage,
     SubTo,
     Poly,
     WsCollapse16,
@@ -503,6 +507,10 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "ONLINE" => OnLine,
         "ONAREA" => OnArea,
         "WHIGH" => WHigh,
+        "INARRAY" => InArray,
+        "WCHARVAL" => WcharVal,
+        "PICSPEC" => PicSpec,
+        "CODEPAGE" => CodePage,
         "WLOW" => WLow,
         "SUBTO" => SubTo,
         "POLY" => Poly,
@@ -656,6 +664,7 @@ impl Bif {
                 | SourceFile
                 | SourceLine
                 | IsMain
+                | CodePage
                 | Uuid4
                 | Secs
                 | Timestamp
@@ -873,7 +882,14 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         },
         WsCollapse16 | WsReplace16 | Base64Encode16 | Base64Decode16 => Ty::fixed_bin(63, 0),
         MainName | ProcedureName | PackageName | SourceFile => Ty::char_var(255),
-        SourceLine => fixed_bin31(),
+        SourceLine | CodePage => fixed_bin31(),
+        InArray => Ty::bit(1),
+        PicSpec => Ty::char(1),
+        WcharVal => Ty::Wchar {
+            len: crate::types::Ext::Const(1),
+            var: crate::types::Var::Fixed,
+            graphic: false,
+        },
         IsMain | PutEnv | Valid => Ty::bit(1),
         GetEnv => Ty::char_var(32767),
         Uuid4 => Ty::char(36),

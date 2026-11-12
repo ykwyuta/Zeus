@@ -919,6 +919,10 @@ impl Machine {
             // the position of a character in the collating sequence (its code)
             Rank => match &v[0] {
                 Value::Char(c) if c.len() == 1 => Value::int(i64::from(c[0])),
+                // WIDECHAR(1): the big-endian UTF-16 code unit
+                Value::Char(c) if c.len() == 2 && matches!(args[0].ty, Ty::Wchar { .. }) => {
+                    Value::int(i64::from(u16::from_be_bytes([c[0], c[1]])))
+                }
                 _ => return err("RANK requires a single character"),
             },
             // the hexadecimal model: x = f * 16**e with 1/16 <= |f| < 1
@@ -1193,6 +1197,8 @@ impl Machine {
                 Value::Char(ebcdic(&format!("{}{yy}{ddd}", 19 + cent)))
             }
             // WIDECHAR strings of n highest (FFFF) or lowest (0000) characters
+            // WCHARVAL(n): the widechar whose bits are UNSIGNED FIXED BIN(16) n
+            WcharVal => Value::Char((v[0].as_i64() as u16).to_be_bytes().to_vec()),
             WHigh | WLow => {
                 let n = int(0).unwrap_or(0).max(0) as usize;
                 Value::Char(vec![if b == WHigh { 0xFF } else { 0 }; 2 * n])
@@ -1748,6 +1754,19 @@ impl Machine {
             None => 1,
         };
         Ok(match b {
+            InArray => {
+                let x = &args[0];
+                let xv = self.eval(x, act)?;
+                let mut hit = false;
+                for l in self.elements(r, act)? {
+                    let e = self.load(&l)?;
+                    if self.compare(&xv, &x.ty, &e, &l.ty)? == std::cmp::Ordering::Equal {
+                        hit = true;
+                        break;
+                    }
+                }
+                Value::bit1(hit)
+            }
             // POLY(x,y): x(m) + x(m+1)*y + ... + x(n)*y**(n-m)
             Poly => {
                 let y = args.first().map(|e| self.eval(e, act)).transpose()?;

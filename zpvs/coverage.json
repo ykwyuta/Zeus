@@ -970,6 +970,24 @@
       "PP-INSCAN-XINSCAN"
     ]
   },
+  "PM118A": {
+    "expect": "run",
+    "tests": [
+      "INARRAY-CHAR",
+      "INARRAY-CHAR-PAD",
+      "INARRAY-MISS",
+      "INARRAY-NUMERIC",
+      "INARRAY-2D",
+      "WCHARVAL-BITS",
+      "WCHARVAL-RANK",
+      "WCHARVAL-UNSPEC",
+      "PICSPEC-DIGITS",
+      "PICSPEC-V",
+      "PICSPEC-SIGN",
+      "PICSPEC-EXPR",
+      "CODEPAGE-OPTION"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

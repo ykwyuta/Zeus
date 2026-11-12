@@ -1326,6 +1326,46 @@ impl Compiler {
             ProcedureName | PackageName | SourceFile | SourceLine | IsMain | MainName => {
                 return self.program_info(b, pos);
             }
+            // CODEPAGE: the CODEPAGE compiler option (Programming Guide: the
+            // default CCSID is 1140)
+            CodePage => {
+                return Ok(mk(
+                    Ek::Fixed(i128::from(self.m.ccsid), 0),
+                    Ty::fixed_bin(31, 0),
+                ));
+            }
+            // INARRAY(x, y): x compared with each element of the array y
+            InArray => {
+                let [x, ast::Expr::Ref(arr)] = args else {
+                    return Err(self.err(pos, "INARRAY needs a scalar and an array"));
+                };
+                let ar = self.reference(arr, true)?;
+                if !self.is_aggregate(&ar) {
+                    return Err(self.err(pos, "INARRAY: the second argument is not an array"));
+                }
+                let x = self.expr(x)?;
+                return Ok(mk(Ek::RefBuiltin(b, ar, vec![x]), Ty::bit(1)));
+            }
+            // PICSPEC(x, 'pic'): only the type of x changes; nothing is
+            // converted or checked (Language Reference, PICSPEC)
+            PicSpec => {
+                let [x, ast::Expr::Str { text: spec, .. }] = args else {
+                    return Err(self.err(pos, "PICSPEC needs an expression and a picture literal"));
+                };
+                let x = self.expr(x)?;
+                let p = crate::picture::Picture::parse(spec).map_err(|e| self.err(pos, e))?;
+                let ok = matches!(&x.ty, Ty::Char { len: Ext::Const(n), var: crate::types::Var::Fixed } if *n as usize == p.len);
+                if !ok {
+                    return Err(self.err(
+                        pos,
+                        format!("PICSPEC needs a CHARACTER({}) NONVARYING argument", p.len),
+                    ));
+                }
+                return Ok(Expr {
+                    k: x.k,
+                    ty: Ty::Pic(Box::new(p)),
+                });
+            }
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField | OnText
             | OnActual | OnExpected | OnOperator | OnPackage | OnSubscript | OnLbound
             | OnHbound | OnLine | OnArea | OnCondCond | OnCondId => {
@@ -1416,7 +1456,7 @@ impl Compiler {
         // value arguments (HEX: the bytes of GRAPHIC and WIDECHAR)
         let mut xs = Vec::new();
         for a in args {
-            xs.push(if matches!(b, Hex | Unspec) {
+            xs.push(if matches!(b, Hex | Unspec | Rank) {
                 self.expr_wide(a)?
             } else {
                 self.expr(a)?
@@ -1480,7 +1520,7 @@ impl Compiler {
                 v.extend(it.map(|x| int(self, x)));
                 v
             }
-            WHigh | WLow => xs.into_iter().map(|x| int(self, x)).collect(),
+            WHigh | WLow | WcharVal => xs.into_iter().map(|x| int(self, x)).collect(),
             SubTo => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];

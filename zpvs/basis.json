@@ -3048,6 +3048,97 @@
       }
     }
   },
+  "PM118A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: CODEPAGE | The CODEPAGE option specifies the code page used for conversions between CHARACTER and WIDECHAR"
+    ],
+    "tests": {
+      "INARRAY-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array.",
+          "PLI-LRM: INARRAY | is the same as INLIST( countryCode, 'AT', 'DE', 'CH' )"
+        ]
+      },
+      "INARRAY-CHAR-PAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array.",
+          "PLI-LRM: INARRAY | is the same as INLIST( countryCode, 'AT', 'DE', 'CH' )"
+        ]
+      },
+      "INARRAY-MISS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array.",
+          "PLI-LRM: INARRAY | is the same as INLIST( countryCode, 'AT', 'DE', 'CH' )"
+        ]
+      },
+      "INARRAY-NUMERIC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array."
+        ]
+      },
+      "INARRAY-2D": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INARRAY | INARRAY returns a BIT(1) value that indicates whether an expression is equal to any of the elements of an array."
+        ]
+      },
+      "WCHARVAL-BITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WCHARVAL | WCHARVAL(n) has the same bit value as n (that is, UNSPEC(WCHARVAL(n)) is equal to UNSPEC(n)), but it has the attributes WIDECHAR(1)."
+        ]
+      },
+      "WCHARVAL-RANK": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WCHARVAL | WCHARVAL(n) has the same bit value as n (that is, UNSPEC(WCHARVAL(n)) is equal to UNSPEC(n)), but it has the attributes WIDECHAR(1).",
+          "PLI-LRM: RANK | If xx is widechar, RANK(x) is equal to UNSPEC(y) where y is x stored in bigendian format."
+        ]
+      },
+      "WCHARVAL-UNSPEC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: WCHARVAL | WCHARVAL(n) has the same bit value as n (that is, UNSPEC(WCHARVAL(n)) is equal to UNSPEC(n)), but it has the attributes WIDECHAR(1)."
+        ]
+      },
+      "PICSPEC-DIGITS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument."
+        ]
+      },
+      "PICSPEC-V": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument."
+        ]
+      },
+      "PICSPEC-SIGN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument."
+        ]
+      },
+      "PICSPEC-EXPR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PICSPEC | The result has the PICTURE type specified by the second argument.",
+          "PLI-LRM: PICSPEC | will cause the contents of x to be treated as if it were declared as PIC'(5)9'."
+        ]
+      },
+      "CODEPAGE-OPTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CODEPAGE | CODEPAGE returns a FIXED BINARY(31) value that holds the value of the CODEPAGE compiler option."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [
