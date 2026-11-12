@@ -32,7 +32,10 @@
 
 ## 網羅台帳
 
-`docs/inventory/` に言語ごとの台帳を置く。
+`docs/inventory/` に言語ごとの台帳を置き、`tools/suite-inventory.py [--ccvs85 newcob.val]`
+で作り直す。道具は要素ごとに、検査プログラムの原文がその要素を使うかを機械的に照合する
+(報告の仕組みのコピー・マクロ・書き手は数えない)。最後の列「確認」は人が読んで書き、
+作り直しても保たれる。
 
 - `zcvs-elements.md` — Enterprise COBOL for z/OS Language Reference の章立て
 - `zpvs-elements.md` — Enterprise PL/I for z/OS Language Reference の章立て
@@ -71,3 +74,4 @@ z/OS で流したときに Zeus との差が数として出るようにするた
 | 日付 | 内容 | ZCVS | ZPVS | ZHVS |
 | --- | --- | --- | --- | --- |
 | 2026-11-12 | 根拠台帳を置く。既存は既定 `spec`、`zeus` 4 本 (NUMCLS)、`zos` 2 検査 (KEY の ONCODE) | 162 本 / 1,464 | 72 本 / 340 | 128 本 / 582 |
+| 2026-11-12 | 網羅台帳を作る (`tools/suite-inventory.py`)。要素のうち検査が使うもの / 未網羅 | 208 / 129 | 212 / 199 | 176 / 447 |
