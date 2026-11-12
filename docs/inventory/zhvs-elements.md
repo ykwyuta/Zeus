@@ -1,6 +1,6 @@
 # ZHVS 網羅台帳 (HLASM と z/Architecture)
 
-HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 659、使用あり 570、対象外 16、未網羅 73。
+HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.rs ほか) が知る命令を列挙した。命令の一覧は Principles of Operation の全命令ではなく、Zeus が知る命令である。 要素 659、使用あり 576、対象外 16、未網羅 67。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -116,14 +116,14 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Conditional assembly | SETC | 使用あり | HM102A, HM103A, HM105A, HM106A, HM107A | - |  |
 | Conditional assembly | SETAF | 対象外 |  | - | 対象外: 利用者が用意する外部関数モジュール (ASMA 出口) が要る |
 | Conditional assembly | SETCF | 対象外 |  | - | 対象外: 利用者が用意する外部関数モジュール (ASMA 出口) が要る |
-| Conditional assembly | "T'" | 未網羅 |  | - |  |
-| Conditional assembly | "L'" | 未網羅 |  | - |  |
-| Conditional assembly | "S'" | 未網羅 |  | - |  |
-| Conditional assembly | "I'" | 未網羅 |  | - |  |
-| Conditional assembly | "K'" | 未網羅 |  | - |  |
-| Conditional assembly | "N'" | 未網羅 |  | - |  |
-| Conditional assembly | "D'" | 未網羅 |  | - |  |
-| Conditional assembly | "O'" | 未網羅 |  | - |  |
+| Conditional assembly | T' | 未網羅 |  | - |  |
+| Conditional assembly | L' | 使用あり | HA102A, HA106A, HE120N, HE120P, HM104A | - |  |
+| Conditional assembly | S' | 使用あり | HA102A | - |  |
+| Conditional assembly | I' | 使用あり | HA102A | - |  |
+| Conditional assembly | K' | 使用あり | HM101A, HM106A, HM107A | - |  |
+| Conditional assembly | N' | 使用あり | HM101A, HM105A | - |  |
+| Conditional assembly | D' | 未網羅 |  | - |  |
+| Conditional assembly | O' | 使用あり | HM107A | - |  |
 | Conditional assembly | A2B | 使用あり | HM106A | - |  |
 | Conditional assembly | A2C | 使用あり | HM106A | - |  |
 | Conditional assembly | A2D | 使用あり | HM106A | - |  |

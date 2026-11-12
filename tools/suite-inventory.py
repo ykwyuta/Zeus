@@ -356,7 +356,7 @@ HLASM_MACRO = [
     # HLASM V1R6 Language Reference (SC26-4940-09), checked 2026-11-12
     'ACTR', 'AEJECT', 'AGO', 'AIF', 'ANOP', 'AREAD', 'ASPACE', 'GBLA', 'GBLB', 'GBLC', 'LCLA',
     'LCLB', 'LCLC', 'MACRO', 'MEND', 'MEXIT', 'MHELP', 'SETA', 'SETB', 'SETC', 'SETAF', 'SETCF',
-    '"T\'"', '"L\'"', '"S\'"', '"I\'"', '"K\'"', '"N\'"', '"D\'"', '"O\'"', 'A2B', 'A2C', 'A2D',
+    "T'", "L'", "S'", "I'", "K'", "N'", "D'", "O'", 'A2B', 'A2C', 'A2D',
     'A2X', 'B2A', 'B2C', 'B2D', 'B2X', 'BYTE', 'C2A', 'C2B', 'C2D', 'C2X', 'D2A', 'D2B', 'D2C',
     'D2X', 'DCLEN', 'DCVAL', 'DEQUOTE', 'DOUBLE', 'FIND', 'INDEX', 'ISBIN', 'ISDEC', 'ISHEX',
     'ISSYM', 'LOWER', 'SIGNED', 'SLA', 'SLL', 'SRA', 'SRL', 'UPPER', 'X2A', 'X2B', 'X2C', 'X2D',
@@ -405,7 +405,11 @@ def hlasm_pattern(category, name):
         # nominal values are quoted; address constants (A, V, S, Y, Q, R, J ...) are
         # parenthesized
         return r'^\S*\s+D[CS]\s+(\S*,)?[0-9()]*' + re.escape(name) + r"(L[0-9.]+)?['(]"
-    if name.startswith('&') or name.endswith("'"):
+    if len(name) == 2 and name.endswith("'"):
+        # an attribute reference: T'&X, L'SYM; not the end of a longer word
+        # or a constant such as C'A' or D'1.5'
+        return r"(?<![\w@#$])" + name[0] + r"'[&A-Z@#$_]"
+    if name.startswith('&'):
         return re.escape(name)
     if name in ('AND', 'OR', 'XOR', 'SLA', 'SLL', 'SRA', 'SRL'):
         # a binary operator of a conditional-assembly expression, (1 SLL 4),
