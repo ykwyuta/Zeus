@@ -1270,7 +1270,8 @@ impl Compiler {
                 let rr = self.reference(&ast::Ref::simple(&format!("%{t}"), pos), true)?;
                 return Ok(mk(Ek::RefBuiltin(b, rr, Vec::new()), Ty::Pointer));
             }
-            OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField => {
+            OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField
+            | OnCondCond | OnCondId => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
                 return Ok(mk(Ek::OnValue(b), ty));
             }
@@ -1323,6 +1324,7 @@ impl Compiler {
                             | Addr
                             | AddrData
                             | BitLocation
+                            | Location
                             | Size
                             | CurrentSize
                             | String
@@ -1409,8 +1411,8 @@ impl Compiler {
                 v.extend(it.map(|x| int(self, x)));
                 v
             }
-            Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin
-            | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => xs
+            Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+            | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => xs
                 .into_iter()
                 .map(|x| {
                     let x = self.to_arith(x);
@@ -1419,7 +1421,40 @@ impl Compiler {
                 .collect(),
             // the floating-point inquiry functions look only at the attributes
             // of their argument; converting it could raise a condition
-            Huge | Tiny | Epsilon | MaxExp | MinExp | Radix | Exponent => xs,
+            Huge
+            | Tiny
+            | Epsilon
+            | MaxExp
+            | MinExp
+            | Radix
+            | Exponent
+            | Between
+            | BetweenExclusive
+            | BetweenLeftExclusive
+            | BetweenRightExclusive
+            | InList
+            | IfThenElse
+            | MaxVal
+            | MinVal
+            | Pred
+            | Succ
+            | Places
+            | PrecVal
+            | ScaleVal
+            | Iclz
+            | Popcnt
+            | ISigned
+            | IUnsigned
+            | ReplaceBy2
+            | Y4Date
+            | Y4Julian
+            | Y4Year => xs,
+            Irll | Irrl | Lower2 | RoundAwayFromZero | RoundToEven => {
+                let mut it = xs.into_iter();
+                let mut v = vec![it.next().unwrap()];
+                v.extend(it.map(|x| int(self, x)));
+                v
+            }
             Scale => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];

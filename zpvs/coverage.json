@@ -754,6 +754,48 @@
       "SECSTODATE-TIME"
     ]
   },
+  "PM112A": {
+    "expect": "run",
+    "tests": [
+      "BETWEEN",
+      "BETWEEN-EXCLUSIVE",
+      "BETWEEN-LEFT-EXCL",
+      "BETWEEN-RIGHT-EXCL",
+      "INLIST",
+      "IFTHENELSE-LAZY",
+      "IFTHENELSE-FALSE",
+      "ICLZ",
+      "IRRL",
+      "IRLL",
+      "LOWER2",
+      "POPCNT-PER-BYTE",
+      "POPCNT-SECOND",
+      "ISIGNED",
+      "IUNSIGNED",
+      "ROUND-AWAY-FROM-ZERO",
+      "ROUND-TO-EVEN",
+      "MAXVAL-MINVAL",
+      "SUCC-HFP",
+      "PRED-HFP",
+      "PLACES-HFP",
+      "PRECVAL-SCALEVAL",
+      "Y4DATE",
+      "Y4JULIAN-Y4YEAR",
+      "REPLACEBY2",
+      "HEXIMAGE",
+      "HEXIMAGE-SEPARATOR",
+      "COMPARE",
+      "LOCATION",
+      "ERF",
+      "ERFC",
+      "GAMMA-INTEGER",
+      "GAMMA-HALF",
+      "LOGGAMMA",
+      "ONCONDID-CONDITION",
+      "ONCONDID-ZERODIVIDE",
+      "ONCONDID-OUTSIDE"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

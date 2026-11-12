@@ -99,6 +99,10 @@ pub struct Binding {
 #[derive(Debug, Clone, Default)]
 struct CondInfo {
     code: i32,
+    /// ONCONDID: the condition's number in the Language Reference table
+    condid: i32,
+    /// ONCONDCOND: the name of a CONDITION condition
+    condname: String,
     onchar: u8,
     onsource: Vec<u8>,
     onkey: Vec<u8>,
@@ -2661,6 +2665,40 @@ impl Machine {
             info.onchar = x.1;
         }
         info.onloc = self.proc_name(act);
+        info.condid = match c {
+            Cond::Area => 1,
+            Cond::Attention => 2,
+            Cond::Condition(_) => 3,
+            Cond::Conversion => 4,
+            Cond::EndFile(_) => 5,
+            Cond::EndPage(_) => 6,
+            Cond::Error => 7,
+            Cond::Finish => 8,
+            Cond::FixedOverflow => 9,
+            Cond::InvalidOp => 10,
+            Cond::Key(_) => 11,
+            Cond::Name(_) => 12,
+            Cond::Overflow => 13,
+            Cond::Record(_) => 14,
+            Cond::Size => 15,
+            Cond::Storage => 16,
+            Cond::StringRange => 17,
+            Cond::StringSize => 18,
+            Cond::SubscriptRange => 19,
+            Cond::Transmit(_) => 20,
+            Cond::UndefinedFile(_) => 21,
+            Cond::Underflow => 22,
+            Cond::ZeroDivide => 23,
+            Cond::AnyCondition => 0,
+        };
+        if let Cond::Condition(n) = c {
+            info.condname = self
+                .module
+                .conditions
+                .get(*n as usize)
+                .cloned()
+                .unwrap_or_default();
+        }
         info
     }
 
@@ -3147,6 +3185,8 @@ impl Machine {
             OnKey => Value::Char(info.onkey),
             OnFile => Value::Char(zeus_cobol::ebcdic::encode(&info.onfile)),
             OnLoc => Value::Char(zeus_cobol::ebcdic::encode(&info.onloc)),
+            OnCondId => Value::int(i64::from(info.condid)),
+            OnCondCond => Value::Char(zeus_cobol::ebcdic::encode(&info.condname)),
             _ => Value::int(0),
         }
     }

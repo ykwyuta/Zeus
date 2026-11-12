@@ -101,6 +101,155 @@ fn valid_date(text: &str, pattern: &str) -> bool {
     }
 }
 
+/// Hexadecimal digits of the HFP form of FLOAT DEC(p) / FLOAT BIN(p).
+fn hex_digits(dec: bool, p: u8) -> i32 {
+    match (dec, p) {
+        (true, 0..=6) | (false, 0..=21) => 6,
+        (true, 7..=16) | (false, 22..=53) => 14,
+        _ => 28,
+    }
+}
+
+/// Storage bits of a FIXED BINARY integer type: 8, 16, 32 or 64.
+fn bin_width(t: &Ty) -> u32 {
+    match t.arith() {
+        Some(Ty::Fixed {
+            dec: false,
+            p,
+            unsigned,
+            ..
+        }) => {
+            let p = u32::from(p) + u32::from(!unsigned);
+            match p {
+                0..=8 => 8,
+                9..=16 => 16,
+                17..=32 => 32,
+                _ => 64,
+            }
+        }
+        _ => 32,
+    }
+}
+
+/// The error function (Abramowitz-Stegun 7.1.5 series for small x, the
+/// continued fraction of erfc for large x); within 1E-15.
+fn erf(x: f64) -> f64 {
+    if x.abs() > 2.5 {
+        return x.signum() * (1.0 - erfc_cf(x.abs()));
+    }
+    let mut sum = x;
+    let mut term = x;
+    let x2 = x * x;
+    for n in 1..200 {
+        term *= -x2 / n as f64;
+        let t = term / (2 * n + 1) as f64;
+        sum += t;
+        if t.abs() < 1e-17 * sum.abs() {
+            break;
+        }
+    }
+    sum * 2.0 / std::f64::consts::PI.sqrt()
+}
+
+fn erfc(x: f64) -> f64 {
+    if x > 2.5 { erfc_cf(x) } else { 1.0 - erf(x) }
+}
+
+/// erfc for x > 0 by its continued fraction (Lentz).
+fn erfc_cf(x: f64) -> f64 {
+    let tiny = 1e-300;
+    let mut f = x;
+    let mut c = x;
+    let mut d = 0.0;
+    for n in 1..300 {
+        let a = n as f64 / 2.0;
+        d = x + a * d;
+        d = if d.abs() < tiny { tiny } else { d };
+        c = x + a / c;
+        c = if c.abs() < tiny { tiny } else { c };
+        d = 1.0 / d;
+        let delta = c * d;
+        f *= delta;
+        if (delta - 1.0).abs() < 1e-16 {
+            break;
+        }
+    }
+    (-x * x).exp() / (f * std::f64::consts::PI.sqrt())
+}
+
+/// ln(GAMMA(x)) for x > 0 (Lanczos, g = 7).
+fn ln_gamma(x: f64) -> f64 {
+    const G: [f64; 9] = [
+        0.999_999_999_999_809_9,
+        676.520_368_121_885_1,
+        -1_259.139_216_722_402_8,
+        771.323_428_777_653_1,
+        -176.615_029_162_140_6,
+        12.507_343_278_686_905,
+        -0.138_571_095_265_720_12,
+        9.984_369_578_019_572e-6,
+        1.505_632_735_149_311_6e-7,
+    ];
+    if x < 0.5 {
+        let pi = std::f64::consts::PI;
+        return (pi / (pi * x).sin()).ln() - ln_gamma(1.0 - x);
+    }
+    let x = x - 1.0;
+    let mut a = G[0];
+    let t = x + 7.5;
+    for (i, g) in G.iter().enumerate().skip(1) {
+        a += g / (x + i as f64);
+    }
+    0.5 * (2.0 * std::f64::consts::PI).ln() + (x + 0.5) * t.ln() - t + a.ln()
+}
+
+/// The next HFP value above (up) or below x with h hexadecimal digits.
+fn hfp_step(x: f64, h: i32, up: bool) -> f64 {
+    if x == 0.0 {
+        return if up {
+            16f64.powi(-65)
+        } else {
+            -16f64.powi(-65)
+        };
+    }
+    if x < 0.0 {
+        return -hfp_step(-x, h, !up);
+    }
+    // x = f * 16**e, 1/16 <= f < 1
+    let mut e = 0;
+    let mut a = x;
+    while a >= 1.0 {
+        a /= 16.0;
+        e += 1;
+    }
+    while a < 1.0 / 16.0 {
+        a *= 16.0;
+        e -= 1;
+    }
+    if up {
+        x + 16f64.powi(e - h)
+    } else if a == 1.0 / 16.0 {
+        // the smallest fraction: the step below is one digit finer
+        x - 16f64.powi(e - 1 - h)
+    } else {
+        x - 16f64.powi(e - h)
+    }
+}
+
+/// Y4DATE / Y4JULIAN / Y4YEAR: the two leading year digits widened by the
+/// window w (a year, or a negative offset from the current year).
+fn widen_year(d: &str, w: i64) -> String {
+    let w = if w < 0 {
+        let (y, ..) = now_parts();
+        y + w
+    } else {
+        w
+    };
+    let yy: i64 = d.get(0..2).and_then(|s| s.parse().ok()).unwrap_or(0);
+    let century = if yy < w % 100 { w / 100 + 1 } else { w / 100 };
+    format!("{:04}{}", century * 100 + yy, d.get(2..).unwrap_or(""))
+}
+
 fn ebcdic(s: &str) -> Vec<u8> {
     zeus_cobol::ebcdic::encode(s)
 }
@@ -108,6 +257,22 @@ fn ebcdic(s: &str) -> Vec<u8> {
 impl Machine {
     pub fn builtin(&mut self, b: Bif, args: &[Expr], rt: &Ty, act: usize) -> R<Value> {
         use Bif::*;
+        // IFTHENELSE evaluates only the operand it returns
+        if b == IfThenElse {
+            let c = self.eval(&args[0], act)?;
+            let truth = match &c {
+                Value::Bit(bits) => bits.iter().any(|x| *x),
+                Value::Char(_) => {
+                    let bits =
+                        self.convert(c.clone(), &args[0].ty, &crate::sema::expr::bit_any(), act)?;
+                    matches!(bits, Value::Bit(b) if b.iter().any(|x| *x))
+                }
+                x => x.as_f64() != 0.0,
+            };
+            let e = &args[if truth { 1 } else { 2 }];
+            let v = self.eval(e, act)?;
+            return self.convert(v, &e.ty, rt, act);
+        }
         let mut v = Vec::new();
         for a in args {
             v.push(self.eval(a, act)?);
@@ -174,7 +339,7 @@ impl Machine {
                     }
                 }
             }
-            Round => {
+            Round | RoundAwayFromZero | RoundToEven => {
                 let n = int(1).unwrap_or(0);
                 match (&v[0], rt) {
                     (Value::Fixed { m, q, dec }, Ty::Fixed { q: rq, .. }) => {
@@ -184,7 +349,11 @@ impl Machine {
                             let d = base.pow(drop as u32);
                             let half = d / 2;
                             let a = m.abs();
-                            let r = (a + half) / d;
+                            let mut r = (a + half) / d;
+                            // ROUNDTOEVEN: a tie goes to the even neighbour
+                            if b == RoundToEven && a % d == half && d % 2 == 0 && r % 2 == 1 {
+                                r -= 1;
+                            }
                             if *m < 0 { -r } else { r }
                         } else {
                             m * base.pow((-drop) as u32)
@@ -646,10 +815,7 @@ impl Machine {
             Huge | Tiny | Epsilon | MaxExp | MinExp | Radix => {
                 let ty = args[0].ty.arith().unwrap_or_else(|| args[0].ty.clone());
                 let h = match &ty {
-                    Ty::Float { dec: true, p } if *p <= 6 => 6,
-                    Ty::Float { dec: false, p } if *p <= 21 => 6,
-                    Ty::Float { dec: true, p } if *p <= 16 => 14,
-                    Ty::Float { dec: false, p } if *p <= 53 => 14,
+                    Ty::Float { dec, p } => hex_digits(*dec, *p),
                     _ => 28,
                 };
                 match b {
@@ -742,6 +908,188 @@ impl Machine {
                     self.write(q, &old)?;
                     Value::int(1)
                 }
+            }
+            Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive => {
+                let (x, a, c) = (&v[0], &v[1], &v[2]);
+                let lo = self.compare(a, &args[1].ty, x, &args[0].ty)?;
+                let hi = self.compare(x, &args[0].ty, c, &args[2].ty)?;
+                use std::cmp::Ordering::*;
+                let left_ok = match b {
+                    BetweenExclusive | BetweenLeftExclusive => lo == Less,
+                    _ => lo != Greater,
+                };
+                let right_ok = match b {
+                    BetweenExclusive | BetweenRightExclusive => hi == Less,
+                    _ => hi != Greater,
+                };
+                Value::bit1(left_ok && right_ok)
+            }
+            InList => {
+                let mut hit = false;
+                for i in 1..v.len() {
+                    if self.compare(&v[0], &args[0].ty, &v[i], &args[i].ty)?
+                        == std::cmp::Ordering::Equal
+                    {
+                        hit = true;
+                        break;
+                    }
+                }
+                Value::bit1(hit)
+            }
+            Iclz => {
+                let w = bin_width(&args[0].ty);
+                let x = (v[0].as_i64() as u64) & (u64::MAX >> (64 - w));
+                Value::int(i64::from(x.leading_zeros()) - i64::from(64 - w))
+            }
+            Irll | Irrl | Lower2 | Popcnt => {
+                let w = bin_width(&args[0].ty);
+                let mask = u64::MAX >> (64 - w);
+                let x = (v[0].as_i64() as u64) & mask;
+                let n = int(1).unwrap_or(0).clamp(0, 64) as u32;
+                let r = match b {
+                    Irll => (x << (n % w) | x >> ((w - n % w) % w)) & mask,
+                    Irrl => (x >> (n % w) | x << ((w - n % w) % w)) & mask,
+                    // LOWER2 is the arithmetic shift right (SRA)
+                    Lower2 => (v[0].as_i64() >> n.min(63)) as u64,
+                    // POPCNT counts the one bits of each byte into that byte
+                    _ => {
+                        let mut out = 0u64;
+                        for k in 0..w / 8 {
+                            out |= u64::from(((x >> (8 * k)) & 0xff).count_ones()) << (8 * k);
+                        }
+                        out
+                    }
+                };
+                // back to the signed value of the result width
+                let unsigned = matches!(rt, Ty::Fixed { unsigned: true, .. });
+                Value::int(if unsigned || w == 64 || b == Lower2 {
+                    r as i64
+                } else if r >> (w - 1) & 1 == 1 {
+                    (r as i64) - (1i64 << w)
+                } else {
+                    r as i64
+                })
+            }
+            ISigned | IUnsigned => {
+                let w = bin_width(&args[0].ty);
+                let x = (v[0].as_i64() as u64) & (u64::MAX >> (64 - w));
+                Value::int(if b == IUnsigned || w == 64 || x >> (w - 1) & 1 == 0 {
+                    x as i64
+                } else {
+                    (x as i64) - (1i64 << w)
+                })
+            }
+            MaxVal | MinVal => match args[0].ty.arith() {
+                Some(Ty::Fixed {
+                    dec,
+                    p,
+                    q,
+                    unsigned,
+                }) => {
+                    let m: i128 = if dec {
+                        10i128.pow(u32::from(p)) - 1
+                    } else {
+                        (1i128 << p) - 1
+                    };
+                    let m = match (b, unsigned) {
+                        (MaxVal, _) => m,
+                        (MinVal, true) => 0,
+                        (MinVal, false) if dec => -m,
+                        _ => -m - 1,
+                    };
+                    Value::fixed(m, q, dec)
+                }
+                Some(Ty::Float { dec, p }) => {
+                    let h = hex_digits(dec, p);
+                    let huge = (1.0 - 16f64.powi(-h)) * 16f64.powi(63);
+                    Value::Float(if b == MaxVal { huge } else { -huge })
+                }
+                _ => return err(format!("{b:?} requires a REAL arithmetic argument")),
+            },
+            Pred | Succ => {
+                let h = match rt {
+                    Ty::Float { dec, p } => hex_digits(*dec, *p),
+                    _ => 6,
+                };
+                Value::Float(hfp_step(v[0].as_f64(), h, b == Succ))
+            }
+            Places => match args[0].ty.arith() {
+                Some(Ty::Float { dec, p }) => Value::int(i64::from(hex_digits(dec, p))),
+                _ => return err("PLACES requires a REAL FLOAT argument"),
+            },
+            PrecVal | ScaleVal => match args[0].ty.arith() {
+                Some(Ty::Fixed { p, q, .. }) => Value::int(if b == PrecVal {
+                    i64::from(p)
+                } else {
+                    i64::from(q)
+                }),
+                Some(Ty::Float { p, .. }) => {
+                    Value::int(if b == PrecVal { i64::from(p) } else { 0 })
+                }
+                _ => return err(format!("{b:?} requires a numeric argument")),
+            },
+            Y4Date | Y4Julian | Y4Year => {
+                let d = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let w = int(1).unwrap_or(1950);
+                Value::Char(ebcdic(&widen_year(d.trim_start(), w)))
+            }
+            ReplaceBy2 => {
+                let (x, y, z) = (chars(&v[0]), chars(&v[1]), chars(&v[2]));
+                if y.len() != 2 * z.len() {
+                    return err(
+                        "REPLACEBY2: the second argument must be twice as long as the third",
+                    );
+                }
+                let mut out = Vec::new();
+                for c in x {
+                    match z.iter().position(|k| *k == c) {
+                        Some(i) => out.extend_from_slice(&y[2 * i..2 * i + 2]),
+                        None => out.push(c),
+                    }
+                }
+                Value::Char(out)
+            }
+            HexImage => {
+                let Value::Ptr(p) = &v[0] else {
+                    return err("HEXIMAGE requires a locator");
+                };
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let bytes = self.read(*p, n)?.to_vec();
+                let sep = v.get(2).map(chars).and_then(|c| c.first().copied());
+                let mut out = Vec::new();
+                for (i, byte) in bytes.iter().enumerate() {
+                    if i > 0
+                        && i % 4 == 0
+                        && let Some(s) = sep
+                    {
+                        out.push(s);
+                    }
+                    out.extend(ebcdic(&format!("{byte:02X}")));
+                }
+                Value::Char(out)
+            }
+            Compare => {
+                let (Value::Ptr(x), Value::Ptr(y)) = (&v[0], &v[1]) else {
+                    return err("COMPARE requires two locators");
+                };
+                let n = int(2).unwrap_or(0).max(0) as usize;
+                let a = self.read(*x, n)?.to_vec();
+                let c = self.read(*y, n)?.to_vec();
+                Value::int(match a.cmp(&c) {
+                    std::cmp::Ordering::Less => -1,
+                    std::cmp::Ordering::Equal => 0,
+                    std::cmp::Ordering::Greater => 1,
+                })
+            }
+            Erf => Value::Float(erf(v[0].as_f64())),
+            Erfc => Value::Float(erfc(v[0].as_f64())),
+            Gamma | LogGamma => {
+                let x = v[0].as_f64();
+                if x <= 0.0 {
+                    return err(format!("{b:?} requires an argument greater than zero"));
+                }
+                let lg = ln_gamma(x);
+                Value::Float(if b == Gamma { lg.exp() } else { lg })
             }
             PointerDiff => match (&v[0], &v[1]) {
                 (Value::Ptr(p), Value::Ptr(q)) => Value::int(i64::from(*p) - i64::from(*q)),
@@ -862,6 +1210,8 @@ impl Machine {
                 let (bit, _) = self.element_or_start(r, act)?;
                 Value::Ptr((bit / 8) as u32)
             }
+            // the byte location of a member in its level-1 structure
+            Location => Value::int((self.module.vars[r.var as usize].bit_offset / 8) as i64),
             // the bit offset of the reference within its byte
             BitLocation => {
                 let (bit, _) = self.element_or_start(r, act)?;

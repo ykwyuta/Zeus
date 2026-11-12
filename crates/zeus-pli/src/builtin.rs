@@ -151,6 +151,41 @@ pub enum Bif {
     SecsToDate,
     Cs,
     Cds,
+    Between,
+    BetweenExclusive,
+    BetweenLeftExclusive,
+    BetweenRightExclusive,
+    InList,
+    IfThenElse,
+    Iclz,
+    Irll,
+    Irrl,
+    Lower2,
+    Popcnt,
+    ISigned,
+    IUnsigned,
+    RoundAwayFromZero,
+    RoundToEven,
+    MaxVal,
+    MinVal,
+    Pred,
+    Succ,
+    Places,
+    PrecVal,
+    ScaleVal,
+    Y4Date,
+    Y4Julian,
+    Y4Year,
+    ReplaceBy2,
+    HexImage,
+    Compare,
+    Location,
+    Erf,
+    Erfc,
+    Gamma,
+    LogGamma,
+    OnCondCond,
+    OnCondId,
     // conditions
     OnCode,
     OnChar,
@@ -351,6 +386,42 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "SECSTODATE" => SecsToDate,
         "CS" => Cs,
         "CDS" => Cds,
+        "BETWEEN" => Between,
+        "BETWEENEXCLUSIVE" => BetweenExclusive,
+        "BETWEENLEFTEXCLUSIVE" => BetweenLeftExclusive,
+        "BETWEENRIGHTEXCLUSIVE" => BetweenRightExclusive,
+        "INLIST" => InList,
+        "IFTHENELSE" => IfThenElse,
+        "ICLZ" => Iclz,
+        "IRLL" => Irll,
+        "IRRL" => Irrl,
+        "LOWER2" => Lower2,
+        "POPCNT" => Popcnt,
+        "ISIGNED" => ISigned,
+        "IUNSIGNED" => IUnsigned,
+        "ROUNDAWAYFROMZERO" => RoundAwayFromZero,
+        "ROUNDTOEVEN" => RoundToEven,
+        "MAXVAL" => MaxVal,
+        "MINVAL" => MinVal,
+        "PRED" => Pred,
+        "SUCC" => Succ,
+        "PLACES" => Places,
+        "PRECVAL" => PrecVal,
+        "SCALEVAL" => ScaleVal,
+        "Y4DATE" => Y4Date,
+        "Y4JULIAN" => Y4Julian,
+        "Y4YEAR" => Y4Year,
+        "REPLACEBY2" => ReplaceBy2,
+        "HEXIMAGE" => HexImage,
+        "COMPARE" => Compare,
+        "LOCATION" => Location,
+        "LOC" => Location,
+        "ERF" => Erf,
+        "ERFC" => Erfc,
+        "GAMMA" => Gamma,
+        "LOGGAMMA" => LogGamma,
+        "ONCONDCOND" => OnCondCond,
+        "ONCONDID" => OnCondId,
         _ => return None,
     })
 }
@@ -389,6 +460,7 @@ impl Bif {
             self,
             Addr | AddrData
                 | BitLocation
+                | Location
                 | Dim
                 | Lbound
                 | Hbound
@@ -502,6 +574,56 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         SearchR | VerifyR | MaxExp | MinExp | Radix | PointerDiff | SecsToDays | OffsetDiff
         | BitLocation | Rank | Exponent | Cs | Cds => fixed_bin31(),
         PointerSubtract | AddrData => Ty::Pointer,
+        Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive | InList => {
+            Ty::bit(1)
+        }
+        Iclz | Places | PrecVal | ScaleVal | Compare | Location | OnCondId => fixed_bin31(),
+        Irll | Irrl | Lower2 | Popcnt => match operand_arith(&arg(0)?) {
+            t @ Ty::Fixed {
+                dec: false, q: 0, ..
+            } => t,
+            _ => fixed_bin31(),
+        },
+        ISigned | IUnsigned => {
+            let (p, unsigned) = match operand_arith(&arg(0)?) {
+                Ty::Fixed {
+                    dec: false,
+                    p,
+                    q: 0,
+                    unsigned,
+                } => (p, unsigned),
+                _ => (BIFPREC, false),
+            };
+            let p = match (b, unsigned) {
+                (ISigned, true) if matches!(p, 8 | 16 | 32 | 64) => p - 1,
+                (IUnsigned, false) if matches!(p, 7 | 15 | 31 | 63) => p + 1,
+                _ => p,
+            };
+            Ty::Fixed {
+                dec: false,
+                p,
+                q: 0,
+                unsigned: b == IUnsigned,
+            }
+        }
+        MaxVal | MinVal => operand_arith(&arg(0)?),
+        Pred | Succ => match operand_arith(&arg(0)?) {
+            t @ Ty::Float { .. } => t,
+            _ => return Err(format!("{b:?} requires a REAL FLOAT argument")),
+        },
+        Y4Date => Ty::char(8),
+        Y4Julian => Ty::char(7),
+        Y4Year => Ty::char(4),
+        ReplaceBy2 | HexImage => Ty::char_var(65_535),
+        OnCondCond => Ty::char_var(255),
+        IfThenElse => {
+            let (y, z) = (arg(1)?, arg(2)?);
+            if y.arith().is_some() && z.arith().is_some() && !y.is_string() && !z.is_string() {
+                common(&[y, z])
+            } else {
+                y
+            }
+        }
         OffsetValue | OffsetAdd | OffsetSubtract => Ty::Offset(None),
         SecsToDate => Ty::char_var(26),
         Scale => match operand_arith(&arg(0)?) {
@@ -551,7 +673,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             }
         }
         Max | Min => common(args),
-        Round => {
+        Round | RoundAwayFromZero | RoundToEven => {
             let a = operand_arith(&arg(0)?);
             let n = cint(1).unwrap_or(0);
             match a {
@@ -677,8 +799,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
                 unsigned: b == Unsigned,
             }
         }
-        Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin | Acos
-        | Atan | Atanh | Sind | Cosd | Tand | Atand => {
+        Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+        | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => {
             crate::types::to_float_ty(&operand_arith(&arg(0)?))
         }
         Random => Ty::Float { dec: false, p: 53 },
