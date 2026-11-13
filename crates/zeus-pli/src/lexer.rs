@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 pub struct Pos {
     pub file: u16,
     pub line: u32,
+    /// Source column (with the left margin), 0 when not known.
+    pub col: u16,
 }
 
 /// A diagnostic message.
@@ -178,6 +180,8 @@ struct Lexer {
     i: usize,
     line: u32,
     file: u16,
+    /// The source column of the first character between the margins.
+    left: usize,
     out: Vec<Token>,
 }
 
@@ -187,9 +191,16 @@ fn ident_char(c: char) -> bool {
 
 impl Lexer {
     fn pos(&self) -> Pos {
+        // the prepared text holds the columns between the margins, one
+        // line per source line
+        let start = self.c[..self.i.min(self.c.len())]
+            .iter()
+            .rposition(|&c| c == '\n')
+            .map_or(0, |k| k + 1);
         Pos {
             file: self.file,
             line: self.line,
+            col: (self.i - start + self.left).min(u16::MAX as usize) as u16,
         }
     }
 
@@ -520,7 +531,7 @@ pub fn tokenize_text(
     opts: &LexOptions,
     files: &mut Files,
 ) -> Result<Vec<Token>> {
-    let (prepared, _) = prepare(text, opts);
+    let (prepared, margins) = prepare(text, opts);
     files.names.push(name.to_string());
     let file = (files.names.len() - 1) as u16;
     let mut lx = Lexer {
@@ -528,12 +539,14 @@ pub fn tokenize_text(
         i: 0,
         line: 1,
         file,
+        left: margins.0,
         out: Vec::new(),
     };
     lx.run()?;
     let pos = Pos {
         file,
         line: lx.line,
+        col: 0,
     };
     let mut out = lx.out;
     out.push(Token { tok: Tok::Eof, pos });
@@ -548,6 +561,7 @@ pub fn tokenize_raw(text: &str, pos: Pos) -> Result<Vec<Token>> {
         i: 0,
         line: pos.line,
         file: pos.file,
+        left: usize::from(pos.col),
         out: Vec::new(),
     };
     lx.run()?;

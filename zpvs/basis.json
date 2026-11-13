@@ -3830,6 +3830,32 @@
       }
     }
   },
+  "PM121A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: MACCOL | MACCOL returns a FIXED value that represents the column where the outermost macro invocation starts in the source text that contains the macro invocation."
+    ],
+    "tests": {
+      "MACCOL-COLUMN-6": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACCOL | MACCOL returns a FIXED value that represents the column where the outermost macro invocation starts"
+        ]
+      },
+      "MACCOL-COLUMN-14": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACCOL | MACCOL returns a FIXED value that represents the column where the outermost macro invocation starts"
+        ]
+      },
+      "MACCOL-NESTED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACCOL | The value returned is not affected by nested macro invocations."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

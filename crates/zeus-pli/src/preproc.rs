@@ -139,6 +139,8 @@ struct Pp<'a> {
     gotos: u32,
     /// The preprocessor procedures being executed (MACNAME).
     macros: Vec<String>,
+    /// The source column of the outermost macro invocation (MACCOL).
+    maccol: i64,
     /// The text answered by the procedures without RETURNS being executed.
     answers: Vec<String>,
 }
@@ -484,6 +486,10 @@ impl Pp<'_> {
                     j += 1;
                 }
                 args = by_pos.into_iter().map(Option::unwrap_or_default).collect();
+            }
+            // MACCOL: the column of the outermost invocation
+            if self.depth == 0 {
+                self.maccol = i64::from(tok.pos.col);
             }
             let v = self.call(&proc, args.into_iter().map(Val::Char).collect(), tok.pos)?;
             (v, j)
@@ -1722,6 +1728,7 @@ fn builtin(name: &str, a: &[Val], pp: &mut Pp) -> Option<Val> {
         "MACLMAR" => Val::Fixed(2),
         "MACRMAR" => Val::Fixed(72),
         "MACNAME" => Val::Char(pp.macros.last().cloned().unwrap_or_default()),
+        "MACCOL" => Val::Fixed(pp.maccol),
         "SYSDIMSIZE" | "SYSOFFSETSIZE" | "SYSPOINTERSIZE" => Val::Fixed(4),
         "PARMSET" => Val::Bit(a.first().is_some_and(|v| !v.text().is_empty())),
         _ => return None,
@@ -1760,6 +1767,7 @@ pub fn preprocess(
         counter: 0,
         gotos: 0,
         macros: Vec::new(),
+        maccol: 0,
         answers: Vec::new(),
     };
     match pp.run(&toks, 0, n)? {

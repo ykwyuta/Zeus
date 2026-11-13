@@ -1133,6 +1133,14 @@
       "PP-CHAR-ARRAY"
     ]
   },
+  "PM121A": {
+    "expect": "run",
+    "tests": [
+      "MACCOL-COLUMN-6",
+      "MACCOL-COLUMN-14",
+      "MACCOL-NESTED"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [
