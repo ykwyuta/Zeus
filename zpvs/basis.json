@@ -1529,6 +1529,45 @@
       }
     }
   },
+  "PD113A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: BYADDR or BYVALUE | These specify how arguments and parameters are passed and received. BYADDR is the default."
+    ],
+    "tests": {
+      "BYADDR-CHANGES-ARG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYADDR or BYVALUE | These specify how arguments and parameters are passed and received. BYADDR is the default."
+        ]
+      },
+      "PARAMETER-ATTRIBUTE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Parameter attribute | The PARAMETER attribute can also be specified in the declaration."
+        ]
+      },
+      "CONNECTED-OVERLAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONNECTED and NONCONNECTED attributes | therefore, allows the parameter to be used as a target or source in record-oriented I/O, or as a base in string overlay defining."
+        ]
+      },
+      "INTERNAL-NEW-OBJECT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INTERNAL and EXTERNAL attributes | INTERNAL specifies that the name can be known only in the declaring block. Any other explicit declaration of that name refers to a new object with a different scope that does not overlap."
+        ]
+      },
+      "LIMITED-ENTRY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIMITED attribute | The LIMITED attribute indicates that the entry variable has only non-nested entry constants as values.",
+          "PLI-LRM: LIMITED attribute | A LIMITED static entry variable can be initialized with the value of a non-nested entry constant"
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [

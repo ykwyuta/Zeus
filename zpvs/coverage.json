@@ -544,6 +544,16 @@
       "UNION-MAPPING-SIZE"
     ]
   },
+  "PD113A": {
+    "expect": "run",
+    "tests": [
+      "BYADDR-CHANGES-ARG",
+      "PARAMETER-ATTRIBUTE",
+      "CONNECTED-OVERLAY",
+      "INTERNAL-NEW-OBJECT",
+      "LIMITED-ENTRY"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []

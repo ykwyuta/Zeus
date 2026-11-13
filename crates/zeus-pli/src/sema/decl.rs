@@ -1248,7 +1248,13 @@ impl Compiler {
             match it {
                 AstInit::Star => out.push(None),
                 AstInit::Value(e) => {
-                    let x = self.expr(e)?;
+                    // an ENTRY variable is initialized with entry constants:
+                    // a procedure name is not invoked, even with RETURNS
+                    let x = if matches!(ty, Ty::Entry) {
+                        self.entry_expr(e)?
+                    } else {
+                        self.expr(e)?
+                    };
                     out.push(Some(self.conv(x, ty)));
                 }
                 AstInit::Repeat(Extent::Star | Extent::Refer(..), inner) => {
