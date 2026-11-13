@@ -1,6 +1,6 @@
 # ZPVS 網羅台帳 (Enterprise PL/I for z/OS)
 
-Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 544、対象外 8、未網羅 156。
+Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 544、対象外 31、未網羅 133。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -329,23 +329,23 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | ISRL | 使用あり | PM109A | - |  |
 | Built-in functions | ISZERO | 未網羅 |  | - |  |
 | Built-in functions | IUNSIGNED | 使用あり | PM112A | - |  |
-| Built-in functions | JSONGETARRAYEND | 未網羅 |  | - |  |
-| Built-in functions | JSONGETARRAYSTART | 未網羅 |  | - |  |
-| Built-in functions | JSONGETCOLON | 未網羅 |  | - |  |
-| Built-in functions | JSONGETCOMMA | 未網羅 |  | - |  |
-| Built-in functions | JSONGETMEMBER | 未網羅 |  | - |  |
-| Built-in functions | JSONGETOBJECTEND | 未網羅 |  | - |  |
-| Built-in functions | JSONGETOBJECTSTART | 未網羅 |  | - |  |
-| Built-in functions | JSONGETVALUE | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTARRAYEND | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTARRAYSTART | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTCOLON | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTCOMMA | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTMEMBER | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTOBJECTEND | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTOBJECTSTART | 未網羅 |  | - |  |
-| Built-in functions | JSONPUTVALUE | 未網羅 |  | - |  |
-| Built-in functions | JSONVALID | 未網羅 |  | - |  |
+| Built-in functions | JSONGETARRAYEND | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONGETARRAYSTART | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONGETCOLON | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONGETCOMMA | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONGETMEMBER | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONGETOBJECTEND | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONGETOBJECTSTART | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONGETVALUE | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTARRAYEND | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTARRAYSTART | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTCOLON | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTCOMMA | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTMEMBER | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTOBJECTEND | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTOBJECTSTART | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONPUTVALUE | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | JSONVALID | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | JULIANTOSMF | 使用あり | PM114A | - |  |
 | Built-in functions | LBOUND | 使用あり | PM109A | - |  |
 | Built-in functions | LBOUNDACROSS | 未網羅 |  | - |  |
@@ -418,7 +418,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | ONFILE | 使用あり | PM115A | - |  |
 | Built-in functions | ONGSOURCE | 未網羅 |  | - |  |
 | Built-in functions | ONHBOUND | 使用あり | PC112A | - |  |
-| Built-in functions | ONJSONNAME | 未網羅 |  | - |  |
+| Built-in functions | ONJSONNAME | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | ONKEY | 使用あり | PF107A | - |  |
 | Built-in functions | ONLBOUND | 使用あり | PC112A | - |  |
 | Built-in functions | ONLINE | 使用あり | PC112A | - |  |
@@ -458,10 +458,10 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | PLIREST | 未網羅 |  | - |  |
 | Built-in functions | PLIRETC | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 55 | - |  |
 | Built-in functions | PLIRETV | 使用あり | PM104M, PM107A, PM108A | - |  |
-| Built-in functions | PLISAXA | 未網羅 |  | - |  |
-| Built-in functions | PLISAXB | 未網羅 |  | - |  |
-| Built-in functions | PLISAXC | 未網羅 |  | - |  |
-| Built-in functions | PLISAXD | 未網羅 |  | - |  |
+| Built-in functions | PLISAXA | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | PLISAXB | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | PLISAXC | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Built-in functions | PLISAXD | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | PLISRTA | 未網羅 |  | - |  |
 | Built-in functions | PLISRTB | 未網羅 |  | - |  |
 | Built-in functions | PLISRTC | 未網羅 |  | - |  |
@@ -639,7 +639,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | XMLCHAR | 使用あり | PM119A | - |  |
 | Built-in functions | XMLSCRUB | 使用あり | PM119A | - |  |
 | Built-in functions | XMLSCRUB16 | 使用あり | PM119A | - |  |
-| Built-in functions | XMLUCHAR | 未網羅 |  | - |  |
+| Built-in functions | XMLUCHAR | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | Y4DATE | 使用あり | PM112A | - |  |
 | Built-in functions | Y4JULIAN | 使用あり | PM112A | - |  |
 | Built-in functions | Y4YEAR | 使用あり | PM112A | - |  |

@@ -1,6 +1,6 @@
 # ZCVS 網羅台帳 (Enterprise COBOL for z/OS)
 
-Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 261、CCVS85 だけが測る 49、対象外 6、未網羅 29。
+Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 261、CCVS85 だけが測る 49、対象外 22、未網羅 13。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -36,8 +36,8 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Statements | INSPECT REPLACING | CCVS85 |  | 10 |  |
 | Statements | INSPECT CONVERTING | CCVS85 |  | 2 |  |
 | Statements | INVOKE | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
-| Statements | JSON GENERATE | 未網羅 |  | 0 |  |
-| Statements | JSON PARSE | 未網羅 |  | 0 |  |
+| Statements | JSON GENERATE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Statements | JSON PARSE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Statements | MERGE | CCVS85 |  | 7 |  |
 | Statements | MOVE | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 127 | 441 |  |
 | Statements | MOVE CORRESPONDING | CCVS85 |  | 10 |  |
@@ -70,8 +70,8 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Statements | UNSTRING | CCVS85 |  | 3 |  |
 | Statements | USE | 使用あり | ZP114A | 86 |  |
 | Statements | WRITE | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 11 | 405 |  |
-| Statements | XML GENERATE | 未網羅 |  | 0 |  |
-| Statements | XML PARSE | 未網羅 |  | 0 |  |
+| Statements | XML GENERATE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Statements | XML PARSE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Statements | ENTER | CCVS85 |  | 2 |  |
 | Phrases | ON SIZE ERROR | 使用あり | ZA101A, ZA105A, ZA109A, ZA110A, ZA118A, ZA119A ほか 1 | 25 |  |
 | Phrases | NOT ON SIZE ERROR | 使用あり | ZA105A, ZA109A, ZA118A, ZA119A | 13 |  |
@@ -214,7 +214,7 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Environment and structure | UPSI | 使用あり | ZS108A | 0 |  |
 | Environment and structure | C01 | 未網羅 |  | 0 |  |
 | Environment and structure | PROGRAM COLLATING SEQUENCE | 使用あり | ZD110A | 13 |  |
-| Environment and structure | XML-SCHEMA | 未網羅 |  | 0 |  |
+| Environment and structure | XML-SCHEMA | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Environment and structure | NESTED PROGRAM | 使用あり | ZP106A, ZP113A, ZS105A, ZS106A | 8 |  |
 | Environment and structure | COMMON | 使用あり | ZP106A | 1 |  |
 | Environment and structure | INITIAL | 使用あり | ZPS09I | 1 |  |
@@ -325,20 +325,20 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Special registers | SORT-RETURN | 使用あり | ZS109A | 0 |  |
 | Special registers | TALLY | 使用あり | ZS101A | 6 |  |
 | Special registers | WHEN-COMPILED | 使用あり | ZS101A | 2 |  |
-| Special registers | XML-CODE | 未網羅 |  | 0 |  |
-| Special registers | XML-EVENT | 未網羅 |  | 0 |  |
-| Special registers | XML-TEXT | 未網羅 |  | 0 |  |
-| Special registers | XML-NTEXT | 未網羅 |  | 0 |  |
-| Special registers | JSON-CODE | 未網羅 |  | 0 |  |
-| Special registers | JSON-STATUS | 未網羅 |  | 0 |  |
+| Special registers | XML-CODE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | XML-EVENT | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | XML-TEXT | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | XML-NTEXT | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | JSON-CODE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | JSON-STATUS | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Special registers | DEBUG-ITEM | 使用あり | ZP114A | 0 |  |
 | Special registers | JNIENVPTR | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
 | Special registers | IGY-JAVAIOP-CALL-EXCEPTION | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
-| Special registers | XML-INFORMATION | 未網羅 |  | 0 |  |
-| Special registers | XML-NAMESPACE | 未網羅 |  | 0 |  |
-| Special registers | XML-NAMESPACE-PREFIX | 未網羅 |  | 0 |  |
-| Special registers | XML-NNAMESPACE | 未網羅 |  | 0 |  |
-| Special registers | XML-NNAMESPACE-PREFIX | 未網羅 |  | 0 |  |
+| Special registers | XML-INFORMATION | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | XML-NAMESPACE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | XML-NAMESPACE-PREFIX | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | XML-NNAMESPACE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
+| Special registers | XML-NNAMESPACE-PREFIX | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Compiler options (semantic) | ARITH | 使用あり | ZA110A, ZA116A, ZA117A, ZA118A, ZD108A, ZD111A ほか 3 | 0 |  |
 | Compiler options (semantic) | CODEPAGE | 使用あり | ZN115A | 0 |  |
 | Compiler options (semantic) | DBCS | 使用あり | ZN102B, ZS106A | 0 |  |
