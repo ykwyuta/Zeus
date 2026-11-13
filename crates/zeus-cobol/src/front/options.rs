@@ -21,6 +21,7 @@ pub(super) struct Effective {
     pub block0: bool,
     pub ssrange: bool,
     pub numcheck: u8,
+    pub initcheck: u8,
     pub codepage: Option<u32>,
     pub dynam: bool,
     pub dll: bool,
@@ -50,6 +51,7 @@ impl Effective {
             block0: self.block0,
             ssrange: self.ssrange,
             numcheck: self.numcheck,
+            initcheck: self.initcheck,
             codepage: self.codepage,
             dynam: self.dynam,
             dll: self.dll,
@@ -81,6 +83,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
     let mut block0 = defaults.block0;
     let mut ssrange = defaults.ssrange;
     let mut numcheck = defaults.numcheck;
+    let mut initcheck = defaults.initcheck;
     let mut codepage = defaults.codepage;
     let mut dynam = defaults.dynam;
     let mut dll = defaults.dll;
@@ -198,6 +201,20 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
             ("NOSSRANGE" | "NOSSR", None) => ssrange = false,
             ("NONUMCHECK" | "NONC", None) => numcheck = 0,
             ("NUMCHECK" | "NC", value) => numcheck = parse_numcheck(value.unwrap_or(""))?,
+            ("NOINITCHECK" | "NOIC", None) => initcheck = 0,
+            // INITCHECK alone is INITCHECK(LAX) (Programming Guide, INITCHECK)
+            ("INITCHECK" | "IC", value) => {
+                initcheck = match value.map(str::to_ascii_uppercase).as_deref() {
+                    None | Some("" | "LAX") => 1,
+                    Some("STRICT") => 2,
+                    Some(other) => {
+                        return Err(Diag::error(
+                            Default::default(),
+                            format!("INITCHECK suboption {other} is not valid"),
+                        ));
+                    }
+                }
+            }
             ("APOST", None) => apost = true,
             ("QUOTE", None) => apost = false,
             ("ZWB", None) => nozwb = false,
@@ -351,6 +368,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         codepage,
         ssrange,
         numcheck,
+        initcheck,
         cics,
         dbcs,
         trunc,

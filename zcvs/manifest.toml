@@ -310,3 +310,19 @@ diagnostic_contains = "C OF A is ambiguous"
 
 [programs.ZE147P]
 expect = "compile-only"
+
+[programs.ZE148N]
+expect = "compile-only"
+expect_compile_rc = 4
+
+[programs.ZE148P]
+expect = "compile-only"
+expect_compile_rc = 0
+
+[programs.ZE149N]
+expect = "compile-only"
+expect_compile_rc = 4
+
+[programs.ZE149P]
+expect = "compile-only"
+expect_compile_rc = 0

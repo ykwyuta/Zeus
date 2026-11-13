@@ -2488,5 +2488,21 @@
       "DL-UTF8-LENGTH",
       "DL-UTF8-BYTES"
     ]
+  },
+  "ZE148N": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE148P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE149N": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE149P": {
+    "expect": "compile-only",
+    "tests": []
   }
 }

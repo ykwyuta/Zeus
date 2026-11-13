@@ -17,7 +17,7 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 | `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF115A`, `ZF201M`, `ZF202M` (17) |
 | `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS109A`, including `ZS103M` (9) |
 | `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX110A` (10) |
-| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE147N`, `ZE126P` .. `ZE147P` (69) |
+| `ZE` | Negative compile diagnostics and positive controls | `ZE101N` .. `ZE149N`, `ZE126P` .. `ZE149P` (73) |
 
 The suite contains 170 main programs: 103 runtime programs with 1,553 assertions,
 46 negative compile checks, and 21 successful-compilation controls. Cargo tests

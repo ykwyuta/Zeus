@@ -214,6 +214,10 @@ pub struct ProgramCode {
     /// `u32::MAX`).
     #[serde(default)]
     pub instr_stmt: Vec<u32>,
+    /// INITCHECK: descriptors of the items the analysis tracks (compile
+    /// time only).
+    #[serde(skip)]
+    pub initcheck_items: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -185,6 +185,13 @@ def compare(args):
             if rc is not None and rc < 8:
                 findings['STEP'].append((program, '-', f'compile RC {rc}; a rejection (RC>=8) is expected'))
             continue
+        want_rc = cfg.get('expect_compile_rc')
+        if want_rc is not None:
+            rc = entry.get('compile_rc')
+            if rc is not None and rc != want_rc:
+                findings['STEP'].append((program, '-', f'compile RC {rc}; RC {want_rc} is expected'))
+            if spec['expect'] == 'compile-only':
+                continue
         if spec['expect'] == 'compile-only':
             rc = entry.get('compile_rc')
             if rc is not None and rc > 4:

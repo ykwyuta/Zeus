@@ -454,6 +454,14 @@ fn render_program_steps(
     for n in 1..=7 {
         let _ = writeln!(s, "//SYSUT{n}   DD UNIT=SYSDA,SPACE=(CYL,(1,1))");
     }
+    if let Some(rc) = cfg.expect_compile_rc {
+        // ends the job with RC 16 unless the compile gave exactly `rc`
+        let _ = writeln!(s, "//V{member:<7} EXEC PGM=IDCAMS,COND=({rc},EQ,C{member})");
+        let _ = writeln!(s, "//SYSPRINT DD SYSOUT=*");
+        let _ = writeln!(s, "//SYSIN    DD *");
+        let _ = writeln!(s, " SET MAXCC = 16");
+        let _ = writeln!(s, "/*");
+    }
     let _ = writeln!(
         s,
         "//L{member:<7} EXEC PGM=IEWL,PARM='LIST,XREF,LET,RENT',COND=(4,LT,C{member})"

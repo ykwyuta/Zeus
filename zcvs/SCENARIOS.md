@@ -140,6 +140,7 @@
 | E04 NATIONAL/POINTER | `ZE114N`–`ZE116N`、`ZE134N/P`–`ZE143N/P`、`ZE146N/P` | 部分 | JUSTIFIED・BLANK WHEN ZERO・SIGN・手続ポインターPIC/VALUE・国別PIC・外部浮動VALUE/JUSTIFIED/USAGEを1規則ずつ拒否/受理で追加。GROUP-USAGE下JUSTIFIED・国別符号の対照は残る。国別から英数字への MOVE は LRM の表 51「Valid and invalid elementary moves」で No なので `ZE146N` で拒否、`DISPLAY-OF` を通す `ZE146P` で受理を測る (旧 `ZN114A` を置き換え)。 |
 | E05 ファイル禁止句 | `ZE117N`–`ZE123N` | 部分 | LINE SEQUENTIAL+RESERVE、不正SAME AREA、属性不一致と構文違反の区別、各規則の正常対照 |
 | E06 RETURNING/可視性 | `ZE112N/113N`、`ZE147N/P` | 部分 | USING重複、受信型不適合、非COMMON兄弟CALL、01/77以外の結果項目。2026-11-13: QUALIFY(COMPAT) では C OF A が一意でなく拒否、QUALIFY(EXTEND) では完全な修飾で受理 |
+| E07 INITCHECK | `ZE148N/P`、`ZE149N/P` | 追加 | 翻訳の戻り値で見る (manifest の expect_compile_rc、JCL は戻り値が違えば IDCAMS で RC 16)。LAX: どの経路でも初期化されない項目の参照で警告 (RC 4)、PERFORM した段落で初期化すれば警告なし (RC 0)。STRICT: 一方の経路だけで初期化された項目で警告、同じプログラムを LAX で翻訳すると警告なし。2026-11-13 Zeus は命令列の前向きデータフロー解析で、PERFORM は文脈を区別せずに追う。IBM の警告文と番号は突き合わせていない |
 | E07 指示文/桁数 | `ZE124N/125N/128N/P/130N/P/131N/P/133N/P`、`ZE144N/P` | 部分 | ODOの小数カウント拒否と整数カウント正常対照を追加。未知/矛盾オプション、部分語の複数語・空語、USAGE別の境界桁数は残る |
 | E08 UNTIL EXIT禁止形 | `ZE105N`、新規`ZE132N/P` | 部分 | TEST BEFORE/AFTER/WITH表記、VARYING禁止、単にEXIT未定義と診断する場合と専用診断を区別 |
 

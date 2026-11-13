@@ -1703,6 +1703,11 @@ impl<'a> Gen<'a> {
         } else {
             None
         };
+        let initcheck_items = if crate::front::initcheck() == 0 {
+            Vec::new()
+        } else {
+            self.initcheck_items()
+        };
         Ok(zir::ProgramCode {
             ccsid: None,
             compiled_at: None,
@@ -1863,9 +1868,48 @@ impl<'a> Gen<'a> {
                 .flatten()
                 .find(|&&id| self.dm.items[id].area == super::data::Area::Special)
                 .map(|&id| self.dm.items[id].desc),
+            initcheck_items,
             stmt_pos: self.stmt_pos,
             instr_stmt: self.instr_stmt,
         })
+    }
+
+    /// Items INITCHECK tracks: elementary WORKING-STORAGE and LOCAL-STORAGE
+    /// items with no VALUE clause on themselves or a containing group, not
+    /// EXTERNAL or GLOBAL (Programming Guide, INITCHECK restrictions), and
+    /// not items Zeus adds itself (debugging and report items).
+    fn initcheck_items(&self) -> Vec<u32> {
+        let items = &self.dm.items;
+        (0..items.len())
+            .filter(|&id| {
+                let it = &items[id];
+                if it.area != Area::Working
+                    || !it.children.is_empty()
+                    || it.cond_of.is_some()
+                    || it.index_of.is_some()
+                    || it.owner.is_some()
+                    || it.renames.is_some()
+                    || it.level == 66
+                    || it.level == 88
+                {
+                    return false;
+                }
+                let mut cur = Some(id);
+                while let Some(c) = cur {
+                    let x = &items[c];
+                    if x.entry.value.is_some()
+                        || x.global
+                        || x.entry.external
+                        || x.name.as_deref().is_some_and(|n| n.starts_with("DEBUG-") || n.starts_with("RW#"))
+                    {
+                        return false;
+                    }
+                    cur = x.parent;
+                }
+                true
+            })
+            .map(|id| items[id].desc)
+            .collect()
     }
 
     fn collating(&self) -> Result<Option<Vec<u16>>> {
@@ -4953,6 +4997,15 @@ pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
     // IBM uses the first literal CALL convention for a name throughout
     // a compilation unit, diagnosing later conflicting conventions.
     let mut diagnostics = Vec::new();
+    if crate::front::initcheck() != 0 {
+        for program in &out {
+            diagnostics.extend(super::initcheck::analyze(
+                program,
+                &program.initcheck_items,
+                crate::front::initcheck() == 2,
+            ));
+        }
+    }
     let mut conventions = HashMap::new();
     for program in &mut out {
         if program.parent.is_none() {
@@ -5085,7 +5138,7 @@ fn compile_nested<'a>(
 }
 
 /// Data references of an instruction: (location, receiving operand).
-fn instr_locs(ins: &Instr) -> Vec<(Loc, bool)> {
+pub(super) fn instr_locs(ins: &Instr) -> Vec<(Loc, bool)> {
     fn walk(v: &serde_json::Value, receiving: bool, out: &mut Vec<(Loc, bool)>) {
         match v {
             serde_json::Value::Object(m) => {

@@ -337,6 +337,20 @@ fn run_program(
     // The exported JCL links and runs after a compile return code up to 4
     // (COND=(4,LT,C...)): warnings, or an MNOTE of severity 1-4, do not stop
     // the program.
+    // A required compile return code (a warning, or none) is a check of
+    // its own: the program does not pass with any other code.
+    if let (Some(want), Some(status)) = (cfg.expect_compile_rc, &compile_status)
+        && status.code() != Some(want)
+        && status.code().is_some_and(|c| (0..=4).contains(&c))
+    {
+        return Ok(Outcome::Ran {
+            counts: Counts {
+                total: 1,
+                fail: 1,
+                ..Counts::default()
+            },
+        });
+    }
     match compile_status {
         Some(status) if status.code().is_some_and(|c| (0..=4).contains(&c)) => {}
         Some(_) => return Ok(Outcome::CompileError),

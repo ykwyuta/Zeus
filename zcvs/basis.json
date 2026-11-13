@@ -3635,5 +3635,31 @@
         ]
       }
     }
+  },
+  "ZE148N": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | If INITCHECK or INITCHECK(LAX) is in effect, the compiler will check for uninitialized data items and issue a warning message when a data item is used without being initialized.",
+      "COB-PG: INITCHECK | Suboption default is: INITCHECK(LAX) if INITCHECK is specified with no suboption"
+    ]
+  },
+  "ZE148P": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | However, if a data item is initialized on at least one logical path to a statement, no warning message will be issued."
+    ]
+  },
+  "ZE149N": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | INITCHECK(STRICT) will issue a warning message about uninitialized data for a data item used in a statement unless the data item is initialized on all logical paths to the statement.",
+      "COB-PG: INITCHECK | Z is initialized on one path to the DISPLAY statement but not the other"
+    ]
+  },
+  "ZE149P": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | if INITCHECK(LAX) is in effect, a warning message will be issued for Y only, while INITCHECK(STRICT) will also issue a warning message for Z."
+    ]
   }
 }
