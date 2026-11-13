@@ -175,6 +175,8 @@ pub enum Attr {
     Internal,
     Aligned,
     Unaligned,
+    /// UNION (CELL): the members overlay each other.
+    Union,
     Dimension(Vec<Bound>),
     Like(Ref),
     Builtin,

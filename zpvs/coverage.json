@@ -522,6 +522,18 @@
       "FREE-UNALLOCATED"
     ]
   },
+  "PD112A": {
+    "expect": "run",
+    "tests": [
+      "UNION-OVERLAY",
+      "UNION-SIZE",
+      "UNION-LARGEST-MEMBER",
+      "CELL-SYNONYM",
+      "UNION-MAPPING-C",
+      "UNION-MAPPING-F",
+      "UNION-MAPPING-SIZE"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []

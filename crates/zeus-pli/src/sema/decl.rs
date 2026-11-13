@@ -1086,7 +1086,11 @@ impl Compiler {
                 units.push(u);
                 kids.push(start);
             }
-            let (u, offs) = pair(&units);
+            let (u, offs) = if has(attrs, |a| matches!(a, Attr::Union)) {
+                overlay(&units)
+            } else {
+                pair(&units)
+            };
             for (k, off) in kids.iter().zip(offs) {
                 self.shift(*k, off);
             }
@@ -1330,6 +1334,18 @@ fn pair(units: &[Unit]) -> (Unit, Vec<u64>) {
         };
     }
     (cur, offs)
+}
+
+/// The members of a union: each is mapped as a structure member, keeping
+/// its position relative to an 8-byte boundary, so members needing
+/// different padding do not start at the same byte (LRM, "Structure and
+/// union mapping"). The union holds the largest of them.
+fn overlay(units: &[Unit]) -> (Unit, Vec<u64>) {
+    let base = units.iter().map(|u| u.off).min().unwrap_or(0);
+    let offs: Vec<u64> = units.iter().map(|u| u.off - base).collect();
+    let len = units.iter().zip(&offs).map(|(u, o)| o + u.len).max().unwrap_or(0);
+    let align = units.iter().map(|u| u.align).max().unwrap_or(1);
+    (Unit { len, align, off: base }, offs)
 }
 
 #[cfg(test)]

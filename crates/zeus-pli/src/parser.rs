@@ -691,6 +691,7 @@ impl Parser {
                 "INTERNAL" | "INT" => Attr::Internal,
                 "ALIGNED" => Attr::Aligned,
                 "UNALIGNED" | "UNAL" => Attr::Unaligned,
+                "UNION" | "CELL" => Attr::Union,
                 "DIMENSION" | "DIM" => {
                     self.expect_op("(")?;
                     Attr::Dimension(self.bounds()?)

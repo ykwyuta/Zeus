@@ -1440,6 +1440,56 @@
       }
     }
   },
+  "PD112A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UNION attribute | The UNION attribute allows you to specify that a variable is a union and that its members are those that follow it and are at the next logically higher level."
+    ],
+    "tests": {
+      "UNION-OVERLAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Unions | A union is a collection of member elements that overlay each other, occupying the same storage."
+        ]
+      },
+      "UNION-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Unions | The storage occupied by the union is equal to the storage required by the largest member."
+        ]
+      },
+      "UNION-LARGEST-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Unions | The storage occupied by the union is equal to the storage required by the largest member."
+        ]
+      },
+      "CELL-SYNONYM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNION attribute | CELL is accepted as a synonym for UNION."
+        ]
+      },
+      "UNION-MAPPING-C": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure and union mapping | It means that C starts with the fourth byte of H and that F starts with the third byte of H."
+        ]
+      },
+      "UNION-MAPPING-F": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure and union mapping | It means that C starts with the fourth byte of H and that F starts with the third byte of H."
+        ]
+      },
+      "UNION-MAPPING-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure and union mapping | Three bytes of padding are added between A and B. Two bytes are added between A and E. No padding bytes are between A and H."
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [
