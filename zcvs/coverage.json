@@ -1976,6 +1976,15 @@
       "MIXED-DECODE"
     ]
   },
+  "ZN115A": {
+    "expect": "run",
+    "tests": [
+      "CP1140-EURO",
+      "CP1140-DISPLAY-OF",
+      "CP1140-LETTERS",
+      "CCSID-ARGUMENT-037"
+    ]
+  },
   "ZP101A": {
     "expect": "run",
     "tests": [

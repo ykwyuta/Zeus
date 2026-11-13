@@ -2198,6 +2198,41 @@
       }
     }
   },
+  "ZN115A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: CODEPAGE | Use CODEPAGE to specify the coded character set identifier (CCSID) for an EBCDIC code page for processing compile-time and runtime COBOL operations that are sensitive to character encoding."
+    ],
+    "tests": {
+      "CP1140-EURO": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Table 14. Hexadecimal values of the euro sign | 1140 USA, Canada, Netherlands, Portugal, Australia, New 037 X'9F'",
+          "COB-LRM: NATIONAL-OF | Otherwise, the source code page is the one that was in effect for the CODEPAGE compiler option when the source code was compiled."
+        ]
+      },
+      "CP1140-DISPLAY-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Table 14. Hexadecimal values of the euro sign | 1140 USA, Canada, Netherlands, Portugal, Australia, New 037 X'9F'",
+          "COB-LRM: DISPLAY-OF | The DISPLAY-OF function returns an alphanumeric character string consisting of the"
+        ]
+      },
+      "CP1140-LETTERS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NATIONAL-OF | Otherwise, the source code page is the one that was in effect for the CODEPAGE compiler option when the source code was compiled.",
+          "COB-PG: CODEPAGE | The default CCSID 1140 is the equivalent of CCSID 37 (COM EUROPE EBCDIC), but additionally includes the euro symbol."
+        ]
+      },
+      "CCSID-ARGUMENT-037": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NATIONAL-OF | argument-2 identifies the source code page for the conversion."
+        ]
+      }
+    }
+  },
   "ZP101A": {
     "basis": "spec",
     "refs": [
