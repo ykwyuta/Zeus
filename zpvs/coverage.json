@@ -1173,5 +1173,13 @@
       "NEW-INDEPENDENT",
       "HANDLE-FREE"
     ]
+  },
+  "PS107A": {
+    "expect": "run",
+    "tests": [
+      "DELAY-300-MS",
+      "FLUSH-KEEPS-OPEN",
+      "FLUSH-RECORDS"
+    ]
   }
 }

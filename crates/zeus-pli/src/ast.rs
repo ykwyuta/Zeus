@@ -395,6 +395,8 @@ pub enum StmtKind {
     Get(StreamOpts),
     Open(Vec<FileOpen>),
     Close(Vec<Expr>),
+    /// FLUSH FILE(f); None: FILE(*), every open output file.
+    Flush(Option<Expr>),
     Read(RecordOpts),
     Write(RecordOpts),
     Rewrite(RecordOpts),

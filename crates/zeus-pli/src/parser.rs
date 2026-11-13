@@ -1858,6 +1858,21 @@ impl Parser {
                 }
                 StmtKind::Close(files)
             }
+            "FLUSH" => {
+                if !self.eat_word("FILE") {
+                    return Err(self.unexpected("FILE"));
+                }
+                let file = if matches!(self.tok_at(1), Tok::Op(o) if *o == "*") {
+                    self.bump();
+                    self.bump();
+                    self.expect_op(")")?;
+                    None
+                } else {
+                    Some(self.paren_expr()?)
+                };
+                self.semi()?;
+                StmtKind::Flush(file)
+            }
             "READ" => StmtKind::Read(self.record_opts()?),
             "WRITE" => StmtKind::Write(self.record_opts()?),
             "REWRITE" => StmtKind::Rewrite(self.record_opts()?),

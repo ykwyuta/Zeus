@@ -319,6 +319,31 @@ impl Machine {
         Ok(())
     }
 
+    /// FLUSH: what has been written to an open stream output file reaches
+    /// its data set; the file stays open. A line still being built is not
+    /// ended. Record files and files that are not open are left alone
+    /// (LRM: FLUSH has no effect on record output files).
+    pub(crate) fn flush_file(&mut self, f: FileId) -> R<()> {
+        let st = &mut self.files[f as usize];
+        if !st.open {
+            return Ok(());
+        }
+        match &mut st.sink {
+            Some(Sink::Records(path, fmt, recs)) => {
+                let mut data = Vec::new();
+                for r in recs.iter() {
+                    zeus_ds::format::encode_into(*fmt, r, SPACE, &mut data);
+                }
+                let _ = zeus_ds::format::write_file(path, &data);
+            }
+            Some(Sink::Text(w)) => {
+                let _ = w.flush();
+            }
+            _ => {}
+        }
+        Ok(())
+    }
+
     /// Writes out the current lines of the stream output files (their
     /// output then precedes that of the caller of another module).
     pub(crate) fn complete_lines(&mut self) {

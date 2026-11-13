@@ -1804,6 +1804,21 @@ impl Machine {
                 }
                 Ok(())
             }
+            Stmt::Flush(file) => {
+                match file {
+                    Some(f) => {
+                        if let Value::File(id) = self.eval(f, act)? {
+                            self.flush_file(id)?;
+                        }
+                    }
+                    None => {
+                        for id in 0..self.files.len() {
+                            self.flush_file(id as FileId)?;
+                        }
+                    }
+                }
+                Ok(())
+            }
             Stmt::Read(r) => self.read_stmt(r, act),
             Stmt::Write(r) => self.write_stmt(r, act),
             Stmt::Locate(item, r) => self.locate_stmt(item, r, act),

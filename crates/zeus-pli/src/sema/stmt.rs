@@ -854,6 +854,10 @@ impl Compiler {
                 }
                 Stmt::Close(v)
             }
+            StmtKind::Flush(file) => Stmt::Flush(match file {
+                Some(f) => self.file_expr(&Some(f.clone()), pos)?,
+                None => None,
+            }),
             StmtKind::Read(o) => Stmt::Read(self.record(o, pos)?),
             StmtKind::Write(o) => Stmt::Write(self.record(o, pos)?),
             StmtKind::Rewrite(o) => Stmt::Rewrite(self.record(o, pos)?),

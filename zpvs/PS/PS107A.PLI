@@ -1,0 +1,45 @@
+ PS107A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* The DELAY and FLUSH statements (Enterprise PL/I 6.1 Language
+    Reference). DELAY(n) suspends execution for n milliseconds: the
+    MICROSECS() difference across DELAY(300) is at least 300000.
+    FLUSH FILE(f) flushes the buffers of an open output file and
+    FLUSH FILE(*) those of all open output files. FLUSH has no effect
+    on a record output file: it stays open, and the records written
+    before and after FLUSH are all read back in order. */
+ DCL F FILE RECORD SEQUENTIAL;
+ DCL REC CHAR(8);
+ DCL (T0, T1) FIXED BIN(63);
+ DCL (N, CODE) FIXED BIN(31) INIT(0);
+ DCL SEEN CHAR(24) VARYING INIT('');
+ DCL EOF BIT(1) INIT('0'B);
+
+ OPEN FILE(REPORT);
+
+ T0 = MICROSECS();
+ DELAY(300);
+ T1 = MICROSECS();
+ CALL ZCHECK('DELAY-300-MS', T1 - T0 >= 300000);
+
+ OPEN FILE(F) OUTPUT TITLE('XXXXX001');
+ REC = 'FIRST   '; WRITE FILE(F) FROM(REC);
+ FLUSH FILE(F);
+ REC = 'SECOND  '; WRITE FILE(F) FROM(REC);
+ FLUSH FILE(*);
+ REC = 'THIRD   '; WRITE FILE(F) FROM(REC);
+ CLOSE FILE(F);
+ OPEN FILE(F) INPUT TITLE('XXXXX001');
+ ON ENDFILE(F) EOF = '1'B;
+ READ FILE(F) INTO(REC);
+ DO WHILE(^EOF);
+   N = N + 1; SEEN = SEEN || REC;
+   READ FILE(F) INTO(REC);
+ END;
+ CLOSE FILE(F);
+ CALL ZCHECK('FLUSH-KEEPS-OPEN', N = 3);
+ CALL ZCHECK('FLUSH-RECORDS',
+   SEEN = 'FIRST   SECOND  THIRD   ');
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PS107A;

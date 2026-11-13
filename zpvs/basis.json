@@ -3866,5 +3866,36 @@
         ]
       }
     }
+  },
+  "PS107A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DELAY statement | The DELAY statement suspends the execution of the next statement in the application program for the specified period of time."
+    ],
+    "tests": {
+      "DELAY-300-MS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DELAY statement | Execution is suspended for the number of milliseconds specified.",
+          "PLI-LRM: MICROSECS | If d is omitted, it is assumed to be the value returned by TIMESTAMP()."
+        ]
+      },
+      "FLUSH-KEEPS-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLUSH statement | The FLUSH statement flushes the buffers associated with an open output file or with all open output files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement can be used to flush one or all files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement has no effect on record output files."
+        ]
+      },
+      "FLUSH-RECORDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLUSH statement | The FLUSH statement flushes the buffers associated with an open output file or with all open output files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement can be used to flush one or all files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement has no effect on record output files."
+        ]
+      }
+    }
   }
 }

@@ -572,6 +572,7 @@ pub enum Stmt {
     Get(Stream),
     Open(Vec<OpenSpec>),
     Close(Vec<Expr>),
+    Flush(Option<Expr>),
     Read(RecordIo),
     Write(RecordIo),
     Rewrite(RecordIo),
