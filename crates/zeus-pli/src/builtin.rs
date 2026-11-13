@@ -222,6 +222,8 @@ pub enum Bif {
     MemCu41,
     MemCu42,
     MemConvert,
+    NullEntry,
+    EntryAddr,
     PicSpec,
     CodePage,
     SubTo,
@@ -576,6 +578,8 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "MEMCU41" => MemCu41,
         "MEMCU42" => MemCu42,
         "MEMCONVERT" => MemConvert,
+        "NULLENTRY" => NullEntry,
+        "ENTRYADDR" => EntryAddr,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -736,6 +740,7 @@ impl Bif {
                 | IsMain
                 | CodePage
                 | CheckStg
+                | NullEntry
                 | Uuid4
                 | Secs
                 | Timestamp
@@ -975,6 +980,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         },
         MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24 | MemCu41 | MemCu42
         | MemConvert => Ty::fixed_bin(63, 0),
+        NullEntry => Ty::Entry,
+        EntryAddr => Ty::Pointer,
         // the same string type as x, at most its length
         Usubstr => match arg(0)? {
             Ty::Wchar { len, .. } => Ty::Wchar {

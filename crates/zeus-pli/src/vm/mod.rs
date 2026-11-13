@@ -2216,6 +2216,7 @@ impl Machine {
             Callee::Entry(p, k) => (*p, Some(*k), act),
             Callee::External(name) => return self.call_external(name, args, act, rt),
             Callee::Var(e) => match self.eval(e, act)? {
+                Value::Entry(p, _) if p == bif::NULL_ENTRY => return err("call of NULLENTRY"),
                 Value::Entry(p, a) => (p, None, a),
                 _ => return err("call of a non-entry value"),
             },

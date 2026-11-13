@@ -1332,6 +1332,15 @@ impl Machine {
                     },
                 }
             }
+            // NULLENTRY: the entry value that names no entry point; it
+            // compares unequal to every entry constant
+            NullEntry => Value::Entry(NULL_ENTRY, 0),
+            // ENTRYADDR(NULLENTRY) is SYSNULL (LRM). Zeus entry points have
+            // no machine address, so other entries are refused.
+            EntryAddr => match &v[0] {
+                Value::Entry(p, _) if *p == NULL_ENTRY => Value::Ptr(0),
+                _ => return err("ENTRYADDR of an entry point is not supported"),
+            },
             // MEMCUxy(p, n, q, m): the m bytes at q from UTF-x to UTF-y
             // (1: UTF-8, 2: UTF-16, 4: UTF-32, big-endian) into the n bytes
             // at p; the bytes written, or -1 when the target is too small
@@ -2562,3 +2571,6 @@ fn utf_units(s: &[u8], wide: bool) -> Result<Vec<(usize, usize)>, usize> {
     }
     Ok(out)
 }
+
+/// The procedure number of NULLENTRY.
+pub(crate) const NULL_ENTRY: u32 = u32::MAX;

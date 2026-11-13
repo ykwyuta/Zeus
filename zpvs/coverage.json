@@ -276,6 +276,15 @@
       "MEMCONVERT-ZERO"
     ]
   },
+  "PC116A": {
+    "expect": "run",
+    "tests": [
+      "NULLENTRY-ASSIGN",
+      "NULLENTRY-UNEQUAL",
+      "NULLENTRY-STATIC-INIT",
+      "ENTRYADDR-NULLENTRY"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

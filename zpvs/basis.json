@@ -931,6 +931,38 @@
       }
     }
   },
+  "PC116A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: NULLENTRY | NULLENTRY can be assigned to or compared with any other entry variable."
+    ],
+    "tests": {
+      "NULLENTRY-ASSIGN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | NULLENTRY can be assigned to or compared with any other entry variable."
+        ]
+      },
+      "NULLENTRY-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | NULLENTRY can be assigned to or compared with any other entry variable."
+        ]
+      },
+      "NULLENTRY-STATIC-INIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | You can use NULLENTRY to initialize an entry variable in static storage."
+        ]
+      },
+      "ENTRYADDR-NULLENTRY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | ENTRYADDR(NULLENTRY) returns the same value as SYSNULL."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
