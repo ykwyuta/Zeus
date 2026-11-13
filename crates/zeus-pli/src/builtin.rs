@@ -215,6 +215,13 @@ pub enum Bif {
     Utf8ToWchar,
     MemUvalid8,
     MemUvalid16,
+    MemCu12,
+    MemCu14,
+    MemCu21,
+    MemCu24,
+    MemCu41,
+    MemCu42,
+    MemConvert,
     PicSpec,
     CodePage,
     SubTo,
@@ -562,6 +569,13 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "UTF8TOWCHAR" => Utf8ToWchar,
         "MEMUVALID8" => MemUvalid8,
         "MEMUVALID16" => MemUvalid16,
+        "MEMCU12" => MemCu12,
+        "MEMCU14" => MemCu14,
+        "MEMCU21" => MemCu21,
+        "MEMCU24" => MemCu24,
+        "MEMCU41" => MemCu41,
+        "MEMCU42" => MemCu42,
+        "MEMCONVERT" => MemConvert,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -959,7 +973,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             var: crate::types::Var::Varying,
             graphic: false,
         },
-        MemUvalid8 | MemUvalid16 => Ty::fixed_bin(63, 0),
+        MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24 | MemCu41 | MemCu42
+        | MemConvert => Ty::fixed_bin(63, 0),
         // the same string type as x, at most its length
         Usubstr => match arg(0)? {
             Ty::Wchar { len, .. } => Ty::Wchar {

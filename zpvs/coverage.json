@@ -261,6 +261,21 @@
       "MEMUVALID16-VALID"
     ]
   },
+  "PC115A": {
+    "expect": "run",
+    "tests": [
+      "MEMCU12",
+      "MEMCU14",
+      "MEMCU21",
+      "MEMCU24-SURROGATE",
+      "MEMCU41",
+      "MEMCU42",
+      "MEMCU12-TOO-SMALL",
+      "MEMCU12-INVALID",
+      "MEMCONVERT-1140-1141",
+      "MEMCONVERT-ZERO"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

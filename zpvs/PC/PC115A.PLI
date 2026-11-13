@@ -1,0 +1,46 @@
+ PC115A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* MEMCU12, MEMCU14, MEMCU21, MEMCU24, MEMCU41, MEMCU42 and
+    MEMCONVERT (Enterprise PL/I 6.1 Language Reference). MEMCUxy
+    converts a source buffer from UTF-x to UTF-y (1: UTF-8, 2: UTF-16,
+    4: UTF-32) into a target buffer and returns the number of bytes
+    written, or -1 when the target is too small or the source is
+    invalid. MEMCONVERT converts between code pages; zero when either
+    length is zero. The code page example is the LRM one for UTF8: '['
+    and ']' are 'BA'X and 'BB'X in CCSID 1140 and '63'X and 'FC'X in
+    CCSID 1141. The G clef U+1D11E is 'D834_DD1E'WX in UTF-16. */
+ DCL T CHAR(8);
+ DCL S8 CHAR(3) INIT('4B_C3_A4'X);
+ DCL S16 CHAR(4) INIT('004B_00E4'X);
+ DCL CLEF16 CHAR(4) INIT('D834_DD1E'X);
+ DCL CLEF32 CHAR(4) INIT('0001_D11E'X);
+ DCL BAD8 CHAR(1) INIT('C3'X);
+ DCL BR CHAR(2) INIT('BA_BB'X);
+ DCL N FIXED BIN(63);
+
+ OPEN FILE(REPORT);
+
+ T = ''; N = MEMCU12(ADDR(T), 8, ADDR(S8), 3);
+ CALL ZCHECK('MEMCU12', N = 4 & SUBSTR(T,1,4) = '004B_00E4'X);
+ T = ''; N = MEMCU14(ADDR(T), 8, ADDR(S8), 3);
+ CALL ZCHECK('MEMCU14', N = 8 & T = '0000_004B_0000_00E4'X);
+ T = ''; N = MEMCU21(ADDR(T), 8, ADDR(S16), 4);
+ CALL ZCHECK('MEMCU21', N = 3 & SUBSTR(T,1,3) = '4B_C3_A4'X);
+ T = ''; N = MEMCU24(ADDR(T), 8, ADDR(CLEF16), 4);
+ CALL ZCHECK('MEMCU24-SURROGATE', N = 4 & SUBSTR(T,1,4) = CLEF32);
+ T = ''; N = MEMCU41(ADDR(T), 8, ADDR(CLEF32), 4);
+ CALL ZCHECK('MEMCU41', N = 4 & SUBSTR(T,1,4) = 'F0_9D_84_9E'X);
+ T = ''; N = MEMCU42(ADDR(T), 8, ADDR(CLEF32), 4);
+ CALL ZCHECK('MEMCU42', N = 4 & SUBSTR(T,1,4) = CLEF16);
+ N = MEMCU12(ADDR(T), 2, ADDR(S8), 3);
+ CALL ZCHECK('MEMCU12-TOO-SMALL', N = -1);
+ N = MEMCU12(ADDR(T), 8, ADDR(BAD8), 1);
+ CALL ZCHECK('MEMCU12-INVALID', N = -1);
+ T = ''; N = MEMCONVERT(ADDR(T), 8, 1141, ADDR(BR), 2, 1140);
+ CALL ZCHECK('MEMCONVERT-1140-1141', N = 2 & SUBSTR(T,1,2) = '63_FC'X);
+ N = MEMCONVERT(ADDR(T), 8, 1141, ADDR(BR), 0, 1140);
+ CALL ZCHECK('MEMCONVERT-ZERO', N = 0);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC115A;

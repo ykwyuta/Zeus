@@ -1332,6 +1332,86 @@ impl Machine {
                     },
                 }
             }
+            // MEMCUxy(p, n, q, m): the m bytes at q from UTF-x to UTF-y
+            // (1: UTF-8, 2: UTF-16, 4: UTF-32, big-endian) into the n bytes
+            // at p; the bytes written, or -1 when the target is too small
+            // or the source invalid (LRM, MEMCU12 ... MEMCU42)
+            MemCu12 | MemCu14 | MemCu21 | MemCu24 | MemCu41 | MemCu42 => {
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[2]) else {
+                    return err(format!("{b:?} requires locators"));
+                };
+                let (p, q) = (*p, *q);
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let m = int(3).unwrap_or(0).max(0) as usize;
+                let src = self.read(q, m)?.to_vec();
+                let (from, to) = match b {
+                    MemCu12 => (1, 2),
+                    MemCu14 => (1, 4),
+                    MemCu21 => (2, 1),
+                    MemCu24 => (2, 4),
+                    MemCu41 => (4, 1),
+                    _ => (4, 2),
+                };
+                let text: Option<std::string::String> = match from {
+                    1 => std::str::from_utf8(&src).ok().map(str::to_string),
+                    2 => (src.len() % 2 == 0)
+                        .then(|| {
+                            let u: Vec<u16> =
+                                src.chunks(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+                            std::string::String::from_utf16(&u).ok()
+                        })
+                        .flatten(),
+                    _ => (src.len() % 4 == 0)
+                        .then(|| {
+                            src.chunks(4)
+                                .map(|c| char::from_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])))
+                                .collect::<Option<std::string::String>>()
+                        })
+                        .flatten(),
+                };
+                let out: Option<Vec<u8>> = text.map(|t| match to {
+                    1 => t.into_bytes(),
+                    2 => t.encode_utf16().flat_map(u16::to_be_bytes).collect(),
+                    _ => t.chars().flat_map(|c| (c as u32).to_be_bytes()).collect(),
+                });
+                match out {
+                    Some(o) if o.len() <= n => {
+                        self.write(p, &o)?;
+                        Value::int(o.len() as i64)
+                    }
+                    _ => Value::int(-1),
+                }
+            }
+            // MEMCONVERT(p, n, c, q, m, d): the m bytes at q from code page d
+            // to code page c into the n bytes at p
+            MemConvert => {
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[3]) else {
+                    return err("MEMCONVERT requires locators");
+                };
+                let (p, q) = (*p, *q);
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let m = int(4).unwrap_or(0).max(0) as usize;
+                if v.len() > 6 {
+                    return err("MEMCONVERT: the conversion technique is not supported");
+                }
+                if n == 0 || m == 0 {
+                    Value::int(0)
+                } else {
+                    let page = |c: i64| match u32::try_from(c).ok().and_then(zeus_cobol::codepage::get) {
+                        Some(cp) => Ok(cp),
+                        None => err(format!("MEMCONVERT: code page {c} is not supported")),
+                    };
+                    let target = page(int(2).unwrap_or(0))?;
+                    let source = page(int(5).unwrap_or(0))?;
+                    let out = target.encode(&source.decode(&self.read(q, m)?));
+                    // the LRM does not say what a too small target gives
+                    if out.len() > n {
+                        return err("MEMCONVERT: the target buffer is too small");
+                    }
+                    self.write(p, &out)?;
+                    Value::int(out.len() as i64)
+                }
+            }
             // MEMUVALID8 / MEMUVALID16(p, n): zero, or the index of the
             // first invalid byte of the n bytes at p
             MemUvalid8 | MemUvalid16 => {

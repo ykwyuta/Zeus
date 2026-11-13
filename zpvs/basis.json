@@ -861,6 +861,76 @@
       }
     }
   },
+  "PC115A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: MEMCU12 | MEMCU12 converts the data in a source buffer from UTF-8 to UTF-16, stores the result in a target buffer, and returns a size_t 1 value that indicates the number of bytes that are written to the target buffer."
+    ],
+    "tests": {
+      "MEMCU12": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU12 | MEMCU12 converts the data in a source buffer from UTF-8 to UTF-16"
+        ]
+      },
+      "MEMCU14": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU14 | MEMCU14 converts the data in a source buffer from UTF-8 to UTF-32"
+        ]
+      },
+      "MEMCU21": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU21 | MEMCU21 converts the data in a source buffer from UTF-16 to UTF-8"
+        ]
+      },
+      "MEMCU24-SURROGATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU24 | MEMCU24 converts the data in a source buffer from UTF-16 to UTF-32",
+          "PLI-LRM: USUPPLEMENTARY | the musical G-clef is represented by the UTF-16 surrogate pair 'D834_DD1E'wx"
+        ]
+      },
+      "MEMCU41": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU41 | MEMCU41 converts the data in a source buffer from UTF-32 to UTF-8"
+        ]
+      },
+      "MEMCU42": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU42 | MEMCU42 converts the data in a source buffer from UTF-32 to UTF-16"
+        ]
+      },
+      "MEMCU12-TOO-SMALL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU12 | If the target buffer is too small or if the source UTF-8 is invalid, a value of -1 is returned."
+        ]
+      },
+      "MEMCU12-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU12 | If the target buffer is too small or if the source UTF-8 is invalid, a value of -1 is returned."
+        ]
+      },
+      "MEMCONVERT-1140-1141": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCONVERT | MEMCONVERT converts the data in a source buffer from the specified source codepage to a specified target codepage",
+          "PLI-LRM: UTF8 | Because on code page 1140, 'ba'x and 'bb'x correspond to UTF-8 characters '5b'x and '5d'x; but on code page 1141, '63'x and 'fc'x map to UTF-8 characters '5b'x and '5d'x."
+        ]
+      },
+      "MEMCONVERT-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCONVERT | If either buffer length is zero, the result is zero."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
