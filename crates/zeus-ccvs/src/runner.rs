@@ -379,6 +379,7 @@ fn run_program(
             let ext = match dd.kind {
                 DdKind::Tape => "aws",
                 DdKind::Dataset => "dat",
+                DdKind::Path(_) => "txt",
             };
             let dd_path = dir.join(format!("{}.{ext}", dd.ddname));
             let _ = fs::remove_file(&dd_path);

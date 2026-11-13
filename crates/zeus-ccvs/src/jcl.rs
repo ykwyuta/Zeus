@@ -15,6 +15,9 @@ pub enum DdKind {
     Tape,
     /// Disk dataset (`DSN=...`), mapped to `<dd>.dat`.
     Dataset,
+    /// A z/OS UNIX file (`PATH='...'`), mapped to `<dd>.txt`; exported with
+    /// the same path.
+    Path(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +78,18 @@ pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
         ]
         .iter()
         .any(|u| rest.contains(u));
-        let kind = if is_tape {
+        let path = rest
+            .split_once("PATH='")
+            .and_then(|(_, r)| r.split_once('\''))
+            .map(|(p, _)| p.to_string());
+        let kind = if let Some(p) = path {
+            // the original spelling (the parsed text is upper-cased)
+            let original = stmt
+                .split_once("PATH='")
+                .and_then(|(_, r)| r.split_once('\''))
+                .map_or(p, |(p, _)| p.to_string());
+            DdKind::Path(original)
+        } else if is_tape {
             DdKind::Tape
         } else {
             DdKind::Dataset
@@ -295,6 +309,10 @@ fn render_other_steps(
         .unwrap_or_default();
     s.push_str(&format!("//G{member:<7} EXEC PGM={member}{parm},COND=(4,LT,L{member})\n//STEPLIB  DD DSN={hlq}.LOAD,DISP=SHR\n//         DD DSN=CEE.SCEERUN,DISP=SHR\n//REPORT   DD DSN={hlq}.REPORT({member}),DISP=SHR\n//SYSPRINT DD SYSOUT=*\n"));
     for dd in extra_dds {
+        if let DdKind::Path(path) = &dd.kind {
+            write_path_dd(&mut s, &dd.ddname, path);
+            continue;
+        }
         let unit = if dd.kind == DdKind::Tape {
             "3480"
         } else {
@@ -307,6 +325,17 @@ fn render_other_steps(
         );
     }
     s
+}
+
+/// A z/OS UNIX file DD: created for read and write, deleted at the end of
+/// the step, text data (line-sequential files).
+fn write_path_dd(s: &mut String, ddname: &str, path: &str) {
+    let _ = writeln!(s, "//{ddname:<8} DD PATH='{path}',");
+    let _ = writeln!(
+        s,
+        "//            PATHOPTS=(ORDWR,OCREAT),PATHMODE=(SIRUSR,SIWUSR),"
+    );
+    let _ = writeln!(s, "//            PATHDISP=(DELETE,DELETE),FILEDATA=TEXT");
 }
 
 fn stem_upper(path: &Path) -> Result<String> {
@@ -453,7 +482,7 @@ fn render_program_steps(
     let _ = writeln!(s, "//REPORT   DD DSN={hlq}.REPORT({member}),DISP=SHR");
     let _ = writeln!(s, "//SYSOUT   DD SYSOUT=*");
     for dd in extra_dds {
-        match dd.kind {
+        match &dd.kind {
             DdKind::Tape => {
                 let _ = writeln!(
                     s,
@@ -462,12 +491,13 @@ fn render_program_steps(
                 );
             }
             DdKind::Dataset => {
+                let _ = writeln!(s, "//{:<8} DD DSN={hlq}.{member}.{},", dd.ddname, dd.ddname);
                 let _ = writeln!(
                     s,
-                    "//{:<8} DD DSN={hlq}.{member}.{},UNIT=SYSDA,SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)",
-                    dd.ddname, dd.ddname
+                    "//            UNIT=SYSDA,SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)"
                 );
             }
+            DdKind::Path(path) => write_path_dd(&mut s, &dd.ddname, path),
         }
     }
     s

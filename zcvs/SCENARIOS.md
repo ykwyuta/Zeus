@@ -91,7 +91,7 @@
 
 | 要求ID | 現在の証拠 | 判定 | 追加すべき独立シナリオ |
 |---|---|---|---|
-| F01 QSAM F/V | `ZF101A/106A`、`ZF113A/114A` 40検査 | 部分 | Fの0–5件（BLOCK 2 RECORDS）、再作成・EOF・EXTEND、閉状態/二重OPEN/誤モード/EOF連続READ/復帰を追加。物理充填の証明とV範囲外STATUSは残る |
+| F01 QSAM F/V | `ZF101A/106A`、`ZF113A/114A` 40検査、`ZF115A` 4検査 | 部分 | Fの0–5件（BLOCK 2 RECORDS）、再作成・EOF・EXTEND、閉状態/二重OPEN/誤モード/EOF連続READ/復帰を追加。物理充填の証明とV範囲外STATUSは残る。2026-11-13: LINE SEQUENTIAL (z/OS UNIX の PATH=) の末尾空白の除去・空白詰め・データ中の X'15'・短い記録域・EXTEND を追加 |
 | F02 QSAM S/U | `ZF102A`、`ZF201M` | 部分 | Sで分割直前/一致/直後、複数セグメント、最大長、Uのブロック境界、物理BDW/RDW/SDWの外部検査 |
 | F03 AWO/RESERVE | `ZF105A` は共有領域の観測 | 部分 | AWO有無で物理充填差、可変長レコードの並び順と末尾ブロック、RESERVE 0/1/複数の意味を観測。構文受理だけで合格にしない |
 | F04 CODE-SET | `ZF103A` のASCII片方向/往復 | 部分 | STANDARD-1/2、英数/記号/空白/LOW/HIGH、F/V、RDW非変換、符号分離数値 |

@@ -1989,6 +1989,40 @@
       "COB-PG: Logical records"
     ]
   },
+  "ZF115A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: Allocating line-sequential files | A DD statement that specifies PATH='absolute-path-name'"
+    ],
+    "tests": {
+      "LS-READ-PADDED": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Adding records to line-sequential files | Blanks at the end of the record area are removed, and the record delimiter is added.",
+          "COB-PG: Reading records from line-sequential files | The delimiter is discarded and the remainder of the record area is filled with spaces."
+        ]
+      },
+      "LS-EXTEND-EOF": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Reading records from line-sequential files | The delimiter is discarded and the remainder of the record area is filled with spaces.",
+          "COB-PG: Adding records to line-sequential files | To add to a line-sequential file, open the file as EXTEND and use the WRITE statement to add records immediately after the last record in the file."
+        ]
+      },
+      "LS-NEWLINE-DATA": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Control characters in line-sequential files | if a line-sequential file contains a newline character (X'15'), the newline character will function as a record delimiter."
+        ]
+      },
+      "LS-SHORT-AREA": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Reading records from line-sequential files | Otherwise the next unread character is the first character to be read by the next READ."
+        ]
+      }
+    }
+  },
   "ZF201M": {
     "basis": "spec",
     "refs": [

@@ -160,6 +160,10 @@ def cobol_pattern(category, name):
         if symbol == 'P':
             return r'\bPIC(TURE)?\s+(IS\s+)?S?[9V]*P'
         return r'\bPIC(TURE)?\s+(IS\s+)?\S*' + re.escape(symbol)
+    if name.startswith('ORGANIZATION '):
+        # ORGANIZATION [IS] ...: the optional word IS
+        rest = name.split(' ', 1)[1]
+        return r'\bORGANIZATION\s+(IS\s+)?' + r'\s+'.join(re.escape(w) for w in rest.split()) + r'\b'
     # a word boundary only before a word character (>>DEFINE starts with '>')
     lead = r'\b' if re.match(r'\w', name) else ''
     return lead + r'\s+'.join(re.escape(w) for w in name.split()) + r'\b'

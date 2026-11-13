@@ -2534,7 +2534,16 @@ impl Machine {
         match def.org {
             Org::Sequential | Org::LineSequential => {
                 let st = self.state(cur, f);
-                st.seq().records.push(rec);
+                if def.org == Org::LineSequential {
+                    // an EBCDIC newline (X'15') in the data is a record
+                    // delimiter (Programming Guide, Control characters in
+                    // line-sequential files)
+                    for part in rec.split(|b| *b == 0x15) {
+                        st.seq().records.push(part.to_vec());
+                    }
+                } else {
+                    st.seq().records.push(rec);
+                }
                 st.modified = true;
                 self.output_volume_boundary(cur, f, &def)?;
                 self.set_status(cur, &def, "00")
@@ -2628,6 +2637,16 @@ impl Machine {
                     self.set_status(cur, &def, "10")?;
                     return Ok(());
                 };
+                // a record area shorter than the line-sequential record:
+                // the rest is read by the next READ (Programming Guide,
+                // Reading records from line-sequential files)
+                let max = def.max_len as usize;
+                if def.org == Org::LineSequential && rec.len() > max {
+                    st.seq().records[i as usize] = rec[max..].to_vec();
+                    st.last_read = Some(i);
+                    self.put_record(cur, &def, &rec[..max], into)?;
+                    return self.set_status(cur, &def, "00");
+                }
                 st.pos += 1;
                 st.last_read = Some(i);
                 self.put_record(cur, &def, &rec, into)?;
