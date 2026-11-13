@@ -3533,5 +3533,107 @@
         ]
       }
     }
+  },
+  "ZD116A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DYNAMIC LENGTH clause | A dynamic-length elementary item is a data item whose length can vary at runtime. The length of a data item is the current number of characters contained by this data item."
+    ],
+    "tests": {
+      "DL-INITIAL-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DYNAMIC LENGTH clause | A dynamic-length elementary item has a minimum length of zero"
+        ]
+      },
+      "DL-MOVE-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | The length of the receiver is then set to the length of the sender.",
+          "COB-LRM: LENGTH OF | LENGTH OF creates an implicit special register that contains the current byte length of the data item"
+        ]
+      },
+      "DL-MOVE-CONTENT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | The length of the receiver is then set to the length of the sender."
+        ]
+      },
+      "DL-SHORTER-MOVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | The length of the receiver is then set to the length of the sender."
+        ]
+      },
+      "DL-LIMIT-TRUNC": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Elementary moves | If the receiving item is a dynamic-length elementary item, the length of the receiver is set to the minimum of the length of the sender or the specified or implied value of the LIMIT phrase."
+        ]
+      },
+      "DL-SENDER-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | the item is treated as a fixed-length data item with a length that is the same as the current length of the dynamic-length elementary item."
+        ]
+      },
+      "DL-COMPARE-PAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | the item is treated as a fixed-length data item with a length that is the same as the current length of the dynamic-length elementary item."
+        ]
+      },
+      "DL-FIG-CURRENT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | If the sender is a figurative constant, the length of the operand is as specified in",
+          "COB-LRM: Figurative constants | is equal to 1 or the number of character positions in the associated data item, whichever is greater."
+        ]
+      },
+      "DL-FIG-EMPTY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | If the sender is a figurative constant, the length of the operand is as specified in",
+          "COB-LRM: Figurative constants | is equal to 1 or the number of character positions in the associated data item, whichever is greater."
+        ]
+      },
+      "DL-SET-TRUNCATE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Format 8: SET for length of dynamic-length elementary items | then the length of identifier-1 is set to the specified value and identifier-1 is truncated on the right."
+        ]
+      },
+      "DL-SET-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Format 8: SET for length of dynamic-length elementary items | If identifier-2 is less than zero then the length of identifier-1 is set to zero."
+        ]
+      },
+      "DL-REFMOD-RECEIVER": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | If a dynamic-length elementary item is used as a receiving operand and is reference-modified, the item is treated as a fixed-length item with a length that is the same as the current length of the dynamic-length elementary item."
+        ]
+      },
+      "DL-UTF8-BOUNDARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DYNAMIC LENGTH clause | When the PICTURE clause is PIC U, integer-1 represents the maximum bytes that the data item can contain.",
+          "COB-LRM: DYNAMIC LENGTH clause | will result in truncation at a character boundary on the right."
+        ]
+      },
+      "DL-UTF8-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH | If argument-1 is defined with the BYTE-LENGTH phrase of the PICTURE clause or the DYNAMIC LENGTH clause, then the character length is computed at runtime"
+        ]
+      },
+      "DL-UTF8-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH OF | The LENGTH OF special register contains the number of bytes used by a data item."
+        ]
+      }
+    }
   }
 }

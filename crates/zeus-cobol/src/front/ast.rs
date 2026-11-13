@@ -276,6 +276,9 @@ pub struct DataEntry {
     pub picture: Option<String>,
     /// PICTURE U BYTE-LENGTH m.
     pub byte_length: Option<u32>,
+    /// DYNAMIC [LENGTH] [LIMIT [IS] n]: Some(limit) for a dynamic-length
+    /// elementary item.
+    pub dynamic: Option<Option<u32>>,
     pub usage: Option<Usage>,
     pub group_national: bool,
     /// SIGN clause: (leading, separate)
@@ -715,6 +718,8 @@ pub enum SetStmt {
     CondFalse(Vec<DataRef>),
     /// SET ADDRESS OF linkage-items TO pointer value
     Address(Vec<DataRef>, Operand),
+    /// SET LENGTH OF dynamic-length-item TO value
+    Length(DataRef, Operand),
 }
 
 /// Enterprise COBOL INITIALIZE selection phrases.

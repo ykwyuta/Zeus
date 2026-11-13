@@ -97,8 +97,23 @@ impl Machine {
         }
     }
 
-    /// Absolute address and length of a location.
+    /// Absolute address and length of a location. For a dynamic-length
+    /// item, the content buffer and the current length.
     pub(super) fn addr(&mut self, cur: usize, loc: &Loc) -> RResult<(usize, usize)> {
+        self.addr_at(cur, loc, true)
+    }
+
+    /// The descriptor of a dynamic-length item: its address and the
+    /// content address, current length and capacity it holds.
+    pub(super) fn dynamic_descriptor(&mut self, cur: usize, loc: &Loc) -> RResult<[usize; 4]> {
+        let (a, _) = self.addr_at(cur, loc, false)?;
+        let word = |m: &[u8], k: usize| {
+            u32::from_be_bytes([m[a + k], m[a + k + 1], m[a + k + 2], m[a + k + 3]]) as usize
+        };
+        Ok([a, word(&self.mem, 0), word(&self.mem, 4), word(&self.mem, 8)])
+    }
+
+    pub(super) fn addr_at(&mut self, cur: usize, loc: &Loc, follow: bool) -> RResult<(usize, usize)> {
         let code = self.instances[cur].code.clone();
         let checking = self.range_checks(cur);
         let desc = &code.descs[loc.desc as usize];
@@ -230,6 +245,15 @@ impl Machine {
                 "SSRANGE: variable-length item {} exceeds its defined storage",
                 desc.name
             ));
+        }
+        if follow && desc.dynamic_limit.is_some() {
+            // the descriptor's content address and current length; a
+            // reference modification works within the current length
+            let mut sub = loc.clone();
+            sub.refmod = None;
+            let [_, content, current, _] = self.dynamic_descriptor(cur, &sub)?;
+            a = content;
+            len = current;
         }
         if let Some((start, l)) = &loc.refmod {
             // national items are positioned in characters (two bytes)
@@ -422,6 +446,70 @@ impl Machine {
         })
     }
 
+    /// MOVE into a dynamic-length item (not reference-modified): its length
+    /// becomes the sender's, at most the LIMIT, truncated on the right (at
+    /// a character boundary for UTF-8); a figurative constant or ALL
+    /// literal has the item's current length, at least one character (LRM,
+    /// "Dynamic-length items", "Figurative constants").
+    fn move_dynamic(&mut self, cur: usize, v: &Val, dst: &Loc, limit: usize) -> RResult<()> {
+        let ty = self.instances[cur].code.descs[dst.desc as usize].ty.clone();
+        let [at, content, current, capacity] = self.dynamic_descriptor(cur, dst)?;
+        let mut bytes = match v {
+            Val::Fig(_) | Val::All(_) => {
+                let mut out = vec![0u8; current.max(1)];
+                move_into(v, &ty, &mut out);
+                out
+            }
+            _ if ty.is_utf8() => utf8_source(v),
+            _ => alnum_source(v),
+        };
+        if bytes.len() > limit {
+            let mut end = limit;
+            if ty.is_utf8() {
+                while end > 0 && (bytes[end] & 0xC0) == 0x80 {
+                    end -= 1;
+                }
+            }
+            bytes.truncate(end);
+        }
+        let (content, capacity) = if bytes.len() > capacity {
+            (self.alloc(&bytes), bytes.len())
+        } else {
+            self.mem[content..content + bytes.len()].copy_from_slice(&bytes);
+            (content, capacity)
+        };
+        self.set_dynamic(at, content, bytes.len(), capacity);
+        Ok(())
+    }
+
+    pub(super) fn set_dynamic(&mut self, at: usize, content: usize, len: usize, capacity: usize) {
+        for (k, w) in [content, len, capacity].into_iter().enumerate() {
+            self.mem[at + 4 * k..at + 4 * k + 4].copy_from_slice(&(w as u32).to_be_bytes());
+        }
+    }
+
+    /// SET LENGTH OF a dynamic-length item: truncated, or lengthened
+    /// without padding (the new positions are not initialized; Zeus has
+    /// zeros there when the buffer grows).
+    pub(super) fn set_dynamic_length(&mut self, cur: usize, dst: &Loc, n: &Ex) -> RResult<()> {
+        let limit = self.instances[cur].code.descs[dst.desc as usize]
+            .dynamic_limit
+            .unwrap_or(0) as i64;
+        let n = self.int_of(cur, n)?.clamp(0, limit) as usize;
+        let [at, content, _, capacity] = self.dynamic_descriptor(cur, dst)?;
+        if n > capacity {
+            let mut bytes = vec![0u8; n];
+            if content != 0 {
+                bytes[..capacity].copy_from_slice(&self.mem[content..content + capacity]);
+            }
+            let a = self.alloc(&bytes);
+            self.set_dynamic(at, a, n, n);
+        } else {
+            self.set_dynamic(at, content, n, capacity);
+        }
+        Ok(())
+    }
+
     /// An operand as UTF-8 data: UTF-8 as it is, other data converted.
     pub(super) fn utf8_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
         Ok(match v {
@@ -544,6 +632,11 @@ impl Machine {
     // ---- MOVE ----------------------------------------------------------
 
     pub(super) fn move_val(&mut self, cur: usize, v: &Val, dst: &Loc) -> RResult<()> {
+        if let Some(limit) = self.instances[cur].code.descs[dst.desc as usize].dynamic_limit
+            && dst.refmod.is_none()
+        {
+            return self.move_dynamic(cur, v, dst, limit as usize);
+        }
         let (a, mut l) = self.addr(cur, dst)?;
         // A receiving group that contains its own OCCURS DEPENDING ON
         // object is used with its maximum length.

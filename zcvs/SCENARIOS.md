@@ -47,6 +47,7 @@
 | D08 ODO | `ZD105A`、`ZD113A` 18検査 | 部分 | 0/1/2/4→1→0で長さ・送出MOVE・後続項目の可変位置を追加。表内カウント・送受両側評価・入れ子ODOは残る |
 | D09 REDEFINES/RENAMES | `ZD104A` の単段上書き・THRU | 部分 | 多段、拡大型/縮小型、集団跨ぎ、書戻し方向、88条件名の単値/範囲/HEX |
 | D10 編集PIC | `ZD106A` の通貨/符号/Z/*/CR/DB/BWZ | 部分 | 各編集の0/正/負/最大、逆編集、JUSTIFIEDの短い/等長/長い移送、スケールPの両方向 |
+| D11 DYNAMIC LENGTH | `ZD116A` 15検査 | 追加 | 初めの長さ 0、MOVE で送り側の長さ (LIMIT で右を切る、PIC U は文字の境界)、送り側としての現在の長さ、表意定数は現在の長さ (最低 1 文字)、SET LENGTH OF (切詰め・負は 0)、参照修飾の受け側は長さを変えない、FUNCTION LENGTH と LENGTH OF を追加。2026-11-13 Zeus は集団の中・OCCURS・VALUE・REDEFINES・WORKING-STORAGE 以外と、STRING/UNSTRING/CALL/ACCEPT FROM の受け側を「未対応」と断る。INITIALIZE・INSPECT・ACCEPT (装置から)・READ INTO の受け側は LRM どおり誤りとする |
 
 ## ZA: 数値オプション・演算
 

@@ -618,6 +618,12 @@ pub struct Desc {
     pub dynamic_offset: Option<Box<Ex>>,
     #[serde(default)]
     pub dynamic_len: Option<Box<Ex>>,
+    /// DYNAMIC LENGTH item: its LIMIT (bytes). The item's storage is a
+    /// descriptor of three big-endian words, the address of the content
+    /// buffer, the current length and the buffer's capacity; the content
+    /// lives in heap storage.
+    #[serde(default)]
+    pub dynamic_limit: Option<u32>,
     #[serde(default)]
     pub abi: Vec<AbiField>,
     pub name: String,
@@ -1086,6 +1092,8 @@ pub enum Instr {
     Segment(u8),
     /// SET ADDRESS OF a linkage record (linkage base number) TO value.
     SetAddress(u32, Ex),
+    /// SET LENGTH OF a dynamic-length item TO value.
+    SetDynamicLength(Loc, Ex),
     /// ALLOCATE: `size` bytes (rounded up; NULL when not positive), binary
     /// zeros when `zero`; the address goes to the LINKAGE record `link`
     /// and/or the pointer `ret`.

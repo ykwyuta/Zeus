@@ -2507,6 +2507,29 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
+    /// A dynamic-length item as a receiver other than in MOVE and SET
+    /// LENGTH OF, or as a CALL argument. `allowed`: the LRM takes such an
+    /// item there (STRING, UNSTRING, ACCEPT FROM DATE and the like, CALL)
+    /// but Zeus does not yet, rather than writing it at its current
+    /// length; otherwise the LRM forbids it (INITIALIZE, INSPECT, ACCEPT
+    /// from a device, READ INTO).
+    fn refuse_dynamic(&self, verb: &str, locs: &[&Loc], allowed: bool) -> Result<()> {
+        if locs
+            .iter()
+            .any(|l| l.refmod.is_none() && self.dm.descs[l.desc as usize].dynamic_limit.is_some())
+        {
+            return Err(Diag::error(
+                self.pos,
+                if allowed {
+                    format!("a dynamic-length item in {verb} is not supported yet")
+                } else {
+                    format!("the receiving item of {verb} must not be a dynamic-length item")
+                },
+            ));
+        }
+        Ok(())
+    }
+
     /// Pairs of corresponding elementary items of two groups.
     /// The category of an elementary MOVE operand (Language Reference,
     /// "Valid and invalid elementary moves", Table 51). None when the table
@@ -3194,6 +3217,7 @@ impl<'a> Gen<'a> {
                 self.pos = *pos;
                 let dst = self.loc(target)?;
                 self.refuse_utf8("ACCEPT", &[], &[&dst])?;
+                self.refuse_dynamic("ACCEPT", &[&dst], from.is_some())?;
                 let from = match from.as_deref() {
                     None => zir::AcceptFrom::Stdin,
                     Some("DATE") => zir::AcceptFrom::Date,
@@ -3343,6 +3367,7 @@ impl<'a> Gen<'a> {
                     Some(i) => Some(self.loc(i)?),
                     None => None,
                 };
+                self.refuse_dynamic("READ INTO", &into.iter().collect::<Vec<_>>(), false)?;
                 let key = match key {
                     Some(k) => {
                         let kl = self.loc(k)?;
@@ -3407,12 +3432,15 @@ impl<'a> Gen<'a> {
                 for a in using {
                     args.push(match a {
                         CallArg::Reference(Operand::Ref(r)) => {
-                            zir::CallArgMode::Reference(self.loc(r)?)
+                            let l = self.loc(r)?;
+                            self.refuse_dynamic("CALL", &[&l], true)?;
+                            zir::CallArgMode::Reference(l)
                         }
                         CallArg::Reference(op) | CallArg::Content(op) => {
                             let len = match op {
                                 Operand::Ref(r) => {
                                     let l = self.loc(r)?;
+                                    self.refuse_dynamic("CALL", &[&l], true)?;
                                     self.dm.descs[l.desc as usize].len
                                 }
                                 Operand::Lit(l) => super::lit::literal_bytes(l).len() as u32,
@@ -3561,12 +3589,21 @@ impl<'a> Gen<'a> {
                 options,
             } => {
                 for t in targets {
+                    if let Ok(id) = self.dm.resolve(t) {
+                        let l = Loc {
+                            desc: self.dm.items[id].desc,
+                            subs: Vec::new(),
+                            refmod: None,
+                        };
+                        self.refuse_dynamic("INITIALIZE", &[&l], false)?;
+                    }
                     self.initialize(t, replacing, options)?;
                 }
             }
             Stmt::Inspect { target, ops } => {
                 let loc = self.loc(target)?;
                 self.refuse_utf8("INSPECT", &[], &[&loc])?;
+                self.refuse_dynamic("INSPECT", &[&loc], false)?;
                 self.inspect(target, ops)?
             }
             Stmt::InspectValue { value, ops } => self.inspect_value(value, ops)?,
@@ -3587,6 +3624,7 @@ impl<'a> Gen<'a> {
                 let into = self.loc(into)?;
                 let all: Vec<&Src> = srcs.iter().flat_map(|(s, d)| std::iter::once(s).chain(d)).collect();
                 self.refuse_utf8("STRING", &all, &[&into])?;
+                self.refuse_dynamic("STRING", &[&into], true)?;
                 let pointer = match pointer {
                     Some(p) => Some(self.loc(p)?),
                     None => None,
@@ -3639,6 +3677,7 @@ impl<'a> Gen<'a> {
                     locs.extend(d.iter());
                 }
                 self.refuse_utf8("UNSTRING", &srcs, &locs)?;
+                self.refuse_dynamic("UNSTRING", &locs[1..], true)?;
                 self.emit(Instr::Unstring {
                     source,
                     delims,
@@ -3889,6 +3928,17 @@ impl<'a> Gen<'a> {
                         .ok_or_else(|| Diag::error(self.pos, format!("{name} is not a switch")))?;
                     self.emit(Instr::SetSwitch(idx, *on));
                 }
+            }
+            SetStmt::Length(target, value) => {
+                let loc = self.loc(target)?;
+                if self.dm.descs[loc.desc as usize].dynamic_limit.is_none() || loc.refmod.is_some() {
+                    return Err(Diag::error(
+                        target.pos,
+                        format!("{} is not a dynamic-length elementary item", target.name),
+                    ));
+                }
+                let v = self.ex_operand(value)?;
+                self.emit(Instr::SetDynamicLength(loc, v));
             }
             SetStmt::Address(targets, value) => {
                 let v = self.ex_operand(value)?;

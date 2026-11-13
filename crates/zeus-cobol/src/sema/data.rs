@@ -524,6 +524,33 @@ impl DataModel {
     /// Storage length of an elementary item.
     fn elementary_len(&self, id: usize) -> Result<u32> {
         let it = &self.items[id];
+        if let Some(limit) = it.entry.dynamic {
+            // PIC X or PIC U, a single symbol (LRM, DYNAMIC LENGTH clause)
+            let pic = it.entry.picture.as_deref().map(str::to_ascii_uppercase);
+            if !matches!(pic.as_deref(), Some("X" | "U")) || it.entry.byte_length.is_some() {
+                return Err(Diag::error(
+                    it.pos,
+                    "a dynamic-length item requires PICTURE X or PICTURE U",
+                ));
+            }
+            if limit == Some(0) {
+                return Err(Diag::error(it.pos, "LIMIT must be at least 1"));
+            }
+            // Not implemented: a dynamic-length group (the item inside a
+            // group), tables, VALUE, REDEFINES.
+            if it.parent.is_some()
+                || it.entry.occurs.is_some()
+                || it.entry.value.is_some()
+                || it.entry.redefines.is_some()
+                || it.entry.justified
+            {
+                return Err(Diag::error(
+                    it.pos,
+                    "a dynamic-length item with a parent group, OCCURS, VALUE, REDEFINES or JUSTIFIED is not supported yet",
+                ));
+            }
+            return Ok(12);
+        }
         if matches!(
             it.usage,
             Usage::Index | Usage::Pointer | Usage::Pointer32 | Usage::Float | Usage::Double
@@ -865,9 +892,10 @@ impl DataModel {
             Category::Alphabetic => DataType::Alphabetic { just },
             Category::Alphanumeric => DataType::Alphanumeric { just },
             Category::Utf8 => DataType::Utf8 {
-                chars: match it.entry.byte_length {
-                    Some(_) => None,
-                    None => Some(p.size / 4),
+                chars: if it.entry.byte_length.is_some() || it.entry.dynamic.is_some() {
+                    None
+                } else {
+                    Some(p.size / 4)
                 },
             },
             // PICTURE N: national with USAGE NATIONAL or NSYMBOL(NATIONAL)
@@ -1118,6 +1146,8 @@ impl DataModel {
             right_justify: it.entry.justified,
             dynamic_offset: None,
             dynamic_len: None,
+            // 999999999 when LIMIT is omitted (LRM, DYNAMIC LENGTH clause)
+            dynamic_limit: it.entry.dynamic.map(|l| l.unwrap_or(999_999_999)),
             abi: fields,
             name: it.name.clone().unwrap_or_else(|| "FILLER".into()),
             definition: (it.pos.file, it.pos.line),
@@ -1157,7 +1187,10 @@ impl DataModel {
                 self.store_value(&ty, field, v, it.pos)?;
                 continue;
             }
-            if it.children.is_empty() {
+            if it.entry.dynamic.is_some() {
+                // an empty dynamic-length item: no buffer, length zero
+                field.fill(0);
+            } else if it.children.is_empty() {
                 default_value(&ty, field);
             }
         }
@@ -1550,6 +1583,20 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         }
     }
     let ws = dm.build_tree(&working, &mut |_| Area::Working)?;
+    for e in prog
+        .data
+        .local
+        .iter()
+        .chain(&prog.data.linkage)
+        .chain(prog.data.files.iter().flat_map(|f| &f.records))
+    {
+        if e.dynamic.is_some() {
+            return Err(Diag::error(
+                e.pos,
+                "a dynamic-length item outside WORKING-STORAGE is not supported yet",
+            ));
+        }
+    }
     for e in &prog.data.local {
         if e.external {
             return Err(Diag::error(e.pos, "LOCAL-STORAGE cannot specify EXTERNAL"));

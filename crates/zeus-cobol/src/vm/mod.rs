@@ -1996,6 +1996,7 @@ impl Machine {
             }
             Instr::Segment(seg) => self.enter_segment(cur, *seg),
             Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex)?,
+            Instr::SetDynamicLength(loc, ex) => self.set_dynamic_length(cur, loc, ex)?,
             Instr::SetEntry(targets, name) => self.set_entry(cur, targets, name, None)?,
             Instr::SetEntryWithInterface(targets, name, mode) => {
                 self.set_entry(cur, targets, name, Some(*mode))?
@@ -2656,6 +2657,7 @@ impl Machine {
                 Ok(())
             }
             Instr::SetAddress(n, ex) => self.set_address(cur, *n, ex),
+            Instr::SetDynamicLength(loc, ex) => self.set_dynamic_length(cur, loc, ex),
             Instr::SetEntry(targets, name) => self.set_entry(cur, targets, name, None),
             Instr::SetEntryWithInterface(targets, name, mode) => {
                 self.set_entry(cur, targets, name, Some(*mode))

@@ -569,6 +569,15 @@ impl Parser {
                 if self.accept("BYTE-LENGTH") {
                     e.byte_length = Some(self.integer()? as u32);
                 }
+            } else if self.accept("DYNAMIC") {
+                self.accept("LENGTH");
+                let limit = if self.accept("LIMIT") {
+                    self.accept("IS");
+                    Some(self.integer()?)
+                } else {
+                    None
+                };
+                e.dynamic = Some(limit);
             } else if self.accept("GROUP-USAGE") {
                 self.accept("IS");
                 self.expect("NATIONAL")?;
@@ -677,6 +686,7 @@ impl Parser {
             "PICTURE",
             "USAGE",
             "GROUP-USAGE",
+            "DYNAMIC",
             "SIGN",
             "OCCURS",
             "SYNC",

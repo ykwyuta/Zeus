@@ -2468,5 +2468,25 @@
       "U-COMPARE-UTF8",
       "U-COMPARE-UNEQUAL"
     ]
+  },
+  "ZD116A": {
+    "expect": "run",
+    "tests": [
+      "DL-INITIAL-ZERO",
+      "DL-MOVE-LENGTH",
+      "DL-MOVE-CONTENT",
+      "DL-SHORTER-MOVE",
+      "DL-LIMIT-TRUNC",
+      "DL-SENDER-LENGTH",
+      "DL-COMPARE-PAD",
+      "DL-FIG-CURRENT",
+      "DL-FIG-EMPTY",
+      "DL-SET-TRUNCATE",
+      "DL-SET-NEGATIVE",
+      "DL-REFMOD-RECEIVER",
+      "DL-UTF8-BOUNDARY",
+      "DL-UTF8-LENGTH",
+      "DL-UTF8-BYTES"
+    ]
   }
 }
