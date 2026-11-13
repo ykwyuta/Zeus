@@ -3351,18 +3351,35 @@ impl<'a> Gen<'a> {
                             Advancing::Page => zir::Advance::Page,
                             Advancing::Lines(n) => zir::Advance::Lines(self.ex_operand(n)?),
                             Advancing::Mnemonic(m) => {
-                                // C01 / TOP-OF-PAGE style channel names
-                                let is_page = self.prog.env.mnemonics.iter().any(|(imp, mn)| {
-                                    mn == m
-                                        && (imp == "C01"
-                                            || imp == "TOP"
-                                            || imp.starts_with("CSP")
-                                            || imp == "FORMFEED")
-                                });
-                                if is_page {
-                                    zir::Advance::Page
-                                } else {
-                                    zir::Advance::Lines(Ex::Lit(Dec::from_i64(1)))
+                                let imp = self
+                                    .prog
+                                    .env
+                                    .mnemonics
+                                    .iter()
+                                    .find(|(_, mn)| mn == m)
+                                    .map(|(imp, _)| imp.as_str())
+                                    .unwrap_or("");
+                                match imp {
+                                    // C01: skip to channel 1, the top of
+                                    // the next page
+                                    "C01" | "TOP" | "FORMFEED" => zir::Advance::Page,
+                                    // CSP: suppress spacing (LRM, table 5
+                                    // "Meanings of environment names"):
+                                    // the line is printed over the last
+                                    "CSP" => zir::Advance::Lines(Ex::Lit(Dec::ZERO)),
+                                    // the line of channels 2-12 is set by
+                                    // the forms control buffer, which Zeus
+                                    // does not model
+                                    c if c.len() == 3
+                                        && c.starts_with('C')
+                                        && c[1..].parse::<u8>().is_ok_and(|n| (2..=12).contains(&n)) =>
+                                    {
+                                        return Err(Diag::error(
+                                            self.pos,
+                                            format!("WRITE ADVANCING {c} (skip to channel {}) is not supported yet", c[1..].parse::<u8>().unwrap_or(0)),
+                                        ));
+                                    }
+                                    _ => zir::Advance::Lines(Ex::Lit(Dec::from_i64(1))),
                                 }
                             }
                         },
