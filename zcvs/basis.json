@@ -2600,6 +2600,53 @@
       }
     }
   },
+  "ZP117A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ALLOCATE statement | The ALLOCATE statement obtains dynamic storage from the Language Environment heap."
+    ],
+    "tests": {
+      "ALLOC-INITIALIZED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If both data-name-1 and the INITIALIZED phrase are specified, the allocated storage is initialized as if an INITIALIZE data-name-1 WITH FILLER ALL TO VALUE THEN TO DEFAULT statement were executed.",
+          "COB-LRM: VALUE clause for condition-name | A VALUE clause in file and LINKAGE SECTION other than in condition-"
+        ]
+      },
+      "ALLOC-RETURNING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If data-name-1 is specified, the address of the data item is set to the address of the obtained storage",
+          "COB-LRM: ALLOCATE statement | If a RETURNING data item is also specified, the pointer data item will contain that address."
+        ]
+      },
+      "ALLOC-CHARS-ZEROS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If both arithmetic-expression-1 and the INITIALIZED phrase are specified, all bytes of the allocated storage are initialized to binary zeros."
+        ]
+      },
+      "ALLOC-DISTINCT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If arithmetic-expression-1 does not evaluate to an integer, the result is rounded up to the next whole number."
+        ]
+      },
+      "ALLOC-ZERO-NULL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If arithmetic-expression-1 evaluates to 0 or a negative value, the data item referenced by data-"
+        ]
+      },
+      "FREE-SETS-NULL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FREE statement | that storage is released and the pointer referenced by data-name-1 is set to NULL",
+          "COB-LRM: FREE statement | If more than one data-name-1 is specified in a FREE statement, the result of executing this FREE"
+        ]
+      }
+    }
+  },
   "ZS101A": {
     "basis": "spec",
     "tests": {

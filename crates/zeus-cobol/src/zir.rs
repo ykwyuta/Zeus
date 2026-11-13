@@ -1062,6 +1062,17 @@ pub enum Instr {
     Segment(u8),
     /// SET ADDRESS OF a linkage record (linkage base number) TO value.
     SetAddress(u32, Ex),
+    /// ALLOCATE: `size` bytes (rounded up; NULL when not positive), binary
+    /// zeros when `zero`; the address goes to the LINKAGE record `link`
+    /// and/or the pointer `ret`.
+    Allocate {
+        size: Ex,
+        zero: bool,
+        link: Option<u32>,
+        ret: Option<Loc>,
+    },
+    /// FREE: release the storage a pointer addresses and set it to NULL.
+    Free(Loc),
     SetEntry(Vec<Loc>, Src),
     /// Explicit CALLINTERFACE selection; old SetEntry retains compiler defaults.
     SetEntryWithInterface(Vec<Loc>, Src, CallInterface),

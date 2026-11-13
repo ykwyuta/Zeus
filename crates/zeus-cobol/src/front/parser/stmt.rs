@@ -379,6 +379,49 @@ impl Parser {
                     pos,
                 }
             }
+            "ALLOCATE" => {
+                let start = self.i;
+                let (mut item, mut chars) = (None, None);
+                match self.expr() {
+                    Ok(e) if self.accept("CHARACTERS") => chars = Some(e),
+                    _ => {
+                        self.i = start;
+                        item = Some(self.data_ref()?);
+                    }
+                }
+                let initialized = self.accept("INITIALIZED") || self.accept("INITIALISED");
+                let mut loc = None;
+                if self.accept("LOC") {
+                    let pos = self.pos();
+                    let n = match self.peek().map(|t| &t.tok) {
+                        Some(Tok::Num(n)) => n.parse::<u32>().ok(),
+                        _ => None,
+                    }
+                    .filter(|n| matches!(n, 24 | 31 | 64))
+                    .ok_or_else(|| crate::diag::Diag::error(pos, "LOC requires 24, 31 or 64"))?;
+                    self.i += 1;
+                    loc = Some(n);
+                }
+                let returning = if self.accept("RETURNING") {
+                    Some(self.data_ref()?)
+                } else {
+                    None
+                };
+                Stmt::Allocate {
+                    item,
+                    chars,
+                    initialized,
+                    loc,
+                    returning,
+                }
+            }
+            "FREE" => {
+                let mut items = Vec::new();
+                while self.is_operand_start() {
+                    items.push(self.data_ref()?);
+                }
+                Stmt::Free(items)
+            }
             "CANCEL" => {
                 let mut progs = Vec::new();
                 while self.is_operand_start() {

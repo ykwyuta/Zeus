@@ -3456,6 +3456,81 @@ impl<'a> Gen<'a> {
                     self.emit(Instr::Cancel(s));
                 }
             }
+            // ALLOCATE (Language Reference, ALLOCATE statement): the size of
+            // a LINKAGE record (its maximum length) or of an expression;
+            // LOC selects storage below the line or bar, which Zeus does not
+            // distinguish
+            Stmt::Allocate {
+                item,
+                chars,
+                initialized,
+                loc,
+                returning,
+            } => {
+                if *loc == Some(64) {
+                    return Err(Diag::error(self.pos, "ALLOCATE LOC 64 requires LP(64)"));
+                }
+                let ret = match returning {
+                    Some(r) => Some(self.loc(r)?),
+                    None => None,
+                };
+                match (item, chars) {
+                    (Some(t), _) => {
+                        let id = self.dm.resolve(t)?;
+                        let Area::Linkage(n) = self.dm.items[id].area else {
+                            return Err(Diag::error(
+                                t.pos,
+                                format!("{} is not a LINKAGE SECTION record", t.name),
+                            ));
+                        };
+                        if self.dm.items[id].parent.is_some() {
+                            return Err(Diag::error(
+                                t.pos,
+                                format!("{} is not a level-01 or level-77 item", t.name),
+                            ));
+                        }
+                        let len = i64::from(self.dm.items[id].len);
+                        self.emit(Instr::Allocate {
+                            size: Ex::Lit(Dec::from_i64(len)),
+                            zero: false,
+                            link: Some(n),
+                            ret,
+                        });
+                        // INITIALIZE data-name-1 WITH FILLER ALL TO VALUE
+                        // THEN TO DEFAULT
+                        if *initialized {
+                            let options = crate::front::ast::InitializeOptions {
+                                with_filler: true,
+                                value_categories: vec!["ALL".into()],
+                                to_default: true,
+                            };
+                            self.initialize(t, &[], &options)?;
+                        }
+                    }
+                    (None, Some(e)) => {
+                        if ret.is_none() {
+                            return Err(Diag::error(
+                                self.pos,
+                                "ALLOCATE CHARACTERS requires RETURNING",
+                            ));
+                        }
+                        let size = self.ex(e)?;
+                        self.emit(Instr::Allocate {
+                            size,
+                            zero: *initialized,
+                            link: None,
+                            ret,
+                        });
+                    }
+                    (None, None) => return Err(Diag::error(self.pos, "ALLOCATE needs an operand")),
+                }
+            }
+            Stmt::Free(items) => {
+                for t in items {
+                    let l = self.loc(t)?;
+                    self.emit(Instr::Free(l));
+                }
+            }
             Stmt::Set(set) => self.set(set)?,
             Stmt::Initialize {
                 targets,

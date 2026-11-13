@@ -388,6 +388,8 @@ pub struct Machine {
     le_conditions: le::handlers::Conditions,
     /// State of FUNCTION RANDOM.
     random: u64,
+    /// Storage obtained by ALLOCATE (address, length), for FREE.
+    allocations: std::collections::HashMap<usize, usize>,
     instances: Vec<Instance>,
     file_states: Vec<FileState>,
     /// EXTERNAL data areas by name.
@@ -625,6 +627,7 @@ impl Machine {
             sort_checkpoint_pending: false,
             stdin_buffer: None,
             random: 0x0005_DEEC_E66D,
+            allocations: std::collections::HashMap::new(),
             mem: vec![0; PSA_SIZE],
             hlasm: HashMap::new(),
             hlasm_storage: crate::hlasm::DynamicStorage::default(),
@@ -2216,6 +2219,13 @@ impl Machine {
                 let v = self.eval_ex(cur, ex)?;
                 self.set_value(cur, loc, v)?;
             }
+            Instr::Allocate {
+                size,
+                zero,
+                link,
+                ret,
+            } => self.heap_allocate(cur, size, *zero, *link, ret.as_ref())?,
+            Instr::Free(loc) => self.heap_free(cur, loc)?,
             Instr::SetSwitch(idx, on) => {
                 let name = code.switches[*idx as usize].clone();
                 self.switches.insert(name, *on);
@@ -2561,6 +2571,13 @@ impl Machine {
                 let v = self.eval_ex(cur, ex)?;
                 self.set_value(cur, loc, v)
             }
+            Instr::Allocate {
+                size,
+                zero,
+                link,
+                ret,
+            } => self.heap_allocate(cur, size, *zero, *link, ret.as_ref()),
+            Instr::Free(loc) => self.heap_free(cur, loc),
             Instr::Display { items, advance, .. } => {
                 let mut out = Vec::new();
                 for it in items {
@@ -2880,6 +2897,52 @@ impl Machine {
         self.mem[a..a + len].copy_from_slice(&buf);
         let (start, end) = code.debug_decls[decl as usize];
         Ok(Some((code.paragraphs[start as usize].start, end)))
+    }
+
+    /// ALLOCATE: heap storage of `size` bytes (a fraction rounds up; zero or
+    /// less gives NULL), recorded for FREE.
+    fn heap_allocate(
+        &mut self,
+        cur: usize,
+        size: &zir::Ex,
+        zero: bool,
+        link: Option<u32>,
+        ret: Option<&zir::Loc>,
+    ) -> RResult<()> {
+        let v = self.eval_ex(cur, size)?;
+        let micro = crate::vm::data::to_raw(v, 6, false);
+        let n = if micro <= 0 {
+            0
+        } else {
+            (micro + 999_999) / 1_000_000
+        };
+        let addr = if n == 0 {
+            0
+        } else {
+            // contents are undefined without INITIALIZED; Zeus gives zeros
+            let _ = zero;
+            let a = self.alloc(&vec![0u8; n as usize]);
+            self.allocations.insert(a, n as usize);
+            a
+        };
+        if let Some(slot) = link {
+            self.instances[cur].linkage[slot as usize] = (addr != 0).then_some(addr);
+        }
+        if let Some(loc) = ret {
+            self.set_value(cur, loc, Dec::from_i64(addr as i64))?;
+        }
+        Ok(())
+    }
+
+    /// FREE: a pointer to storage of ALLOCATE releases it and becomes NULL;
+    /// any other value is left as it is (Language Reference: undefined).
+    fn heap_free(&mut self, cur: usize, loc: &zir::Loc) -> RResult<()> {
+        let v = self.eval_ex(cur, &zir::Ex::Load(loc.clone()))?;
+        let a = crate::vm::data::to_raw(v, 0, false);
+        if a > 0 && self.allocations.remove(&(a as usize)).is_some() {
+            self.set_value(cur, loc, Dec::from_i64(0))?;
+        }
+        Ok(())
     }
 
     /// SET ADDRESS OF a linkage record: NULL (0) makes it unaddressable.

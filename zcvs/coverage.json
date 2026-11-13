@@ -2160,6 +2160,17 @@
       "STANDARD-OF-B"
     ]
   },
+  "ZP117A": {
+    "expect": "run",
+    "tests": [
+      "ALLOC-INITIALIZED",
+      "ALLOC-RETURNING",
+      "ALLOC-CHARS-ZEROS",
+      "ALLOC-DISTINCT",
+      "FREE-SETS-NULL",
+      "ALLOC-ZERO-NULL"
+    ]
+  },
   "ZS101A": {
     "expect": "run",
     "tests": [

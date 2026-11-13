@@ -16,6 +16,7 @@ use crate::diag::{Diag, Result};
 pub const VERBS: &[&str] = &[
     "ACCEPT",
     "ADD",
+    "ALLOCATE",
     "ALTER",
     "CALL",
     "CANCEL",
@@ -30,6 +31,7 @@ pub const VERBS: &[&str] = &[
     "ENTRY",
     "EVALUATE",
     "EXIT",
+    "FREE",
     "GENERATE",
     "GO",
     "GOBACK",

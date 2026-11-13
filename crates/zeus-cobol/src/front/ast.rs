@@ -760,6 +760,17 @@ pub enum Stmt {
         pos: Pos,
     },
     Cancel(Vec<Operand>),
+    /// ALLOCATE data-name-1 | arithmetic-expression-1 CHARACTERS
+    /// [INITIALIZED] [LOC n] [RETURNING data-name-2]
+    Allocate {
+        item: Option<DataRef>,
+        chars: Option<Expr>,
+        initialized: bool,
+        loc: Option<u32>,
+        returning: Option<DataRef>,
+    },
+    /// FREE data-name-1 ...
+    Free(Vec<DataRef>),
     Close(Vec<(String, Option<String>)>),
     Compute {
         targets: Vec<Receiver>,
