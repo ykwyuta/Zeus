@@ -1193,5 +1193,14 @@
       "FLUSH-KEEPS-OPEN",
       "FLUSH-RECORDS"
     ]
+  },
+  "PS108A": {
+    "expect": "run",
+    "tests": [
+      "PACKAGE-SHARED-VAR",
+      "PACKAGE-PROC-SEES",
+      "PACKAGE-SHARED-CHAR",
+      "PACKAGENAME"
+    ]
   }
 }

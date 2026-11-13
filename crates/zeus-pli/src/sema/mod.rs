@@ -103,6 +103,8 @@ pub struct Compiler {
     pub decl_ast: HashMap<VarId, Vec<DeclItem>>,
     /// The outermost procedure block (implicit declarations).
     pub outer: BlockId,
+    /// The label of the PACKAGE statement, if the program has one.
+    pub package_name: Option<String>,
     /// Nesting depth of aggregate-index placeholders.
     pub index_rank: u8,
     pub in_select_subject: Option<Ty>,
@@ -155,6 +157,7 @@ impl Compiler {
             handles: HashMap::new(),
             decl_ast: HashMap::new(),
             outer: 0,
+            package_name: None,
             index_rank: 0,
             in_select_subject: None,
             assert_condition: false,
@@ -535,6 +538,9 @@ impl Compiler {
         for s in stmts {
             if let StmtKind::Begin(body) = &s.kind {
                 // PACKAGE: its declarations and procedures
+                if self.package_name.is_none() {
+                    self.package_name = s.labels.first().cloned();
+                }
                 flat.extend(body.iter());
             } else {
                 flat.push(s);

@@ -1,0 +1,33 @@
+ PS108P: PACKAGE EXPORTS(PS108A);
+ /* The PACKAGE statement (Enterprise PL/I 6.1 Language Reference).
+    A package holds declarations and procedures; a variable declared
+    at the package level is known to every procedure of the package,
+    and PACKAGENAME returns the name of the package. PS108A is the
+    exported main procedure; BUMP and SEEN are package procedures. */
+ DCL COUNTER FIXED BIN(31) STATIC INIT(0);
+ DCL NOTE CHAR(8) STATIC INIT('');
+
+ BUMP: PROC(N);
+   DCL N FIXED BIN(31);
+   COUNTER = COUNTER + N;
+   NOTE = 'BUMPED';
+ END BUMP;
+
+ SEEN: PROC RETURNS(FIXED BIN(31));
+   RETURN(COUNTER);
+ END SEEN;
+
+ PS108A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ OPEN FILE(REPORT);
+ CALL BUMP(5);
+ CALL ZCHECK('PACKAGE-SHARED-VAR', COUNTER = 5);
+ CALL BUMP(2);
+ CALL ZCHECK('PACKAGE-PROC-SEES', SEEN() = 7);
+ CALL ZCHECK('PACKAGE-SHARED-CHAR', NOTE = 'BUMPED');
+ CALL ZCHECK('PACKAGENAME', PACKAGENAME() = 'PS108P');
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PS108A;
+ END PS108P;

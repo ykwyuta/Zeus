@@ -375,7 +375,11 @@ impl Compiler {
                     .ok_or_else(|| self.err(pos, "PROCEDURENAME outside a procedure"))?;
                 text(&self.m.procs[p as usize].name)
             }
-            // no PACKAGE statement: the outermost procedure
+            // the label of the PACKAGE statement; with none, the outermost
+            // procedure (LRM, PACKAGENAME)
+            PackageName if self.package_name.is_some() => {
+                text(self.package_name.as_deref().unwrap_or_default())
+            }
             PackageName => {
                 let p = proc_of(self.outer)
                     .ok_or_else(|| self.err(pos, "PACKAGENAME outside a procedure"))?;

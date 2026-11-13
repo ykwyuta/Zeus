@@ -3947,5 +3947,39 @@
         ]
       }
     }
+  },
+  "PS108A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Packages | The name of the package. All PACKAGE names must be unique within a linked module."
+    ],
+    "tests": {
+      "PACKAGE-SHARED-VAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC | It is also the default for variables declared in a package, outside of any procedure.",
+          "PLI-LRM: Packages | Is the name of a level-1 procedure within the package."
+        ]
+      },
+      "PACKAGE-PROC-SEES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC | It is also the default for variables declared in a package, outside of any procedure.",
+          "PLI-LRM: Packages | Is the name of a level-1 procedure within the package."
+        ]
+      },
+      "PACKAGE-SHARED-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC | It is also the default for variables declared in a package, outside of any procedure."
+        ]
+      },
+      "PACKAGENAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PACKAGENAME | PACKAGENAME returns a nonvarying character string containing the name of the package in which it is invoked."
+        ]
+      }
+    }
   }
 }
