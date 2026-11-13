@@ -409,9 +409,14 @@ impl Compiler {
                 let n = b.len() as u32;
                 mk(Ek::Char(b), Ty::char(n))
             }
-            StrKind::Hex => {
-                let t: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-                if !t.len().is_multiple_of(2) {
+            StrKind::Hex | StrKind::WideHex => {
+                // the break character _ may separate the digits (LRM)
+                let t: String = text
+                    .chars()
+                    .filter(|c| !c.is_whitespace() && *c != '_')
+                    .collect();
+                let unit = if kind == StrKind::WideHex { 4 } else { 2 };
+                if !t.len().is_multiple_of(unit) {
                     return Err(bad());
                 }
                 let b: Vec<u8> = (0..t.len())
@@ -420,7 +425,18 @@ impl Compiler {
                     .collect::<std::result::Result<_, _>>()
                     .map_err(|_| bad())?;
                 let n = b.len() as u32;
-                mk(Ek::Char(b), Ty::char(n))
+                if kind == StrKind::WideHex {
+                    mk(
+                        Ek::Char(b),
+                        Ty::Wchar {
+                            len: crate::types::Ext::Const(n / 2),
+                            var: crate::types::Var::Fixed,
+                            graphic: false,
+                        },
+                    )
+                } else {
+                    mk(Ek::Char(b), Ty::char(n))
+                }
             }
             StrKind::Bit(r) => {
                 let mut bits = Vec::new();
@@ -1556,7 +1572,19 @@ impl Compiler {
         // value arguments (HEX: the bytes of GRAPHIC and WIDECHAR)
         let mut xs = Vec::new();
         for a in args {
-            xs.push(if matches!(b, Hex | Unspec | Rank) {
+            xs.push(if matches!(
+                b,
+                Hex | Unspec
+                    | Rank
+                    | Ulength
+                    | Ulength8
+                    | Ulength16
+                    | Upos
+                    | Usubstr
+                    | Usupplementary
+                    | Uvalid
+                    | Uwidth
+            ) {
                 self.expr_wide(a)?
             } else {
                 self.expr(a)?
@@ -1621,7 +1649,7 @@ impl Compiler {
                 v
             }
             WHigh | WLow | WcharVal | Alloc31 => xs.into_iter().map(|x| int(self, x)).collect(),
-            SubTo => {
+            SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];
                 v.extend(it.map(|x| int(self, x)));

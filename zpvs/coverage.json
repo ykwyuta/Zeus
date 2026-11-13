@@ -221,6 +221,30 @@
       "INVALIDOP-SIGNAL"
     ]
   },
+  "PC113A": {
+    "expect": "run",
+    "tests": [
+      "ULENGTH-UTF8",
+      "ULENGTH-COMBINING",
+      "ULENGTH8-WIDECHAR",
+      "ULENGTH8-CHAR-LENGTH",
+      "ULENGTH16-UTF8",
+      "UPOS-BYTES",
+      "UPOS-OUT-OF-RANGE",
+      "UWIDTH-BYTES",
+      "USUBSTR-1-2",
+      "USUBSTR-2-1",
+      "USUBSTR-3-2",
+      "USUBSTR-RANGE-ERROR",
+      "USUPPLEMENTARY-PAIR",
+      "USUPPLEMENTARY-NONE",
+      "ULENGTH-SURROGATES",
+      "UWIDTH-SURROGATES",
+      "UVALID-VALID",
+      "UVALID-UTF8-INVALID",
+      "UVALID-UTF16-INVALID"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

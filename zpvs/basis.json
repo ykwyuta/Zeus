@@ -660,6 +660,131 @@
       }
     }
   },
+  "PC113A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ULENGTH | ULENGTH returns a FIXED BINARY(31) value that is the number of UTF characters held in a string.",
+      "PLI-LRM: WX (hex) widechar constant | Each group of 4 hex digits represents one UTF-16 character."
+    ],
+    "tests": {
+      "ULENGTH-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPOS | For example, if x equals the CHARACTER string '4b_c3_a4_66_65_72'x",
+          "PLI-LRM: ULENGTH | ULENGTH will return the number of UTF-8 or UTF-16 characters held in the CHAR or WIDECHAR argument"
+        ]
+      },
+      "ULENGTH-COMBINING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH | but ULENGTH will return 1 for the string 'c3_a4'x and 2 for the string '61_cc_88'x."
+        ]
+      },
+      "ULENGTH8-WIDECHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH8 | For example, if x equals the WIDECHAR string '004B_00E4_0073_0065'wx, then ULENGTH8(x) returns 5."
+        ]
+      },
+      "ULENGTH8-CHAR-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH8 | If x has CHARACTER type, then ULENGTH8 is the same as LENGTH"
+        ]
+      },
+      "ULENGTH16-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH16 | For example, if x equals the CHARACTER string '4b_c3_a4_73_65'x, then ULENGTH16(x) returns 4."
+        ]
+      },
+      "UPOS-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPOS | UPOS(x,n) will return the position of the byte where the nth UTF-8 character starts"
+        ]
+      },
+      "UPOS-OUT-OF-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPOS | If n is not positive or if n is larger than ULENGTH(x), then zero will be returned."
+        ]
+      },
+      "UWIDTH-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UWIDTH | UWIDTH(x,n) will return the width of the nth UTF-8 character"
+        ]
+      },
+      "USUBSTR-1-2": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | USUBSTR(x,1,2) returns '4b_c3_a4'x"
+        ]
+      },
+      "USUBSTR-2-1": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | USUBSTR(x,2,1) returns 'c3_a4'x"
+        ]
+      },
+      "USUBSTR-3-2": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | USUBSTR(x,3,2) returns '66_65'x"
+        ]
+      },
+      "USUBSTR-RANGE-ERROR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | The ERROR condition (and not the STRINGRANGE condition) will also be raised if"
+        ]
+      },
+      "USUPPLEMENTARY-PAIR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUPPLEMENTARY | the musical G-clef is represented by the UTF-16 surrogate pair 'D834_DD1E'wx, and hence in the following code, the value 3 will be listed:"
+        ]
+      },
+      "USUPPLEMENTARY-NONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUPPLEMENTARY | or zero if the string contains no UTF surrogate pairs."
+        ]
+      },
+      "ULENGTH-SURROGATES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | It is a unicode surrogate pair and would be 4 bytes if UTF-8"
+        ]
+      },
+      "UWIDTH-SURROGATES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UWIDTH | if x has WIDECHAR type, then UWIDTH(x,n) will return the width of the nth UTF-16 character."
+        ]
+      },
+      "UVALID-VALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | UVALID returns a FIXED BINARY(31) value which is zero if a string contains valid UTF data"
+        ]
+      },
+      "UVALID-UTF8-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | '80'x - 'c1'x, it is invalid",
+          "PLI-LRM: UVALID | when the first byte is 'e0'x, the second and third bytes must be in the ranges 'a0'x to 'bf'x"
+        ]
+      },
+      "UVALID-UTF16-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | 'dc00'wx - 'dfff'wx, it is valid only when it is the second half of a surrogate pair"
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

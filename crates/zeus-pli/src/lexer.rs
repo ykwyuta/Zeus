@@ -62,6 +62,8 @@ pub enum StrKind {
     HexBin,
     /// '00FF'XU: unsigned FIXED BINARY in hexadecimal
     HexUnsigned,
+    /// '0041'WX: WIDECHAR in hexadecimal (four digits per widechar)
+    WideHex,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -437,6 +439,7 @@ impl Lexer {
             "B4" | "BX" => StrKind::Bit(4),
             "XN" => StrKind::HexBin,
             "XU" => StrKind::HexUnsigned,
+            "WX" => StrKind::WideHex,
             "E" | "A" => StrKind::Char,
             s => return Err(Diag::error(pos, format!("invalid string suffix {s}"))),
         };
@@ -572,6 +575,7 @@ pub fn tokens_text(toks: &[Token]) -> String {
                     StrKind::Bit(_) => "B4",
                     StrKind::HexBin => "XN",
                     StrKind::HexUnsigned => "XU",
+                    StrKind::WideHex => "WX",
                 });
             }
             other => out.push_str(&other.to_string()),

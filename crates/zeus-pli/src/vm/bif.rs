@@ -1223,6 +1223,85 @@ impl Machine {
                 }
                 Value::bit1(ok)
             }
+            // UTF built-ins: CHARACTER holds UTF-8, WIDECHAR UTF-16 (LRM,
+            // ULENGTH ... UWIDTH). Positions and widths count bytes for
+            // CHARACTER and widechars for WIDECHAR.
+            Ulength | Ulength8 | Ulength16 | Upos | Usubstr | Usupplementary | Uvalid | Uwidth => {
+                let wide = matches!(args[0].ty, Ty::Wchar { .. });
+                let s = chars(&v[0]);
+                let unit = if wide { 2 } else { 1 };
+                let units = |s: &[u8]| -> R<Vec<(usize, usize)>> {
+                    match utf_units(s, wide) {
+                        Ok(u) => Ok(u),
+                        Err(at) => err(format!(
+                            "{b:?}: the string does not contain valid {} data (element {})",
+                            if wide { "UTF-16" } else { "UTF-8" },
+                            at + 1
+                        )),
+                    }
+                };
+                match b {
+                    Uvalid => Value::int(match utf_units(&s, wide) {
+                        Ok(_) => 0,
+                        Err(at) => at as i64 + 1,
+                    }),
+                    // not checked: the first 4-byte UTF-8 character or the
+                    // first high surrogate
+                    Usupplementary => Value::int(if wide {
+                        s.chunks(2)
+                            .position(|c| c.len() == 2 && (0xD8..=0xDB).contains(&c[0]))
+                            .map_or(0, |k| k as i64 + 1)
+                    } else {
+                        s.iter().position(|&c| c >= 0xF0).map_or(0, |k| k as i64 + 1)
+                    }),
+                    Ulength8 if !wide => Value::int(s.len() as i64),
+                    Ulength16 if wide => Value::int((s.len() / 2) as i64),
+                    Ulength => Value::int(units(&s)?.len() as i64),
+                    // the UTF-8 length of each UTF-16 character: 1, 2, 3 or
+                    // (a surrogate pair) 4 bytes
+                    Ulength8 => Value::int(
+                        units(&s)?
+                            .iter()
+                            .map(|&(at, n)| {
+                                let c = u16::from_be_bytes([s[at], s[at + 1]]);
+                                match (n, c) {
+                                    (4, _) => 4,
+                                    (_, 0..=0x7F) => 1,
+                                    (_, 0x80..=0x7FF) => 2,
+                                    _ => 3,
+                                }
+                            })
+                            .sum::<i64>(),
+                    ),
+                    // a 4-byte UTF-8 character is a surrogate pair
+                    Ulength16 => {
+                        Value::int(units(&s)?.iter().map(|&(_, n)| if n == 4 { 2 } else { 1 }).sum::<i64>())
+                    }
+                    Upos | Uwidth => {
+                        let u = units(&s)?;
+                        let n = int(1).unwrap_or(0);
+                        Value::int(match (n >= 1).then(|| u.get(n as usize - 1)).flatten() {
+                            Some(&(at, _)) if b == Upos => (at / unit) as i64 + 1,
+                            Some(&(_, len)) => (len / unit) as i64,
+                            None => 0,
+                        })
+                    }
+                    _ => {
+                        let u = units(&s)?;
+                        let (i, j) = (int(1).unwrap_or(0), int(2).unwrap_or(0));
+                        // the ERROR condition, not STRINGRANGE (LRM); the
+                        // ONCODE is not compared with the IBM library
+                        if i < 1 || j < 0 || i + j - 1 > u.len() as i64 {
+                            self.raise(Cond::Error, 3, act)?;
+                            return Ok(Value::Char(Vec::new()));
+                        }
+                        let (i, j) = (i as usize, j as usize);
+                        let start = u.get(i - 1).map_or(s.len(), |&(at, _)| at);
+                        let end = u.get(i - 1 + j).map_or(s.len(), |&(at, _)| at);
+                        Value::Char(s[start..end].to_vec())
+                    }
+                }
+            }
             // WCHARVAL(n): the widechar whose bits are UNSIGNED FIXED BIN(16) n
             WcharVal => Value::Char((v[0].as_i64() as u16).to_be_bytes().to_vec()),
             WHigh | WLow => {
@@ -2309,4 +2388,51 @@ mod tests {
         assert_eq!(lilian(1988, 5, 16), 148_138);
         assert_eq!(civil(148_138 - 141_428), (1988, 5, 16));
     }
+}
+
+/// The UTF characters of a string as (byte offset, byte length), by the
+/// validity rules of UVALID (Enterprise PL/I LRM): UTF-8 for CHARACTER,
+/// UTF-16 (big-endian widechars) for WIDECHAR. Err: the element (byte or
+/// widechar, from zero) where the first invalid data starts.
+fn utf_units(s: &[u8], wide: bool) -> Result<Vec<(usize, usize)>, usize> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    if wide {
+        let w: Vec<u16> = s.chunks(2).map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
+        while i < w.len() {
+            match w[i] {
+                0xD800..=0xDBFF if w.get(i + 1).is_some_and(|x| (0xDC00..=0xDFFF).contains(x)) => {
+                    out.push((2 * i, 4));
+                    i += 2;
+                }
+                0xD800..=0xDFFF => return Err(i),
+                _ => {
+                    out.push((2 * i, 2));
+                    i += 1;
+                }
+            }
+        }
+        return Ok(out);
+    }
+    let cont = |k: usize, lo: u8, hi: u8| s.get(k).is_some_and(|b| (lo..=hi).contains(b));
+    while i < s.len() {
+        let n = match s[i] {
+            0x00..=0x7F => 1,
+            0xC2..=0xDF if cont(i + 1, 0x80, 0xBF) => 2,
+            0xE0 if cont(i + 1, 0xA0, 0xBF) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xE1..=0xEC | 0xEE..=0xEF if cont(i + 1, 0x80, 0xBF) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xED if cont(i + 1, 0x80, 0x9F) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xF0 if cont(i + 1, 0x90, 0xBF) && cont(i + 2, 0x80, 0xBF) && cont(i + 3, 0x80, 0xBF) => 4,
+            0xF1..=0xF3
+                if cont(i + 1, 0x80, 0xBF) && cont(i + 2, 0x80, 0xBF) && cont(i + 3, 0x80, 0xBF) =>
+            {
+                4
+            }
+            0xF4 if cont(i + 1, 0x80, 0x8F) && cont(i + 2, 0x80, 0xBF) && cont(i + 3, 0x80, 0xBF) => 4,
+            _ => return Err(i),
+        };
+        out.push((i, n));
+        i += n;
+    }
+    Ok(out)
 }

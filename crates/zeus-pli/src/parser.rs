@@ -280,7 +280,9 @@ impl Parser {
                 {
                     self.bump();
                     let text = match kind {
-                        StrKind::Char | StrKind::Bit(_) | StrKind::Hex => text.repeat(n),
+                        StrKind::Char | StrKind::Bit(_) | StrKind::Hex | StrKind::WideHex => {
+                            text.repeat(n)
+                        }
                         _ => text,
                     };
                     return Ok(Expr::Str { text, kind, pos });
