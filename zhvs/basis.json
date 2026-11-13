@@ -389,6 +389,30 @@
       }
     }
   },
+  "HA111A": {
+    "basis": "spec",
+    "tests": {
+      "EXTRN-ACON-CALL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: EXTRN instruction | The EXTRN instruction identifies “external” symbols referred to in this source module but defined in another source module."
+        ]
+      },
+      "EXTRN-TYPE-ATTR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | T Identified as an external symbol by EXTRN instruction"
+        ]
+      },
+      "PROCESS-OPTABLE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_OPTABLE System Variable Symbol | Use &SYSOPT_OPTABLE to determine the value that was specified for the OPTABLE assembler option.",
+          "HLASM-PG: *PROCESS statement options | Process (*PROCESS) statements let you specify assembler options in your assembler source program."
+        ]
+      }
+    }
+  },
   "HD101A": {
     "basis": "spec",
     "refs": [

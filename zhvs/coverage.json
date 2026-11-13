@@ -103,6 +103,14 @@
       "ICTL-LABEL-COLUMN2"
     ]
   },
+  "HA111A": {
+    "expect": "run",
+    "tests": [
+      "EXTRN-ACON-CALL",
+      "EXTRN-TYPE-ATTR",
+      "PROCESS-OPTABLE"
+    ]
+  },
   "HD101A": {
     "expect": "run",
     "tests": [
