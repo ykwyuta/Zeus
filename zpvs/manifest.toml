@@ -140,3 +140,6 @@ jcl = "PF107A.JCL"
 
 [programs.PS107A]
 jcl = "PS107A.JCL"
+
+[programs.PF108A]
+jcl = "PF108A.JCL"

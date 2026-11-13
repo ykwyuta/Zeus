@@ -1495,6 +1495,76 @@ impl Machine {
                     }
                 }
             }
+            // FILEOPEN: whether the file is open
+            FileOpen => match &v[0] {
+                Value::File(f) => Value::bit1(self.files[*f as usize].open),
+                _ => return err("FILEOPEN requires a file"),
+            },
+            // FILEID and the FILEDD functions: ERROR with ONCODE 1010 when
+            // the file is not open or the attribute is not valid for it
+            // (LRM). FILEID is a token, not a DCB address, in Zeus.
+            FileId | FileDdTest | FileDdInt | FileDdWord => {
+                let Value::File(f) = &v[0] else {
+                    return err(format!("{b:?} requires a file"));
+                };
+                let f = *f;
+                let st = &self.files[f as usize];
+                let attr = v
+                    .get(1)
+                    .map(|a| zeus_cobol::ebcdic::decode(&chars(a)).trim().to_ascii_uppercase())
+                    .unwrap_or_default();
+                let fixed_len = match st.format.or(st.decl.record_format) {
+                    Some(zeus_ds::format::RecordFormat::Fixed(n)) => Some(n),
+                    _ => None,
+                };
+                let txt = |t: &str| Value::Char(zeus_cobol::ebcdic::encode(t));
+                let answer: Option<Value> = if !st.open {
+                    None
+                } else {
+                    match (b, attr.as_str()) {
+                        (FileId, _) => Some(Value::int(i64::from(f) + 1)),
+                        (FileDdTest, "PRINT") => Some(Value::int(i64::from(st.print))),
+                        (FileDdInt, "RECSIZE") if !st.stream => fixed_len.map(|n| Value::int(i64::from(n))),
+                        (FileDdWord, "TYPE") => Some(txt(if st.stream { "STREAM" } else { "RECORD" })),
+                        (FileDdWord, "ACCESS") if !st.stream => {
+                            Some(txt(if st.decl.direct { "DIRECT" } else { "SEQUENTIAL" }))
+                        }
+                        (FileDdWord, "ACTION") => Some(txt(if st.update {
+                            "UPDATE"
+                        } else if st.output {
+                            "OUTPUT"
+                        } else {
+                            "INPUT"
+                        })),
+                        (FileDdWord, "CHARSET") => Some(txt("EBCDIC")),
+                        _ => {
+                            return err(format!(
+                                "{b:?}('{attr}') is not supported for this file"
+                            ));
+                        }
+                    }
+                };
+                match answer {
+                    Some(x) => x,
+                    None => {
+                        self.raise(Cond::Error, 1010, act)?;
+                        match b {
+                            FileDdWord => Value::Char(Vec::new()),
+                            _ => Value::int(0),
+                        }
+                    }
+                }
+            }
+            // FILENEW([x]): a new file constant with the attributes of x
+            FileNew => {
+                let decl = match v.first() {
+                    Some(Value::File(f)) => self.files[*f as usize].decl.clone(),
+                    _ => self.files.first().map(|s| s.decl.clone()).ok_or_else(|| Intr::Fatal("FILENEW without files".into()))?,
+                };
+                std::rc::Rc::make_mut(&mut self.module).files.push(decl.clone());
+                self.files.push(super::stream::FileState::new(&decl));
+                Value::File((self.files.len() - 1) as crate::ir::FileId)
+            }
             // COUNT: the data items of the last GET or PUT on the file
             Count => match &v[0] {
                 Value::File(f) => {

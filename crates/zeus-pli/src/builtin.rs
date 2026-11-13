@@ -224,6 +224,12 @@ pub enum Bif {
     MemConvert,
     NullEntry,
     EntryAddr,
+    FileOpen,
+    FileId,
+    FileNew,
+    FileDdTest,
+    FileDdInt,
+    FileDdWord,
     PicSpec,
     CodePage,
     SubTo,
@@ -580,6 +586,12 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "MEMCONVERT" => MemConvert,
         "NULLENTRY" => NullEntry,
         "ENTRYADDR" => EntryAddr,
+        "FILEOPEN" => FileOpen,
+        "FILEID" => FileId,
+        "FILENEW" => FileNew,
+        "FILEDDTEST" => FileDdTest,
+        "FILEDDINT" => FileDdInt,
+        "FILEDDWORD" => FileDdWord,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -741,6 +753,7 @@ impl Bif {
                 | CodePage
                 | CheckStg
                 | NullEntry
+                | FileNew
                 | Uuid4
                 | Secs
                 | Timestamp
@@ -777,6 +790,12 @@ impl Bif {
                 | PageNo
                 | Count
                 | SameKey
+                | FileOpen
+                | FileId
+                | FileNew
+                | FileDdTest
+                | FileDdInt
+                | FileDdWord
                 | MaxLength
                 | Poly
                 | Valid
@@ -981,6 +1000,11 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24 | MemCu41 | MemCu42
         | MemConvert => Ty::fixed_bin(63, 0),
         NullEntry => Ty::Entry,
+        FileOpen => Ty::bit(1),
+        FileId | FileDdInt => Ty::fixed_bin(63, 0),
+        FileDdTest => fixed_bin31(),
+        FileDdWord => Ty::char_var(64),
+        FileNew => Ty::File,
         EntryAddr => Ty::Pointer,
         // the same string type as x, at most its length
         Usubstr => match arg(0)? {

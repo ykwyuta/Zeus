@@ -1937,6 +1937,82 @@
       }
     }
   },
+  "PF108A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+    ],
+    "tests": {
+      "FILEOPEN-CLOSED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+        ]
+      },
+      "FILEOPEN-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+        ]
+      },
+      "FILEOPEN-AFTER-CLOSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+        ]
+      },
+      "FILEID-NOT-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEID | The ERROR condition with oncode 1010 is raised when the file is not open."
+        ]
+      },
+      "FILEID-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEID | FILEID returns a size_t 1 value that is the system token for a PL/I file constant or variable."
+        ]
+      },
+      "FILEDDWORD-RECORD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDWORD | TYPE returns RECORD or STREAM.",
+          "PLI-LRM: FILEDDWORD | ACCESS returns SEQUENTIAL or DIRECT.",
+          "PLI-LRM: FILEDDWORD | ACTION returns INPUT, OUTPUT, or UPDATE."
+        ]
+      },
+      "FILEDDWORD-CHARSET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDWORD | CHARSET returns ASCII or EBCDIC."
+        ]
+      },
+      "FILEDDINT-RECSIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDINT | FILEDDINT returns a size_t value that is the value of attribute c for file x."
+        ]
+      },
+      "FILEDDWORD-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDWORD | TYPE returns RECORD or STREAM."
+        ]
+      },
+      "FILEDDTEST-PRINT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDTEST | FILEDDTEST returns a FIXED BIN(31) value that holds the value 1 if the attribute c applies to file x. Otherwise, a value of 0 is returned."
+        ]
+      },
+      "FILENEW-NOT-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILENEW | If x has been specified, the attributes in the declaration of that file are used."
+        ]
+      }
+    }
+  },
   "PM101A": {
     "basis": "spec",
     "refs": [
