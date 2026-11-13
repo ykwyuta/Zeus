@@ -1,6 +1,6 @@
 # ZCVS 網羅台帳 (Enterprise COBOL for z/OS)
 
-Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 272、CCVS85 だけが測る 49、対象外 22、未網羅 2。
+Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 272、CCVS85 だけが測る 49、対象外 23、未網羅 1。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -352,4 +352,4 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Compiler options (semantic) | DYNAM | 使用あり | ZP101A, ZP109A, ZP110A, ZP111A, ZP112A | 0 |  |
 | Compiler options (semantic) | QUALIFY | 使用あり | ZE147P, ZP116A | 0 |  |
 | Compiler options (semantic) | INITCHECK | 使用あり | ZE148N, ZE148P, ZE149N, ZE149P | 0 |  |
-| Compiler options (semantic) | SQLCCSID | 未網羅 |  | 0 |  |
+| Compiler options (semantic) | SQLCCSID | 対象外 |  | 0 | 対象外: 違いが見えるのは CODEPAGE と Db2 の DSNHDECP の CCSID が異なるときだけで、DSNHDECP はサイトごとに決まる (ESYM と同じ)。ZCVS には Db2 の結合・BIND の手順もまだ無い |
