@@ -1609,6 +1609,25 @@
       "TDCDT-NONZERO"
     ]
   },
+  "HI132A": {
+    "expect": "run",
+    "tests": [
+      "TDGDT-SAFE-ZERO",
+      "TDGDT-ZERO-SIGN",
+      "TDGDT-ZERO-EXTREME",
+      "TDGDT-NZ-EXTREME",
+      "TDGDT-SAFE-NONZERO",
+      "TDGDT-MINUS-SAFE",
+      "TDGDT-LMD-NONZERO",
+      "TDGDT-LMD-NOT-SAFE",
+      "TDGDT-SPECIAL-INF",
+      "TDGDT-SAFE-PAIR",
+      "TDGET-SAFE-NONZERO",
+      "TDGET-LMD-NONZERO",
+      "TDGXT-SAFE-NONZERO",
+      "TDGXT-SPECIAL-NAN"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [

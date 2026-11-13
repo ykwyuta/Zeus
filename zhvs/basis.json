@@ -4487,6 +4487,101 @@
       }
     }
   },
+  "HI132A": {
+    "basis": "spec",
+    "refs": [
+      "POP: TEST DATA GROUP | The group and sign of the first operand are examined",
+      "POP: TEST DATA GROUP | bits 52-63, are used to specify 12 combinations of"
+    ],
+    "tests": {
+      "TDGDT-SAFE-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Condition code 0 or 1 is set according to whether the"
+        ]
+      },
+      "TDGDT-ZERO-SIGN": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Condition code 0 or 1 is set according to whether the"
+        ]
+      },
+      "TDGDT-SAFE-PAIR": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Condition code 0 or 1 is set according to whether the",
+          "POP: TEST DATA GROUP | whether a nonzero finite number is safe by set-"
+        ]
+      },
+      "TDGDT-ZERO-EXTREME": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Extreme Maximum right-units-view (RUV) exponent, Qmax, or"
+        ]
+      },
+      "TDGDT-NZ-EXTREME": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Extreme Maximum right-units-view (RUV) exponent, Qmax, or"
+        ]
+      },
+      "TDGDT-SAFE-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the",
+          "POP: TEST DATA GROUP | whether a nonzero finite number is safe by set-"
+        ]
+      },
+      "TDGDT-MINUS-SAFE": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGDT-LMD-NOT-SAFE": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGET-SAFE-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGXT-SAFE-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGDT-LMD-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | whether a nonzero finite number has reached the"
+        ]
+      },
+      "TDGET-LMD-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | whether a nonzero finite number has reached the"
+        ]
+      },
+      "TDGDT-SPECIAL-INF": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | cial. The special group is defined for infinity and NaN."
+        ]
+      },
+      "TDGXT-SPECIAL-NAN": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | cial. The special group is defined for infinity and NaN."
+        ]
+      }
+    }
+  },
   "HM101A": {
     "basis": "spec",
     "tests": {
