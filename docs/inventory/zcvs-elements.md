@@ -1,6 +1,6 @@
 # ZCVS 網羅台帳 (Enterprise COBOL for z/OS)
 
-Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 260、CCVS85 だけが測る 49、対象外 2、未網羅 34。
+Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 260、CCVS85 だけが測る 49、対象外 6、未網羅 30。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -35,7 +35,7 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Statements | INSPECT TALLYING | 使用あり | ZA127A, ZS106A | 5 |  |
 | Statements | INSPECT REPLACING | CCVS85 |  | 10 |  |
 | Statements | INSPECT CONVERTING | CCVS85 |  | 2 |  |
-| Statements | INVOKE | 未網羅 |  | 0 |  |
+| Statements | INVOKE | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
 | Statements | JSON GENERATE | 未網羅 |  | 0 |  |
 | Statements | JSON PARSE | 未網羅 |  | 0 |  |
 | Statements | MERGE | CCVS85 |  | 7 |  |
@@ -147,7 +147,7 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | USAGE | POINTER | 使用あり | ZE108N, ZE137N, ZE137P, ZP105A, ZP108A, ZP111A ほか 2 | 0 |  |
 | USAGE | PROCEDURE-POINTER | 使用あり | ZE116N, ZE137N, ZE137P, ZE138N, ZE138P, ZP105A ほか 2 | 0 |  |
 | USAGE | FUNCTION-POINTER | 使用あり | ZP105A | 0 |  |
-| USAGE | OBJECT REFERENCE | 未網羅 |  | 0 |  |
+| USAGE | OBJECT REFERENCE | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
 | PICTURE symbols | PIC A | 使用あり | ZD107A, ZS102A | 51 |  |
 | PICTURE symbols | PIC X | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 135 | 444 |  |
 | PICTURE symbols | PIC 9 | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 131 | 447 |  |
@@ -332,8 +332,8 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Special registers | JSON-CODE | 未網羅 |  | 0 |  |
 | Special registers | JSON-STATUS | 未網羅 |  | 0 |  |
 | Special registers | DEBUG-ITEM | 使用あり | ZP114A | 0 |  |
-| Special registers | JNIENVPTR | 未網羅 |  | 0 |  |
-| Special registers | IGY-JAVAIOP-CALL-EXCEPTION | 未網羅 |  | 0 |  |
+| Special registers | JNIENVPTR | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
+| Special registers | IGY-JAVAIOP-CALL-EXCEPTION | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
 | Special registers | XML-INFORMATION | 未網羅 |  | 0 |  |
 | Special registers | XML-NAMESPACE | 未網羅 |  | 0 |  |
 | Special registers | XML-NAMESPACE-PREFIX | 未網羅 |  | 0 |  |
