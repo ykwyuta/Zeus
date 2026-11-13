@@ -245,6 +245,22 @@
       "UVALID-UTF16-INVALID"
     ]
   },
+  "PC114A": {
+    "expect": "run",
+    "tests": [
+      "UTF8-CODEPAGE-1140",
+      "UTF8-CODEPAGE-1141",
+      "UTF8-CODEPAGE-OPTION",
+      "UTF8-WIDECHAR",
+      "UTF8TOCHAR-1140",
+      "UTF8TOWCHAR",
+      "UTF8TOWCHAR-INVALID",
+      "MEMUVALID8-INVALID",
+      "MEMUVALID8-VALID",
+      "MEMUVALID16-INVALID",
+      "MEMUVALID16-VALID"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

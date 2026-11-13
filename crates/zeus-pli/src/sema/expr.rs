@@ -1584,6 +1584,7 @@ impl Compiler {
                     | Usupplementary
                     | Uvalid
                     | Uwidth
+                    | Utf8
             ) {
                 self.expr_wide(a)?
             } else {
@@ -1649,6 +1650,24 @@ impl Compiler {
                 v
             }
             WHigh | WLow | WcharVal | Alloc31 => xs.into_iter().map(|x| int(self, x)).collect(),
+            // UTF8(x [,c]), UTF8TOCHAR(x [,c]): the code page c defaults
+            // to the CODEPAGE option; x of another type than CHAR or
+            // WIDECHAR is converted to CHAR first
+            Utf8 | Utf8ToChar => {
+                let mut it = xs.into_iter();
+                let x = it.next().unwrap();
+                let x = if matches!(x.ty, Ty::Char { .. } | Ty::Wchar { .. }) {
+                    x
+                } else {
+                    self.conv(x, &Ty::char_var(32767))
+                };
+                let c = match it.next() {
+                    Some(c) => int(self, c),
+                    None => mk(Ek::Fixed(i128::from(self.m.ccsid), 0), Ty::fixed_bin(31, 0)),
+                };
+                vec![x, c]
+            }
+            Utf8ToWchar | MemUvalid8 | MemUvalid16 => xs,
             SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];

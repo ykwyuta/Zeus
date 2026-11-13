@@ -785,6 +785,82 @@
       }
     }
   },
+  "PC114A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UTF8 | UTF8(x) returns a CHAR value that is the UTF-8 equivalent of x."
+    ],
+    "tests": {
+      "UTF8-CODEPAGE-1140": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | For example, UTF8('babb'x,1140) and UTF8('63fc'x,1141) will both return '5b5d'x."
+        ]
+      },
+      "UTF8-CODEPAGE-1141": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | For example, UTF8('babb'x,1140) and UTF8('63fc'x,1141) will both return '5b5d'x."
+        ]
+      },
+      "UTF8-CODEPAGE-OPTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | the CODEPAGE option specifies the value for the code page of x when it is converted to UTF-8."
+        ]
+      },
+      "UTF8-WIDECHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | If x has the WIDECHAR type, it is converted to UTF-8 under the assumption that x holds UTF-16."
+        ]
+      },
+      "UTF8TOCHAR-1140": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8TOCHAR | UTF8TOCHAR(x) returns a CHAR value holding x converted from UTF-8.",
+          "PLI-LRM: UTF8 | on code page 1140, 'ba'x and 'bb'x correspond to UTF-8 characters '5b'x and '5d'x"
+        ]
+      },
+      "UTF8TOWCHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8TOWCHAR | UTF8TOWCHAR(x) returns a WCHAR value holding x converted from UTF-8 to UTF-16."
+        ]
+      },
+      "UTF8TOWCHAR-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8TOWCHAR | Note: If x holds invalid UTF-8 data, the generated code raises the ERROR condition."
+        ]
+      },
+      "MEMUVALID8-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID8 | This function returns a size_t value of zero if the buffer contains valid UTF-8; otherwise, it returns the index of the first invalid byte."
+        ]
+      },
+      "MEMUVALID8-VALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID8 | This function returns a size_t value of zero if the buffer contains valid UTF-8; otherwise, it returns the index of the first invalid byte."
+        ]
+      },
+      "MEMUVALID16-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID16 | This function returns a size_t value of zero if the buffer contains valid UTF-16; otherwise, it returns the index of the first invalid byte.",
+          "PLI-LRM: UVALID | 'dc00'wx - 'dfff'wx, it is valid only when it is the second half of a surrogate pair"
+        ]
+      },
+      "MEMUVALID16-VALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID16 | This function returns a size_t value of zero if the buffer contains valid UTF-16; otherwise, it returns the index of the first invalid byte."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

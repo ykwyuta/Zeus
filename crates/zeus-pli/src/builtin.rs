@@ -210,6 +210,11 @@ pub enum Bif {
     Usupplementary,
     Uvalid,
     Uwidth,
+    Utf8,
+    Utf8ToChar,
+    Utf8ToWchar,
+    MemUvalid8,
+    MemUvalid16,
     PicSpec,
     CodePage,
     SubTo,
@@ -552,6 +557,11 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "USUPPLEMENTARY" => Usupplementary,
         "UVALID" => Uvalid,
         "UWIDTH" => Uwidth,
+        "UTF8" => Utf8,
+        "UTF8TOCHAR" => Utf8ToChar,
+        "UTF8TOWCHAR" => Utf8ToWchar,
+        "MEMUVALID8" => MemUvalid8,
+        "MEMUVALID16" => MemUvalid16,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -941,6 +951,15 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         QuickSort | BinSearch | QuickSortX | BinSearchX => fixed_bin31(),
         PicSpec => Ty::char(1),
         Ulength | Ulength8 | Ulength16 | Upos | Usupplementary | Uvalid | Uwidth => fixed_bin31(),
+        // a CHAR character is at most 3 UTF-8 bytes (a WIDECHAR, too)
+        Utf8 => Ty::char_var((3 * str_len(&arg(0)?).max(1)).min(32767)),
+        Utf8ToChar => Ty::char_var(str_len(&arg(0)?).max(1)),
+        Utf8ToWchar => Ty::Wchar {
+            len: crate::types::Ext::Const(str_len(&arg(0)?).max(1)),
+            var: crate::types::Var::Varying,
+            graphic: false,
+        },
+        MemUvalid8 | MemUvalid16 => Ty::fixed_bin(63, 0),
         // the same string type as x, at most its length
         Usubstr => match arg(0)? {
             Ty::Wchar { len, .. } => Ty::Wchar {

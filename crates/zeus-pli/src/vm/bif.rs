@@ -1302,6 +1302,52 @@ impl Machine {
                     }
                 }
             }
+            Utf8 | Utf8ToChar | Utf8ToWchar => {
+                let s = chars(&v[0]);
+                let page = |c: i64| match u32::try_from(c).ok().and_then(zeus_cobol::codepage::get) {
+                    Some(cp) => Ok(cp),
+                    None => err(format!("{b:?}: code page {c} is not supported")),
+                };
+                match b {
+                    // WIDECHAR holds UTF-16; other types are in the code page
+                    Utf8 if matches!(args[0].ty, Ty::Wchar { .. }) => match utf_units(&s, true) {
+                        Ok(_) => Value::Char(zeus_cobol::vm::data::from_utf16(&s).into_bytes()),
+                        Err(_) => {
+                            self.raise(Cond::Error, 3, act)?;
+                            Value::Char(Vec::new())
+                        }
+                    },
+                    Utf8 => Value::Char(page(int(1).unwrap_or(0))?.decode(&s).into_bytes()),
+                    _ => match std::str::from_utf8(&s) {
+                        // invalid UTF-8 raises ERROR (LRM); the ONCODE is not
+                        // compared with the IBM library
+                        Err(_) => {
+                            self.raise(Cond::Error, 3, act)?;
+                            Value::Char(Vec::new())
+                        }
+                        Ok(text) if b == Utf8ToWchar => {
+                            Value::Char(text.encode_utf16().flat_map(u16::to_be_bytes).collect())
+                        }
+                        Ok(text) => Value::Char(page(int(1).unwrap_or(0))?.encode(text)),
+                    },
+                }
+            }
+            // MEMUVALID8 / MEMUVALID16(p, n): zero, or the index of the
+            // first invalid byte of the n bytes at p
+            MemUvalid8 | MemUvalid16 => {
+                let Value::Ptr(p) = &v[0] else {
+                    return err(format!("{b:?} requires a locator"));
+                };
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let buf = self.read(*p, n)?.to_vec();
+                let wide = b == MemUvalid16;
+                Value::int(match utf_units(&buf, wide) {
+                    Ok(_) if !wide || n % 2 == 0 => 0,
+                    Ok(_) => n as i64,
+                    Err(k) if wide => 2 * k as i64 + 1,
+                    Err(k) => k as i64 + 1,
+                })
+            }
             // WCHARVAL(n): the widechar whose bits are UNSIGNED FIXED BIN(16) n
             WcharVal => Value::Char((v[0].as_i64() as u16).to_be_bytes().to_vec()),
             WHigh | WLow => {
