@@ -1032,6 +1032,45 @@
       }
     }
   },
+  "ZA127A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: UUID4 | The UUID4 function returns a 36-character alphanumeric string that is a version 4 universally unique identifier(UUID)."
+    ],
+    "tests": {
+      "UUID4-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | The UUID4 function returns a 36-character alphanumeric string"
+        ]
+      },
+      "UUID4-HYPHENS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | 4ed161b5-0d3c-4f06-8381-5f14678e13da"
+        ]
+      },
+      "UUID4-HEX-DIGITS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | 4ed161b5-0d3c-4f06-8381-5f14678e13da"
+        ]
+      },
+      "UUID4-VERSION": {
+        "basis": "zos",
+        "note": "版 4 (15 桁目が 4) と変種 (20 桁目が 8・9・a・b) は RFC の UUID の形で、LRM は例を 1 つ示すだけ。小文字の 16 進であることも例による",
+        "refs": [
+          "COB-LRM: UUID4 | Version 4 UUID is generated based on random numbers."
+        ]
+      },
+      "UUID4-DIFFERENT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | It produces unique identifiers from separate applications without the coordination of a centralized agent or process."
+        ]
+      }
+    }
+  },
   "ZD101A": {
     "basis": "spec",
     "refs": [

@@ -47,6 +47,7 @@ fn alnum_function(f: Func) -> bool {
         f,
         Func::Char
             | Func::CurrentDate
+            | Func::Uuid4
             | Func::LowerCase
             | Func::UpperCase
             | Func::Reverse
@@ -78,6 +79,7 @@ pub fn function(name: &str) -> Option<Func> {
         "CHAR" => Func::Char,
         "COS" => Func::Cos,
         "CURRENT-DATE" => Func::CurrentDate,
+        "UUID4" => Func::Uuid4,
         "DATE-OF-INTEGER" => Func::DateOfInteger,
         "DAY-OF-INTEGER" => Func::DayOfInteger,
         "FACTORIAL" => Func::Factorial,
@@ -283,6 +285,7 @@ impl Gen<'_> {
         );
         let (min, max) = match func {
             Func::CurrentDate
+            | Func::Uuid4
             | Func::WhenCompiled
             | Func::WhenCompiledRegister
             | Func::E
@@ -318,6 +321,7 @@ impl Gen<'_> {
         let numeric = !matches!(
             func,
             Func::CurrentDate
+                | Func::Uuid4
                 | Func::WhenCompiled
                 | Func::WhenCompiledRegister
                 | Func::Length

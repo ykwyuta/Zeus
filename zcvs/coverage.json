@@ -827,6 +827,16 @@
       "NOZWB-POSITIVE-SIGN"
     ]
   },
+  "ZA127A": {
+    "expect": "run",
+    "tests": [
+      "UUID4-LENGTH",
+      "UUID4-HYPHENS",
+      "UUID4-HEX-DIGITS",
+      "UUID4-VERSION",
+      "UUID4-DIFFERENT"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [

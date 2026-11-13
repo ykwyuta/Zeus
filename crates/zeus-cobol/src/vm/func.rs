@@ -628,6 +628,10 @@ impl Machine {
                     &t[12..14]
                 ))
             }
+            // a version 4 UUID in lower-case hexadecimal (Language Reference,
+            // UUID4: "4ed161b5-0d3c-4f06-8381-5f14678e13da"); random bits from a
+            // generator seeded by the clock, so runs differ as on z/OS
+            Func::Uuid4 => ebcdic::encode(&uuid4()),
             Func::CurrentDate => {
                 let now = crate::clock::now().as_secs_f64();
                 let days = (now / 86400.0).floor() as i64;
@@ -978,6 +982,44 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
         }
         _ => return err(format!("function {func:?} is not supported yet")),
     })
+}
+
+/// A version 4 UUID: 122 random bits, version 4, variant 10.
+fn uuid4() -> String {
+    use std::cell::Cell;
+    thread_local! {
+        static STATE: Cell<u64> = const { Cell::new(0) };
+    }
+    let next = || {
+        STATE.with(|s| {
+            let mut x = s.get();
+            if x == 0 {
+                let t = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default();
+                x = ((t.as_nanos() as u64) ^ (u64::from(std::process::id()) << 32)) | 1;
+            }
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            s.set(x);
+            x
+        })
+    };
+    let mut r = [0u8; 16];
+    r[..8].copy_from_slice(&next().to_be_bytes());
+    r[8..].copy_from_slice(&next().to_be_bytes());
+    r[6] = (r[6] & 0x0f) | 0x40;
+    r[8] = (r[8] & 0x3f) | 0x80;
+    let h: String = r.iter().map(|c| format!("{c:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
 }
 
 #[cfg(test)]

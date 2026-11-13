@@ -709,6 +709,8 @@ pub enum Func {
     Char,
     Cos,
     CurrentDate,
+    /// UUID4: a version 4 UUID (36 characters).
+    Uuid4,
     DateOfInteger,
     DayOfInteger,
     Factorial,
