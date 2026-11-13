@@ -5178,6 +5178,54 @@
       }
     }
   },
+  "HM111A": {
+    "basis": "spec",
+    "tests": {
+      "AREAD-RECORD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | it reads the source record following the macro instruction and assigns an 80-character string to the SETC symbol in the name field."
+        ]
+      },
+      "AREAD-80-COLUMNS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | it reads the source record following the macro instruction and assigns an 80-character string to the SETC symbol in the name field."
+        ]
+      },
+      "AREAD-SUCCESSIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | Repeated AREAD instruction statements read successive records."
+        ]
+      },
+      "AREAD-FROM-AINSERT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AINSERT instruction | However, the AREAD instruction takes input records from the AINSERT buffer queue before reading the input stream."
+        ]
+      },
+      "AINSERT-FRONT-BACK": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AINSERT instruction | If it is used in a macro, the records are queued in an internal buffer until the macro generator has completed expanding the current outermost macro instruction.",
+          "HLASM-LR: AINSERT instruction | The record is placed at the front of the internal buffer."
+        ]
+      },
+      "AINSERT-OPEN-CODE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AINSERT instruction | If AINSERT is used in open code, the buffer queue only contains one record, which is inserted immediately after the AINSERT instruction."
+        ]
+      },
+      "AREAD-CLOCKD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | Assigns an 8-character string to SETC_symbol containing the local time in the format HHMMSSTH"
+        ]
+      }
+    }
+  },
   "HS101A": {
     "basis": "spec",
     "tests": {

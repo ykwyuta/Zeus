@@ -1755,6 +1755,18 @@
       "UNUSED-DD-NULL"
     ]
   },
+  "HM111A": {
+    "expect": "run",
+    "tests": [
+      "AREAD-RECORD",
+      "AREAD-80-COLUMNS",
+      "AREAD-SUCCESSIVE",
+      "AINSERT-FRONT-BACK",
+      "AINSERT-OPEN-CODE",
+      "AREAD-FROM-AINSERT",
+      "AREAD-CLOCKD"
+    ]
+  },
   "HS101A": {
     "expect": "run",
     "tests": [

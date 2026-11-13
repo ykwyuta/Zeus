@@ -153,7 +153,7 @@ fn condition_at(text: &str, level: usize) -> Result<bool, String> {
 }
 
 fn expand_scope(
-    input: Vec<Statement>,
+    mut input: Vec<Statement>,
     dirs: &[PathBuf],
     macros: &mut HashMap<String, Macro>,
     depth: usize,
@@ -386,6 +386,87 @@ fn expand_scope(
             }
             "SETA" | "SETB" | "SETC" => {
                 vars.assign(&original.label, &s.op, &original.args, state)
+                    .map_err(|e| s.error(e))?;
+                continue;
+            }
+            // AINSERT 'record'[,BACK|FRONT]: in open code the record is the
+            // next statement; in a macro it is queued until the outermost
+            // macro call ends (Language Reference, AINSERT instruction)
+            "AINSERT" => {
+                let args = substitute(&original.args, vars, state).map_err(|e| s.error(e))?;
+                let ops = operands(&args);
+                let record = ops
+                    .first()
+                    .and_then(|r| r.strip_prefix('\'').and_then(|r| r.strip_suffix('\'')))
+                    .ok_or_else(|| s.error("AINSERT needs a quoted record"))?
+                    .replace("''", "'");
+                let record: String = record.chars().take(80).collect();
+                let front = match ops.get(1).map(|o| o.to_ascii_uppercase()) {
+                    None => false,
+                    Some(o) if o == "BACK" => false,
+                    Some(o) if o == "FRONT" => true,
+                    Some(o) => return Err(s.error(format!("AINSERT: invalid operand {o}"))),
+                };
+                if open_code {
+                    if let Some(st) = super::source::record_statement(&record, &s.file, s.line) {
+                        input.insert(pc, st);
+                        state.forward.last_mut().unwrap().0 = input.clone();
+                    }
+                } else if front {
+                    state.ainsert.push_front(record);
+                } else {
+                    state.ainsert.push_back(record);
+                }
+                continue;
+            }
+            // &C AREAD [NOPRINT|NOSTMT|CLOCKB|CLOCKD]: the next AINSERT
+            // record, else the source record after the outermost macro call
+            // (80 characters; null when none remains)
+            "AREAD" => {
+                if open_code {
+                    return Err(s.error("AREAD is valid only in a macro definition"));
+                }
+                let operand = s.args.to_ascii_uppercase();
+                let value = match operand.as_str() {
+                    "CLOCKB" | "CLOCKD" => {
+                        let now = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .unwrap_or_default();
+                        let hundredths = (now.as_millis() / 10 % 8_640_000) as u64;
+                        if operand == "CLOCKB" {
+                            format!("{hundredths:08}")
+                        } else {
+                            let (h, m, sec, t) = (
+                                hundredths / 360_000,
+                                hundredths / 6000 % 60,
+                                hundredths / 100 % 60,
+                                hundredths % 100,
+                            );
+                            format!("{h:02}{m:02}{sec:02}{t:02}")
+                        }
+                    }
+                    "" | "NOPRINT" | "NOSTMT" => {
+                        if let Some(r) = state.ainsert.pop_front() {
+                            format!("{r:<80}")
+                        } else {
+                            let next = state
+                                .forward
+                                .last()
+                                .and_then(|(inp, at)| inp.get(at + state.aread_taken).cloned());
+                            match next {
+                                Some(st) => {
+                                    state.aread_taken += 1;
+                                    super::source::raw_record(&st.file, st.line, &state.options)
+                                        .unwrap_or_default()
+                                }
+                                None => String::new(),
+                            }
+                        }
+                    }
+                    _ => return Err(s.error(format!("AREAD: invalid operand {}", s.args))),
+                };
+                let literal = format!("'{}'", value.replace('\'', "''").replace('&', "&&"));
+                vars.assign(&original.label, "SETC", &literal, state)
                     .map_err(|e| s.error(e))?;
                 continue;
             }
@@ -765,6 +846,23 @@ fn expand_scope(
                 state.observe_attributes(first);
             }
             out.extend(body);
+            if open_code {
+                // the records AREAD read are not statements of open code;
+                // queued AINSERT records come next
+                pc += std::mem::take(&mut state.aread_taken);
+                let inserted: Vec<Statement> = state
+                    .ainsert
+                    .drain(..)
+                    .filter_map(|r| super::source::record_statement(&r, &s.file, s.line))
+                    .collect();
+                if !inserted.is_empty() {
+                    for (k, st) in inserted.into_iter().enumerate() {
+                        input.insert(pc + k, st);
+                    }
+                    state.forward.last_mut().unwrap().0 = input.clone();
+                }
+                state.forward.last_mut().unwrap().1 = pc;
+            }
         }
     }
     if open_code {
@@ -826,6 +924,11 @@ struct Expansion {
     /// (conditional assembly ones too) and every generated statement
     /// (&SYSSTMT is the next one).
     listed: usize,
+    /// AINSERT records queued inside a macro, inserted into the input after
+    /// the outermost macro call (Language Reference, AINSERT instruction).
+    ainsert: std::collections::VecDeque<String>,
+    /// Open-code statements after the outermost macro call that AREAD read.
+    aread_taken: usize,
     ended: bool,
     attribute_values: super::assemble::Symbols,
     attributes: HashMap<String, Result<super::expression::EquAttributes, String>>,
