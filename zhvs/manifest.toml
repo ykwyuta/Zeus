@@ -153,3 +153,6 @@ jcl = "HS103A.JCL"
 
 [programs.HA109A]
 object_formats = ["zeus"]
+
+[programs.HD109A]
+ccsid = 939

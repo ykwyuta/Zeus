@@ -231,6 +231,18 @@
       "LQ-EQUALS-L"
     ]
   },
+  "HD109A": {
+    "expect": "run",
+    "tests": [
+      "G-NO-SO-SI",
+      "G-DUPLICATION",
+      "G-LENGTH-PADDED",
+      "G-LENGTH-TRUNCATED",
+      "G-LENGTH-ATTRIBUTE",
+      "G-TYPE-ATTRIBUTE",
+      "G-SYSOPT-DBCS"
+    ]
+  },
   "HE101N": {
     "expect": "compile-error",
     "tests": []

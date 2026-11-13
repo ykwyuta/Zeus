@@ -963,6 +963,60 @@
       }
     }
   },
+  "HD109A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Graphic constant—G | When the DBCS assembler option is specified, the graphic (G-type) constant is supported."
+    ],
+    "tests": {
+      "G-NO-SO-SI": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | data are not present in the assembled value of the graphic constant."
+        ]
+      },
+      "G-DUPLICATION": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | Because SO and SI are not assembled, if a duplication factor is used, no redundant SI/SO characters are created."
+        ]
+      },
+      "G-LENGTH-PADDED": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | The length modifier of 10 for DBCS2 causes padding of 2 double-byte spaces at the right of the nominal value."
+        ]
+      },
+      "G-LENGTH-TRUNCATED": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | The length modifier of 4 for DBCS3 causes truncation after the first 2 double-byte characters."
+        ]
+      },
+      "G-LENGTH-ATTRIBUTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | Because the length attribute does not include the SO and SI, the length attribute of DBCS1 is 6."
+        ]
+      },
+      "G-TYPE-ATTRIBUTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | The type attribute of a graphic constant is @, not G."
+        ]
+      },
+      "G-SYSOPT-DBCS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_DBCS System Variable Symbol | If the DBCS assembler option was specified, &SYSOPT_DBCS is assigned a value of 1."
+        ]
+      }
+    }
+  },
   "HE101N": {
     "basis": "spec",
     "refs": [

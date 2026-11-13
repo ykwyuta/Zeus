@@ -286,6 +286,10 @@ pub(in crate::hlasm) fn apply_process(
                 if let Some(value) = value {
                     macrocase.apply(value, priority, "COMPAT(MACROCASE)", &s, diagnostics);
                 }
+            } else if arg == "DBCS" || arg == "NODBCS" {
+                // DBCS: G constants and DBCS in C constants (Language
+                // Reference, graphic constant G)
+                options.dbcs = Some(arg == "DBCS");
             } else if arg.starts_with("OVERRIDE(") {
                 message(
                     &s,

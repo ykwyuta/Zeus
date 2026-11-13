@@ -20,6 +20,7 @@ pub(super) fn expand(
     };
     state.controls.set_pcontrol(&options.pcontrol)?;
     state.controls.macrocase = options.macrocase.unwrap_or(false);
+    super::assemble::set_nodbcs(options.dbcs == Some(false));
     state
         .controls
         .set_optable(options.optable.as_deref().unwrap_or("UNI"))?;
@@ -1055,7 +1056,7 @@ impl Expansion {
                     .unwrap_or_else(|| "(NOSTEP)".into()),
             ),
             ("&SYSPARM", self.options.sysparm.clone()),
-            ("&SYSOPT_DBCS", u8::from(crate::codepage::active().is_mixed() || matches!(self.options.source_encoding, super::SourceEncoding::Ebcdic { ccsid, .. } if crate::codepage::get(ccsid).is_some_and(|cp| cp.is_mixed()))).to_string()),
+            ("&SYSOPT_DBCS", u8::from(self.options.dbcs.unwrap_or_else(|| crate::codepage::active().is_mixed() || matches!(self.options.source_encoding, super::SourceEncoding::Ebcdic { ccsid, .. } if crate::codepage::get(ccsid).is_some_and(|cp| cp.is_mixed())))).to_string()),
             ("&SYSOPT_RENT", "0".into()),
             ("&SYSOPT_XOBJECT", "0".into()),
             ("&SYSOPT_OPTABLE", self.controls.optable.clone()),

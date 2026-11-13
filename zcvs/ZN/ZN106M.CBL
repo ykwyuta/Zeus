@@ -17,7 +17,8 @@
            COPY ZCVSRPT.
        01  顧客レコード.
            05  顧客番号             PIC 9(4) COMP-3 VALUE 1025.
-           05  顧客氏名             PIC G(4) DISPLAY-1 VALUE G'山田太郎'.
+           05  顧客氏名             PIC G(4) DISPLAY-1
+               VALUE G'山田太郎'.
        01  売上合計                 PIC S9(7) COMP-3 VALUE 50000.
        01  WS-LOWER-939             PIC X(3) VALUE 'abc'.
        01  WS-MIXED-939             PIC X(8) VALUE 'ID=日1'.

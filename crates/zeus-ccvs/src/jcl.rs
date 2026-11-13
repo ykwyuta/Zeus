@@ -364,13 +364,38 @@ fn sorted_entries(dir: &Path, exts: &[&str]) -> Result<Vec<std::path::PathBuf>> 
     Ok(files)
 }
 
+/// Width of a source line as a z/OS record: a character outside Latin-1
+/// is a double-byte character (two bytes), and each run of them is
+/// enclosed in shift-out and shift-in (one byte each), as a mixed EBCDIC
+/// code page (930, 939, 1390, 1399) stores it.
+pub fn record_width(line: &str) -> usize {
+    let mut width = 0;
+    let mut dbcs = false;
+    for c in line.chars() {
+        let double = u32::from(c) > 0xFF;
+        if double && !dbcs {
+            width += 1;
+        } else if !double && dbcs {
+            width += 1;
+        }
+        dbcs = double;
+        width += if double { 2 } else { 1 };
+    }
+    if dbcs {
+        width += 1;
+    }
+    width
+}
+
+/// Pads each line to an 80-byte record, measured as the record will be on
+/// z/OS (`record_width`), not in host characters.
 fn format_fixed80(text: &str) -> Result<String> {
     let mut out = String::new();
     for (idx, line) in text.lines().enumerate() {
         let trimmed = line.trim_end_matches('\r');
-        let cols = trimmed.chars().count();
+        let cols = record_width(trimmed);
         if cols > 80 {
-            bail!("line {} exceeds 80 columns ({cols} cols)", idx + 1);
+            bail!("line {} exceeds 80 columns ({cols} bytes as a record)", idx + 1);
         }
         let pad = 80usize.saturating_sub(cols);
         let _ = writeln!(out, "{trimmed}{:pad$}", "");
@@ -546,5 +571,16 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn record_width_counts_double_byte_characters_and_shift_codes() {
+        assert_eq!(record_width("G1 DC C'A'"), 10);
+        // 'Käfer' is single-byte in an EBCDIC code page
+        assert_eq!(record_width("Käfer"), 5);
+        // G'日' is G ' SO 2 bytes SI ': 7 bytes
+        assert_eq!(record_width("G'日'"), 7);
+        assert_eq!(record_width("山田太郎"), 10);
+        assert_eq!(record_width("日X日"), 9);
     }
 }
