@@ -1716,6 +1716,45 @@
       }
     }
   },
+  "PD114A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: XDECLARE statement | The XDECLARE statement is the same as the DECLARE statement except:"
+    ],
+    "tests": {
+      "XDECLARE-TWICE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDECLARE statement | If the level-1 name specified in an XDECLARE statement was already specified in a previous (X)DECLARE statement, the attributes in the two specifications must match."
+        ]
+      },
+      "XDEFINE-ALIAS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDEFINE ALIAS statement | if the specified name has already appeared in a previous (X)DEFINE ALIAS statement, this XDEFINE statement will be ignored."
+        ]
+      },
+      "XDEFINE-ORDINAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDEFINE ORDINAL statement | if the specified name has already appeared in a previous (X)DEFINE ORDINAL statement, this XDEFINE statement will be ignored.",
+          "PLI-LRM: BINARYVALUE | BINARYVALUE converts x, which can be a pointer, offset, or ordinal, to an integer."
+        ]
+      },
+      "XDEFINE-STRUCTURE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDEFINE STRUCTURE statement | if the specified name has already appeared in a previous (X)DEFINE STRUCTURE statement, this XDEFINE statement will be ignored."
+        ]
+      },
+      "XPROCEDURE-FIRST-KEPT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XPROCEDURE statement | the preprocessor will ignore rather than flag any subsequent occurrence of an XPROCEDURE statement if the leftmost name on the statement is the name of an already defined preprocessor procedure."
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [

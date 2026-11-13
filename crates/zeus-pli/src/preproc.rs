@@ -232,7 +232,7 @@ fn group_end(t: &[Token], mut i: usize, end: usize) -> Result<(usize, usize)> {
         if is_op(&t[i], "%") {
             let (kw, k, _) = keyword(t, i + 1, end);
             match kw.as_deref() {
-                Some("DO" | "SELECT" | "PROCEDURE" | "PROC") => depth += 1,
+                Some("DO" | "SELECT" | "PROCEDURE" | "PROC" | "XPROCEDURE" | "XPROC") => depth += 1,
                 Some("END") => {
                     depth -= 1;
                     if depth == 0 {
@@ -816,12 +816,17 @@ impl Pp<'_> {
                     },
                 ))
             }
-            "PROCEDURE" | "PROC" => {
+            "PROCEDURE" | "PROC" | "XPROCEDURE" | "XPROC" => {
                 let (after, end_pct) = group_end(t, se + 1, end)?;
                 let name = labels
                     .first()
                     .cloned()
                     .ok_or_else(|| self.err(pos, "a preprocessor procedure needs a name"))?;
+                // %XPROCEDURE of a procedure already defined is ignored
+                // (LRM, XPROCEDURE statement)
+                if kw.starts_with('X') && self.procs.contains_key(&name) {
+                    return Ok((after, Flow::Next));
+                }
                 let mut params = Vec::new();
                 let mut returns_char = false;
                 let mut returns = false;

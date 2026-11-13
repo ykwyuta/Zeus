@@ -512,6 +512,61 @@ impl Parser {
         Ok(())
     }
 
+    /// DEFINE STRUCTURE / ALIAS / ORDINAL (after the keyword DEFINE).
+    fn define_stmt(&mut self, pos: Pos) -> Result<StmtKind> {
+        if self.eat_word("STRUCTURE") {
+            let mut items = self.declare()?;
+            match items.first_mut() {
+                Some(root) if root.level == 1 => root.attrs.push(Attr::StructDef),
+                _ => return Err(self.unexpected("a level-1 structure name")),
+            }
+            return Ok(StmtKind::Declare(items));
+        }
+        if self.eat_word("ALIAS") {
+            let name = self.ident()?;
+            let attrs = self.attributes()?;
+            self.semi()?;
+            return Ok(StmtKind::Declare(vec![DeclItem {
+                level: 1,
+                name,
+                dims: Vec::new(),
+                attrs: vec![Attr::AliasDef(attrs)],
+                pos,
+            }]));
+        }
+        if self.eat_word("ORDINAL") {
+            let name = self.ident()?;
+            self.expect_op("(")?;
+            let mut members = Vec::new();
+            loop {
+                let m = self.ident()?;
+                let v = if self.eat_word("VALUE") {
+                    Some(self.paren_expr()?)
+                } else {
+                    None
+                };
+                members.push((m, v));
+                if self.eat_op(",") {
+                    continue;
+                }
+                self.expect_op(")")?;
+                break;
+            }
+            while !self.is_op(";") && !matches!(self.tok(), Tok::Eof) {
+                self.bump();
+            }
+            self.semi()?;
+            return Ok(StmtKind::Declare(vec![DeclItem {
+                level: 1,
+                name,
+                dims: Vec::new(),
+                attrs: vec![Attr::OrdinalDef(members)],
+                pos,
+            }]));
+        }
+        Err(self.unexpected("STRUCTURE, ALIAS or ORDINAL"))
+    }
+
     /// Attributes up to ',' / ';' / ')' at this level.
     pub fn attributes(&mut self) -> Result<Vec<Attr>> {
         let mut attrs = Vec::new();
@@ -1541,56 +1596,25 @@ impl Parser {
             "DECLARE" | "DCL" => StmtKind::Declare(self.declare()?),
             // DEFINE ORDINAL name (member [VALUE(n)], ...) [PRECISION(p)]
             // [SIGNED | UNSIGNED]: the declaration of the type's name
-            "DEFINE" if self.eat_word("STRUCTURE") => {
+            "DEFINE" => self.define_stmt(pos)?,
+            // XDECLARE / XDEFINE: ignored when the name was declared or
+            // defined before (Language Reference, XDECLARE, XDEFINE)
+            "XDECLARE" | "XDCL" => {
                 let mut items = self.declare()?;
-                match items.first_mut() {
-                    Some(root) if root.level == 1 => root.attrs.push(Attr::StructDef),
-                    _ => return Err(self.unexpected("a level-1 structure name")),
+                for it in items.iter_mut().filter(|it| it.level <= 1) {
+                    it.attrs.push(Attr::XDecl);
                 }
                 StmtKind::Declare(items)
             }
-            "DEFINE" if self.eat_word("ALIAS") => {
-                let name = self.ident()?;
-                let attrs = self.attributes()?;
-                self.semi()?;
-                StmtKind::Declare(vec![DeclItem {
-                    level: 1,
-                    name,
-                    dims: Vec::new(),
-                    attrs: vec![Attr::AliasDef(attrs)],
-                    pos,
-                }])
-            }
-            "DEFINE" if self.eat_word("ORDINAL") => {
-                let name = self.ident()?;
-                self.expect_op("(")?;
-                let mut members = Vec::new();
-                loop {
-                    let m = self.ident()?;
-                    let v = if self.eat_word("VALUE") {
-                        Some(self.paren_expr()?)
-                    } else {
-                        None
-                    };
-                    members.push((m, v));
-                    if self.eat_op(",") {
-                        continue;
+            "XDEFINE" => match self.define_stmt(pos)? {
+                StmtKind::Declare(mut items) => {
+                    if let Some(root) = items.first_mut() {
+                        root.attrs.push(Attr::XDecl);
                     }
-                    self.expect_op(")")?;
-                    break;
+                    StmtKind::Declare(items)
                 }
-                while !self.is_op(";") && !matches!(self.tok(), Tok::Eof) {
-                    self.bump();
-                }
-                self.semi()?;
-                StmtKind::Declare(vec![DeclItem {
-                    level: 1,
-                    name,
-                    dims: Vec::new(),
-                    attrs: vec![Attr::OrdinalDef(members)],
-                    pos,
-                }])
-            }
+                other => other,
+            },
             "DEFAULT" | "DFT" => {
                 use crate::ast::{DefaultRange, DefaultRule};
                 let mut rules = Vec::new();

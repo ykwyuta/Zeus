@@ -177,6 +177,8 @@ pub enum Attr {
     Unaligned,
     /// UNION (CELL): the members overlay each other.
     Union,
+    /// XDECLARE / XDEFINE: ignored when the name exists already.
+    XDecl,
     /// ALIGNED(n): the alignment n (1, 2, 4 or 8 bytes) instead of the
     /// type's; also implies ALIGNED.
     AlignedTo(u32),

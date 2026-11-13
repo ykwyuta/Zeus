@@ -589,6 +589,16 @@
       "LIMITED-ENTRY"
     ]
   },
+  "PD114A": {
+    "expect": "run",
+    "tests": [
+      "XDECLARE-TWICE",
+      "XDEFINE-ALIAS",
+      "XDEFINE-ORDINAL",
+      "XDEFINE-STRUCTURE",
+      "XPROCEDURE-FIRST-KEPT"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []

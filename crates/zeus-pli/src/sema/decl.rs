@@ -430,6 +430,23 @@ impl Compiler {
         }
         let mut late: Vec<(VarId, Vec<Attr>, Pos)> = Vec::new();
         for mut g in groups {
+            // XDECLARE / XDEFINE of a name declared or defined before in
+            // this block: ignored (LRM). Whether the attributes match, as
+            // XDECLARE requires, is not checked.
+            if g[0].attrs.iter().any(|a| matches!(a, Attr::XDecl)) {
+                g[0].attrs.retain(|a| !matches!(a, Attr::XDecl));
+                let name = &g[0].name;
+                let seen = match g[0].attrs.first() {
+                    Some(Attr::AliasDef(_)) => self.aliases.contains_key(name),
+                    _ if g[0].attrs.iter().any(|a| matches!(a, Attr::StructDef)) => {
+                        self.structs.contains_key(name)
+                    }
+                    _ => self.scopes[block as usize].names.contains_key(name),
+                };
+                if seen {
+                    continue;
+                }
+            }
             // DEFINE ALIAS
             if let Some(Attr::AliasDef(a)) = g[0].attrs.first() {
                 self.aliases.insert(g[0].name.clone(), a.clone());
