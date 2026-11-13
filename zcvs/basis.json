@@ -2456,6 +2456,37 @@
       }
     }
   },
+  "ZP115A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: CALLINTERFACE | The CALLINTERFACE directive specifies the interface convention for CALL and SET statements.",
+      "COB-PG: DYNAM | Default is: NODYNAM"
+    ],
+    "tests": {
+      "STATIC-CANCEL-NOOP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CALLINTERFACE | Specifies that the interface convention for subsequent CALL statements and subsequent SET function pointer and procedure pointer statements is static",
+          "COB-LRM: CANCEL statement | Has not been dynamically called in this run unit by another COBOL program",
+          "COB-PG: Performance considerations of static and dynamic calls | Statically called programs cannot be deleted using CANCEL"
+        ]
+      },
+      "DIRECTIVE-RESET": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CANCEL statement | Has not been dynamically called in this run unit by another COBOL program",
+          "COB-LRM: CALLINTERFACE | If the >>CALLINTERFACE directive has no suboptions, the interface convention for subsequent CALL and SET statements is determined by the setting of the DLL and DYNAM compiler options."
+        ]
+      },
+      "DYNAMIC-CANCEL-RESET": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CALLINTERFACE | Specifies that the interface convention for subsequent CALL literal statements and subsequent SET function-pointer and procedure-pointer statements is dynamic",
+          "COB-LRM: CANCEL statement | The CANCEL statement ensures that the referenced subprogram is entered in initial state the next time"
+        ]
+      }
+    }
+  },
   "ZS101A": {
     "basis": "spec",
     "tests": {

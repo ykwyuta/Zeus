@@ -13,7 +13,7 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 | `ZD` | Packed/zoned/binary storage, layout, ODO, edited PICTURE, figurative constants, collation | `ZD101A` .. `ZD115A` (15) |
 | `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA126A` (26) |
 | `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN113A`, including `ZN102B` and `ZN106M` (14) |
-| `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments, debugging declaratives | `ZP101A` .. `ZP114A` + 17 `lib/` subprograms (14 mains) |
+| `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments, debugging declaratives | `ZP101A` .. `ZP115A` + 19 `lib/` subprograms (15 mains) |
 | `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF114A`, `ZF201M`, `ZF202M` (16) |
 | `ZS` | Special registers, date/window functions, LE services, PARM, Gregorian boundaries, REPLACE scope, batch compilation | `ZS101A` .. `ZS109A`, including `ZS103M` (9) |
 | `ZX` | Optional control flow, SET FALSE/INITIALIZE, COPY/REPLACE, directives, TRIM/TEST-NUMVAL | `ZX101A` .. `ZX110A` (10) |

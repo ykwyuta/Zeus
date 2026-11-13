@@ -2117,6 +2117,14 @@
       "DEBUGGING-LINE"
     ]
   },
+  "ZP115A": {
+    "expect": "run",
+    "tests": [
+      "STATIC-CANCEL-NOOP",
+      "DYNAMIC-CANCEL-RESET",
+      "DIRECTIVE-RESET"
+    ]
+  },
   "ZS101A": {
     "expect": "run",
     "tests": [

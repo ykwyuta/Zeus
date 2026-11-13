@@ -82,7 +82,7 @@
 | P02 再帰 | `ZP102A`、`ZP112A` 10検査 | 部分 | 深さ0–8、累積WS呼出数、LS/LINKAGEのフレーム隔離、再帰内PERFORM復帰、CANCEL後再計算を追加。再帰呼出し失敗・ポインターのフレーム別観測は残る |
 | P03 RETURNING | `ZP103A`、`ZP110A` 7検査 | 部分 | 集団RETURNINGの連続結果、77から01への同属性数値結果、成功/ON EXCEPTIONの受信先・RETURN-CODE保持を追加。型不一致は正常変換扱いしない。数値/文字/浮動属性別は残る |
 | P04 ENTRY | `ZP104A`、`ZP111A` 10検査 | 部分 | 主入口/引数2個の別入口/BY VALUE別入口を交互実行。入口前のコード不実行、引数再束縛・参照更新・値引数保持・入口ポインターを追加。OMITTEDと入口の組合せは残る |
-| P05 CALL引数 | `ZP104A`、`ZP107A` 4検査、`ZP113A` 3検査 | 部分 | 今回0/負値/OMITTED→PRESENTの再束縛、CONTENT/VALUE/非対象領域保持を追加。同一項目を複数引数へ渡すalias、集団、別名入口との組合せは残る。2026-11-12: 同一項目を2引数へ参照渡しする別名、CONTENTの複写側の変更と呼出し元保持を追加 |
+| P05 CALL引数 | `ZP104A`、`ZP107A` 4検査、`ZP113A` 3検査、`ZP115A` 3検査 | 部分 | 今回0/負値/OMITTED→PRESENTの再束縛、CONTENT/VALUE/非対象領域保持を追加。同一項目を複数引数へ渡すalias、集団、別名入口との組合せは残る。2026-11-12: 同一項目を2引数へ参照渡しする別名、CONTENTの複写側の変更と呼出し元保持を追加。2026-11-13: >>CALLINTERFACE STATIC/DYNAMIC と CANCEL (静的に呼んだものは CANCEL しても状態が続く) を追加 |
 | P06 ポインター | `ZP105A`、`ZP108A` 7検査 | 部分 | 既存のPROCEDURE→FUNCTIONコピー後のNULL化に加え、データポインターのコピー、別名ENTRYの動的入口名、NULL化・別入口への再束縛後もコピーが有効、別バッファ保持を追加。ABI別サイズ、引数個数の異なる複数ENTRY、再帰フレーム別ポインターは残る |
 | P07 可視性 | `ZP106A` のCOMMON/GLOBAL/EXTERNAL、`ZP113A` 3検査 | 部分 | 非COMMON兄弟の拒否、同名の遮蔽、GLOBAL条件名/ファイル、EXTERNALの再呼出し/別プログラム/CANCEL後。2026-11-12: 入れ子での同名局所項目によるGLOBALの遮蔽と親の値保持、GLOBAL条件名のSETを追加 |
 | P08 デバッグ宣言 | `ZP114A` 6検査 | 部分 | USE FOR DEBUGGING の PERFORM/GO TO/FALL THROUGH と DEBUG-ITEM、デバッグ行、PARM の `/DEBUG` (CBLOPTS(ON))。ALTER/SORT/USE 手続きの起動、START PROGRAM、DEBUG-LINE の値、NODEBUG で動かないことは残る |
