@@ -1002,6 +1002,58 @@
       }
     }
   },
+  "PC118A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REPATTERN | REPATTERN takes a value holding a date in one pattern and returns that value converted to a date in a second pattern."
+    ],
+    "tests": {
+      "REPATTERN-1999": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('990101','YYYYMMDD','YYMMDD', 1950) returns '19990101'"
+        ]
+      },
+      "REPATTERN-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('000101','YYYYMMDD','YYMMDD', 1950) returns '20000101'"
+        ]
+      },
+      "REPATTERN-TO-YY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('19990101','YYMMDD','YYYYMMDD', 1950) returns '990101'"
+        ]
+      },
+      "REPATTERN-TO-YY-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('20000101','YYMMDD','YYYYMMDD', 1950) returns '000101'"
+        ]
+      },
+      "REPATTERN-OUT-OF-WINDOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('19490101','YYMMDD','YYYYMMDD', 1950) raises ERROR"
+        ]
+      },
+      "REPATTERN-NO-SOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | If omitted, then the first argument must be NONVARYING CHAR with length 17, 20, or 26",
+          "PLI-LRM: Table 65. Date/time patterns | MM/DD/YYYY MM/DD/YY"
+        ]
+      },
+      "INDICATORS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INDICATORS | INDICATORS returns a FIXED BIN value giving the number of the elements at the next logical level in a structure x.",
+          "PLI-LRM: INDICATORS | INDICATORS(x) always forms a restricted expression."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

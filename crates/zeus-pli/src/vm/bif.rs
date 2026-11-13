@@ -817,6 +817,33 @@ impl Machine {
                     Value::int(datefmt::lilian_day(st.y, st.m, st.d))
                 }
             },
+            // REPATTERN(d, p [,q [,w]]): d in pattern q, as pattern p; without
+            // q, the pattern is the one of length 17, 20 or 26 (LRM)
+            Repattern => {
+                let d = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let target = pattern(&v, 1, "YYYYMMDD");
+                let source = match v.get(2) {
+                    Some(_) => pattern(&v, 2, ""),
+                    None => match d.len() {
+                        17 => "YYYYMMDDHHMISS999".into(),
+                        20 => "YYYYMMDDHHMISS999999".into(),
+                        26 => "YYYY-MM-DD-HH.MI.SS.999999".into(),
+                        _ => return err("REPATTERN without a source pattern needs a date of length 17, 20 or 26"),
+                    },
+                };
+                let w = window(int(3));
+                let text = d.trim_start();
+                match datefmt::parse(text, &source, w) {
+                    // a two-digit target year must lie in the window
+                    Some(st) if !datefmt::two_digit_year(&target) || (w..w + 100).contains(&st.y) => {
+                        Value::Char(ebcdic(&datefmt::format(&st, &target)))
+                    }
+                    _ => {
+                        self.raise(Cond::Error, 2512, act)?;
+                        Value::Char(Vec::new())
+                    }
+                }
+            }
             DaysToDate => {
                 let p = pattern(&v, 1, "YYYYMMDDHHMISS999");
                 let st = datefmt::Stamp::from_micros(int(0).unwrap_or(1) * 86_400_000_000);

@@ -295,6 +295,18 @@
       "NORMAL-RETURN-ERROR"
     ]
   },
+  "PC118A": {
+    "expect": "run",
+    "tests": [
+      "REPATTERN-1999",
+      "REPATTERN-2000",
+      "REPATTERN-TO-YY",
+      "REPATTERN-TO-YY-2000",
+      "REPATTERN-OUT-OF-WINDOW",
+      "REPATTERN-NO-SOURCE",
+      "INDICATORS"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

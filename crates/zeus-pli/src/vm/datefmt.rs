@@ -193,6 +193,12 @@ pub fn format(t: &Stamp, pattern: &str) -> String {
 }
 
 /// Widens a two-digit year with the window w (a year such as 1950).
+/// Whether the pattern holds the year in two digits (YY or ZY) only.
+pub fn two_digit_year(pattern: &str) -> bool {
+    let t = tokens(pattern);
+    !t.contains(&Tok::Yyyy) && t.iter().any(|x| matches!(x, Tok::Yy | Tok::Zy))
+}
+
 pub fn widen(yy: i64, w: i64) -> i64 {
     let century = if yy < w % 100 { w / 100 + 1 } else { w / 100 };
     century * 100 + yy

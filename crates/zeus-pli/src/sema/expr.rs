@@ -1400,6 +1400,22 @@ impl Compiler {
             ProcedureName | PackageName | SourceFile | SourceLine | IsMain | MainName => {
                 return self.program_info(b, pos);
             }
+            // INDICATORS(x): the elements at the next logical level of the
+            // structure x, a restricted expression (LRM)
+            Indicators => {
+                let structure = match args.first() {
+                    Some(ast::Expr::Ref(r)) => match self.lookup(r.name()).into_iter().next() {
+                        Some((_, Sym::Var(v))) => Some(v),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let n = structure
+                    .map(|v| self.m.vars[v as usize].members.len())
+                    .filter(|&n| n > 0)
+                    .ok_or_else(|| self.err(pos, "INDICATORS requires a structure"))?;
+                return Ok(mk(Ek::Fixed(n as i128, 0), Ty::fixed_bin(31, 0)));
+            }
             // CODEPAGE: the CODEPAGE compiler option (Programming Guide: the
             // default CCSID is 1140)
             CodePage => {
@@ -1673,7 +1689,7 @@ impl Compiler {
             }
             Utf8ToWchar | MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24
             | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | FileOpen | FileId
-            | FileNew | FileDdTest | FileDdInt | FileDdWord => xs,
+            | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern => xs,
             SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];
