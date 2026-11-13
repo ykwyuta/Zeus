@@ -1071,6 +1071,39 @@
       }
     }
   },
+  "ZA128A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: CONTENT-OF | The CONTENT-OF intrinsic function returns the content of the argument."
+    ],
+    "tests": {
+      "CONTENT-OF-ALNUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CONTENT-OF | The returned value is the content of argument-1. The size of the returned value is the size of argument-1."
+        ]
+      },
+      "CONTENT-OF-NUMERIC": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CONTENT-OF | The type of this function depends on the type of argument-1 as follows:"
+        ]
+      },
+      "CONTENT-OF-NATIONAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CONTENT-OF | The type of this function depends on the type of argument-1 as follows:"
+        ]
+      },
+      "CONTENT-OF-REFMOD": {
+        "basis": "zos",
+        "note": "英数字の結果の関数参照を部分参照できることは、英数字の関数一般の規則による (CONTENT-OF の節は例を示していない)",
+        "refs": [
+          "COB-LRM: CONTENT-OF | Alphanumeric Alphanumeric"
+        ]
+      }
+    }
+  },
   "ZD101A": {
     "basis": "spec",
     "refs": [

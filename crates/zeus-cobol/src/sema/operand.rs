@@ -95,6 +95,9 @@ pub fn function(name: &str) -> Option<Func> {
         "LOG10" => Func::Log10,
         "LOWER-CASE" => Func::LowerCase,
         "MAX" => Func::Max,
+        // CONTENT-OF(x): the content of x, of the type of x (Language
+        // Reference, CONTENT-OF), which is MAX of the single argument x
+        "CONTENT-OF" => Func::Max,
         "MEAN" => Func::Mean,
         "MEDIAN" => Func::Median,
         "MIDRANGE" => Func::Midrange,
@@ -311,6 +314,12 @@ impl Gen<'_> {
             _ if series => (1, usize::MAX),
             _ => (1, 1),
         };
+        if call.name.eq_ignore_ascii_case("CONTENT-OF") && call.args.len() != 1 {
+            return Err(Diag::error(
+                call.pos,
+                "FUNCTION CONTENT-OF takes one argument",
+            ));
+        }
         if !(min..=max).contains(&call.args.len()) {
             return Err(Diag::error(
                 call.pos,

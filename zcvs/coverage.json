@@ -837,6 +837,15 @@
       "UUID4-DIFFERENT"
     ]
   },
+  "ZA128A": {
+    "expect": "run",
+    "tests": [
+      "CONTENT-OF-ALNUM",
+      "CONTENT-OF-NUMERIC",
+      "CONTENT-OF-NATIONAL",
+      "CONTENT-OF-REFMOD"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [
