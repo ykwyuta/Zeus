@@ -1765,6 +1765,7 @@ impl Machine {
                     Cond::StringRange => self.enabled_now(act, cond::STRINGRANGE),
                     Cond::StringSize => self.enabled_now(act, cond::STRINGSIZE),
                     Cond::SubscriptRange => self.enabled_now(act, cond::SUBSCRIPTRANGE),
+                    Cond::Conformance => self.enabled_now(act, cond::CONFORMANCE),
                     _ => true,
                 };
                 if enabled {
@@ -2926,7 +2927,8 @@ impl Machine {
             Cond::UndefinedFile(_) => 21,
             Cond::Underflow => 22,
             Cond::ZeroDivide => 23,
-            Cond::AnyCondition => 0,
+            // the LRM's list of ONCONDID values has none for CONFORMANCE
+            Cond::AnyCondition | Cond::Conformance => 0,
         };
         if let Cond::Condition(n) = c {
             info.condname = self
@@ -2954,6 +2956,8 @@ impl Machine {
     fn after_unit(&mut self, c: Cond, code: i32, act: usize, signalled: bool) -> R<()> {
         match c {
             Cond::Error => self.terminate(act),
+            // also after SIGNAL (LRM, CONFORMANCE condition: normal return)
+            Cond::Conformance => self.raise(Cond::Error, code, act),
             Cond::ZeroDivide
             | Cond::Overflow
             | Cond::SubscriptRange
@@ -3494,6 +3498,7 @@ fn signal_code(c: &Cond) -> i32 {
         Cond::Area => 360,
         Cond::Attention => 400,
         Cond::InvalidOp => 290,
+        Cond::Conformance => 550,
         Cond::AnyCondition => 0,
         Cond::Assertion => 430,
     }

@@ -213,6 +213,8 @@ pub mod cond {
     pub const STRINGSIZE: u16 = 128;
     pub const SUBSCRIPTRANGE: u16 = 256;
     pub const INVALIDOP: u16 = 512;
+    /// disabled by default (Language Reference, CONFORMANCE condition)
+    pub const CONFORMANCE: u16 = 1024;
     /// enabled by default
     pub const DEFAULT: u16 =
         CONVERSION | FIXEDOVERFLOW | OVERFLOW | UNDERFLOW | ZERODIVIDE | INVALIDOP;
@@ -229,6 +231,7 @@ pub mod cond {
             "STRINGSIZE" | "STRZ" => STRINGSIZE,
             "SUBSCRIPTRANGE" | "SUBRG" => SUBSCRIPTRANGE,
             "INVALIDOP" => INVALIDOP,
+            "CONFORMANCE" => CONFORMANCE,
             _ => return None,
         })
     }
@@ -272,6 +275,7 @@ pub enum Cond {
     Name(FileId),
     Condition(u32),
     Assertion,
+    Conformance,
 }
 
 impl Cond {
@@ -294,6 +298,7 @@ impl Cond {
             Cond::InvalidOp => "INVALIDOP",
             Cond::AnyCondition => "ANYCONDITION",
             Cond::Assertion => "ASSERTION",
+            Cond::Conformance => "CONFORMANCE",
             Cond::EndFile(_) => "ENDFILE",
             Cond::EndPage(_) => "ENDPAGE",
             Cond::Key(_) => "KEY",

@@ -1948,6 +1948,11 @@ impl Machine {
                     at += 9 + n;
                 }
                 let k = members.iter().position(|m| m.0 == x);
+                // a value outside the ordinal type: CONFORMANCE when it is
+                // enabled (LRM; ONCODE 559, Messages and Codes)
+                if k.is_none() && self.enabled_now(act, crate::ir::cond::CONFORMANCE) {
+                    self.raise(Cond::Conformance, 559, act)?;
+                }
                 match b {
                     OrdinalName => Value::Char(zeus_cobol::ebcdic::encode(
                         &k.map(|k| members[k].1.clone()).unwrap_or_default(),

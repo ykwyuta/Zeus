@@ -74,6 +74,7 @@ impl Compiler {
             "INVALIDOP" => Cond::InvalidOp,
             "ANYCONDITION" | "ANYCOND" => Cond::AnyCondition,
             "ASSERTION" => Cond::Assertion,
+            "CONFORMANCE" => Cond::Conformance,
             "ENDFILE" => Cond::EndFile(file(self)?),
             "ENDPAGE" => Cond::EndPage(file(self)?),
             "KEY" => Cond::Key(file(self)?),

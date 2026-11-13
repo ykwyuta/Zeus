@@ -285,6 +285,16 @@
       "ENTRYADDR-NULLENTRY"
     ]
   },
+  "PC117A": {
+    "expect": "run",
+    "tests": [
+      "CONFORMANCE-ORDINAL",
+      "CONFORMANCE-DISABLED",
+      "SIGNAL-DISABLED",
+      "SIGNAL-CODE-550",
+      "NORMAL-RETURN-ERROR"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

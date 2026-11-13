@@ -963,6 +963,45 @@
       }
     }
   },
+  "PC117A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONFORMANCE condition | CONFORMANCE is disabled throughout the program, except within the scope of the CONFORMANCE condition prefix."
+    ],
+    "tests": {
+      "CONFORMANCE-ORDINAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONFORMANCE condition | An argument in ORDINALNAME, ORDINALPRED, and ORDINALSUCC is invalid.",
+          "PLI-MC: 559 | The specified hex value is not valid for the ORDINAL type."
+        ]
+      },
+      "CONFORMANCE-DISABLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONFORMANCE condition | CONFORMANCE is disabled throughout the program, except within the scope of the CONFORMANCE condition prefix."
+        ]
+      },
+      "SIGNAL-DISABLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIGNAL statement | If the specified condition is disabled, the SIGNAL statement becomes equivalent to a null statement."
+        ]
+      },
+      "SIGNAL-CODE-550": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: 550 | Signal CONFORMANCE statement executed."
+        ]
+      },
+      "NORMAL-RETURN-ERROR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONFORMANCE condition | Normal return from a CONFORMANCE ON-unit raises the ERROR condition."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
