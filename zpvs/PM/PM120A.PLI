@@ -1,0 +1,62 @@
+ %DCL PPA(3) FIXED;
+ %DCL PPB(2:5, 3) FIXED;
+ %DCL PPC(2+HBOUND(PPA)) FIXED;
+ %DCL PPT(2) CHAR;
+ %PPFILL: PROC RETURNS(FIXED);
+   DCL (I, S) FIXED;
+   DO I = 1 TO 3; PPA(I) = I * 10; END;
+   S = 0;
+   DO I = 1 TO 3; S = S + PPA(I); END;
+   RETURN(S);
+ %END PPFILL;
+ %PPCELL: PROC RETURNS(FIXED);
+   PPB(3,2) = 7;
+   PPB(5,3) = 2;
+   RETURN(PPB(3,2) * 10 + PPB(5,3) + PPB(2,1));
+ %END PPCELL;
+ %PPJOIN: PROC RETURNS(CHAR);
+   PPT(1) = 'AB';
+   PPT(2) = 'CD';
+   RETURN(QUOTE(PPT(1) || PPT(2)));
+ %END PPJOIN;
+ %DCL (PPSUM, PPELEM, PPHB, PPLB, PPDM, PPHC) FIXED;
+ %DCL PPJOINED CHAR;
+ %PPSUM = PPFILL();
+ %PPELEM = PPCELL();
+ %PPHB = HBOUND(PPB, 1);
+ %PPLB = LBOUND(PPB, 1);
+ %PPDM = DIMENSION(PPB, 2);
+ %PPHC = HBOUND(PPC);
+ %PPJOINED = PPJOIN();
+ PM120A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* Preprocessor arrays (Enterprise PL/I 6.1 Language Reference,
+    %DECLARE statement) and the array-enquiry preprocessor built-in
+    functions DIMENSION, HBOUND and LBOUND. An array is declared
+    outside the preprocessor procedures so that they share it, and is
+    referenced only inside them, except as the first argument of an
+    array-enquiry function. A bound may be an expression on other
+    attributes: PPC(2+HBOUND(PPA)) has the upper bound 5. */
+ DCL N FIXED BIN(31);
+ DCL X CHAR(8) VARYING;
+
+ OPEN FILE(REPORT);
+
+ N = PPSUM;
+ CALL ZCHECK('PP-ARRAY-ELEMENTS', N = 60);
+ N = PPELEM;
+ CALL ZCHECK('PP-ARRAY-2D', N = 72);
+ N = PPHB;
+ CALL ZCHECK('PP-HBOUND', N = 5);
+ N = PPLB;
+ CALL ZCHECK('PP-LBOUND', N = 2);
+ N = PPDM;
+ CALL ZCHECK('PP-DIMENSION', N = 3);
+ N = PPHC;
+ CALL ZCHECK('PP-BOUND-EXPRESSION', N = 5);
+ X = PPJOINED;
+ CALL ZCHECK('PP-CHAR-ARRAY', X = 'ABCD');
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM120A;

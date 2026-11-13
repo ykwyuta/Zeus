@@ -1121,6 +1121,18 @@
       "XMLSCRUB16"
     ]
   },
+  "PM120A": {
+    "expect": "run",
+    "tests": [
+      "PP-ARRAY-ELEMENTS",
+      "PP-ARRAY-2D",
+      "PP-HBOUND",
+      "PP-LBOUND",
+      "PP-DIMENSION",
+      "PP-BOUND-EXPRESSION",
+      "PP-CHAR-ARRAY"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

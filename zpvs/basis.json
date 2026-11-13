@@ -3778,6 +3778,58 @@
       }
     }
   },
+  "PM120A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %DECLARE statement | Dimension specification for array variables. No more than 15 dimensions can be specified."
+    ],
+    "tests": {
+      "PP-ARRAY-ELEMENTS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | While an array can be declared outside of a preprocessor procedure (so that it can be shared across multiple procedures), it must not be referenced outside a procedure (except as the first argument to one of the array-enquiry built-in functions)."
+        ]
+      },
+      "PP-ARRAY-2D": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | While an array can be declared outside of a preprocessor procedure (so that it can be shared across multiple procedures), it must not be referenced outside a procedure (except as the first argument to one of the array-enquiry built-in functions).",
+          "PLI-LRM: %DECLARE statement | The desired lower bound for that dimension. The default is 1."
+        ]
+      },
+      "PP-CHAR-ARRAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | While an array can be declared outside of a preprocessor procedure (so that it can be shared across multiple procedures), it must not be referenced outside a procedure (except as the first argument to one of the array-enquiry built-in functions)."
+        ]
+      },
+      "PP-LBOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | The desired lower bound for that dimension. The default is 1.",
+          "PLI-LRM: LBOUND | LBOUND returns a FIXED value specifying current lower bound of dimension y of x."
+        ]
+      },
+      "PP-HBOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HBOUND | HBOUND returns a FIXED value specifying current upper bound of dimension y of x."
+        ]
+      },
+      "PP-DIMENSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIMENSION | DIMENSION returns a FIXED value specifying current extent of dimension y of x."
+        ]
+      },
+      "PP-BOUND-EXPRESSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | %dcl b(2+hbound(a)) fixed;"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

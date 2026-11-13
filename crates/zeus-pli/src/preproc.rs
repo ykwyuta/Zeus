@@ -98,8 +98,33 @@ enum Flow {
     Goto(String),
 }
 
+/// A preprocessor array: its bounds and its elements in row-major order.
+#[derive(Clone)]
+struct Arr {
+    bounds: Vec<(i64, i64)>,
+    vals: Vec<Val>,
+}
+
+impl Arr {
+    /// The element index of a subscript list, if every subscript is in range.
+    fn index(&self, subs: &[i64]) -> Option<usize> {
+        if subs.len() != self.bounds.len() {
+            return None;
+        }
+        let mut k = 0usize;
+        for (&s, &(l, u)) in subs.iter().zip(&self.bounds) {
+            if s < l || s > u {
+                return None;
+            }
+            k = k * (u - l + 1) as usize + (s - l) as usize;
+        }
+        Some(k)
+    }
+}
+
 struct Pp<'a> {
     vars: HashMap<String, Val>,
+    arrays: HashMap<String, Arr>,
     chars: HashSet<String>,
     procs: HashMap<String, Proc>,
     active: HashMap<String, Scan>,
@@ -952,6 +977,7 @@ impl Pp<'_> {
         let mut i = 0;
         while i < t.len() {
             let mut names = Vec::new();
+            let mut pending_dims: Option<Vec<(i64, i64)>> = None;
             if is_op(&t[i], "(") {
                 i += 1;
                 while i < t.len() && !is_op(&t[i], ")") {
@@ -964,12 +990,48 @@ impl Pp<'_> {
             } else if let Some(n) = word(&t[i]) {
                 names.push(n.to_string());
                 i += 1;
-                // dimensions are not supported: skip them
+                // dimensions: (u) or (l:u), separated by commas
                 if i < t.len() && is_op(&t[i], "(") {
-                    while i < t.len() && !is_op(&t[i], ")") {
-                        i += 1;
+                    let mut j = i + 1;
+                    let mut depth = 1;
+                    let mut parts: Vec<Vec<Token>> = vec![Vec::new()];
+                    while j < t.len() {
+                        match &t[j].tok {
+                            Tok::Op("(") => depth += 1,
+                            Tok::Op(")") => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    break;
+                                }
+                            }
+                            Tok::Op(",") if depth == 1 => {
+                                parts.push(Vec::new());
+                                j += 1;
+                                continue;
+                            }
+                            _ => {}
+                        }
+                        parts.last_mut().unwrap().push(t[j].clone());
+                        j += 1;
                     }
-                    i += 1;
+                    let mut bounds = Vec::new();
+                    for part in &parts {
+                        let colon = part.iter().position(|x| is_op(x, ":"));
+                        let value = |pp: &mut Self, ts: &[Token]| -> Result<i64> {
+                            let e = pp.parse_expr(ts, pos)?;
+                            Ok(pp.eval(&e, &mut HashMap::new())?.num())
+                        };
+                        let (l, u) = match colon {
+                            Some(c) => (value(self, &part[..c])?, value(self, &part[c + 1..])?),
+                            None => (1, value(self, part)?),
+                        };
+                        if u < l {
+                            return Err(self.err(pos, "a preprocessor array bound is less than its lower bound"));
+                        }
+                        bounds.push((l, u));
+                    }
+                    pending_dims = Some(bounds);
+                    i = j + 1;
                 }
             } else {
                 return Err(self.err(pos, "invalid %DECLARE"));
@@ -1023,9 +1085,25 @@ impl Pp<'_> {
                     if ch {
                         self.chars.insert(n.clone());
                     }
-                    self.vars.insert(n.clone(), v);
+                    if let Some(bounds) = &pending_dims {
+                        let count: i64 = bounds.iter().map(|(l, u)| u - l + 1).product();
+                        self.arrays.insert(
+                            n.clone(),
+                            Arr {
+                                bounds: bounds.clone(),
+                                vals: vec![v; count as usize],
+                            },
+                        );
+                    } else {
+                        self.vars.insert(n.clone(), v);
+                    }
                 }
                 match scan {
+                    // an array is not replaced in the source text: it must
+                    // not be referenced outside a procedure (LRM, %DECLARE)
+                    Some(_) if pending_dims.is_some() => {
+                        self.active.remove(&n);
+                    }
                     Some(s) => {
                         self.active.insert(n, s);
                     }
@@ -1107,6 +1185,31 @@ impl Pp<'_> {
             }
             Expr::Ref(r) => {
                 let name = r.name().to_string();
+                // DIMENSION, HBOUND, LBOUND of a preprocessor array (LRM,
+                // preprocessor built-in functions)
+                if matches!(name.as_str(), "DIMENSION" | "DIM" | "HBOUND" | "LBOUND")
+                    && !locals.contains_key(&name)
+                    && !self.procs.contains_key(&name)
+                    && let Some(list) = r.parts.last().and_then(|p| p.1.first())
+                    && let Some(Expr::Ref(a)) = list.first()
+                    && let Some(arr) = self.arrays.get(a.name()).cloned()
+                {
+                    let y = match list.get(1) {
+                        Some(e) => self.eval(e, locals)?.num(),
+                        None if arr.bounds.len() == 1 => 1,
+                        None => {
+                            return Err(self.err(r.pos, format!("{name} of a multi-dimensional array needs the dimension")));
+                        }
+                    };
+                    let Some(&(l, u)) = usize::try_from(y - 1).ok().and_then(|k| arr.bounds.get(k)) else {
+                        return Err(self.err(r.pos, format!("{name}: the array has no dimension {y}")));
+                    };
+                    return Ok(Val::Fixed(match name.as_str() {
+                        "HBOUND" => u,
+                        "LBOUND" => l,
+                        _ => u - l + 1,
+                    }));
+                }
                 let args: Vec<Val> = match r.parts.last().and_then(|p| p.1.first()) {
                     Some(list) => {
                         let mut v = Vec::new();
@@ -1119,6 +1222,13 @@ impl Pp<'_> {
                 };
                 if let Some(v) = locals.get(&name) {
                     return Ok(v.clone());
+                }
+                if let Some(arr) = self.arrays.get(&name) {
+                    let subs: Vec<i64> = args.iter().map(Val::num).collect();
+                    return match arr.index(&subs) {
+                        Some(k) => Ok(arr.vals[k].clone()),
+                        None => Err(self.err(r.pos, format!("{name}: subscript out of range or wrong in number"))),
+                    };
                 }
                 if let Some(p) = self.procs.get(&name).cloned() {
                     self.macros.push(name.clone());
@@ -1224,6 +1334,21 @@ impl Pp<'_> {
                 let v = self.eval(value, locals)?;
                 for t in targets {
                     if let Expr::Ref(r) = t {
+                        if self.arrays.contains_key(r.name()) && !locals.contains_key(r.name()) {
+                            let mut subs = Vec::new();
+                            if let Some(list) = r.parts.last().and_then(|p| p.1.first()) {
+                                for a in list {
+                                    subs.push(self.eval(a, locals)?.num());
+                                }
+                            }
+                            let is_char = self.chars.contains(r.name());
+                            let arr = self.arrays.get_mut(r.name()).unwrap();
+                            let Some(k) = arr.index(&subs) else {
+                                return Err(self.err(s.pos, format!("{}: subscript out of range or wrong in number", r.name())));
+                            };
+                            arr.vals[k] = if is_char { Val::Char(v.text()) } else { Val::Fixed(v.num()) };
+                            continue;
+                        }
                         self.assign(r.name(), v.clone(), locals);
                     }
                 }
@@ -1622,6 +1747,7 @@ pub fn preprocess(
     let n = toks.len().saturating_sub(1);
     let mut pp = Pp {
         vars: HashMap::new(),
+        arrays: HashMap::new(),
         chars: HashSet::new(),
         procs: HashMap::new(),
         active: HashMap::new(),
