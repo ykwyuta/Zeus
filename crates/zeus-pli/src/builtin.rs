@@ -233,6 +233,11 @@ pub enum Bif {
     Repattern,
     Indicators,
     AllCompare,
+    PliTran11,
+    PliTran12,
+    PliTran21,
+    PliTran22,
+    Utf8Stg,
     PicSpec,
     CodePage,
     SubTo,
@@ -598,6 +603,11 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "REPATTERN" => Repattern,
         "INDICATORS" => Indicators,
         "ALLCOMPARE" => AllCompare,
+        "PLITRAN11" => PliTran11,
+        "PLITRAN12" => PliTran12,
+        "PLITRAN21" => PliTran21,
+        "PLITRAN22" => PliTran22,
+        "UTF8STG" => Utf8Stg,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -1358,6 +1368,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         OnSource | DataField | OnKey => Ty::char_var(32767),
         OnFile | OnLoc => Ty::char_var(31),
         Omitted | Present => Ty::bit(1),
-        PliRetC | PliDump | PliSrtA | PliFill | PliMove | PliFree => Ty::Entry,
+        PliRetC | PliDump | PliSrtA | PliFill | PliMove | PliFree | PliTran11 | PliTran12
+        | PliTran21 | PliTran22 => Ty::Entry,
+        Utf8Stg => fixed_bin31(),
     })
 }

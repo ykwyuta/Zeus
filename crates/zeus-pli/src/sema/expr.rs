@@ -1184,7 +1184,7 @@ impl Compiler {
                 let e = self.array_search(b, args, pos)?;
                 Ok(Stmt::CallBuiltin(b, vec![e]))
             }
-            PliFill | PliMove => {
+            PliFill | PliMove | PliTran11 | PliTran12 | PliTran21 | PliTran22 => {
                 let mut v = Vec::new();
                 for a in args {
                     v.push(self.expr(a)?);
@@ -1746,7 +1746,7 @@ impl Compiler {
             }
             Utf8ToWchar | MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24
             | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | FileOpen | FileId
-            | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern => xs,
+            | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern | Utf8Stg => xs,
             SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];

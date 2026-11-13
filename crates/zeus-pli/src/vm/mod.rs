@@ -2770,6 +2770,37 @@ impl Machine {
                     self.write(p, &vec![byte; n.max(0) as usize])?;
                 }
             }
+            // PLITRANxy(p, q, n, t): the n bytes at q, in x-byte units,
+            // translated through the table at t into y-byte units at p
+            // (LRM; the tables hold 256 or 65536 entries of y bytes)
+            PliTran11 | PliTran12 | PliTran21 | PliTran22 => {
+                let p = self.eval(&args[0], act)?;
+                let q = self.eval(&args[1], act)?;
+                let n = self.eval(&args[2], act)?.as_i64().max(0) as usize;
+                let t = self.eval(&args[3], act)?;
+                let (Value::Ptr(p), Value::Ptr(q), Value::Ptr(t)) = (p, q, t) else {
+                    return err(format!("{b:?} requires pointers"));
+                };
+                let (from, to) = match b {
+                    PliTran11 => (1, 1),
+                    PliTran12 => (1, 2),
+                    PliTran21 => (2, 1),
+                    _ => (2, 2),
+                };
+                let entries = if from == 1 { 256 } else { 65536 };
+                let table = self.read(t, entries * to)?;
+                let src = self.read(q, n)?;
+                let mut out = Vec::with_capacity(n / from * to);
+                for unit in src.chunks(from) {
+                    let k = if from == 1 {
+                        unit[0] as usize
+                    } else {
+                        u16::from_be_bytes([unit[0], *unit.get(1).unwrap_or(&0)]) as usize
+                    };
+                    out.extend_from_slice(&table[k * to..k * to + to]);
+                }
+                self.write(p, &out)?;
+            }
             PliMove => {
                 let d = self.eval(&args[0], act)?;
                 let s = self.eval(&args[1], act)?;

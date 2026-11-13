@@ -689,6 +689,19 @@ impl Parser {
                     }
                 }
                 "INTERNAL" | "INT" => Attr::Internal,
+                // ALIGNED(n): the (n) is not a precision of the type
+                "ALIGNED" if self.is_op("(") => {
+                    self.bump();
+                    let n = match self.bump() {
+                        Tok::Num { text, .. } => text.parse::<u32>().ok(),
+                        _ => None,
+                    }
+                    .filter(|n| matches!(n, 1 | 2 | 4 | 8))
+                    .ok_or_else(|| self.unexpected("1, 2, 4 or 8"))?;
+                    self.expect_op(")")?;
+                    attrs.push(Attr::Aligned);
+                    Attr::AlignedTo(n)
+                }
                 "ALIGNED" => Attr::Aligned,
                 "UNALIGNED" | "UNAL" => Attr::Unaligned,
                 "UNION" | "CELL" => Attr::Union,

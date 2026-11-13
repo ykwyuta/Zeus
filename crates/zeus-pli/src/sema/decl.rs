@@ -1054,6 +1054,14 @@ impl Compiler {
                     off: 0,
                 }
             } else {
+                // ALIGNED(n) overrides the alignment of the type (LRM)
+                let align = attrs
+                    .iter()
+                    .find_map(|a| match a {
+                        Attr::AlignedTo(n) => Some(*n),
+                        _ => None,
+                    })
+                    .unwrap_or(u32::from(align));
                 Unit {
                     len: u64::from(size) * 8,
                     align: u64::from(align) * 8,

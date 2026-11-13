@@ -318,6 +318,18 @@
       "ALLCOMPARE-NE"
     ]
   },
+  "PC120A": {
+    "expect": "run",
+    "tests": [
+      "PLITRAN11",
+      "PLITRAN12",
+      "PLITRAN21",
+      "PLITRAN22",
+      "UTF8STG",
+      "UTF8STG-NOT-A-START",
+      "ALIGNED-N-NOT-PRECISION"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

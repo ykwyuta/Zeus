@@ -1522,6 +1522,15 @@ impl Machine {
                     }
                 }
             }
+            // UTF8STG(x): the bytes of the UTF-8 character that starts with
+            // x, zero if x cannot start one (LRM)
+            Utf8Stg => Value::int(match chars(&v[0]).first().copied().unwrap_or(0x80) {
+                0x00..=0x7F => 1,
+                0xC2..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                0xF0..=0xF4 => 4,
+                _ => 0,
+            }),
             // FILEOPEN: whether the file is open
             FileOpen => match &v[0] {
                 Value::File(f) => Value::bit1(self.files[*f as usize].open),

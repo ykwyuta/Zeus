@@ -1098,6 +1098,58 @@
       }
     }
   },
+  "PC120A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLITRAN11 | PLITRAN11 translates one-byte data from a source buffer to one-byte data in a target buffer."
+    ],
+    "tests": {
+      "PLITRAN11": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN11 | Address of the 256-byte translate table."
+        ]
+      },
+      "PLITRAN12": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN12 | PLITRAN12 translates one-byte data from a source buffer to two-byte data in a target buffer.",
+          "PLI-LRM: PLITRAN12 | Address of the 512-byte translate table."
+        ]
+      },
+      "PLITRAN21": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN21 | PLITRAN21 translates two-byte data from a source buffer to one-byte data in a target buffer."
+        ]
+      },
+      "PLITRAN22": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN22 | PLITRAN22 translates two-byte data from a source buffer to two-byte data in a target buffer.",
+          "PLI-LRM: PLITRAN22 | Address of the 128K-byte translate table."
+        ]
+      },
+      "UTF8STG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8STG | UTF8STG returns a FIXED BIN value that specifies the number of bytes that must be present if the input character is the start of a valid UTF-8 character."
+        ]
+      },
+      "UTF8STG-NOT-A-START": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8STG | For example, if the character has the value '80'x, UTF8STG returns zero."
+        ]
+      },
+      "ALIGNED-N-NOT-PRECISION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALIGNED and UNALIGNED attributes | ALIGNED(n) specifies an alignment that overrides the default alignment for the data type. The only valid values for n in ALIGNED(n) are 1, 2, 4, and 8."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
