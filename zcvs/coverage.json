@@ -846,6 +846,19 @@
       "CONTENT-OF-REFMOD"
     ]
   },
+  "ZA129A": {
+    "expect": "run",
+    "tests": [
+      "ULENGTH",
+      "UPOS-UTF8",
+      "UPOS-UTF16",
+      "USUBSTR-UTF8",
+      "USUBSTR-UTF16",
+      "USUPPLEMENTARY",
+      "UVALID",
+      "UWIDTH"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [

@@ -1104,6 +1104,67 @@
       }
     }
   },
+  "ZA129A": {
+    "basis": "spec",
+    "tests": {
+      "ULENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ULENGTH | The returned value is the number of UTF-8 or UTF-16 characters in argument-1.",
+          "COB-LRM: ULENGTH | U+0061 + U+0308 x'61CC88' 2",
+          "COB-LRM: ULENGTH | the returned value from ULENGTH(B) will be 7."
+        ]
+      },
+      "UPOS-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UPOS | UPOS(A 3) returns 4",
+          "COB-LRM: UPOS | If argument-2 is not positive or if argument-2 is larger than ULENGTH(argument-1), zero is returned."
+        ]
+      },
+      "UPOS-UTF16": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UPOS | UPOS (B 7) returns 15"
+        ]
+      },
+      "USUBSTR-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: USUBSTR | USUBSTR(A 2 2) returns x'C3A466' ('äf')",
+          "COB-LRM: USUBSTR | USUBSTR (C 2 1) returns x'CC88' (¨)"
+        ]
+      },
+      "USUBSTR-UTF16": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: USUBSTR | USUBSTR(B 5 2) returns x'0072D858DC6B'"
+        ]
+      },
+      "USUPPLEMENTARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: USUPPLEMENTARY | the output of both DISPLAY statements is value 3.",
+          "COB-LRM: USUPPLEMENTARY | If argument-1 contains no supplementary characters, the returned value is zero."
+        ]
+      },
+      "UVALID": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UVALID | the returned value from UVALID(C) is 2 because x'D9C3' does not have a low surrogate pair.",
+          "COB-LRM: UVALID | the returned value from UVALID(D) is 4 because x'DC01' does not have a corresponding high",
+          "COB-LRM: Table 75. Byte validity for UTF-8 data | x'80' - x'C1' None Invalid"
+        ]
+      },
+      "UWIDTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UWIDTH | UWIDTH(A 2) returns 2",
+          "COB-LRM: UWIDTH | If argument-2 is not positive or if argument-2 is larger than ULENGTH(argument-1), zero is returned."
+        ]
+      }
+    }
+  },
   "ZD101A": {
     "basis": "spec",
     "refs": [

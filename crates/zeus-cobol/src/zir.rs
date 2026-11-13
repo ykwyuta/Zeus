@@ -711,6 +711,14 @@ pub enum Func {
     CurrentDate,
     /// UUID4: a version 4 UUID (36 characters).
     Uuid4,
+    /// ULENGTH, UPOS, USUBSTR, USUPPLEMENTARY, UVALID, UWIDTH: Unicode
+    /// characters of UTF-8 (alphanumeric) or UTF-16 (national) data.
+    Ulength,
+    Upos,
+    Usubstr,
+    Usupplementary,
+    Uvalid,
+    Uwidth,
     DateOfInteger,
     DayOfInteger,
     Factorial,

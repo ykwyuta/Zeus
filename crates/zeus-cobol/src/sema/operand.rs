@@ -48,6 +48,7 @@ fn alnum_function(f: Func) -> bool {
         Func::Char
             | Func::CurrentDate
             | Func::Uuid4
+            | Func::Usubstr
             | Func::LowerCase
             | Func::UpperCase
             | Func::Reverse
@@ -80,6 +81,12 @@ pub fn function(name: &str) -> Option<Func> {
         "COS" => Func::Cos,
         "CURRENT-DATE" => Func::CurrentDate,
         "UUID4" => Func::Uuid4,
+        "ULENGTH" => Func::Ulength,
+        "UPOS" => Func::Upos,
+        "USUBSTR" => Func::Usubstr,
+        "USUPPLEMENTARY" => Func::Usupplementary,
+        "UVALID" => Func::Uvalid,
+        "UWIDTH" => Func::Uwidth,
         "DATE-OF-INTEGER" => Func::DateOfInteger,
         "DAY-OF-INTEGER" => Func::DayOfInteger,
         "FACTORIAL" => Func::Factorial,
@@ -259,6 +266,7 @@ impl Gen<'_> {
                         Func::UpperCase
                             | Func::LowerCase
                             | Func::Reverse
+                            | Func::Usubstr
                             | Func::Trim
                             | Func::TrimL
                             | Func::TrimR
@@ -295,6 +303,8 @@ impl Gen<'_> {
             | Func::Pi
             | Func::SecondsPastMidnight => (0, 0),
             Func::FormattedDatetime => (3, 4),
+            Func::Upos | Func::Uwidth => (2, 2),
+            Func::Usubstr => (3, 3),
             Func::FormattedDate | Func::FormattedTime => (2, 3),
             Func::IntegerOfFormattedDate
             | Func::SecondsFromFormattedTime
@@ -331,6 +341,12 @@ impl Gen<'_> {
             func,
             Func::CurrentDate
                 | Func::Uuid4
+                | Func::Ulength
+                | Func::Upos
+                | Func::Usubstr
+                | Func::Usupplementary
+                | Func::Uvalid
+                | Func::Uwidth
                 | Func::WhenCompiled
                 | Func::WhenCompiledRegister
                 | Func::Length
