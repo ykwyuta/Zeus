@@ -93,6 +93,8 @@
       "DXD-Q-ALIGNED",
       "RSECT-DATA",
       "RSECT-SYSSTYP",
+      "QD-MATCHES-Q",
+      "QY-LONG-DISP",
       "ENTRY-VCON"
     ]
   },

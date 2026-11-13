@@ -364,6 +364,19 @@
         "refs": [
           "HLASM-LR: ENTRY instruction | The ENTRY instruction identifies symbols defined in this source module as “external” so that they can be referred to by another source module."
         ]
+      },
+      "QD-MATCHES-Q": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Offset constant—Q | QD-type: 8 bytes"
+        ]
+      },
+      "QY-LONG-DISP": {
+        "basis": "zos",
+        "note": "3 バイトの QY を「4 ビットの 0、DL 12 ビット、DH 8 ビット」(長変位の命令の B2 以降と同じ並び) と読んだ。LRM は並びを図で示していない",
+        "refs": [
+          "HLASM-LR: Offset constant—Q | inserts the offset into a QY-type constant in 20 bit signed long-displacement format."
+        ]
       }
     }
   },
