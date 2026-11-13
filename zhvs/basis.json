@@ -4582,6 +4582,51 @@
       }
     }
   },
+  "HI133A": {
+    "basis": "spec",
+    "refs": [
+      "POP: COMPARE AND SWAP AND STORE | The first operand is compared with the third operand.",
+      "POP: COMPARE AND SWAP AND STORE | parameter list that contains the replacement value"
+    ],
+    "tests": {
+      "CSST-FC0-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | bits in length. The first operand is a word in stor-"
+        ]
+      },
+      "CSST-SC0-ONE-BYTE": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | An SC of 0 means that one byte is stored on a byte"
+        ]
+      },
+      "CSST-SC1-HALFWORD": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | An SC of 0 means that one byte is stored on a byte"
+        ]
+      },
+      "CSST-FC1-SC3": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | an SC of 3 means that eight bytes are stored on a",
+          "POP: COMPARE AND SWAP AND STORE | When the function code is 1, the operands are 64"
+        ]
+      },
+      "CSST-FC0-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | ond operand is not changed. The result is indicated",
+          "POP: COMPARE AND SWAP AND STORE | bits in length. The first operand is a word in stor-"
+        ]
+      }
+    }
+  },
   "HM101A": {
     "basis": "spec",
     "tests": {

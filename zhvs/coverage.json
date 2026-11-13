@@ -1628,6 +1628,16 @@
       "TDGXT-SPECIAL-NAN"
     ]
   },
+  "HI133A": {
+    "expect": "run",
+    "tests": [
+      "CSST-FC0-EQUAL",
+      "CSST-FC0-UNEQUAL",
+      "CSST-SC0-ONE-BYTE",
+      "CSST-SC1-HALFWORD",
+      "CSST-FC1-SC3"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [
