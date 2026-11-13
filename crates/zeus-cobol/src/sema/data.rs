@@ -2010,14 +2010,29 @@ impl DataModel {
             )),
             1 => Ok(cands[0]),
             _ => {
-                // An unqualified reference to a record-level name wins.
-                let top: Vec<usize> = cands
-                    .iter()
-                    .copied()
-                    .filter(|&c| self.items[c].parent.is_none())
-                    .collect();
-                if top.len() == 1 {
-                    return Ok(top[0]);
+                // QUALIFY(EXTEND): the one item whose qualifiers name every
+                // containing level (a complete set of qualifiers) wins, even
+                // if the same names qualify another item incompletely; an
+                // unqualified record-level name has an empty complete set.
+                // Under QUALIFY(COMPAT), the default, the reference must be
+                // unique (Programming Guide, QUALIFY).
+                if crate::front::qualify_extend() {
+                    let complete: Vec<usize> = cands
+                        .iter()
+                        .copied()
+                        .filter(|&c| {
+                            let mut chain = Vec::new();
+                            let mut at = self.items[c].parent;
+                            while let Some(p) = at {
+                                chain.push(self.items[p].name.clone().unwrap_or_default());
+                                at = self.items[p].parent;
+                            }
+                            chain == r.qualifiers
+                        })
+                        .collect();
+                    if complete.len() == 1 {
+                        return Ok(complete[0]);
+                    }
                 }
                 Err(Diag::error(
                     r.pos,

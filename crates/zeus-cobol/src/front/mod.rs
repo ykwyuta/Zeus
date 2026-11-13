@@ -45,6 +45,8 @@ pub struct FrontOptions {
     pub apost: bool,
     /// NOZWB: a signed zoned item compared with alphanumeric keeps its sign
     pub nozwb: bool,
+    /// QUALIFY(EXTEND): a complete set of qualifiers may resolve a name
+    pub qualify_extend: bool,
     /// INTDATE(LILIAN): integer dates count from 15 October 1582
     pub lilian: bool,
     pub awo: bool,
@@ -92,6 +94,7 @@ thread_local! {
     static COMPILE_CCSID: std::cell::Cell<u32> = const { std::cell::Cell::new(37) };
     static APOST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static NOZWB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static QUALIFY_EXTEND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static LILIAN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static AWO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static BLOCK0: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
@@ -114,6 +117,9 @@ pub(crate) fn apost() -> bool {
 }
 pub(crate) fn nozwb() -> bool {
     NOZWB.get()
+}
+pub(crate) fn qualify_extend() -> bool {
+    QUALIFY_EXTEND.get()
 }
 pub(crate) fn lilian() -> bool {
     LILIAN.get()
@@ -476,6 +482,7 @@ pub fn source_unit_tokens(
     NUMERIC.set(settings.numeric);
     APOST.set(settings.apost);
     NOZWB.set(settings.nozwb);
+    QUALIFY_EXTEND.set(settings.qualify_extend);
     LILIAN.set(settings.lilian);
     AWO.set(settings.awo);
     BLOCK0.set(settings.block0);

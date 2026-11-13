@@ -1696,6 +1696,19 @@
       "COB-LRM: DISPLAY-OF"
     ]
   },
+  "ZE147N": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: QUALIFY | Default is: QUALIFY(COMPAT)",
+      "COB-PG: QUALIFY | If QUALIFY(COMPAT) is in effect, references to data items must be unique."
+    ]
+  },
+  "ZE147P": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: QUALIFY | If every level in the containing hierarchy of names is specified, the set of qualifiers is called a complete set of qualifiers."
+    ]
+  },
   "ZF101A": {
     "basis": "spec",
     "refs": [
@@ -2557,6 +2570,32 @@
         "refs": [
           "COB-LRM: CALLINTERFACE | Specifies that the interface convention for subsequent CALL literal statements and subsequent SET function-pointer and procedure-pointer statements is dynamic",
           "COB-LRM: CANCEL statement | The CANCEL statement ensures that the referenced subprogram is entered in initial state the next time"
+        ]
+      }
+    }
+  },
+  "ZP116A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: QUALIFY | If QUALIFY(EXTEND) is in effect, qualification rules are extended so that some references that are not unique by COBOL standard rules can be unique."
+    ],
+    "tests": {
+      "EXTEND-RECORD-A": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: QUALIFY | Move space to A *> Refers to 01 level A (unique only with QUALIFY(EXTEND))"
+        ]
+      },
+      "EXTEND-C-OF-A": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: QUALIFY | Move space to C of A *> Refers to 02 level C (unique only with"
+        ]
+      },
+      "STANDARD-OF-B": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: QUALIFY | Move space to C of B *> Refers to 03 level C (unique by COBOL standard"
         ]
       }
     }

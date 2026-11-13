@@ -1535,6 +1535,14 @@
     "expect": "compile-only",
     "tests": []
   },
+  "ZE147N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE147P": {
+    "expect": "compile-only",
+    "tests": []
+  },
   "ZF101A": {
     "expect": "run",
     "tests": [
@@ -2142,6 +2150,14 @@
       "STATIC-CANCEL-NOOP",
       "DYNAMIC-CANCEL-RESET",
       "DIRECTIVE-RESET"
+    ]
+  },
+  "ZP116A": {
+    "expect": "run",
+    "tests": [
+      "EXTEND-RECORD-A",
+      "EXTEND-C-OF-A",
+      "STANDARD-OF-B"
     ]
   },
   "ZS101A": {

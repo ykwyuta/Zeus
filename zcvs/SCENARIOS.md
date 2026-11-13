@@ -84,7 +84,7 @@
 | P04 ENTRY | `ZP104A`、`ZP111A` 10検査 | 部分 | 主入口/引数2個の別入口/BY VALUE別入口を交互実行。入口前のコード不実行、引数再束縛・参照更新・値引数保持・入口ポインターを追加。OMITTEDと入口の組合せは残る |
 | P05 CALL引数 | `ZP104A`、`ZP107A` 4検査、`ZP113A` 3検査、`ZP115A` 3検査 | 部分 | 今回0/負値/OMITTED→PRESENTの再束縛、CONTENT/VALUE/非対象領域保持を追加。同一項目を複数引数へ渡すalias、集団、別名入口との組合せは残る。2026-11-12: 同一項目を2引数へ参照渡しする別名、CONTENTの複写側の変更と呼出し元保持を追加。2026-11-13: >>CALLINTERFACE STATIC/DYNAMIC と CANCEL (静的に呼んだものは CANCEL しても状態が続く) を追加 |
 | P06 ポインター | `ZP105A`、`ZP108A` 7検査 | 部分 | 既存のPROCEDURE→FUNCTIONコピー後のNULL化に加え、データポインターのコピー、別名ENTRYの動的入口名、NULL化・別入口への再束縛後もコピーが有効、別バッファ保持を追加。ABI別サイズ、引数個数の異なる複数ENTRY、再帰フレーム別ポインターは残る |
-| P07 可視性 | `ZP106A` のCOMMON/GLOBAL/EXTERNAL、`ZP113A` 3検査 | 部分 | 非COMMON兄弟の拒否、同名の遮蔽、GLOBAL条件名/ファイル、EXTERNALの再呼出し/別プログラム/CANCEL後。2026-11-12: 入れ子での同名局所項目によるGLOBALの遮蔽と親の値保持、GLOBAL条件名のSETを追加 |
+| P07 可視性 | `ZP106A` のCOMMON/GLOBAL/EXTERNAL、`ZP113A` 3検査、`ZP116A` 3検査 | 部分 | 非COMMON兄弟の拒否、同名の遮蔽、GLOBAL条件名/ファイル、EXTERNALの再呼出し/別プログラム/CANCEL後。2026-11-12: 入れ子での同名局所項目によるGLOBALの遮蔽と親の値保持、GLOBAL条件名のSETを追加。2026-11-13: QUALIFY(EXTEND) の PG の例 (C OF A と修飾なしの A) を追加 |
 | P08 デバッグ宣言 | `ZP114A` 6検査 | 部分 | USE FOR DEBUGGING の PERFORM/GO TO/FALL THROUGH と DEBUG-ITEM、デバッグ行、PARM の `/DEBUG` (CBLOPTS(ON))。ALTER/SORT/USE 手続きの起動、START PROGRAM、DEBUG-LINE の値、NODEBUG で動かないことは残る |
 
 ## ZF: ファイル・VSAM・テープ
@@ -137,7 +137,7 @@
 | E03 INITIALIZE/条件名 | `ZE103N`–`ZE108N` | 部分 | EGCS/DBCS別名重複、他の重複カテゴリ、条件名受信、NATIONAL FALSE不適合。既存負系の正常対照 |
 | E04 NATIONAL/POINTER | `ZE114N`–`ZE116N`、`ZE134N/P`–`ZE143N/P`、`ZE146N/P` | 部分 | JUSTIFIED・BLANK WHEN ZERO・SIGN・手続ポインターPIC/VALUE・国別PIC・外部浮動VALUE/JUSTIFIED/USAGEを1規則ずつ拒否/受理で追加。GROUP-USAGE下JUSTIFIED・国別符号の対照は残る。国別から英数字への MOVE は LRM の表 51「Valid and invalid elementary moves」で No なので `ZE146N` で拒否、`DISPLAY-OF` を通す `ZE146P` で受理を測る (旧 `ZN114A` を置き換え)。 |
 | E05 ファイル禁止句 | `ZE117N`–`ZE123N` | 部分 | LINE SEQUENTIAL+RESERVE、不正SAME AREA、属性不一致と構文違反の区別、各規則の正常対照 |
-| E06 RETURNING/可視性 | `ZE112N/113N` | 部分 | USING重複、受信型不適合、非COMMON兄弟CALL、01/77以外の結果項目 |
+| E06 RETURNING/可視性 | `ZE112N/113N`、`ZE147N/P` | 部分 | USING重複、受信型不適合、非COMMON兄弟CALL、01/77以外の結果項目。2026-11-13: QUALIFY(COMPAT) では C OF A が一意でなく拒否、QUALIFY(EXTEND) では完全な修飾で受理 |
 | E07 指示文/桁数 | `ZE124N/125N/128N/P/130N/P/131N/P/133N/P`、`ZE144N/P` | 部分 | ODOの小数カウント拒否と整数カウント正常対照を追加。未知/矛盾オプション、部分語の複数語・空語、USAGE別の境界桁数は残る |
 | E08 UNTIL EXIT禁止形 | `ZE105N`、新規`ZE132N/P` | 部分 | TEST BEFORE/AFTER/WITH表記、VARYING禁止、単にEXIT未定義と診断する場合と専用診断を区別 |
 

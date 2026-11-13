@@ -15,6 +15,7 @@ pub(super) struct Effective {
     pub defines: std::collections::HashMap<String, String>,
     pub apost: bool,
     pub nozwb: bool,
+    pub qualify_extend: bool,
     pub lilian: bool,
     pub awo: bool,
     pub block0: bool,
@@ -42,6 +43,7 @@ impl Effective {
             defines: self.defines.clone(),
             apost: self.apost,
             nozwb: self.nozwb,
+            qualify_extend: self.qualify_extend,
             lilian: self.lilian,
             awo: self.awo,
             block0: self.block0,
@@ -71,6 +73,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
     let mut defines = defaults.defines.clone();
     let mut apost = defaults.apost;
     let mut nozwb = defaults.nozwb;
+    let mut qualify_extend = defaults.qualify_extend;
     let mut lilian = defaults.lilian;
     let mut awo = defaults.awo;
     let mut block0 = defaults.block0;
@@ -194,6 +197,18 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
             ("QUOTE", None) => apost = false,
             ("ZWB", None) => nozwb = false,
             ("NOZWB", None) => nozwb = true,
+            // QUALIFY(COMPAT|EXTEND): references must be unique, or a
+            // complete set of qualifiers may pick one (Programming Guide)
+            ("QUALIFY" | "QUA", Some(v)) => match v.to_ascii_uppercase().as_str() {
+                "COMPAT" | "C" => qualify_extend = false,
+                "EXTEND" | "E" => qualify_extend = true,
+                _ => {
+                    return Err(Diag::error(
+                        Default::default(),
+                        "QUALIFY accepts COMPAT or EXTEND",
+                    ));
+                }
+            },
             ("INTDATE", Some("ANSI")) => lilian = false,
             ("INTDATE", Some("LILIAN")) => lilian = true,
             ("AWO", None) => awo = true,
@@ -337,6 +352,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         defines,
         apost,
         nozwb,
+        qualify_extend,
         lilian,
         awo,
         block0,

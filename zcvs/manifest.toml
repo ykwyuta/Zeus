@@ -296,3 +296,10 @@ diagnostic_contains = "invalid elementary MOVE: national sending item, alphanume
 
 [programs.ZE146P]
 expect = "compile-only"
+
+[programs.ZE147N]
+expect = "compile-error"
+diagnostic_contains = "C OF A is ambiguous"
+
+[programs.ZE147P]
+expect = "compile-only"
