@@ -14,7 +14,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Assembler instructions | AINSERT | 使用あり | HM111A | - | 未網羅: Zeus に無い (2026-11-12 に確認) |
 | Assembler instructions | ALIAS | 使用あり | HA102A | - |  |
 | Assembler instructions | AMODE | 使用あり | HA108A | - | HA108A は AMODE 31 を LA の結果で見る。RMODE 24 は割り当て位置を見ていない |
-| Assembler instructions | CATTR | 未網羅 |  | - | HA108A は AMODE 31 を LA の結果で見る。RMODE 24 は割り当て位置を見ていない |
+| Assembler instructions | CATTR | 未網羅 |  | - | 未網羅: GOFF のクラスの属性。結合時の属性で、実行時に観測できる形をまだ決めていない |
 | Assembler instructions | CCW | 使用あり | HA106A | - |  |
 | Assembler instructions | CCW0 | 使用あり | HA107A | - |  |
 | Assembler instructions | CCW1 | 使用あり | HA106A | - |  |
@@ -54,7 +54,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | Assembler instructions | TITLE | 対象外 |  | - | 対象外: リスト・目的コードの付加レコード・出口・診断の制御で、実行時の値に出ない |
 | Assembler instructions | USING | 使用あり | HA105A, HE101N, HE101P, HE102N, HE102P, HE103N ほか 38 | - |  |
 | Assembler instructions | WXTRN | 使用あり | HA107A, HM108A | - |  |
-| Assembler instructions | XATTR | 未網羅 |  | - | HA108A は AMODE 31 を LA の結果で見る。RMODE 24 は割り当て位置を見ていない |
+| Assembler instructions | XATTR | 未網羅 |  | - | 未網羅: GOFF の外部記号の属性。結合時の属性で、実行時に観測できる形をまだ決めていない |
 | DC types | A | 使用あり | HA106A, HA107A, HA109A, HA111A, HS102A, HS103A ほか 2 | - |  |
 | DC types | AD | 使用あり | HA106A | - |  |
 | DC types | B | 使用あり | HA103A, HE111N, HE111P | - |  |
@@ -74,7 +74,7 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | DC types | FD | 使用あり | HA103A, HI105A, HI106A, HI112A, HI113A, HI114A ほか 4 | - |  |
 | DC types | G | 未網羅 |  | - |  |
 | DC types | H | 使用あり | HA103A, HD107A, HI106A, HI112A, HI114A, HI115A ほか 1 | - |  |
-| DC types | J | 未網羅 |  | - | HA109A。CXD/DXD と同じく Zeus 形式だけで流す |
+| DC types | J | 未網羅 |  | - | 未網羅: J 型 (長さ定数) は GOFF のときだけ使える (LRM)。Zeus の OBJ/GOFF は外部ダミーセクションを書けない |
 | DC types | JD | 未網羅 |  | - |  |
 | DC types | L | 使用あり | HD107A | - |  |
 | DC types | LB | 使用あり | HF231A, HF232A, HF233A, HF234A, HF235A, HF236A | - |  |
@@ -83,8 +83,8 @@ HLASM Language Reference の章立てと、Zeus の命令の解読表 (machine.r
 | DC types | LQ | 未網羅 |  | - |  |
 | DC types | P | 使用あり | HA103A, HD103A, HD104A, HD107A, HI125A, HS105A | - |  |
 | DC types | Q | 使用あり | HA109A | - | HA109A。CXD/DXD と同じく Zeus 形式だけで流す |
-| DC types | QD | 未網羅 |  | - | HA109A。CXD/DXD と同じく Zeus 形式だけで流す |
-| DC types | QY | 未網羅 |  | - | HA109A。CXD/DXD と同じく Zeus 形式だけで流す |
+| DC types | QD | 未網羅 |  | - | 未網羅: 8 バイトの Q 型。Q と同じく結合プログラムが値を決める。Zeus の OBJ/GOFF は書けない |
+| DC types | QY | 未網羅 |  | - | 未網羅: 20 ビット長変位の Q 型。Q と同じく結合プログラムが値を決める。Zeus の OBJ/GOFF は書けない |
 | DC types | R | 未網羅 |  | - | 未網羅: PSECT のアドレス (XPLINK/GOFF)。Zeus の対応を確かめていない |
 | DC types | RD | 未網羅 |  | - | 未網羅: PSECT のアドレス (XPLINK/GOFF)。Zeus の対応を確かめていない |
 | DC types | S | 使用あり | HA107A | - |  |
