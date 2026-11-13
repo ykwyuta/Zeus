@@ -984,8 +984,9 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
     })
 }
 
-/// A version 4 UUID: 122 random bits, version 4, variant 10.
-fn uuid4() -> String {
+/// A version 4 UUID: 122 random bits, version 4, variant 10. The generator
+/// is seeded from the clock, so runs differ (shared with PL/I UUID4).
+pub fn uuid4() -> String {
     use std::cell::Cell;
     thread_local! {
         static STATE: Cell<u64> = const { Cell::new(0) };

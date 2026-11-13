@@ -1318,26 +1318,8 @@ impl Machine {
                 }
             }
             // a version 4 UUID: random bits, version nibble 4, variant 10
-            Uuid4 => {
-                let mut r = [0u8; 16];
-                for chunk in r.chunks_mut(8) {
-                    self.random ^= self.random << 13;
-                    self.random ^= self.random >> 7;
-                    self.random ^= self.random << 17;
-                    chunk.copy_from_slice(&self.random.to_be_bytes()[..chunk.len()]);
-                }
-                r[6] = (r[6] & 0x0f) | 0x40;
-                r[8] = (r[8] & 0x3f) | 0x80;
-                let h: std::string::String = r.iter().map(|c| format!("{c:02x}")).collect();
-                Value::Char(ebcdic(&format!(
-                    "{}-{}-{}-{}-{}",
-                    &h[0..8],
-                    &h[8..12],
-                    &h[12..16],
-                    &h[16..20],
-                    &h[20..32]
-                )))
-            }
+            // a new version 4 UUID at each reference and in each run
+            Uuid4 => Value::Char(ebcdic(&zeus_cobol::vm::uuid4())),
             // buffer functions on UTF-16: whitespace \t \f \v \n \r, base 64
             // digits as UTF-16 characters
             // XMLSCRUB(p, m, q, n), XMLSCRUB16: the scrubbed source, its
