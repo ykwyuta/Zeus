@@ -517,6 +517,7 @@ impl Parser {
             "DISPLAY" => Usage::Display,
             "DISPLAY-1" => Usage::Display1,
             "NATIONAL" => Usage::National,
+            "UTF-8" => Usage::Utf8,
             "COMP" | "COMPUTATIONAL" | "COMP-4" | "COMPUTATIONAL-4" | "BINARY" => Usage::Binary,
             "COMP-3" | "COMPUTATIONAL-3" | "PACKED-DECIMAL" => Usage::Packed,
             "COMP-5" | "COMPUTATIONAL-5" => Usage::NativeBinary,
@@ -564,6 +565,9 @@ impl Parser {
                 match self.next().map(|t| t.tok) {
                     Some(Tok::Pic(p)) => e.picture = Some(p),
                     _ => return self.err("picture string expected"),
+                }
+                if self.accept("BYTE-LENGTH") {
+                    e.byte_length = Some(self.integer()? as u32);
                 }
             } else if self.accept("GROUP-USAGE") {
                 self.accept("IS");

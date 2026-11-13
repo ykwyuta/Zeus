@@ -35,6 +35,8 @@ pub enum Const {
     Bytes(Vec<u8>),
     /// National literal (UTF-16 big-endian).
     National(Vec<u8>),
+    /// UTF-8 literal.
+    Utf8(Vec<u8>),
     Fig(FigByte),
     All(Vec<u8>),
     Null,
@@ -78,7 +80,7 @@ pub fn figurative(f: &Figurative) -> Option<FigByte> {
 pub fn literal_bytes(l: &Literal) -> Vec<u8> {
     match l {
         Literal::Str(s) => ebcdic::encode(s),
-        Literal::Hex(b) | Literal::National(b) => b.clone(),
+        Literal::Hex(b) | Literal::National(b) | Literal::Utf8(b) => b.clone(),
         Literal::Num(n) => ebcdic::encode(n),
     }
 }
@@ -91,12 +93,16 @@ pub fn constant(op: &Operand, _decimal_comma: bool) -> Result<Const, String> {
             Const::Num(d, digits)
         }
         Operand::Lit(Literal::National(b)) => Const::National(b.clone()),
+        Operand::Lit(Literal::Utf8(b)) => Const::Utf8(b.clone()),
         Operand::Lit(l) => Const::Bytes(literal_bytes(l)),
         Operand::Fig(f) => match figurative(f) {
             Some(b) => Const::Fig(b),
             None => return Err("symbolic characters are not allowed here".into()),
         },
         Operand::All(inner) => match inner.as_ref() {
+            Operand::Lit(Literal::Utf8(_)) => {
+                return Err("ALL with a UTF-8 literal is not supported yet".into());
+            }
             Operand::Lit(l) => Const::All(literal_bytes(l)),
             Operand::Fig(f) => match figurative(f) {
                 Some(b) => Const::Fig(b),

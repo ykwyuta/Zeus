@@ -270,6 +270,11 @@ impl Machine {
                     Some(Val::Item(ty, b)) if ty.is_national() && func == Func::Length => {
                         b.len() / 2
                     }
+                    // UTF-8: n for PIC U(n); the characters in the data for
+                    // BYTE-LENGTH items and literals (LRM, LENGTH function)
+                    Some(Val::Item(DataType::Utf8 { chars }, b)) if func == Func::Length => {
+                        chars.map_or_else(|| super::data::utf8_count(b), |n| n as usize)
+                    }
                     Some(Val::Item(DataType::Numeric(_), b) | Val::Item(_, b)) => b.len(),
                     Some(Val::Alnum(b) | Val::All(b)) => b.len(),
                     Some(Val::NumLit(_, d)) => d.len(),
@@ -469,6 +474,26 @@ impl Machine {
             // the code page: the second argument (a CCSID), else the
             // program's
             Func::NationalOf | Func::DisplayOf => {
+                // CCSID 1208 is UTF-8; it is also the source code page of
+                // NATIONAL-OF for a UTF-8 argument when argument-2 is
+                // omitted (LRM, NATIONAL-OF and DISPLAY-OF)
+                let ccsid = match vals.get(1) {
+                    Some(v) => Some(super::data::to_raw(self.val_num(v), 0, false)),
+                    None => None,
+                };
+                let utf8_arg = matches!(vals.first(), Some(Val::Item(DataType::Utf8 { .. }, _)));
+                if ccsid == Some(1208) || (ccsid.is_none() && utf8_arg && func == Func::NationalOf) {
+                    return Ok(match (func, vals.first()) {
+                        (Func::NationalOf, Some(Val::Item(DataType::Utf8 { .. }, b))) => {
+                            super::data::national_of_utf8(b)
+                        }
+                        (Func::NationalOf, Some(v)) => {
+                            super::data::national_of_utf8(&self.alnum_bytes(cur, v, 0)?)
+                        }
+                        (Func::DisplayOf, Some(v)) => self.utf8_bytes(cur, v)?,
+                        _ => vec![],
+                    });
+                }
                 let cp = match vals.get(1) {
                     Some(v) => {
                         let c = super::data::to_raw(self.val_num(v), 0, false);

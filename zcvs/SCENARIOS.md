@@ -73,6 +73,7 @@
 | N05 INITIALIZE分類 | `ZN103A/105A`、`ZN108A` 6検査 | 部分 | 英数字/数値/国別/数値編集/国別編集/国別数値の同居で各REPLACINGと非対象保持、既定初期化を追加。DBCS/EGCS同居、各カテゴリ×FILLER/REDEFINES/OCCURSは残る |
 | N06 CCSID変換 | `ZN104A/106M`、`ZN110A`–`ZN113A` 24検査、`ZN115A` 4検査 | 部分 | 930/939/1390/1399の別単位でSBCSのみ/DBCSのみ/混在を独立既知bytesで両方向検査。共有文字だけなのでコードページ固有文字・037・空白・代替/変換不能は残る。明示引数と既定を同一視しない。2026-11-13: CBL CODEPAGE(1140) のユーロ記号 (X'9F' と U+20AC) と、CCSID 引数による上書きを追加 |
 | N07 UTF-16境界 | `ZN107A` 10検査、`ZN105A` | 追加 | パディング/切詰め/LOW、先頭/末尾/省略長/書込み部分参照、初期化、サロゲート2単位と文字数/バイト数を追加。孤立サロゲートは別の仕様確認対象 |
+| N08 UTF-8 (PIC U) | `ZN116A` 24検査 | 追加 | PIC U(n) と BYTE-LENGTH の記憶域と LENGTH/BYTE-LENGTH、U'..' (\u・\U 逃がし) と UX'..'、文字数での切詰めと文字境界での切詰め、HIGH-VALUE の末尾 (UX'7F' など)、LOW-VALUE/ZERO/INITIALIZE、英数字・国別との転記、NATIONAL-OF/DISPLAY-OF、UTF-8 比較 (バイト順・UX'20' 補充) を追加。2026-11-13 Zeus は GROUP-USAGE UTF-8・DYNAMIC LENGTH・部分参照・JUSTIFIED・ALL UTF-8 定数・STRING/UNSTRING/INSPECT/ACCEPT と UTF-8 を返す関数を「未対応」と断る。CONSOLE 以外への DISPLAY は変換なし (LRM) |
 
 ## ZP: 呼出し・記憶域・可視性
 

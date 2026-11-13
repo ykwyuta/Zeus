@@ -200,6 +200,14 @@ impl Gen<'_> {
             None => None,
         };
         let desc = self.dm.items[id].desc;
+        // UTF-8 reference modification counts characters of varying width;
+        // refused rather than counted in bytes.
+        if refmod.is_some() && self.dm.descs[desc as usize].ty.is_utf8() {
+            return Err(Diag::error(
+                r.pos,
+                "reference modification of a UTF-8 item is not supported yet",
+            ));
+        }
         let dims = self.dm.descs[desc as usize].dims.len();
         if !subs.is_empty() && subs.len() != dims {
             return Err(Diag::error(
@@ -450,6 +458,7 @@ impl Gen<'_> {
                     .ok_or_else(|| Diag::error(f.pos, format!("unknown function {}", f.name)))?;
                 self.validate_function(func, f)?;
                 let mut args = self.func_args(&f.args)?;
+                self.check_utf8_args(func, &f.name, &args)?;
                 if crate::front::lilian() {
                     // INTDATE(LILIAN): day 1 is 15 October 1582, 6653 days
                     // before the ANSI day 1 (1 January 1601)
@@ -481,6 +490,41 @@ impl Gen<'_> {
                 ));
             }
         })
+    }
+
+    /// UTF-8 arguments are taken only by the functions that handle them;
+    /// others (UPPER-CASE returning UTF-8 data, for one) are refused rather
+    /// than run on the UTF-8 bytes as alphanumeric data.
+    fn check_utf8_args(&self, func: Func, name: &str, args: &[Arg]) -> Result<()> {
+        let utf8 = args.iter().any(|arg| match arg {
+            Arg::Src(Src::Utf8(_)) => true,
+            Arg::Src(Src::Loc(loc)) | Arg::All(loc) | Arg::Table { loc, .. } => {
+                self.dm.descs[loc.desc as usize].ty.is_utf8()
+            }
+            _ => false,
+        });
+        if utf8
+            && !matches!(
+                func,
+                Func::Length
+                    | Func::ByteLength
+                    | Func::NationalOf
+                    | Func::DisplayOf
+                    | Func::HexOf
+                    | Func::BitOf
+                    | Func::Ulength
+                    | Func::Upos
+                    | Func::Uwidth
+                    | Func::Usupplementary
+                    | Func::Uvalid
+            )
+        {
+            return Err(Diag::error(
+                self.pos,
+                format!("a UTF-8 argument to FUNCTION {name} is not supported yet"),
+            ));
+        }
+        Ok(())
     }
 
     fn func_args(&mut self, args: &[Expr]) -> Result<Vec<Arg>> {
@@ -547,6 +591,7 @@ impl Gen<'_> {
                 Src::NumLit(d, digits)
             }
             Operand::Lit(Literal::National(b)) => Src::National(b.clone()),
+            Operand::Lit(Literal::Utf8(b)) => Src::Utf8(b.clone()),
             Operand::Lit(l) => Src::Alnum(lit::literal_bytes(l)),
             Operand::Fig(Figurative::Symbolic(name)) => {
                 let b = self.symbolic_byte(name)?;
@@ -554,6 +599,9 @@ impl Gen<'_> {
             }
             Operand::Fig(f) => Src::Fig(fig(f).unwrap()),
             Operand::All(inner) => match inner.as_ref() {
+                Operand::Lit(Literal::Utf8(_)) => {
+                    return Err(Diag::error(self.pos, "ALL with a UTF-8 literal is not supported yet"));
+                }
                 Operand::Lit(l) => Src::All(lit::literal_bytes(l)),
                 Operand::Fig(f) => match fig(f) {
                     Some(f) => Src::Fig(f),
@@ -571,6 +619,7 @@ impl Gen<'_> {
                 self.validate_function(func, f)?;
                 let numeric = self.is_numeric_operand(op);
                 let args = self.func_args(&f.args)?;
+                self.check_utf8_args(func, &f.name, &args)?;
                 if numeric {
                     Src::Num(Ex::Func(func, args))
                 } else {

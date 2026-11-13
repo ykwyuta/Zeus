@@ -9,6 +9,9 @@ pub enum Category {
     /// DBCS (PIC G, PIC N with NSYMBOL(DBCS) / USAGE DISPLAY-1): two bytes
     /// per character.
     Dbcs,
+    /// UTF-8 (PIC U): `size` is the reserved storage, four bytes per
+    /// character position.
+    Utf8,
     Numeric,
     NumericEdited,
     ExternalFloat,
@@ -123,6 +126,16 @@ pub fn analyze(pic: &str, decimal_comma: bool, currency: char) -> Result<Picture
             digits,
             scale,
             signed,
+            edit: Vec::new(),
+        });
+    }
+    if chars.iter().all(|c| *c == 'U') {
+        return Ok(Picture {
+            category: Category::Utf8,
+            size: 4 * chars.len() as u32,
+            digits: 0,
+            scale: 0,
+            signed: false,
             edit: Vec::new(),
         });
     }

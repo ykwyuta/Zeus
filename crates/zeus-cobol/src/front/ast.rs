@@ -232,6 +232,8 @@ pub enum Usage {
     Display1,
     /// NATIONAL: UTF-16 data.
     National,
+    /// UTF-8: UTF-8 data (PICTURE U).
+    Utf8,
     Binary,
     Packed,
     /// COMP-5: native binary, not truncated to the picture.
@@ -272,6 +274,8 @@ pub struct DataEntry {
     pub external: bool,
     pub global: bool,
     pub picture: Option<String>,
+    /// PICTURE U BYTE-LENGTH m.
+    pub byte_length: Option<u32>,
     pub usage: Option<Usage>,
     pub group_national: bool,
     /// SIGN clause: (leading, separate)
@@ -457,6 +461,8 @@ pub enum Literal {
     Hex(Vec<u8>),
     /// National literal (UTF-16 big-endian).
     National(Vec<u8>),
+    /// UTF-8 literal (UTF-8 bytes).
+    Utf8(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq)]

@@ -493,6 +493,13 @@ pub enum DataType {
     Dbcs,
     /// National data: UTF-16 big-endian.
     National,
+    /// UTF-8 data (USAGE UTF-8, PICTURE U). `chars` is n for a fixed
+    /// character-length item PIC U(n), which reserves 4n bytes; None for
+    /// PIC U BYTE-LENGTH m (fixed byte length, varying characters) and for
+    /// UTF-8 literals and function results.
+    Utf8 {
+        chars: Option<u32>,
+    },
     Numeric(NumType),
     NumericEdited {
         #[serde(default)]
@@ -569,6 +576,9 @@ impl DataType {
     }
     pub fn is_entry_pointer(&self) -> bool {
         matches!(self, Self::ProcedurePointer | Self::FunctionPointer)
+    }
+    pub fn is_utf8(&self) -> bool {
+        matches!(self, Self::Utf8 { .. })
     }
     pub fn is_national(&self) -> bool {
         matches!(
@@ -809,6 +819,8 @@ pub enum Src {
     Alnum(Vec<u8>),
     /// National literal (UTF-16 big-endian).
     National(Vec<u8>),
+    /// UTF-8 literal (UTF-8 bytes).
+    Utf8(Vec<u8>),
     /// Numeric literal: value and its digits as EBCDIC characters.
     NumLit(Dec, Vec<u8>),
     Fig(Fig),

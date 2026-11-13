@@ -3376,5 +3376,162 @@
         ]
       }
     }
+  },
+  "ZN116A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: UTF-8 items | The PICTURE character-string can contain one or more occurrences of the picture symbol U. Each U represents a single UTF-8 character position."
+    ],
+    "tests": {
+      "U-FIXED-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Alignment rules | 4 bytes of storage are reserved for each character position described by the item's PICTURE character-string.",
+          "COB-LRM: LENGTH OF | The LENGTH OF special register contains the number of bytes used by a data item."
+        ]
+      },
+      "U-FIXED-LENGTH-FN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH | For example, if argument-1 is defined as PIC U(n), the returned value is always n"
+        ]
+      },
+      "U-BYTE-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BYTE-LENGTH integer-1 | The number of bytes occupied by a UTF-8 data item defined with the BYTE-LENGTH phrase of the PICTURE clause is indicated by integer-1."
+        ]
+      },
+      "U-BYTE-LENGTH-FN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BYTE-LENGTH | BYTE-LENGTH always returns the byte length of argument-1, even when argument-1 is of class national or UTF-8."
+        ]
+      },
+      "U-VALUE-ALNUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UTF-8 items | Any associated VALUE clause must specify an alphanumeric literal, a UTF-8 literal, or one of the following figurative constants:",
+          "COB-LRM: BYTE-LENGTH integer-1 | are always padded with UTF-8 spaces (x'20') to a byte length of integer-1."
+        ]
+      },
+      "U-LITERAL-ESCAPE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Basic UTF-8 literals | Wherever a Unicode escape sequence appears in a basic UTF-8 literal, it is replaced by the compiler with the corresponding UTF-8 encoding of the Unicode code point"
+        ]
+      },
+      "U-LITERAL-HEX": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Hexadecimal notation for UTF-8 literals | Each group of two hexadecimal digits represents a single encoding unit of a UTF-8 character."
+        ]
+      },
+      "U-TRUNC-CHARS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Alignment rules | The data is aligned at the leftmost character position, and (if necessary) truncated or padded with default UTF-8 spaces (UX'20') at the right. Truncation occurs at the boundary of a UTF-8 character position."
+        ]
+      },
+      "U-TRUNC-BOUNDARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BYTE-LENGTH integer-1 | UTF-8 data items defined with the BYTE-LENGTH phrase of the PICTURE clause are truncated on UTF-8 character boundaries when truncation is needed"
+        ]
+      },
+      "U-SUPPLEMENTARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Basic UTF-8 literals | \\U00hhhhh, where each h represents a hexadecimal digit",
+          "COB-LRM: Basic UTF-8 literals | Unicode code points in the range U+10000 through U+10FFFF (e.g., an emoji symbol)."
+        ]
+      },
+      "U-LENGTH-BYTE-ITEM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH | If argument-1 is defined with the BYTE-LENGTH phrase of the PICTURE clause or the DYNAMIC LENGTH clause, then the character length is computed at runtime by examining all bytes occupied by the data in argument-1 and counting the number of characters represented."
+        ]
+      },
+      "U-HIGH-BYTE-TAIL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Figurative constants | the value of HIGH-VALUE is UX'EFBFBF' (U+FFFF), UX'DFBF' (U+07FF), and UX'7F' (U+007F), respectively."
+        ]
+      },
+      "U-HIGH-FIXED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Figurative constants | The value is UTF-8 character UX'F48FBFBF' corresponding to Unicode code point U+10FFFF"
+        ]
+      },
+      "U-LOW-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Figurative constants | The value is UTF-8 character UX'00' corresponding to Unicode code point U+0000."
+        ]
+      },
+      "U-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Valid and invalid elementary moves | Includes UTF-8 data items, UTF-8 literals, UTF-8 functions, and figurative constants ZERO, SPACE, QUOTE, and ALL UTF-8 literal."
+        ]
+      },
+      "U-INITIALIZE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement | SPACE is the implied sending item for receiving items of category alphabetic, alphanumeric, alphanumeric-edited, DBCS, EGCS, national, national-edited, or UTF-8."
+        ]
+      },
+      "U-FROM-NATIONAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Elementary moves | If the representation of the sending item is not UTF-8 characters, the sending data is converted to UTF-8 characters"
+        ]
+      },
+      "U-FROM-ALNUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Elementary moves | If the representation of the sending item is not UTF-8 characters, the sending data is converted to UTF-8 characters",
+          "COB-LRM: Valid and invalid elementary moves | Alphanumeric sending"
+        ]
+      },
+      "U-TO-NATIONAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Valid and invalid elementary moves | UTF-8 sending item10 No No No No No No No No Yes Yes Yes"
+        ]
+      },
+      "U-NATIONAL-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NATIONAL-OF | If argument-2 is omitted and argument-1 is of class UTF-8, then the source code page is 1208."
+        ]
+      },
+      "U-DISPLAY-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DISPLAY-OF | Must be of class national (categories national, national-edited, and numeric-edited described with usage NATIONAL) or class UTF-8."
+        ]
+      },
+      "U-COMPARE-PAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UTF-8 comparisons | When the relation condition specifies an operand that is not class UTF-8, that operand is converted to a data item of category UTF-8 before the comparison.",
+          "COB-LRM: Comparison of two UTF-8 operands | the comparison proceeds as though the shorter operand were padded on the right with the default UTF-8 space character (UX'20')"
+        ]
+      },
+      "U-COMPARE-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UTF-8 comparisons | Alphanumeric characters are converted to the corresponding UTF-8 characters."
+        ]
+      },
+      "U-COMPARE-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Comparison of two UTF-8 operands | the comparison proceeds by comparing corresponding UTF-8 character positions in the two operands, starting from the leftmost position"
+        ]
+      }
+    }
   }
 }

@@ -332,6 +332,7 @@ impl Machine {
             }
             Src::Alnum(b) => Val::Alnum(b.clone()),
             Src::National(b) => Val::Item(DataType::National, b.clone()),
+            Src::Utf8(b) => Val::Item(DataType::Utf8 { chars: None }, b.clone()),
             Src::NumLit(v, digits) => Val::NumLit(*v, digits.clone()),
             Src::Float(text) => Val::Item(
                 DataType::Float { long: true },
@@ -421,11 +422,21 @@ impl Machine {
         })
     }
 
+    /// An operand as UTF-8 data: UTF-8 as it is, other data converted.
+    pub(super) fn utf8_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
+        Ok(match v {
+            Val::Item(ty, b) if ty.is_utf8() => b.clone(),
+            Val::Item(ty, b) if ty.is_national() => d::utf8_of_national(b),
+            _ => d::utf8_of_national(&self.national_bytes(cur, v)?),
+        })
+    }
+
     /// An operand as national data (UTF-16): national as it is, DBCS and
     /// alphanumeric data converted from the code page.
     pub(super) fn national_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
         Ok(match v {
             Val::Item(ty, b) if ty.is_national() => b.clone(),
+            Val::Item(DataType::Utf8 { .. }, b) => d::national_of_utf8(b),
             Val::Item(DataType::Dbcs, b) => d::utf16(&crate::codepage::active().decode_dbcs(b)),
             Val::Fig(f) => d::national_fig(fig_byte(*f)),
             Val::All(p) => d::national_of(p),
@@ -817,6 +828,37 @@ impl Machine {
                 let vb = self.eval_src(cur, b)?;
                 let ord = match mode {
                     CmpMode::Numeric => unreachable!(),
+                    // UTF-8 comparison: an operand that is not UTF-8 is
+                    // converted to UTF-8, the shorter padded with UX'20',
+                    // then compared byte by byte (LRM, "UTF-8 comparisons")
+                    CmpMode::Alnum
+                        if matches!(&va, Val::Item(t, _) if t.is_utf8())
+                            || matches!(&vb, Val::Item(t, _) if t.is_utf8()) =>
+                    {
+                        let item = |v: &Val| -> RResult<Option<Vec<u8>>> {
+                            Ok(match v {
+                                Val::Fig(_) | Val::All(_) => None,
+                                _ => Some(self.utf8_bytes(cur, v)?),
+                            })
+                        };
+                        let (x, y) = (item(&va)?, item(&vb)?);
+                        // a figurative constant or ALL literal takes the
+                        // other operand's length
+                        let n = x.as_ref().or(y.as_ref()).map_or(1, |b| b.len()).max(1);
+                        let fill = |v: &Val, b: Option<Vec<u8>>| {
+                            b.unwrap_or_else(|| {
+                                let mut out = vec![0u8; n];
+                                move_into(v, &DataType::Utf8 { chars: None }, &mut out);
+                                out
+                            })
+                        };
+                        let mut x = fill(&va, x);
+                        let mut y = fill(&vb, y);
+                        let n = x.len().max(y.len());
+                        x.resize(n, 0x20);
+                        y.resize(n, 0x20);
+                        x.cmp(&y)
+                    }
                     // national comparison: both operands as national
                     // data, the shorter padded with national spaces
                     CmpMode::Alnum
@@ -1371,6 +1413,17 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         d::edit_alnum(edit, &src, out);
         return;
     }
+    // UTF-8 receivers: the sending data converted to UTF-8 characters
+    // (LRM MOVE, "UTF-8" receiving items).
+    if let DataType::Utf8 { chars } = ty {
+        match v {
+            Val::Fig(Fig::High) => d::high_utf8(*chars, out),
+            Val::Fig(f) => d::fill_utf8(&d::utf8_of_national(&d::national_fig(fig_byte(*f))), *chars, out),
+            Val::All(p) => d::fill_utf8(&d::utf8_of_national(&d::national_of(p)), *chars, out),
+            _ => d::move_utf8(&utf8_source(v), *chars, out),
+        }
+        return;
+    }
     // Figurative constants and ALL literals (national receivers take
     // them as national characters).
     if *ty == DataType::National {
@@ -1507,6 +1560,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         // padded with national spaces
         DataType::National => match v {
             Val::Item(ty, b) if ty.is_national() => d::move_national(b, out),
+            Val::Item(DataType::Utf8 { .. }, b) => d::move_national(&d::national_of_utf8(b), out),
             Val::Item(DataType::Dbcs, b) => {
                 d::move_national(&d::utf16(&crate::codepage::active().decode_dbcs(b)), out)
             }
@@ -1518,7 +1572,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             let bytes = alnum_source(v);
             d::edit_alnum(edit, &bytes, out);
         }
-        DataType::Group => unreachable!(),
+        DataType::Group | DataType::Utf8 { .. } => unreachable!(),
     }
 }
 
@@ -1528,6 +1582,17 @@ fn numeric_val(v: &Val) -> Dec {
         Val::NumLit(x, _) | Val::Num(x) => *x,
         Val::Alnum(b) | Val::All(b) => d::alnum_as_number(b),
         Val::Fig(_) => Dec::ZERO,
+    }
+}
+
+/// Source bytes for a UTF-8 receiving item: UTF-8 data as it is, national
+/// and DBCS data converted from UTF-16, other data from the code page.
+pub(super) fn utf8_source(v: &Val) -> Vec<u8> {
+    match v {
+        Val::Item(DataType::Utf8 { .. }, b) => b.clone(),
+        Val::Item(ty, b) if ty.is_national() => d::utf8_of_national(b),
+        Val::Item(DataType::Dbcs, b) => crate::codepage::active().decode_dbcs(b).into_bytes(),
+        _ => d::utf8_of_national(&d::national_of(&alnum_source(v))),
     }
 }
 

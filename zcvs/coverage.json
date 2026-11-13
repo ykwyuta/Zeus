@@ -2439,5 +2439,34 @@
       "SET-TRUE-RANGE-FIRST",
       "SET-FALSE-RANGE"
     ]
+  },
+  "ZN116A": {
+    "expect": "run",
+    "tests": [
+      "U-FIXED-STORAGE",
+      "U-FIXED-LENGTH-FN",
+      "U-BYTE-STORAGE",
+      "U-BYTE-LENGTH-FN",
+      "U-VALUE-ALNUM",
+      "U-LITERAL-ESCAPE",
+      "U-LITERAL-HEX",
+      "U-TRUNC-CHARS",
+      "U-TRUNC-BOUNDARY",
+      "U-SUPPLEMENTARY",
+      "U-LENGTH-BYTE-ITEM",
+      "U-HIGH-BYTE-TAIL",
+      "U-HIGH-FIXED",
+      "U-LOW-VALUE",
+      "U-ZERO",
+      "U-INITIALIZE",
+      "U-FROM-NATIONAL",
+      "U-FROM-ALNUM",
+      "U-TO-NATIONAL",
+      "U-NATIONAL-OF",
+      "U-DISPLAY-OF",
+      "U-COMPARE-PAD",
+      "U-COMPARE-UTF8",
+      "U-COMPARE-UNEQUAL"
+    ]
   }
 }

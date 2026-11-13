@@ -557,9 +557,117 @@ pub fn move_national(src: &[u8], out: &mut [u8]) {
     }
 }
 
+/// National data as UTF-8 (unpaired surrogates become U+FFFD).
+pub fn utf8_of_national(b: &[u8]) -> Vec<u8> {
+    from_utf16(b).into_bytes()
+}
+
+/// UTF-8 data as national data. Ill-formed bytes become X'FFFD', the
+/// substitution character the LRM gives for a multi-byte source
+/// (NATIONAL-OF function).
+pub fn national_of_utf8(b: &[u8]) -> Vec<u8> {
+    utf16(&String::from_utf8_lossy(b))
+}
+
+/// Byte width of the UTF-8 character that starts with `lead`. A byte that
+/// cannot start a character counts as one byte, so that truncation never
+/// loops on ill-formed data.
+pub fn utf8_width(lead: u8) -> usize {
+    match lead {
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF7 => 4,
+        _ => 1,
+    }
+}
+
+/// Number of UTF-8 characters in `b`.
+pub fn utf8_count(b: &[u8]) -> usize {
+    let mut i = 0;
+    let mut n = 0;
+    while i < b.len() {
+        i += utf8_width(b[i]);
+        n += 1;
+    }
+    n
+}
+
+/// Length in bytes of the longest prefix of `src` that holds whole
+/// characters, at most `chars` of them (when given) and at most `room`
+/// bytes.
+fn utf8_prefix(src: &[u8], chars: Option<u32>, room: usize) -> usize {
+    let mut i = 0;
+    let mut n = 0u32;
+    while i < src.len() && chars.is_none_or(|c| n < c) {
+        let w = utf8_width(src[i]);
+        if i + w > room || i + w > src.len() {
+            break;
+        }
+        i += w;
+        n += 1;
+    }
+    i
+}
+
+/// MOVE into a UTF-8 item: left aligned, truncated on a character
+/// boundary (to `chars` characters for PIC U(n)) and padded with UTF-8
+/// spaces (X'20') — LRM "Alignment rules", UTF-8 receivers.
+pub fn move_utf8(src: &[u8], chars: Option<u32>, out: &mut [u8]) {
+    let n = utf8_prefix(src, chars, out.len());
+    out[..n].copy_from_slice(&src[..n]);
+    out[n..].fill(0x20);
+}
+
+/// A UTF-8 item filled with repetitions of `pattern` (a figurative
+/// constant or ALL literal as UTF-8 characters).
+pub fn fill_utf8(pattern: &[u8], chars: Option<u32>, out: &mut [u8]) {
+    if pattern.is_empty() {
+        return;
+    }
+    let mut src = Vec::with_capacity(out.len() + pattern.len());
+    while src.len() < out.len() {
+        src.extend_from_slice(pattern);
+    }
+    move_utf8(&src, chars, out);
+}
+
+/// HIGH-VALUE into a UTF-8 item: UX'F48FBFBF' in each whole four bytes;
+/// the final 3, 2 or 1 bytes of a fixed byte-length item take UX'EFBFBF',
+/// UX'DFBF' and UX'7F' (LRM, figurative constants).
+pub fn high_utf8(chars: Option<u32>, out: &mut [u8]) {
+    fill_utf8(&[0xF4, 0x8F, 0xBF, 0xBF], chars, out);
+    if chars.is_none() {
+        let tail: &[u8] = match out.len() % 4 {
+            3 => &[0xEF, 0xBF, 0xBF],
+            2 => &[0xDF, 0xBF],
+            1 => &[0x7F],
+            _ => &[],
+        };
+        let at = out.len() - tail.len();
+        out[at..].copy_from_slice(tail);
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn utf8_moves_truncate_on_character_boundaries() {
+        let mut out = [0u8; 5];
+        move_utf8(&[0xC3, 0xA9, 0xC3, 0xA9, 0xC3, 0xA9], None, &mut out);
+        assert_eq!(out, [0xC3, 0xA9, 0xC3, 0xA9, 0x20]);
+        let mut out = [0u8; 12];
+        move_utf8(b"abcd", Some(3), &mut out);
+        assert_eq!(&out, b"abc         ");
+        let mut out = [0u8; 7];
+        high_utf8(None, &mut out);
+        assert_eq!(out, [0xF4, 0x8F, 0xBF, 0xBF, 0xEF, 0xBF, 0xBF]);
+        let mut out = [0u8; 6];
+        high_utf8(None, &mut out);
+        assert_eq!(out, [0xF4, 0x8F, 0xBF, 0xBF, 0xDF, 0xBF]);
+        assert_eq!(utf8_count(&[0x41, 0xC3, 0xA9, 0xF0, 0x9F, 0x98, 0x80]), 3);
+    }
 
     #[test]
     fn subsystem_hfp_conversion_keeps_low_bits_beyond_ieee_double() {

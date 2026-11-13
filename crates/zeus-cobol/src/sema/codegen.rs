@@ -2489,6 +2489,24 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
+    /// Statements that would treat UTF-8 data as single-byte characters
+    /// refuse it (the LRM allows UTF-8 in STRING and UNSTRING since
+    /// PH57297; not implemented here).
+    fn refuse_utf8(&self, verb: &str, srcs: &[&Src], locs: &[&Loc]) -> Result<()> {
+        let utf8 = srcs.iter().any(|s| match s {
+            Src::Utf8(_) => true,
+            Src::Loc(l) => self.dm.descs[l.desc as usize].ty.is_utf8(),
+            _ => false,
+        }) || locs.iter().any(|l| self.dm.descs[l.desc as usize].ty.is_utf8());
+        if utf8 {
+            return Err(Diag::error(
+                self.pos,
+                format!("UTF-8 data in {verb} is not supported yet"),
+            ));
+        }
+        Ok(())
+    }
+
     /// Pairs of corresponding elementary items of two groups.
     /// The category of an elementary MOVE operand (Language Reference,
     /// "Valid and invalid elementary moves", Table 51). None when the table
@@ -2497,6 +2515,7 @@ impl<'a> Gen<'a> {
     fn move_category(&self, src: &Src) -> Option<MoveCat> {
         let ty = match src {
             Src::National(_) => return Some(MoveCat::National),
+            Src::Utf8(_) => return Some(MoveCat::Utf8),
             Src::NumLit(v, _) => {
                 return Some(if v.scale == 0 {
                     MoveCat::Integer
@@ -2523,6 +2542,7 @@ impl<'a> Gen<'a> {
             DataType::Float { .. } | DataType::ExternalFloat { .. } => MoveCat::Floating,
             DataType::Dbcs => MoveCat::Dbcs,
             DataType::National => MoveCat::National,
+            DataType::Utf8 { .. } => MoveCat::Utf8,
             _ => return None,
         })
     }
@@ -2544,12 +2564,13 @@ impl<'a> Gen<'a> {
         let valid = match from {
             Alphabetic | AlphanumericEdited => !to_numeric && to != Dbcs,
             Alphanumeric => to != Dbcs,
-            Integer => to != Alphabetic && to != Dbcs,
+            Integer => to != Alphabetic && to != Dbcs && to != Utf8,
             Noninteger | Floating => to_numeric,
             NumericEdited => to != Alphabetic && to != Dbcs,
             Dbcs => to == Dbcs || to_national,
             National => !to_alpha && to != Dbcs,
-            NationalEdited => to_national,
+            NationalEdited => to_national || to == Utf8,
+            Utf8 => to_national || to == Utf8,
         };
         if valid {
             Ok(())
@@ -3172,6 +3193,7 @@ impl<'a> Gen<'a> {
             Stmt::Accept { target, from, pos } => {
                 self.pos = *pos;
                 let dst = self.loc(target)?;
+                self.refuse_utf8("ACCEPT", &[], &[&dst])?;
                 let from = match from.as_deref() {
                     None => zir::AcceptFrom::Stdin,
                     Some("DATE") => zir::AcceptFrom::Date,
@@ -3542,7 +3564,11 @@ impl<'a> Gen<'a> {
                     self.initialize(t, replacing, options)?;
                 }
             }
-            Stmt::Inspect { target, ops } => self.inspect(target, ops)?,
+            Stmt::Inspect { target, ops } => {
+                let loc = self.loc(target)?;
+                self.refuse_utf8("INSPECT", &[], &[&loc])?;
+                self.inspect(target, ops)?
+            }
             Stmt::InspectValue { value, ops } => self.inspect_value(value, ops)?,
             Stmt::String {
                 sources,
@@ -3559,6 +3585,8 @@ impl<'a> Gen<'a> {
                     srcs.push((self.src(s)?, d));
                 }
                 let into = self.loc(into)?;
+                let all: Vec<&Src> = srcs.iter().flat_map(|(s, d)| std::iter::once(s).chain(d)).collect();
+                self.refuse_utf8("STRING", &all, &[&into])?;
                 let pointer = match pointer {
                     Some(p) => Some(self.loc(p)?),
                     None => None,
@@ -3604,6 +3632,13 @@ impl<'a> Gen<'a> {
                     Some(t) => Some(self.loc(t)?),
                     None => None,
                 };
+                let srcs: Vec<&Src> = delims.iter().map(|(_, d)| d).collect();
+                let mut locs: Vec<&Loc> = vec![&source];
+                for (t, d, _) in &targets {
+                    locs.push(t);
+                    locs.extend(d.iter());
+                }
+                self.refuse_utf8("UNSTRING", &srcs, &locs)?;
                 self.emit(Instr::Unstring {
                     source,
                     delims,
@@ -3954,6 +3989,7 @@ impl<'a> Gen<'a> {
                 DataType::Alphanumeric { .. } | DataType::Group => "ALPHANUMERIC",
                 DataType::Dbcs => "DBCS",
                 DataType::National => "NATIONAL",
+                DataType::Utf8 { .. } => "UTF-8",
                 DataType::Numeric(_) | DataType::Float { .. } | DataType::ExternalFloat { .. } => {
                     "NUMERIC"
                 }
@@ -5190,6 +5226,7 @@ enum MoveCat {
     Dbcs,
     National,
     NationalEdited,
+    Utf8,
 }
 
 impl std::fmt::Display for MoveCat {
@@ -5205,6 +5242,7 @@ impl std::fmt::Display for MoveCat {
             Self::Dbcs => "DBCS",
             Self::National => "national",
             Self::NationalEdited => "national-edited",
+            Self::Utf8 => "UTF-8",
         })
     }
 }

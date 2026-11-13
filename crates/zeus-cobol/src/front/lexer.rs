@@ -16,6 +16,8 @@ pub enum Tok {
     /// National literal `N"..."` (NSYMBOL(NATIONAL)) or `NX"..."`:
     /// UTF-16 big-endian.
     National(Vec<u8>),
+    /// UTF-8 literal U"..." / UX"..." (UTF-8 bytes).
+    Utf8(Vec<u8>),
     /// PICTURE character-string.
     Pic(String),
     /// An embedded `EXEC <kind> ... END-EXEC` block: the kind (`CICS`,
@@ -74,6 +76,10 @@ impl Token {
             ),
             Tok::National(b) => format!(
                 "NX\"{}\"",
+                b.iter().map(|x| format!("{x:02X}")).collect::<String>()
+            ),
+            Tok::Utf8(b) => format!(
+                "UX\"{}\"",
                 b.iter().map(|x| format!("{x:02X}")).collect::<String>()
             ),
             Tok::Pseudo(_) => "==...==".to_string(),
@@ -340,6 +346,32 @@ impl Lexer<'_> {
                         )
                     })?;
                     self.push(Tok::National(bytes), pos);
+                }
+                // UTF-8 literal in hexadecimal notation UX"..."
+                'U' | 'u'
+                    if matches!(self.peek(1), Some('X' | 'x'))
+                        && matches!(self.peek(2), Some('"' | '\'')) =>
+                {
+                    self.i += 2;
+                    let q = self.peek(0).unwrap();
+                    let s = self.literal(q)?;
+                    // "validated to ensure that it contains a legal sequence
+                    // of UTF-8 bytes" (LRM, UTF-8 literals)
+                    let bytes = parse_hex(&s)
+                        .filter(|b| !b.is_empty() && b.len() <= 160)
+                        .filter(|b| std::str::from_utf8(b).is_ok())
+                        .ok_or_else(|| {
+                            Diag::error(pos, format!("invalid UTF-8 hexadecimal literal UX\"{s}\""))
+                        })?;
+                    self.push(Tok::Utf8(bytes), pos);
+                }
+                // basic UTF-8 literal U"..."
+                'U' | 'u' if matches!(self.peek(1), Some('"' | '\'')) => {
+                    self.i += 1;
+                    let q = self.peek(0).unwrap();
+                    let s = self.literal(q)?;
+                    let bytes = utf8_literal(&s).map_err(|e| Diag::error(pos, e))?;
+                    self.push(Tok::Utf8(bytes), pos);
                 }
                 // N"...": national (UTF-16) or, with NSYMBOL(DBCS), DBCS;
                 // G"...": DBCS (double-byte characters of the code page)
@@ -650,6 +682,21 @@ mod tests {
     }
 
     #[test]
+    fn utf8_literals() {
+        // LRM example: u'caf\u00E9' represents 'café'
+        assert_eq!(toks("u'caf\\u00E9'"), [Tok::Utf8("café".into())]);
+        assert_eq!(toks("U'\\U0001F600'"), [Tok::Utf8(vec![0xF0, 0x9F, 0x98, 0x80])]);
+        // an escaped backslash keeps the sequence as text
+        assert_eq!(toks("U'\\\\u00E9'"), [Tok::Utf8("\\u00E9".into())]);
+        assert_eq!(toks("UX'C3A9'"), [Tok::Utf8(vec![0xC3, 0xA9])]);
+        // surrogate code points and ill-formed UTF-8 are refused
+        let stream: Vec<(char, Pos)> = "U'\\uD800'".chars().map(|c| (c, Pos::default())).collect();
+        assert!(lex(&stream, false).is_err());
+        let stream: Vec<(char, Pos)> = "UX'C3'".chars().map(|c| (c, Pos::default())).collect();
+        assert!(lex(&stream, false).is_err());
+    }
+
+    #[test]
     fn words_numbers_period() {
         assert_eq!(
             toks("move -1.5 to a-b. 100-x"),
@@ -728,4 +775,56 @@ mod tests {
     fn comma_separators() {
         assert_eq!(toks("A, B; C"), [w("A"), w("B"), w("C")]);
     }
+}
+
+/// Content of a basic UTF-8 literal: the source characters as UTF-8, with
+/// the Unicode escapes \uhhhh and \U00hhhhhh replaced and a backslash
+/// before an escape taken literally (LRM, basic UTF-8 literals). At most
+/// 160 bytes are kept, truncated on a character boundary.
+fn utf8_literal(s: &str) -> std::result::Result<Vec<u8>, String> {
+    let chars: Vec<char> = s.chars().collect();
+    let mut out = String::new();
+    let mut i = 0;
+    while i < chars.len() {
+        let c = chars[i];
+        if c == '\\' && chars.get(i + 1) == Some(&'\\')
+            && matches!(chars.get(i + 2), Some('u' | 'U'))
+        {
+            out.push('\\');
+            i += 2;
+            continue;
+        }
+        let width = match (c, chars.get(i + 1)) {
+            ('\\', Some('u')) => 4,
+            ('\\', Some('U')) => 8,
+            _ => 0,
+        };
+        if width > 0 {
+            let digits: String = chars.iter().skip(i + 2).take(width).collect();
+            let code = (digits.len() == width && digits.chars().all(|d| d.is_ascii_hexdigit()))
+                .then(|| u32::from_str_radix(&digits, 16).ok())
+                .flatten()
+                .filter(|_| width == 4 || digits.starts_with("00"));
+            let ch = code.and_then(char::from_u32).ok_or_else(|| {
+                format!("invalid Unicode escape sequence in UTF-8 literal: \\{}{digits}", chars[i + 1])
+            })?;
+            out.push(ch);
+            i += 2 + width;
+            continue;
+        }
+        out.push(c);
+        i += 1;
+    }
+    if out.is_empty() {
+        return Err("a UTF-8 literal must contain at least one character".into());
+    }
+    let mut bytes = out.into_bytes();
+    if bytes.len() > 160 {
+        let mut end = 160;
+        while end > 0 && (bytes[end] & 0xC0) == 0x80 {
+            end -= 1;
+        }
+        bytes.truncate(end);
+    }
+    Ok(bytes)
 }

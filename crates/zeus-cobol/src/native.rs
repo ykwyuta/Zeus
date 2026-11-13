@@ -193,6 +193,8 @@ pub fn compile(module: &Module, triple: &str) -> Result<NativeModule, String> {
         }
         if p.descs.iter().any(|d| {
             (d.right_justify && matches!(d.ty, DataType::National | DataType::Dbcs))
+                // UTF-8 data is moved and compared by the interpreter
+                || d.ty.is_utf8()
                 || d.dynamic_offset.is_some()
                 || d.dynamic_len.is_some()
                 || d.dims.iter().any(|dim| dim.dynamic_stride.is_some())
