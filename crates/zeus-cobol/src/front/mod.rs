@@ -52,6 +52,8 @@ pub struct FrontOptions {
     pub awo: bool,
     pub block0: bool,
     pub ssrange: bool,
+    /// NUMCHECK flags (crate::zir::numcheck); 0 is NONUMCHECK.
+    pub numcheck: u8,
     pub codepage: Option<u32>,
     pub dynam: bool,
     pub dll: bool,
@@ -99,6 +101,7 @@ thread_local! {
     static AWO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static BLOCK0: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static SSRANGE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static NUMCHECK: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
     static NSYMBOL_DBCS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static TRUNC: std::cell::Cell<Trunc> = const { std::cell::Cell::new(Trunc::Std) };
     static NUMERIC: std::cell::Cell<crate::numeric::Settings> = const { std::cell::Cell::new(crate::numeric::Settings {
@@ -132,6 +135,9 @@ pub(crate) fn block0() -> bool {
 }
 pub(crate) fn ssrange() -> bool {
     SSRANGE.get()
+}
+pub(crate) fn numcheck() -> u8 {
+    NUMCHECK.get()
 }
 pub(crate) fn dynam() -> bool {
     DYNAM.get()
@@ -487,6 +493,7 @@ pub fn source_unit_tokens(
     AWO.set(settings.awo);
     BLOCK0.set(settings.block0);
     SSRANGE.set(settings.ssrange);
+    NUMCHECK.set(settings.numcheck);
     DYNAM.set(settings.dynam);
     DLL.set(settings.dll);
     EXPORTALL.set(settings.exportall);

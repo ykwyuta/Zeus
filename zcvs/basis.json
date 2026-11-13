@@ -1165,6 +1165,41 @@
       }
     }
   },
+  "ZA130A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: NUMCHECK | The NUMCHECK compiler option tells the compiler whether to generate extra code to validate data items when they are used as sending data items."
+    ],
+    "tests": {
+      "NC-VALID-ADD": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | If the data is NUMERIC, the external behavior of the statement is the same as NUMCHECK(NOZON), other than being slower.",
+          "COB-PG: NUMCHECK | For binary data items, the compiler generates SIZE ERROR checking to see whether the data item has more digits than its PICTURE clause allows."
+        ]
+      },
+      "NC-VALID-COMPUTE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | If the data is NUMERIC, the external behavior of the statement is the same as NUMCHECK(NOZON), other than being slower.",
+          "COB-PG: NUMCHECK | For binary data items, the compiler generates SIZE ERROR checking to see whether the data item has more digits than its PICTURE clause allows."
+        ]
+      },
+      "NC-VALID-COMPARE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | If the data is NUMERIC, the external behavior of the statement is the same as NUMCHECK(NOZON), other than being slower."
+        ]
+      },
+      "NC-SEND-RECEIVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | Receivers are not checked, unless they are both a sender and a receiver, such as data item B in the following sample statements:",
+          "COB-PG: NUMCHECK | If the data is NOT NUMERIC, either a warning message for NUMCHECK(ZON,MSG) or a terminating message for NUMCHECK(ZON,ABD) is issued."
+        ]
+      }
+    }
+  },
   "ZD101A": {
     "basis": "spec",
     "refs": [

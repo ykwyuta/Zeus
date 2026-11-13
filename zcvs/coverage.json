@@ -859,6 +859,15 @@
       "UWIDTH"
     ]
   },
+  "ZA130A": {
+    "expect": "run",
+    "tests": [
+      "NC-VALID-ADD",
+      "NC-VALID-COMPUTE",
+      "NC-VALID-COMPARE",
+      "NC-SEND-RECEIVE"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [

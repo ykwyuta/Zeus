@@ -11,7 +11,7 @@ See [SCENARIOS.md](SCENARIOS.md) for the requirement-by-requirement audit, missi
 | Module | Category | Programs |
 |--------|----------|----------|
 | `ZD` | Packed/zoned/binary storage, layout, ODO, edited PICTURE, figurative constants, collation | `ZD101A` .. `ZD115A` (15) |
-| `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA129A` (29) |
+| `ZA` | TRUNC, arithmetic, NUMPROC/NUMCLS sign matrix, HFP, intrinsic functions, ARITH(EXTEND) | `ZA101A` .. `ZA130A` (30) |
 | `ZN` | National, DBCS, NSYMBOL, CCSID conversion, UTF-16 boundaries | `ZN101A` .. `ZN115A`, including `ZN102B` and `ZN106M` (15) |
 | `ZP` | Subprograms, ENTRY, recursion, storage lifetime, pointers, visibility, CALL arguments, debugging declaratives | `ZP101A` .. `ZP117A` + 19 `lib/` subprograms (17 mains) |
 | `ZF` | QSAM F/V/S/U, CODE-SET, KSDS/RRDS status, alternate indexes, shared areas, AWS tape | `ZF101A` .. `ZF115A`, `ZF201M`, `ZF202M` (17) |

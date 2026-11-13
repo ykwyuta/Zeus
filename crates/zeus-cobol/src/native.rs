@@ -178,7 +178,9 @@ pub fn compile(module: &Module, triple: &str) -> Result<NativeModule, String> {
     let isa = target_isa(triple, module.optimize)?;
     let mut programs = Vec::new();
     for p in &module.programs {
+        // SSRANGE and NUMCHECK checks are made by the interpreter
         if p.ssrange
+            || p.numcheck != 0
             || p.lp64
             || !p.invocation_storage.is_empty()
             || !p.rerun.is_empty()

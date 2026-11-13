@@ -119,6 +119,10 @@ pub struct ProgramCode {
     pub exportall: bool,
     #[serde(default)]
     pub ssrange: bool,
+    /// NUMCHECK: the data types whose sending items are checked before use
+    /// (numcheck::ZON, PAC, BIN) and ABD; 0 is NONUMCHECK.
+    #[serde(default)]
+    pub numcheck: u8,
     #[serde(default)]
     pub dynam: bool,
     #[serde(default)]
@@ -1254,4 +1258,12 @@ pub enum AcceptFrom {
     DayYyyyddd,
     DayOfWeek,
     Time,
+}
+
+/// NUMCHECK flags of ProgramCode::numcheck.
+pub mod numcheck {
+    pub const ZON: u8 = 1;
+    pub const PAC: u8 = 2;
+    pub const BIN: u8 = 4;
+    pub const ABD: u8 = 0x80;
 }

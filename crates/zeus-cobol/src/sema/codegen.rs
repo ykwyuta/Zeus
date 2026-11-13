@@ -1740,6 +1740,7 @@ impl<'a> Gen<'a> {
                     .collect()
             },
             ssrange: crate::front::ssrange(),
+            numcheck: crate::front::numcheck(),
             dynam: crate::front::dynam(),
             dll: crate::front::dll() || crate::front::lp64(),
             exportall: crate::front::exportall(),

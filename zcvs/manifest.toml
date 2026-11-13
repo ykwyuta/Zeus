@@ -31,6 +31,10 @@ parm = "/DEBUG"
 parm = "NIGHTLY,20261016"
 expect_exit_code = 4
 
+[programs.ZA130A]
+# NUMCHECK(...,ABD) with an invalid zoned sender ends the run unit (Zeus RC 16; z/OS to be recorded)
+expect_exit_code = 16
+
 [programs.ZA124A]
 # NUMVAL with an invalid argument ends the run unit (Zeus RC 16; z/OS to be recorded)
 expect_exit_code = 16

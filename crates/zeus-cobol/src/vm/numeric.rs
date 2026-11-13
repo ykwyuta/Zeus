@@ -189,7 +189,12 @@ impl Machine {
                 .map_err(RunError)?,
             Ex::Load(loc) => {
                 let (a, len) = self.addr(cur, loc)?;
-                Number::from_item(&self.loc_type(cur, loc), &self.mem[a..a + len])
+                let ty = self.loc_type(cur, loc);
+                let flags = self.instances[cur].code.numcheck;
+                if flags != 0 {
+                    self.numcheck(cur, flags, &ty, a, len)?;
+                }
+                Number::from_item(&ty, &self.mem[a..a + len])
             }
             Ex::Temp(t) => self.instances[cur].wide_temps[*t as usize]
                 .clone()

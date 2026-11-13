@@ -291,6 +291,10 @@ impl Machine {
             Ex::Load(loc) => {
                 let (a, l) = self.addr(cur, loc)?;
                 let ty = self.loc_type(cur, loc);
+                let flags = self.instances[cur].code.numcheck;
+                if flags != 0 {
+                    self.numcheck(cur, flags, &ty, a, l)?;
+                }
                 d::value_of(&ty, &self.mem[a..a + l])
             }
             Ex::LengthOf(loc) => {
@@ -1147,6 +1151,58 @@ fn is_upper(b: u8) -> bool {
 
 fn is_lower(b: u8) -> bool {
     matches!(b, 0x81..=0x89 | 0x91..=0x99 | 0xA2..=0xA9)
+}
+
+impl super::Machine {
+    /// NUMCHECK: a zoned or packed sending item must pass the NUMERIC class
+    /// test, and a binary one must fit its PICTURE digits. MSG warns and
+    /// goes on as NONUMCHECK would; ABD ends the run (Programming Guide,
+    /// NUMCHECK).
+    pub(super) fn numcheck(
+        &mut self,
+        cur: usize,
+        flags: u8,
+        ty: &DataType,
+        a: usize,
+        l: usize,
+    ) -> RResult<()> {
+        use crate::zir::numcheck::*;
+        let DataType::Numeric(t) = ty else {
+            return Ok(());
+        };
+        let bytes = &self.mem[a..a + l];
+        let valid = match t.usage {
+            NumUsage::Display if flags & ZON != 0 => class_test(
+                &Val::Item(ty.clone(), bytes.to_vec()),
+                &ClassKind::Numeric,
+                self.instances[cur].code.numeric.unwrap_or_default(),
+            ),
+            NumUsage::Packed if flags & PAC != 0 => class_test(
+                &Val::Item(ty.clone(), bytes.to_vec()),
+                &ClassKind::Numeric,
+                self.instances[cur].code.numeric.unwrap_or_default(),
+            ),
+            NumUsage::Binary if flags & BIN != 0 => {
+                let raw = binary::read(bytes, t.signed);
+                raw.unsigned_abs() < 10u128.pow(t.digits)
+            }
+            _ => true,
+        };
+        if valid {
+            return Ok(());
+        }
+        let what = match t.usage {
+            NumUsage::Binary => "has more digits than its PICTURE allows",
+            _ => "is not NUMERIC",
+        };
+        if flags & ABD != 0 {
+            return Err(super::RunError(format!(
+                "NUMCHECK: a sending data item {what}"
+            )));
+        }
+        eprintln!("zcobc: NUMCHECK: a sending data item {what}");
+        Ok(())
+    }
 }
 
 fn class_test(v: &Val, k: &ClassKind, settings: crate::numeric::Settings) -> bool {
