@@ -221,6 +221,16 @@
       "DS-UNINITIALIZED"
     ]
   },
+  "HD108A": {
+    "expect": "run",
+    "tests": [
+      "LQ-QUADWORD-ALIGN",
+      "L-DOUBLEWORD-ALIGN",
+      "LQ-IMPLICIT-LENGTH",
+      "LQ-VALUE-ONE",
+      "LQ-EQUALS-L"
+    ]
+  },
   "HE101N": {
     "expect": "compile-error",
     "tests": []
