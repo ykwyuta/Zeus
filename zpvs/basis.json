@@ -1054,6 +1054,50 @@
       }
     }
   },
+  "PC119A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLCOMPARE | ALLCOMPARE(x, y, z) returns a BIT(1) value that indicates the result of comparing all the elements of two structures."
+    ],
+    "tests": {
+      "ALLCOMPARE-EQ-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | If you do not specify z, EQ is the default value."
+        ]
+      },
+      "ALLCOMPARE-LT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | ALLCOMPARE(x, y, 'lt') returns '1'B if every leaf element of x is less than the corresponding leaf element of y."
+        ]
+      },
+      "ALLCOMPARE-ONE-DIFFERS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | ALLCOMPARE(x, y, 'lt') returns '1'B if every leaf element of x is less than the corresponding leaf element of y."
+        ]
+      },
+      "ALLCOMPARE-LOWER-CASE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      },
+      "ALLCOMPARE-LE-GE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      },
+      "ALLCOMPARE-NE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

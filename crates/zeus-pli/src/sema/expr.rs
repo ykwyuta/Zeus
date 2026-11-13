@@ -1400,6 +1400,63 @@ impl Compiler {
             ProcedureName | PackageName | SourceFile | SourceLine | IsMain | MainName => {
                 return self.program_info(b, pos);
             }
+            // ALLCOMPARE(x, y [,z]): every leaf element of x compared with the
+            // corresponding one of y by z (EQ, LE, LT, GT, GE, NE; EQ when
+            // omitted), x and y similar structures (LRM)
+            AllCompare => {
+                let structure = |c: &mut Self, e: Option<&ast::Expr>| -> Result<Ref> {
+                    match e {
+                        Some(ast::Expr::Ref(r)) => c.reference(r, true),
+                        _ => Err(c.err(pos, "ALLCOMPARE requires structure references")),
+                    }
+                };
+                let x = structure(self, args.first())?;
+                let y = structure(self, args.get(1))?;
+                let op = match args.get(2) {
+                    None => CmpOp::Eq,
+                    Some(ast::Expr::Str { text, .. }) => match text.to_ascii_uppercase().as_str() {
+                        "EQ" => CmpOp::Eq,
+                        "NE" => CmpOp::Ne,
+                        "LT" => CmpOp::Lt,
+                        "LE" => CmpOp::Le,
+                        "GT" => CmpOp::Gt,
+                        "GE" => CmpOp::Ge,
+                        _ => return Err(self.err(pos, "ALLCOMPARE: the third argument must be EQ, LE, LT, GT, GE or NE")),
+                    },
+                    Some(_) => return Err(self.err(pos, "ALLCOMPARE: the third argument must be a CHAR(2) constant")),
+                };
+                fn leaves(m: &crate::ir::Module, v: VarId, out: &mut Vec<VarId>) {
+                    let members = &m.vars[v as usize].members;
+                    if members.is_empty() {
+                        out.push(v);
+                    }
+                    for &k in members {
+                        leaves(m, k, out);
+                    }
+                }
+                let (mut lx, mut ly) = (Vec::new(), Vec::new());
+                leaves(&self.m, x.var, &mut lx);
+                leaves(&self.m, y.var, &mut ly);
+                // arrays among the elements or of the structures are not
+                // expanded here
+                let flat = |c: &Self, r: &Ref, l: &[VarId]| {
+                    r.subs.is_empty() && l.iter().all(|&v| c.m.vars[v as usize].dims.is_empty())
+                };
+                if lx.len() != ly.len() || lx.len() < 2 || !flat(self, &x, &lx) || !flat(self, &y, &ly) {
+                    return Err(self.err(pos, "ALLCOMPARE of these structures is not supported yet (similar structures of scalars only)"));
+                }
+                let mut acc: Option<Expr> = None;
+                for (a, b) in lx.iter().zip(&ly) {
+                    let ea = self.load(Ref { var: *a, subs: Vec::new(), locator: x.locator.clone() }, pos)?;
+                    let eb = self.load(Ref { var: *b, subs: Vec::new(), locator: y.locator.clone() }, pos)?;
+                    let c = self.compare(op, ea, eb);
+                    acc = Some(match acc {
+                        None => c,
+                        Some(p) => self.bits(BitOp::And, p, c),
+                    });
+                }
+                return Ok(acc.unwrap());
+            }
             // INDICATORS(x): the elements at the next logical level of the
             // structure x, a restricted expression (LRM)
             Indicators => {

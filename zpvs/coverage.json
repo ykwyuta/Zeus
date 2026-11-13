@@ -307,6 +307,17 @@
       "INDICATORS"
     ]
   },
+  "PC119A": {
+    "expect": "run",
+    "tests": [
+      "ALLCOMPARE-EQ-DEFAULT",
+      "ALLCOMPARE-LT",
+      "ALLCOMPARE-LOWER-CASE",
+      "ALLCOMPARE-LE-GE",
+      "ALLCOMPARE-ONE-DIFFERS",
+      "ALLCOMPARE-NE"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

@@ -232,6 +232,7 @@ pub enum Bif {
     FileDdWord,
     Repattern,
     Indicators,
+    AllCompare,
     PicSpec,
     CodePage,
     SubTo,
@@ -596,6 +597,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "FILEDDWORD" => FileDdWord,
         "REPATTERN" => Repattern,
         "INDICATORS" => Indicators,
+        "ALLCOMPARE" => AllCompare,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -1011,6 +1013,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         FileNew => Ty::File,
         Repattern => Ty::char_var(26),
         Indicators => fixed_bin31(),
+        AllCompare => Ty::bit(1),
         EntryAddr => Ty::Pointer,
         // the same string type as x, at most its length
         Usubstr => match arg(0)? {

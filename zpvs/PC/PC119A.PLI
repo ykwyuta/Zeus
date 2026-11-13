@@ -1,0 +1,40 @@
+ PC119A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* ALLCOMPARE (Enterprise PL/I 6.1 Language Reference).
+    ALLCOMPARE(x,y,z) is '1'B when every leaf element of the structure
+    x compares with the corresponding leaf element of the similar
+    structure y as z says: EQ (the default), NE, LT, LE, GT or GE, in
+    upper or lower case. */
+ DCL 1 X,
+       2 A FIXED BIN(31) INIT(1),
+       2 B,
+         3 C CHAR(2) INIT('AA'),
+         3 D FIXED DEC(5) INIT(10);
+ DCL 1 Y,
+       2 A FIXED BIN(31) INIT(1),
+       2 B,
+         3 C CHAR(2) INIT('AA'),
+         3 D FIXED DEC(5) INIT(10);
+ DCL 1 Z,
+       2 A FIXED BIN(31) INIT(2),
+       2 B,
+         3 C CHAR(2) INIT('BB'),
+         3 D FIXED DEC(5) INIT(20);
+
+ OPEN FILE(REPORT);
+
+ CALL ZCHECK('ALLCOMPARE-EQ-DEFAULT', ALLCOMPARE(X, Y));
+ CALL ZCHECK('ALLCOMPARE-LT', ALLCOMPARE(X, Z, 'LT'));
+ CALL ZCHECK('ALLCOMPARE-LOWER-CASE', ALLCOMPARE(Z, X, 'gt'));
+ CALL ZCHECK('ALLCOMPARE-LE-GE',
+   ALLCOMPARE(X, Y, 'LE') & ALLCOMPARE(X, Y, 'GE'));
+ Y.B.D = 11;
+ CALL ZCHECK('ALLCOMPARE-ONE-DIFFERS',
+   ^ALLCOMPARE(X, Y) & ^ALLCOMPARE(X, Y, 'LT') &
+   ALLCOMPARE(X, Y, 'LE'));
+ CALL ZCHECK('ALLCOMPARE-NE',
+   ALLCOMPARE(X, Z, 'NE') & ^ALLCOMPARE(X, Y, 'NE'));
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC119A;
