@@ -3,7 +3,7 @@
 
 mod bif;
 mod cics;
-mod conv;
+pub(crate) mod conv;
 mod datefmt;
 mod digest;
 mod record;
@@ -1223,6 +1223,27 @@ impl Machine {
                 })?;
                 Value::cplx(re, im)
             }
+            // UCHAR: n characters in 4n bytes; VARYING: the 2-byte count of
+            // characters first; VARYINGZ: up to a '00'ux
+            Ty::Uchar { len, var } => {
+                let n = match len {
+                    Ext::Const(n) => *n as usize,
+                    _ => 0,
+                };
+                match var {
+                    Varying::Fixed => Value::Char(conv::uchar_take(&self.read(addr, 4 * n)?, n).0),
+                    Varying::Varying => {
+                        let l = self.read(addr, 2)?;
+                        let cur = usize::from(u16::from_be_bytes([l[0], l[1]])).min(n);
+                        Value::Char(conv::uchar_take(&self.read(addr + 2, 4 * n)?, cur).0)
+                    }
+                    Varying::VaryingZ => {
+                        let b = self.read(addr, 4 * n + 1)?;
+                        let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
+                        Value::Char(conv::uchar_take(&b[..end], n).0)
+                    }
+                }
+            }
             // GRAPHIC, WIDECHAR: the stored bytes
             Ty::Wchar { len, var, .. } => {
                 let n = match len {
@@ -1358,6 +1379,29 @@ impl Machine {
                     },
                     &c.1,
                 )?;
+            }
+            (Ty::Uchar { len, var }, Value::Char(s)) => {
+                let n = match len {
+                    Ext::Const(n) => *n as usize,
+                    _ => conv::uchar_count(s),
+                };
+                match var {
+                    Varying::Fixed => {
+                        let mut b = conv::uchar_fit(s, n);
+                        b.resize(4 * n, 0x20);
+                        self.write(addr, &b)?;
+                    }
+                    Varying::Varying => {
+                        let (b, k) = conv::uchar_take(s, n);
+                        self.write(addr, &(k as u16).to_be_bytes())?;
+                        self.write(addr + 2, &b)?;
+                    }
+                    Varying::VaryingZ => {
+                        let (mut b, _) = conv::uchar_take(s, n);
+                        b.push(0);
+                        self.write(addr, &b)?;
+                    }
+                }
             }
             (Ty::Wchar { len, var, graphic }, Value::Char(s)) => {
                 let n = match len {

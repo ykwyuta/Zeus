@@ -575,6 +575,61 @@ impl Machine {
                 };
                 Value::int(r as i64)
             }
+            // UCHAR: characters, not bytes
+            Length if matches!(args[0].ty, Ty::Uchar { .. }) => {
+                Value::int(super::conv::uchar_count(&chars(&v[0])) as i64)
+            }
+            // BYTELENGTH: the UTF-8 bytes of the value, without a VARYING
+            // prefix or VARYINGZ terminator (LRM)
+            ByteLength => Value::int(chars(&v[0]).len() as i64),
+            LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1 => {
+                let text = std::string::String::from_utf8_lossy(&chars(&v[0])).into_owned();
+                let latin = matches!(b, LowerLatin1 | UpperLatin1);
+                let lower = matches!(b, LowerAscii | LowerLatin1);
+                let out: std::string::String = text
+                    .chars()
+                    .map(|c| {
+                        let in_range = if latin { (c as u32) < 0x100 } else { c.is_ascii() };
+                        // y diaeresis and sharp s are not changed (LRM)
+                        if !in_range || c == 'ÿ' || c == 'ß' || c == '×' || c == '÷' {
+                            return c;
+                        }
+                        let m: Vec<char> = if lower {
+                            c.to_lowercase().collect()
+                        } else {
+                            c.to_uppercase().collect()
+                        };
+                        match m.as_slice() {
+                            [x] if (*x as u32) < 0x100 => *x,
+                            _ => c,
+                        }
+                    })
+                    .collect();
+                Value::Char(out.into_bytes())
+            }
+            // 0 when the strings match under Unicode case folding. Zeus folds
+            // with the lowercase mapping; full folding also maps sharp s
+            // (and capital sharp s) to ss, as the LRM example Strasse needs.
+            FoldedFullMatch | FoldedSimpleMatch => {
+                let full = b != FoldedSimpleMatch;
+                let fold = |bytes: &[u8]| -> std::string::String {
+                    let t = std::string::String::from_utf8_lossy(bytes);
+                    t.chars()
+                        .flat_map(|c| {
+                            if full && (c == 'ß' || c == 'ẞ') {
+                                return vec!['s', 's'];
+                            }
+                            if c == 'ẞ' {
+                                return vec!['ß'];
+                            }
+                            let l: Vec<char> = c.to_lowercase().collect();
+                            if l.len() == 1 || full { l } else { vec![c] }
+                        })
+                        .collect()
+                };
+                let (x, y) = (fold(&chars(&v[0])), fold(&chars(&v[1])));
+                Value::int(i64::from(x != y))
+            }
             Length => Value::int(match &v[0] {
                 Value::Char(c) => c.len(),
                 Value::Bit(b) => b.len(),

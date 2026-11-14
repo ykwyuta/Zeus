@@ -280,7 +280,12 @@ impl Parser {
                 {
                     self.bump();
                     let text = match kind {
-                        StrKind::Char | StrKind::Bit(_) | StrKind::Hex | StrKind::WideHex => {
+                        StrKind::Char
+                        | StrKind::Bit(_)
+                        | StrKind::Hex
+                        | StrKind::WideHex
+                        | StrKind::UcharHex
+                        | StrKind::Uchar => {
                             text.repeat(n)
                         }
                         _ => text,
@@ -606,6 +611,7 @@ impl Parser {
                 "BIT" => Attr::Bit(self.opt_extent()?),
                 "GRAPHIC" | "G" => Attr::Graphic(self.opt_extent()?),
                 "WIDECHAR" | "WCHAR" => Attr::Widechar(self.opt_extent()?),
+                "UCHAR" => Attr::Uchar(self.opt_extent()?),
                 "VARYING" | "VAR" => Attr::Varying,
                 "VARYINGZ" | "VARZ" => Attr::VaryingZ,
                 "NONVARYING" | "NONVAR" => Attr::Nonvarying,

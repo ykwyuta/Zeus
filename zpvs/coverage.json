@@ -330,6 +330,24 @@
       "ALIGNED-N-NOT-PRECISION"
     ]
   },
+  "PC121A": {
+    "expect": "run",
+    "tests": [
+      "UCHAR-STORAGE",
+      "BYTELENGTH-A",
+      "BYTELENGTH-A-UMLAUT",
+      "BYTELENGTH-STRASSE",
+      "UCHAR-VARYING",
+      "UCHAR-PADDED",
+      "UCHAR-TO-CHAR",
+      "UPPERASCII",
+      "UPPERLATIN1",
+      "LOWERASCII",
+      "LOWERLATIN1",
+      "FOLDEDFULLMATCH",
+      "FOLDEDSIMPLEMATCH"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

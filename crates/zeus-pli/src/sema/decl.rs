@@ -172,6 +172,7 @@ impl Compiler {
         let mut unsigned = false;
         let mut string: Option<(bool, Ext)> = None;
         let mut wide: Option<(bool, Ext)> = None;
+        let mut uchar: Option<Ext> = None;
         for a in attrs {
             match a {
                 Attr::Fixed => fixed = true,
@@ -200,6 +201,12 @@ impl Compiler {
                         None => Ext::Const(1),
                     };
                     string = Some((matches!(a, Attr::Bit(_)), len));
+                }
+                Attr::Uchar(l) => {
+                    uchar = Some(match l {
+                        Some(e) => self.extent(e, block, dyn_ok, pos)?,
+                        None => Ext::Const(1),
+                    });
                 }
                 Attr::Graphic(l) | Attr::Widechar(l) => {
                     let len = match l {
@@ -241,6 +248,9 @@ impl Compiler {
                 Attr::File => return Ok(Ty::File),
                 _ => {}
             }
+        }
+        if let Some(len) = uchar {
+            return Ok(Ty::Uchar { len, var });
         }
         if let Some((graphic, len)) = wide {
             let var = if var == Varying::Fixed {
@@ -522,6 +532,7 @@ impl Compiler {
                     | Attr::Format
                     | Attr::Graphic(_)
                     | Attr::Widechar(_)
+                    | Attr::Uchar(_)
                     | Attr::Type(_)
                     | Attr::Builtin
                     | Attr::Condition

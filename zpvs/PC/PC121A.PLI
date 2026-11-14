@@ -1,0 +1,52 @@
+ PC121A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* UCHAR data (Enterprise PL/I 6.1 Language Reference) and BYTELENGTH,
+    LOWERASCII, UPPERASCII, LOWERLATIN1, UPPERLATIN1, FOLDEDFULLMATCH
+    and FOLDEDSIMPLEMATCH. UCHAR holds UTF-8; a UCHAR(n) has n
+    characters in 4n bytes of storage; character data assigned to it
+    is converted from the code page and padded with uchar blanks. The
+    BYTELENGTH examples of the LRM: UCHAR(1) holding A is 1 byte and
+    A with diaeresis 2; UCHAR(6) holding Strasse with a sharp s is 7.
+    A UX constant is hexadecimal UTF-8. In a comparison with character
+    data, the character data is converted to uchar. */
+ DCL X1 UCHAR(1);
+ DCL X6 UCHAR(6);
+ DCL XV UCHAR(8) VARYING;
+ DCL C CHAR(8) VARYING;
+
+ OPEN FILE(REPORT);
+
+ CALL ZCHECK('UCHAR-STORAGE',
+   STORAGE(X1) = 4 & STORAGE(X6) = 24 & STORAGE(XV) = 34);
+ X1 = 'A';
+ CALL ZCHECK('BYTELENGTH-A', LENGTH(X1) = 1 & BYTELENGTH(X1) = 1);
+ X1 = 'Ä';
+ CALL ZCHECK('BYTELENGTH-A-UMLAUT',
+   BYTELENGTH(X1) = 2 & X1 = 'C384'UX);
+ X6 = 'Straße';
+ CALL ZCHECK('BYTELENGTH-STRASSE',
+   LENGTH(X6) = 6 & BYTELENGTH(X6) = 7);
+ XV = 'Straße';
+ CALL ZCHECK('UCHAR-VARYING', LENGTH(XV) = 6 & BYTELENGTH(XV) = 7);
+ X6 = 'ab';
+ CALL ZCHECK('UCHAR-PADDED', BYTELENGTH(X6) = 6 & X6 = 'ab');
+ C = X6;
+ CALL ZCHECK('UCHAR-TO-CHAR', C = 'ab    ');
+ XV = UPPERASCII('5374726173_C3A4'UX);
+ CALL ZCHECK('UPPERASCII', XV = '5354524153_C3A4'UX);
+ XV = UPPERLATIN1('C3A4_C39F'UX);
+ CALL ZCHECK('UPPERLATIN1', XV = 'C384_C39F'UX);
+ XV = LOWERASCII('41C384'UX);
+ CALL ZCHECK('LOWERASCII', XV = '61C384'UX);
+ XV = LOWERLATIN1('41C384'UX);
+ CALL ZCHECK('LOWERLATIN1', XV = '61C3A4'UX);
+ CALL ZCHECK('FOLDEDFULLMATCH',
+   FOLDEDFULLMATCH('Haus', 'HAUS') = 0 &
+   FOLDEDFULLMATCH('Straße', 'STRASSE') = 0);
+ CALL ZCHECK('FOLDEDSIMPLEMATCH',
+   FOLDEDSIMPLEMATCH('Haus', 'HAUS') = 0 &
+   FOLDEDSIMPLEMATCH('Straße', 'STRASSE') ^= 0);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC121A;

@@ -11,6 +11,14 @@ pub fn mk(k: Ek, ty: Ty) -> Expr {
     Expr { k: Box::new(k), ty }
 }
 
+/// A UCHAR value of any length (comparison and concatenation operands).
+pub fn uchar_any() -> Ty {
+    Ty::Uchar {
+        len: Ext::Star,
+        var: Varying::Varying,
+    }
+}
+
 /// Natural-length character type of an expression result.
 pub fn char_any() -> Ty {
     Ty::Char {
@@ -232,6 +240,10 @@ impl Compiler {
             || matches!(b.ty, Ty::Pointer | Ty::Offset(_))
         {
             (self.conv(a, &Ty::Pointer), self.conv(b, &Ty::Pointer))
+        } else if matches!(a.ty, Ty::Uchar { .. }) || matches!(b.ty, Ty::Uchar { .. }) {
+            // uchar comparison ranks above widechar, graphic, character
+            // and bit (LRM, comparison operations)
+            (self.conv(a, &uchar_any()), self.conv(b, &uchar_any()))
         } else if a.ty.is_char() || b.ty.is_char() {
             (self.to_char(a), self.to_char(b))
         } else if a.ty.is_bit() || b.ty.is_bit() {
@@ -243,6 +255,17 @@ impl Compiler {
     }
 
     fn concat(&self, a: Expr, b: Expr) -> Expr {
+        // if either operand is uchar, the result is uchar (LRM)
+        if matches!(a.ty, Ty::Uchar { .. }) || matches!(b.ty, Ty::Uchar { .. }) {
+            let len = match (const_len(&a.ty), const_len(&b.ty)) {
+                (Some(x), Some(y)) if matches!(a.ty, Ty::Uchar { .. }) && matches!(b.ty, Ty::Uchar { .. }) => {
+                    Ext::Const(x + y)
+                }
+                _ => Ext::Star,
+            };
+            let (a, b) = (self.conv(a, &uchar_any()), self.conv(b, &uchar_any()));
+            return mk(Ek::Concat(a, b), Ty::Uchar { len, var: Varying::Varying });
+        }
         // RULES(IBM): BIT when either operand is a bit string or binary
         // arithmetic, otherwise CHARACTER
         let bitish = |t: &Ty| t.is_bit() || (matches!(t, Ty::Fixed { dec: false, .. }));
@@ -412,6 +435,26 @@ impl Compiler {
                 let b = zeus_cobol::ebcdic::encode(text);
                 let n = b.len() as u32;
                 mk(Ek::Char(b), Ty::char(n))
+            }
+            // UX: hexadecimal UTF-8 bytes, which must be valid UTF-8; U:
+            // the characters of the constant (LRM, UX (hex) UCHAR constant)
+            StrKind::Uchar => {
+                let b = text.as_bytes().to_vec();
+                let n = crate::vm::conv::uchar_count(&b) as u32;
+                mk(Ek::Char(b), Ty::Uchar { len: Ext::Const(n), var: Varying::Fixed })
+            }
+            StrKind::UcharHex => {
+                let t: String = text.chars().filter(|c| !c.is_whitespace() && *c != '_').collect();
+                let b: Vec<u8> = (0..t.len() / 2 * 2)
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(&t[i..i + 2], 16))
+                    .collect::<std::result::Result<_, _>>()
+                    .map_err(|_| bad())?;
+                if t.len() % 2 != 0 || std::str::from_utf8(&b).is_err() {
+                    return Err(bad());
+                }
+                let n = crate::vm::conv::uchar_count(&b) as u32;
+                mk(Ek::Char(b), Ty::Uchar { len: Ext::Const(n), var: Varying::Fixed })
             }
             StrKind::Hex | StrKind::WideHex => {
                 // the break character _ may separate the digits (LRM)
@@ -1675,6 +1718,36 @@ impl Compiler {
             let x = c.to_arith(x);
             c.conv(x, &Ty::fixed_bin(31, 0))
         };
+        // UCHAR arguments: only to the built-ins that take them; others
+        // are refused rather than run on the UTF-8 bytes as characters
+        let uchar = |t: &Ty| matches!(t, Ty::Uchar { .. });
+        if xs.iter().any(|x| uchar(&x.ty)) {
+            match b {
+                Length | ByteLength | LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1
+                | FoldedFullMatch | FoldedSimpleMatch => {}
+                _ => {
+                    return Err(self.err(pos, format!("a UCHAR argument to {b:?} is not supported yet")));
+                }
+            }
+        }
+        match b {
+            Length if xs.first().is_some_and(|x| uchar(&x.ty)) => {
+                return Ok(mk(Ek::Builtin(b, xs), rt));
+            }
+            ByteLength | LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1 => {
+                let x = xs.into_iter().next().ok_or_else(|| self.err(pos, format!("{b:?} needs an argument")))?;
+                if !uchar(&x.ty) {
+                    return Err(self.err(pos, format!("{b:?} requires a UCHAR argument")));
+                }
+                return Ok(mk(Ek::Builtin(b, vec![x]), rt));
+            }
+            // the arguments are converted to UCHAR if necessary (LRM)
+            FoldedFullMatch | FoldedSimpleMatch => {
+                let v = xs.into_iter().map(|x| self.conv(x, &uchar_any())).collect();
+                return Ok(mk(Ek::Builtin(b, v), rt));
+            }
+            _ => {}
+        }
         let xs: Vec<Expr> = match b {
             // conversion built-ins
             Binary | Decimal | Fixed | Float | FixedBin | FixedDec | FloatBin | FloatDec

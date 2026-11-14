@@ -1150,6 +1150,97 @@
       }
     }
   },
+  "PC121A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UCHAR data | UCHAR data can contain any UTF-8 string. Each UCHAR occupies 1 to 4 bytes of storage."
+    ],
+    "tests": {
+      "UCHAR-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIT, CHARACTER, GRAPHIC, UCHAR and WIDECHAR | For UCHAR data, the number of bytes allocated to the string is 4 times its length.",
+          "PLI-LRM: BYTELENGTH | Given DCL X UCHAR(8) VARYING, then STG(X) = 34"
+        ]
+      },
+      "BYTELENGTH-A": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | BYTELENGTH(X) = 1 (since X holds '41'ux )"
+        ]
+      },
+      "BYTELENGTH-A-UMLAUT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | BYTELENGTH(X) = 2 (since X holds 'C3_84'ux )",
+          "PLI-LRM: UX (hex) UCHAR constant | The UX UCHAR constant is a contiguous sequence of hex digits, enclosed in single or double quotation marks and followed immediately by UX."
+        ]
+      },
+      "BYTELENGTH-STRASSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | BYTELENGTH(X) = 7 (since X holds '53_74_72_C39F_61_65'ux )"
+        ]
+      },
+      "UCHAR-VARYING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | If x has UCHAR VARYING or UCHAR VARYING4 type, the value returned by BYTELENGTH(x) does not count the number of prefix bytes.",
+          "PLI-LRM: BIT, CHARACTER, GRAPHIC, UCHAR and WIDECHAR | the value for a UCHAR VARYING string is the current number of UTF-8 characters in the string."
+        ]
+      },
+      "UCHAR-PADDED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Converting string lengths | uchar strings with uchar blanks",
+          "PLI-LRM: Comparison operations | Is a left-to-right, uchar-by-uchar comparison of characters according to the binary value of the UTF-8 characters."
+        ]
+      },
+      "UCHAR-TO-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Comparison operations | The precedence of comparison types is (1) algebraic (highest), (2) uchar, (3) widechar, (4) graphic, (5) character, (6) bit.",
+          "PLI-LRM: UCHAR | Conversion from uchar is performed only if all the uchars have a representation in the target code page"
+        ]
+      },
+      "UPPERASCII": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPPERASCII | UPPERASCII returns a UCHAR string with all of its ASCII characters converted to their corresponding uppercase characters."
+        ]
+      },
+      "UPPERLATIN1": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPPERLATIN1 | The letters Y with DIAERESIS(ÿ) and SHARP S(ß) are not changed."
+        ]
+      },
+      "LOWERASCII": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWERASCII | LOWERASCII returns a UCHAR string with all of its ASCII characters converted to their corresponding lowercase characters."
+        ]
+      },
+      "LOWERLATIN1": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWERLATIN1 | LOWERLATIN1 returns a UCHAR string with all of its ASCII and Latin-1 supplement characters converted to their corresponding lowercase characters."
+        ]
+      },
+      "FOLDEDFULLMATCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FOLDEDFULLMATCH | not only Haus and HAUS would match, but Straße and STRASSE would also match."
+        ]
+      },
+      "FOLDEDSIMPLEMATCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FOLDEDSIMPLEMATCH | For example, Haus and HAUS would match, but Straße and STRASSE would not match."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

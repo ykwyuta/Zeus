@@ -60,6 +60,13 @@ pub enum Ty {
         var: Var,
         graphic: bool,
     },
+    /// UCHAR: UTF-8 characters, four bytes of storage a character. Its
+    /// values are the UTF-8 bytes of the characters; VARYING lengths count
+    /// characters (LRM, UCHAR data).
+    Uchar {
+        len: Ext,
+        var: Var,
+    },
     /// COMPLEX: real and imaginary parts of the arithmetic type.
     Complex(Box<Ty>),
     /// Numeric or character PICTURE.
@@ -182,7 +189,10 @@ impl Ty {
 
     pub fn str_len(&self) -> Option<Ext> {
         match self {
-            Ty::Char { len, .. } | Ty::Bit { len, .. } | Ty::Wchar { len, .. } => Some(*len),
+            Ty::Char { len, .. }
+            | Ty::Bit { len, .. }
+            | Ty::Wchar { len, .. }
+            | Ty::Uchar { len, .. } => Some(*len),
             Ty::Pic(p) => Some(Ext::Const(p.len as u32)),
             _ => None,
         }
@@ -192,6 +202,7 @@ impl Ty {
     pub fn with_len(&self, l: Ext) -> Ty {
         match self {
             Ty::Char { var, .. } => Ty::Char { len: l, var: *var },
+            Ty::Uchar { var, .. } => Ty::Uchar { len: l, var: *var },
             Ty::Wchar { var, graphic, .. } => Ty::Wchar {
                 len: l,
                 var: *var,
@@ -208,7 +219,10 @@ impl Ty {
 
     pub fn varying(&self) -> Var {
         match self {
-            Ty::Char { var, .. } | Ty::Bit { var, .. } | Ty::Wchar { var, .. } => *var,
+            Ty::Char { var, .. }
+            | Ty::Bit { var, .. }
+            | Ty::Wchar { var, .. }
+            | Ty::Uchar { var, .. } => *var,
             _ => Var::Fixed,
         }
     }
@@ -253,6 +267,13 @@ impl Ty {
                     _ => (bytes + 2, if aligned { 2 } else { 1 }),
                 }
             }
+            // 4 bytes a character; VARYING adds a 2-byte, VARYINGZ a 1-byte
+            // length or terminator (LRM)
+            Ty::Uchar { len: l, var } => match var {
+                Var::Fixed => (4 * len(l), 1),
+                Var::Varying => (4 * len(l) + 2, if aligned { 2 } else { 1 }),
+                Var::VaryingZ => (4 * len(l) + 1, 1),
+            },
             Ty::Wchar { len: l, var, .. } => match var {
                 Var::Fixed => (2 * len(l), if aligned { 2 } else { 1 }),
                 _ => (2 * len(l) + 2, if aligned { 2 } else { 1 }),

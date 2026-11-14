@@ -130,6 +130,8 @@ pub enum Attr {
     Bit(Option<Extent>),
     Graphic(Option<Extent>),
     Widechar(Option<Extent>),
+    /// UCHAR [(length)]
+    Uchar(Option<Extent>),
     Varying,
     VaryingZ,
     Nonvarying,
