@@ -4756,5 +4756,40 @@
         ]
       }
     }
+  },
+  "PS111A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: TYPE | TYPE returns the typed structure or union located by the handle, x."
+    ],
+    "tests": {
+      "TYPE-FUNCTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE | TYPE(x) dereferences the typed structure (or union) x.",
+          "PLI-LRM: TYPE pseudovariable | D1 = type(P2);           /* Assigns the storage located by P2 to D1 */"
+        ]
+      },
+      "TYPE-PSEUDO-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE pseudovariable | type(P1) = type(P2);"
+        ]
+      },
+      "TYPE-PSEUDO-VAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE pseudovariable | type(P1) = D2;           /* Assigns D2 to the storage located by P1 */",
+          "PLI-LRM: TYPE pseudovariable | The TYPE pseudovariable assigns a typed structure or union to the storage located by the handle x."
+        ]
+      },
+      "TYPE-OF-HANDLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE pseudovariable | type(P1) = D2;           /* Assigns D2 to the storage located by P1 */",
+          "PLI-LRM: TYPE pseudovariable | The TYPE pseudovariable assigns a typed structure or union to the storage located by the handle x."
+        ]
+      }
+    }
   }
 }

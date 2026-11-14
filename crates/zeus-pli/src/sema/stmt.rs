@@ -581,6 +581,13 @@ impl Compiler {
                 by_name,
                 by_dimacross,
             } => {
+                // TYPE(h) on either side: the structure the handle locates
+                let targets: Vec<ast::Expr> = targets
+                    .iter()
+                    .map(|t| self.type_deref(t).unwrap_or_else(|| t.clone()))
+                    .collect();
+                let targets = &targets;
+                let value = &self.type_deref(value).unwrap_or_else(|| value.clone());
                 if by_dimacross.is_some() && targets.len() > 1 {
                     return Err(self.err(pos, "BY DIMACROSS is not allowed in multiple assignments"));
                 }

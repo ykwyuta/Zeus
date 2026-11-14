@@ -1383,5 +1383,14 @@
       "LOCNEWVALUE-AREA",
       "LOCSTG"
     ]
+  },
+  "PS111A": {
+    "expect": "run",
+    "tests": [
+      "TYPE-FUNCTION",
+      "TYPE-PSEUDO-TYPE",
+      "TYPE-PSEUDO-VAR",
+      "TYPE-OF-HANDLE"
+    ]
   }
 }

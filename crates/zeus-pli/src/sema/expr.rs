@@ -682,11 +682,37 @@ impl Compiler {
             })
     }
 
+    /// TYPE(h) (LRM, TYPE built-in function and pseudovariable): the typed
+    /// structure located by the handle, as the BASED structure of its type
+    /// with the handle as its locator (h => the whole structure).
+    pub fn type_deref(&self, e: &ast::Expr) -> Option<ast::Expr> {
+        let ast::Expr::Ref(r) = e else { return None };
+        let [(name, lists)] = &r.parts[..] else {
+            return None;
+        };
+        if name != "TYPE" || r.locator.is_some() || self.resolve_var(std::slice::from_ref(name)).is_some()
+        {
+            return None;
+        }
+        let [l] = &lists[..] else { return None };
+        let [ast::Expr::Ref(h)] = &l[..] else {
+            return None;
+        };
+        let v = self.resolve_var(&self.ref_names(h))?;
+        let t = self.handle_type(v)?;
+        Some(ast::Expr::Ref(ast::Ref {
+            locator: Some(Box::new(h.clone())),
+            parts: vec![(format!("%{t}"), Vec::new())],
+            pos: r.pos,
+        }))
+    }
+
     /// The qualified names of a reference; after a handle (h => x) they
     /// are in the BASED structure of its type.
     pub fn ref_names(&self, r: &ast::Ref) -> Vec<String> {
         let mut names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
-        if let Some(l) = &r.locator
+        if !names[0].starts_with('%')
+            && let Some(l) = &r.locator
             && let Some(v) = self.resolve_var(&self.ref_names(l))
             && let Some(t) = self.handle_type(v)
         {
