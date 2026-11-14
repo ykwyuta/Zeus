@@ -468,12 +468,12 @@ impl Machine {
                     })
                 }
             },
-            Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin
+            Sqrt | SqrtF | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin
             | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => {
                 let x = v[0].as_f64();
                 let deg = std::f64::consts::PI / 180.0;
                 let r = match b {
-                    Sqrt => {
+                    Sqrt | SqrtF => {
                         if x < 0.0 {
                             self.raise(Cond::Error, 1500, act)?;
                         }

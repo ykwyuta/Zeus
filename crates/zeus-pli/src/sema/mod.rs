@@ -96,6 +96,8 @@ pub struct Compiler {
     /// DEFINE STRUCTURE types: their members (levels from 1); DEFINE
     /// ALIAS types: their attributes.
     pub structs: HashMap<String, Vec<DeclItem>>,
+    /// Structures declared DIMACROSS (their members carry the dimension).
+    pub dimacross: std::collections::HashSet<VarId>,
     pub aliases: HashMap<String, Vec<crate::ast::Attr>>,
     /// The structure type of HANDLE variables.
     pub handles: HashMap<VarId, String>,
@@ -153,6 +155,7 @@ impl Compiler {
             ordinal_members: HashMap::new(),
             defaults: Vec::new(),
             structs: HashMap::new(),
+            dimacross: Default::default(),
             aliases: HashMap::new(),
             handles: HashMap::new(),
             decl_ast: HashMap::new(),

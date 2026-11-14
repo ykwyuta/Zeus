@@ -185,6 +185,9 @@ pub enum Attr {
     /// type's; also implies ALIGNED.
     AlignedTo(u32),
     Dimension(Vec<Bound>),
+    /// DIMACROSS: dimensions moved to the immediate members; the bounds
+    /// are None when given after the name.
+    DimAcross(Option<Vec<Bound>>),
     Like(Ref),
     Builtin,
     Condition,
@@ -361,6 +364,8 @@ pub enum StmtKind {
         op: Option<&'static str>,
         value: Expr,
         by_name: bool,
+        /// BY DIMACROSS(exp2): the index of the DIMACROSS structures.
+        by_dimacross: Option<Expr>,
     },
     If {
         cond: Expr,

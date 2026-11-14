@@ -35,6 +35,7 @@ pub enum Bif {
     Unsigned,
     // mathematical
     Sqrt,
+    SqrtF,
     Exp,
     Log,
     Log2,
@@ -61,6 +62,8 @@ pub enum Bif {
     Dim,
     Lbound,
     Hbound,
+    HboundAcross,
+    LboundAcross,
     // strings
     Bit,
     Char,
@@ -399,6 +402,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "SIGNED" => Signed,
         "UNSIGNED" => Unsigned,
         "SQRT" => Sqrt,
+        "SQRTF" => SqrtF,
         "EXP" => Exp,
         "LOG" => Log,
         "LOG2" => Log2,
@@ -424,6 +428,8 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "DIMENSION" | "DIM" => Dim,
         "LBOUND" => Lbound,
         "HBOUND" => Hbound,
+        "HBOUNDACROSS" => HboundAcross,
+        "LBOUNDACROSS" => LboundAcross,
         "BIT" => Bit,
         "CHARACTER" | "CHAR" => Char,
         "BOOL" => Bool,
@@ -1115,7 +1121,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             _ => return Err(format!("{b:?} requires a floating-point argument")),
         },
         Sign | Index | Search | Verify | Tally | Length | MaxLength | Dim | Lbound | Hbound
-        | Size | CurrentSize | Allocation | OnCode | OnCount | PliRetV | Days | Weekday
+        | HboundAcross | LboundAcross | Size | CurrentSize | Allocation | OnCode | OnCount | PliRetV | Days | Weekday
         | LineNo | PageNo | Count => fixed_bin31(),
         SameKey => Ty::bit(1),
         Add | Subtract | Multiply | Divide => {
@@ -1277,7 +1283,11 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
                 unsigned: b == Unsigned,
             }
         }
-        Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+        // the LRM: the argument of SQRTF must be real
+        SqrtF if matches!(arg(0)?, Ty::Complex(_)) => {
+            return Err("the argument of SQRTF must be real".into())
+        }
+        Erf | Erfc | Gamma | LogGamma | Sqrt | SqrtF | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
         | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => {
             crate::types::to_float_ty(&operand_arith(&arg(0)?))
         }

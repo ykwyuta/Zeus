@@ -768,6 +768,14 @@ impl Parser {
                 "ALIGNED" => Attr::Aligned,
                 "UNALIGNED" | "UNAL" => Attr::Unaligned,
                 "UNION" | "CELL" => Attr::Union,
+                "DIMACROSS" => {
+                    if self.is_op("(") {
+                        self.bump();
+                        Attr::DimAcross(Some(self.bounds()?))
+                    } else {
+                        Attr::DimAcross(None)
+                    }
+                }
                 "DIMENSION" | "DIM" => {
                     self.expect_op("(")?;
                     Attr::Dimension(self.bounds()?)
@@ -1416,6 +1424,13 @@ impl Parser {
             self.i += 3;
             by_name = true;
         }
+        let mut by_dimacross = None;
+        if self.is_op(",") && self.is_word_at(1, "BY") && self.is_word_at(2, "DIMACROSS") {
+            self.i += 3;
+            self.expect_op("(")?;
+            by_dimacross = Some(self.expr()?);
+            self.expect_op(")")?;
+        }
         if !self.is_op(";") {
             self.i = save;
             return Ok(None);
@@ -1426,6 +1441,7 @@ impl Parser {
             op,
             value,
             by_name,
+            by_dimacross,
         }))
     }
 

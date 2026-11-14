@@ -477,7 +477,8 @@ impl Compiler {
                 g[0].name = format!("%{name}");
                 g[0].attrs.push(Attr::Based(None));
             }
-            let g = self.expand_like(&g)?;
+            let mut g = self.expand_like(&g)?;
+            dimacross(&mut g).map_err(|(pos, m)| self.err(pos, m))?;
             let tree = build_tree(&g);
             for t in tree {
                 let vars = self.declare_tree(&t, block, params, &mut late, &g)?;
@@ -1040,6 +1041,9 @@ impl Compiler {
             byvalue: has(attrs, |a| matches!(a, Attr::Byvalue)),
         });
         members.push(id);
+        if has(attrs, |a| matches!(a, Attr::DimAcross(_))) {
+            self.dimacross.insert(id);
+        }
         self.define(block, &it.name, Sym::Var(id));
         // own dimensions
         let mut own: Vec<(Bound, Bound)> = Vec::new();
@@ -1469,4 +1473,44 @@ mod mapping_tests {
         };
         assert_eq!((0x1000 + s) % 8, 4);
     }
+}
+
+/// DIMACROSS (LRM, "DIMACROSS attribute"): the dimension is removed from
+/// the structure and given to each of its immediate members, which must
+/// not have a dimension of their own. The structure keeps the attribute
+/// as a mark for BY DIMACROSS and LBOUNDACROSS / HBOUNDACROSS.
+fn dimacross(g: &mut [DeclItem]) -> std::result::Result<(), (Pos, String)> {
+    for i in 0..g.len() {
+        let Some(k) = g[i].attrs.iter().position(|a| matches!(a, Attr::DimAcross(_))) else {
+            continue;
+        };
+        let dims = match &g[i].attrs[k] {
+            Attr::DimAcross(Some(b)) if g[i].dims.is_empty() => b.clone(),
+            Attr::DimAcross(None) if !g[i].dims.is_empty() => std::mem::take(&mut g[i].dims),
+            _ => return Err((g[i].pos, format!("DIMACROSS of {} needs one dimension list", g[i].name))),
+        };
+        g[i].attrs[k] = Attr::DimAcross(None);
+        let level = g[i].level;
+        let child = g[i + 1..]
+            .iter()
+            .take_while(|d| d.level > level)
+            .map(|d| d.level)
+            .min();
+        let Some(child) = child else {
+            return Err((g[i].pos, format!("DIMACROSS is valid only on structures: {}", g[i].name)));
+        };
+        for d in g[i + 1..].iter_mut().take_while(|d| d.level > level) {
+            if d.level != child {
+                continue;
+            }
+            if !d.dims.is_empty() {
+                return Err((
+                    d.pos,
+                    format!("{} has a dimension under the DIMACROSS structure", d.name),
+                ));
+            }
+            d.dims = dims.clone();
+        }
+    }
+    Ok(())
 }

@@ -4334,6 +4334,42 @@
       }
     }
   },
+  "PM122A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences."
+    ],
+    "tests": {
+      "SQRTF-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      },
+      "SQRTF-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      },
+      "SQRTF-AS-SQRT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      },
+      "SQRTF-SQUARE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

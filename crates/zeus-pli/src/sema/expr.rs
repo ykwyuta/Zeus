@@ -1602,6 +1602,32 @@ impl Compiler {
                     ty: Ty::Pic(Box::new(p)),
                 });
             }
+            // the bounds of the dimension a DIMACROSS structure gave its
+            // members: LBOUND / HBOUND of the first member in that dimension
+            HboundAcross | LboundAcross => {
+                let [ast::Expr::Ref(r)] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs a DIMACROSS reference")));
+                };
+                let rr = self.reference(r, true)?;
+                let v = &self.m.vars[rr.var as usize];
+                if !self.dimacross.contains(&rr.var) || v.members.is_empty() {
+                    return Err(self.err(pos, format!("{b:?} needs a DIMACROSS reference")));
+                }
+                let k = rr.subs.len() as i128 + 1;
+                let first = v.members[0];
+                let n = self.m.vars[first as usize].dims.len();
+                let mut subs = rr.subs.clone();
+                subs.resize(n, None);
+                let mr = Ref {
+                    var: first,
+                    subs,
+                    locator: rr.locator.clone(),
+                };
+                let dim = mk(Ek::Fixed(k, 0), Ty::fixed_bin(31, 0));
+                let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
+                let bb = if b == HboundAcross { Hbound } else { Lbound };
+                return Ok(mk(Ek::RefBuiltin(bb, mr, vec![dim]), ty));
+            }
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField | OnText
             | OnActual | OnExpected | OnOperator | OnPackage | OnSubscript | OnLbound
             | OnHbound | OnLine | OnArea | OnCondCond | OnCondId | OnUchar | OnUsource
@@ -1827,7 +1853,7 @@ impl Compiler {
                 v.extend(it.map(|x| int(self, x)));
                 v
             }
-            Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+            Erf | Erfc | Gamma | LogGamma | Sqrt | SqrtF | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
             | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => xs
                 .into_iter()
                 .map(|x| {

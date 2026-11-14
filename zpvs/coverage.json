@@ -1251,6 +1251,15 @@
       "MACCOL-NESTED"
     ]
   },
+  "PM122A": {
+    "expect": "run",
+    "tests": [
+      "SQRTF-EXACT",
+      "SQRTF-ZERO",
+      "SQRTF-AS-SQRT",
+      "SQRTF-SQUARE"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [
