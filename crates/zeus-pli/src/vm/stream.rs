@@ -1394,6 +1394,11 @@ impl Machine {
                     }
                 }
                 None => {
+                    // the field for DATAFIELD (LRM, NAME condition: "You can
+                    // retrieve the incorrect data field by using the
+                    // built-in function DATAFIELD")
+                    let field = ebcdic(part.trim());
+                    super::ON_EXTRA.with(|e| e.borrow_mut().datafield = field);
                     self.raise(Cond::Name(f), 10, act)?;
                 }
             }

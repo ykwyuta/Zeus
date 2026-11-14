@@ -2456,6 +2456,40 @@
       }
     }
   },
+  "PF109A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DATAFIELD | DATAFIELD is in context in a NAME condition ON-unit (or any of its dynamic descendants). It returns a"
+    ],
+    "tests": {
+      "DATAFIELD-OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DATAFIELD | If DATAFIELD is used out of context, a null string is returned."
+        ]
+      },
+      "NAME-RAISED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NAME condition | No counterpart is found in the data list.",
+          "PLI-LRM: NAME condition | The NAME input/output condition can be raised only during execution of a data-directed GET"
+        ]
+      },
+      "DATAFIELD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NAME condition | You can retrieve the incorrect data field by using the built-in function DATAFIELD in the ON-unit.",
+          "PLI-LRM: DATAFIELD | character string whose value is the contents of the field that raised the condition. It is also in context in"
+        ]
+      },
+      "NAME-NORMAL-RETURN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NAME condition | The execution of the GET statement continues with the next name in the stream."
+        ]
+      }
+    }
+  },
   "PM101A": {
     "basis": "spec",
     "refs": [

@@ -135,6 +135,8 @@ struct OnExtra {
     operator: String,
     sub: (i64, i64, i64),
     area: String,
+    /// The data field that raised NAME (DATAFIELD).
+    datafield: Vec<u8>,
 }
 
 thread_local! {
@@ -3076,6 +3078,10 @@ impl Machine {
                 .or_else(|| self.module.procs.first().map(|_| 0))
                 .map(|p| self.module.procs[p as usize].name.clone())
                 .unwrap_or_default();
+        }
+        // DATAFIELD: the field of a data-directed GET that raised NAME
+        if matches!(c, Cond::Name(_)) {
+            info.onsource = extra.datafield.clone();
         }
         if matches!(c, Cond::SubscriptRange) {
             info.onsub = extra.sub;

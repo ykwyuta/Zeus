@@ -867,6 +867,15 @@
       "FILEOPEN-AFTER-CLOSE"
     ]
   },
+  "PF109A": {
+    "expect": "run",
+    "tests": [
+      "DATAFIELD-OUT-OF-CONTEXT",
+      "NAME-RAISED",
+      "DATAFIELD",
+      "NAME-NORMAL-RETURN"
+    ]
+  },
   "PM101A": {
     "expect": "run",
     "tests": [
