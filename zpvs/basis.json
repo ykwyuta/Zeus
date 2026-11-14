@@ -1337,6 +1337,27 @@
       }
     }
   },
+  "PC125A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ASSEMBLER | The ASSEMBLER option has the same effect as NODESCRIPTOR."
+    ],
+    "tests": {
+      "ASSEMBLER-RETURN-CODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSEMBLER | If a procedure has the ASSEMBLER option, then upon exit from that procedure, the PLIRETV() value"
+        ]
+      },
+      "ASSEMBLER-ARGUMENTS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSEMBLER | The ASSEMBLER option has the same effect as NODESCRIPTOR.",
+          "PLI-LRM: BYADDR or BYVALUE | These specify how arguments and parameters are passed and received. BYADDR is the default."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

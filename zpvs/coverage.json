@@ -374,6 +374,13 @@
       "DISPLAY-ROUTCDE-DESC"
     ]
   },
+  "PC125A": {
+    "expect": "run",
+    "tests": [
+      "ASSEMBLER-RETURN-CODE",
+      "ASSEMBLER-ARGUMENTS"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [
