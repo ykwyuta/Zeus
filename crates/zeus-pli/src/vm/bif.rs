@@ -1769,6 +1769,43 @@ impl Machine {
                     Value::Char(ebcdic(&found.unwrap_or_default()))
                 }
             }
+            // the job and the system (LRM, GETSYSWORD and GETSYSINT): the
+            // runner passes the JOB statement of the program's JCL in
+            // ZEUS_JOB_* variables; without them the job is named after the
+            // program. The system names are Zeus's own. An unknown keyword
+            // gives the null string (the LRM does not say what it gives).
+            GetSysWord | GetSysInt => {
+                let key = zeus_cobol::ebcdic::decode(&chars(&v[0])).trim().to_ascii_uppercase();
+                let env = |n: &str| std::env::var(format!("ZEUS_JOB_{n}")).ok();
+                let actinfo = env("ACTINFO").unwrap_or_default();
+                if b == GetSysInt {
+                    let n = match key.as_str() {
+                        "MAXACTINFO" if actinfo.is_empty() => 0,
+                        "MAXACTINFO" => actinfo.split(',').count() as i64,
+                        _ => 0,
+                    };
+                    Value::int(n)
+                } else {
+                    let mut job = self.module.name.to_ascii_uppercase();
+                    job.truncate(8);
+                    let val = match key.as_str() {
+                        "ASID" => "0001".to_string(),
+                        "ACTINFO" => actinfo,
+                        "JESNODE" | "SYSNODE" => "ZEUS".to_string(),
+                        "JOBCLASS" => env("CLASS").unwrap_or_else(|| "A".into()),
+                        "JOBNAME" => env("NAME").unwrap_or(job),
+                        "JOBNUMBER" => "JOB00001".to_string(),
+                        "MSGCLASS" => env("MSGCLASS").unwrap_or_else(|| "A".into()),
+                        "PROCSTEP" => std::string::String::new(),
+                        "SMFID" => "ZEUS".to_string(),
+                        "STEPNAME" => env("STEPNAME").unwrap_or_else(|| "STEP1".into()),
+                        "SYSNAME" => "ZEUS".to_string(),
+                        "SYSPLEX" => "ZEUSPLEX".to_string(),
+                        _ => std::string::String::new(),
+                    };
+                    Value::Char(ebcdic(&val))
+                }
+            }
             PutEnv => {
                 let text = zeus_cobol::ebcdic::decode(&chars(&v[0]));
                 match text.split_once('=') {

@@ -1335,6 +1335,16 @@
       "ISJCLSYMBOL-NULL"
     ]
   },
+  "PM127A": {
+    "expect": "run",
+    "tests": [
+      "GETSYSWORD-NAMES",
+      "GETSYSWORD-JOBNUMBER",
+      "GETSYSWORD-ASID",
+      "GETSYSWORD-CLASSES",
+      "GETSYSINT-MAXACTINFO"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

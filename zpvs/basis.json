@@ -4689,6 +4689,46 @@
       }
     }
   },
+  "PM127A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: GETSYSWORD | GETSYSWORD returns a CHARACTER string that is the value of the requested system information."
+    ],
+    "tests": {
+      "GETSYSWORD-NAMES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The JOBNAME keyword returns the JOB or TASK name that calls the built-in function."
+        ]
+      },
+      "GETSYSWORD-JOBNUMBER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The JOBNUMBER keyword returns the JES JOBID that is assigned to the batch job for the program that"
+        ]
+      },
+      "GETSYSWORD-ASID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The ASID keyword returns the Address Space Identifier value in hexadecimal of the program that calls the"
+        ]
+      },
+      "GETSYSWORD-CLASSES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The JOBCLASS keyword returns the Job Class that is assigned to the batch job for the program that calls"
+        ]
+      },
+      "GETSYSINT-MAXACTINFO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSINT | The MAXACTINFO keyword returns the number of job accounting fields in the JOB accounting information",
+          "PLI-LRM: GETSYSWORD | The ACTINFO keyword returns a comma-delimited string that is the JOB accounting information specified",
+          "PLI-LRM: GETSYSWORD | be included in the accounting information string. For example, given the jobcard:"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

@@ -2225,6 +2225,8 @@ impl Compiler {
             | Base64Decode16
             | GetEnv
             | GetJclSymbol
+            | GetSysWord
+            | GetSysInt
             | IsJclSymbol
             | PutEnv
             | Microsecs

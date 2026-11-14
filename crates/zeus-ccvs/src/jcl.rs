@@ -124,6 +124,74 @@ pub fn exported_symbols(jcl_text: &str) -> Vec<(String, String)> {
     values
 }
 
+/// The job of a JCL sidecar as GETSYSWORD sees it: JOBNAME, ACTINFO (the
+/// accounting information without its parentheses and apostrophes),
+/// JOBCLASS, MSGCLASS, and STEPNAME (the step that runs `program`).
+pub fn job_words(jcl_text: &str, program: &str) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    for stmt in logical_lines(jcl_text) {
+        if stmt.starts_with(' ') {
+            continue;
+        }
+        let Some((name, rest)) = stmt.split_once(' ') else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let (op, operands) = rest.split_once(' ').unwrap_or((rest, ""));
+        let operands = operands.trim();
+        match op.to_ascii_uppercase().as_str() {
+            "JOB" => {
+                out.push(("NAME", name.to_ascii_uppercase()));
+                // the accounting information: the first positional operand
+                let acct = if let Some(r) = operands.strip_prefix('(') {
+                    let mut depth = 1;
+                    let mut quoted = false;
+                    let mut end = r.len();
+                    for (i, c) in r.char_indices() {
+                        match c {
+                            '\'' => quoted = !quoted,
+                            '(' if !quoted => depth += 1,
+                            ')' if !quoted => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    end = i;
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    r[..end].to_string()
+                } else {
+                    operands.split(',').next().unwrap_or("").to_string()
+                };
+                if !acct.contains('=') {
+                    out.push(("ACTINFO", acct.replace('\'', "")));
+                }
+                for (key, var) in [("CLASS=", "CLASS"), ("MSGCLASS=", "MSGCLASS")] {
+                    let found = operands.split(',').find_map(|p| {
+                        p.trim().strip_prefix(key).map(str::to_string)
+                    });
+                    if let Some(v) = found {
+                        out.push((var, v));
+                    }
+                }
+            }
+            "EXEC" => {
+                let pgm = operands
+                    .split(',')
+                    .find_map(|p| p.trim().strip_prefix("PGM="))
+                    .unwrap_or("");
+                if pgm.eq_ignore_ascii_case(program) {
+                    out.push(("STEPNAME", name.to_ascii_uppercase()));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
 /// Parses `//<DDNAME> DD ...` statements from a JCL sidecar file, joining
 /// continuation lines and classifying tape vs disk allocations.
 pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
@@ -653,6 +721,22 @@ fn render_program_steps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn job_words_of_the_job_card() {
+        let jcl = "//JOB44   JOB   (D548-8686,'12/8/85',PGMBIN),CLASS=B,\n\
+                   //  MSGCLASS=X\n//GO EXEC PGM=GETSYM\n";
+        assert_eq!(
+            job_words(jcl, "GETSYM"),
+            vec![
+                ("NAME", "JOB44".to_string()),
+                ("ACTINFO", "D548-8686,12/8/85,PGMBIN".to_string()),
+                ("CLASS", "B".to_string()),
+                ("MSGCLASS", "X".to_string()),
+                ("STEPNAME", "GO".to_string()),
+            ]
+        );
+    }
 
     #[test]
     fn exported_jcl_symbols() {
