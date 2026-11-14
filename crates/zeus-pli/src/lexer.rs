@@ -18,6 +18,8 @@ use std::path::{Path, PathBuf};
 pub struct Pos {
     pub file: u16,
     pub line: u32,
+    /// Source column (with the left margin), 0 when not known.
+    pub col: u16,
 }
 
 /// A diagnostic message.
@@ -62,6 +64,12 @@ pub enum StrKind {
     HexBin,
     /// '00FF'XU: unsigned FIXED BINARY in hexadecimal
     HexUnsigned,
+    /// '0041'WX: WIDECHAR in hexadecimal (four digits per widechar)
+    WideHex,
+    /// 'C3A4'UX: UCHAR in hexadecimal (UTF-8 bytes)
+    UcharHex,
+    /// 'abc'U: a UCHAR constant
+    Uchar,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -176,6 +184,8 @@ struct Lexer {
     i: usize,
     line: u32,
     file: u16,
+    /// The source column of the first character between the margins.
+    left: usize,
     out: Vec<Token>,
 }
 
@@ -185,9 +195,16 @@ fn ident_char(c: char) -> bool {
 
 impl Lexer {
     fn pos(&self) -> Pos {
+        // the prepared text holds the columns between the margins, one
+        // line per source line
+        let start = self.c[..self.i.min(self.c.len())]
+            .iter()
+            .rposition(|&c| c == '\n')
+            .map_or(0, |k| k + 1);
         Pos {
             file: self.file,
             line: self.line,
+            col: (self.i - start + self.left).min(u16::MAX as usize) as u16,
         }
     }
 
@@ -437,6 +454,9 @@ impl Lexer {
             "B4" | "BX" => StrKind::Bit(4),
             "XN" => StrKind::HexBin,
             "XU" => StrKind::HexUnsigned,
+            "WX" => StrKind::WideHex,
+            "UX" => StrKind::UcharHex,
+            "U" => StrKind::Uchar,
             "E" | "A" => StrKind::Char,
             s => return Err(Diag::error(pos, format!("invalid string suffix {s}"))),
         };
@@ -517,7 +537,7 @@ pub fn tokenize_text(
     opts: &LexOptions,
     files: &mut Files,
 ) -> Result<Vec<Token>> {
-    let (prepared, _) = prepare(text, opts);
+    let (prepared, margins) = prepare(text, opts);
     files.names.push(name.to_string());
     let file = (files.names.len() - 1) as u16;
     let mut lx = Lexer {
@@ -525,12 +545,14 @@ pub fn tokenize_text(
         i: 0,
         line: 1,
         file,
+        left: margins.0,
         out: Vec::new(),
     };
     lx.run()?;
     let pos = Pos {
         file,
         line: lx.line,
+        col: 0,
     };
     let mut out = lx.out;
     out.push(Token { tok: Tok::Eof, pos });
@@ -545,6 +567,7 @@ pub fn tokenize_raw(text: &str, pos: Pos) -> Result<Vec<Token>> {
         i: 0,
         line: pos.line,
         file: pos.file,
+        left: usize::from(pos.col),
         out: Vec::new(),
     };
     lx.run()?;
@@ -572,6 +595,9 @@ pub fn tokens_text(toks: &[Token]) -> String {
                     StrKind::Bit(_) => "B4",
                     StrKind::HexBin => "XN",
                     StrKind::HexUnsigned => "XU",
+                    StrKind::WideHex => "WX",
+                    StrKind::UcharHex => "UX",
+                    StrKind::Uchar => "U",
                 });
             }
             other => out.push_str(&other.to_string()),

@@ -47,6 +47,8 @@ fn alnum_function(f: Func) -> bool {
         f,
         Func::Char
             | Func::CurrentDate
+            | Func::Uuid4
+            | Func::Usubstr
             | Func::LowerCase
             | Func::UpperCase
             | Func::Reverse
@@ -78,6 +80,13 @@ pub fn function(name: &str) -> Option<Func> {
         "CHAR" => Func::Char,
         "COS" => Func::Cos,
         "CURRENT-DATE" => Func::CurrentDate,
+        "UUID4" => Func::Uuid4,
+        "ULENGTH" => Func::Ulength,
+        "UPOS" => Func::Upos,
+        "USUBSTR" => Func::Usubstr,
+        "USUPPLEMENTARY" => Func::Usupplementary,
+        "UVALID" => Func::Uvalid,
+        "UWIDTH" => Func::Uwidth,
         "DATE-OF-INTEGER" => Func::DateOfInteger,
         "DAY-OF-INTEGER" => Func::DayOfInteger,
         "FACTORIAL" => Func::Factorial,
@@ -93,6 +102,9 @@ pub fn function(name: &str) -> Option<Func> {
         "LOG10" => Func::Log10,
         "LOWER-CASE" => Func::LowerCase,
         "MAX" => Func::Max,
+        // CONTENT-OF(x): the content of x, of the type of x (Language
+        // Reference, CONTENT-OF), which is MAX of the single argument x
+        "CONTENT-OF" => Func::Max,
         "MEAN" => Func::Mean,
         "MEDIAN" => Func::Median,
         "MIDRANGE" => Func::Midrange,
@@ -188,6 +200,14 @@ impl Gen<'_> {
             None => None,
         };
         let desc = self.dm.items[id].desc;
+        // UTF-8 reference modification counts characters of varying width;
+        // refused rather than counted in bytes.
+        if refmod.is_some() && self.dm.descs[desc as usize].ty.is_utf8() {
+            return Err(Diag::error(
+                r.pos,
+                "reference modification of a UTF-8 item is not supported yet",
+            ));
+        }
         let dims = self.dm.descs[desc as usize].dims.len();
         if !subs.is_empty() && subs.len() != dims {
             return Err(Diag::error(
@@ -254,6 +274,7 @@ impl Gen<'_> {
                         Func::UpperCase
                             | Func::LowerCase
                             | Func::Reverse
+                            | Func::Usubstr
                             | Func::Trim
                             | Func::TrimL
                             | Func::TrimR
@@ -283,12 +304,15 @@ impl Gen<'_> {
         );
         let (min, max) = match func {
             Func::CurrentDate
+            | Func::Uuid4
             | Func::WhenCompiled
             | Func::WhenCompiledRegister
             | Func::E
             | Func::Pi
             | Func::SecondsPastMidnight => (0, 0),
             Func::FormattedDatetime => (3, 4),
+            Func::Upos | Func::Uwidth => (2, 2),
+            Func::Usubstr => (3, 3),
             Func::FormattedDate | Func::FormattedTime => (2, 3),
             Func::IntegerOfFormattedDate
             | Func::SecondsFromFormattedTime
@@ -308,6 +332,12 @@ impl Gen<'_> {
             _ if series => (1, usize::MAX),
             _ => (1, 1),
         };
+        if call.name.eq_ignore_ascii_case("CONTENT-OF") && call.args.len() != 1 {
+            return Err(Diag::error(
+                call.pos,
+                "FUNCTION CONTENT-OF takes one argument",
+            ));
+        }
         if !(min..=max).contains(&call.args.len()) {
             return Err(Diag::error(
                 call.pos,
@@ -318,6 +348,13 @@ impl Gen<'_> {
         let numeric = !matches!(
             func,
             Func::CurrentDate
+                | Func::Uuid4
+                | Func::Ulength
+                | Func::Upos
+                | Func::Usubstr
+                | Func::Usupplementary
+                | Func::Uvalid
+                | Func::Uwidth
                 | Func::WhenCompiled
                 | Func::WhenCompiledRegister
                 | Func::Length
@@ -421,6 +458,7 @@ impl Gen<'_> {
                     .ok_or_else(|| Diag::error(f.pos, format!("unknown function {}", f.name)))?;
                 self.validate_function(func, f)?;
                 let mut args = self.func_args(&f.args)?;
+                self.check_utf8_args(func, &f.name, &args)?;
                 if crate::front::lilian() {
                     // INTDATE(LILIAN): day 1 is 15 October 1582, 6653 days
                     // before the ANSI day 1 (1 January 1601)
@@ -452,6 +490,41 @@ impl Gen<'_> {
                 ));
             }
         })
+    }
+
+    /// UTF-8 arguments are taken only by the functions that handle them;
+    /// others (UPPER-CASE returning UTF-8 data, for one) are refused rather
+    /// than run on the UTF-8 bytes as alphanumeric data.
+    fn check_utf8_args(&self, func: Func, name: &str, args: &[Arg]) -> Result<()> {
+        let utf8 = args.iter().any(|arg| match arg {
+            Arg::Src(Src::Utf8(_)) => true,
+            Arg::Src(Src::Loc(loc)) | Arg::All(loc) | Arg::Table { loc, .. } => {
+                self.dm.descs[loc.desc as usize].ty.is_utf8()
+            }
+            _ => false,
+        });
+        if utf8
+            && !matches!(
+                func,
+                Func::Length
+                    | Func::ByteLength
+                    | Func::NationalOf
+                    | Func::DisplayOf
+                    | Func::HexOf
+                    | Func::BitOf
+                    | Func::Ulength
+                    | Func::Upos
+                    | Func::Uwidth
+                    | Func::Usupplementary
+                    | Func::Uvalid
+            )
+        {
+            return Err(Diag::error(
+                self.pos,
+                format!("a UTF-8 argument to FUNCTION {name} is not supported yet"),
+            ));
+        }
+        Ok(())
     }
 
     fn func_args(&mut self, args: &[Expr]) -> Result<Vec<Arg>> {
@@ -518,6 +591,7 @@ impl Gen<'_> {
                 Src::NumLit(d, digits)
             }
             Operand::Lit(Literal::National(b)) => Src::National(b.clone()),
+            Operand::Lit(Literal::Utf8(b)) => Src::Utf8(b.clone()),
             Operand::Lit(l) => Src::Alnum(lit::literal_bytes(l)),
             Operand::Fig(Figurative::Symbolic(name)) => {
                 let b = self.symbolic_byte(name)?;
@@ -525,6 +599,9 @@ impl Gen<'_> {
             }
             Operand::Fig(f) => Src::Fig(fig(f).unwrap()),
             Operand::All(inner) => match inner.as_ref() {
+                Operand::Lit(Literal::Utf8(_)) => {
+                    return Err(Diag::error(self.pos, "ALL with a UTF-8 literal is not supported yet"));
+                }
                 Operand::Lit(l) => Src::All(lit::literal_bytes(l)),
                 Operand::Fig(f) => match fig(f) {
                     Some(f) => Src::Fig(f),
@@ -542,6 +619,7 @@ impl Gen<'_> {
                 self.validate_function(func, f)?;
                 let numeric = self.is_numeric_operand(op);
                 let args = self.func_args(&f.args)?;
+                self.check_utf8_args(func, &f.name, &args)?;
                 if numeric {
                     Src::Num(Ex::Func(func, args))
                 } else {

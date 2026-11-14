@@ -130,6 +130,8 @@ pub enum Attr {
     Bit(Option<Extent>),
     Graphic(Option<Extent>),
     Widechar(Option<Extent>),
+    /// UCHAR [(length)]
+    Uchar(Option<Extent>),
     Varying,
     VaryingZ,
     Nonvarying,
@@ -175,7 +177,23 @@ pub enum Attr {
     Internal,
     Aligned,
     Unaligned,
+    /// UNION (CELL): the members overlay each other.
+    Union,
+    /// XDECLARE / XDEFINE: ignored when the name exists already.
+    XDecl,
+    /// ALIGNED(n): the alignment n (1, 2, 4 or 8 bytes) instead of the
+    /// type's; also implies ALIGNED.
+    AlignedTo(u32),
     Dimension(Vec<Bound>),
+    /// LOCATES(description): the type an OFFSET locates in its area.
+    Locates(Vec<Attr>),
+    /// VALUELIST(e, ...): the values the item may have.
+    ValueList(Vec<Expr>),
+    /// VALUERANGE(e1, e2): the inclusive range of the item's values.
+    ValueRange(Expr, Expr),
+    /// DIMACROSS: dimensions moved to the immediate members; the bounds
+    /// are None when given after the name.
+    DimAcross(Option<Vec<Bound>>),
     Like(Ref),
     Builtin,
     Condition,
@@ -352,6 +370,8 @@ pub enum StmtKind {
         op: Option<&'static str>,
         value: Expr,
         by_name: bool,
+        /// BY DIMACROSS(exp2): the index of the DIMACROSS structures.
+        by_dimacross: Option<Expr>,
     },
     If {
         cond: Expr,
@@ -391,10 +411,16 @@ pub enum StmtKind {
     Resignal,
     Stop,
     Exit,
+    /// ATTACH entry [THREAD(task)]
+    Attach(Ref, Option<Ref>),
+    /// WAIT / DETACH / CANCEL THREAD(task)
+    Thread(ThreadOp, Ref),
     Put(StreamOpts),
     Get(StreamOpts),
     Open(Vec<FileOpen>),
     Close(Vec<Expr>),
+    /// FLUSH FILE(f); None: FILE(*), every open output file.
+    Flush(Option<Expr>),
     Read(RecordOpts),
     Write(RecordOpts),
     Rewrite(RecordOpts),
@@ -436,4 +462,12 @@ pub enum AssertKind {
     False,
     Compare,
     Unreachable,
+}
+
+/// WAIT THREAD, DETACH THREAD and CANCEL THREAD.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ThreadOp {
+    Wait,
+    Detach,
+    Cancel,
 }

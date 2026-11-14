@@ -51,6 +51,28 @@ fn f(v: f64) -> RResult<Dec> {
 }
 
 impl Machine {
+    /// Whether the first argument of a U function is national (UTF-16).
+    fn unicode_national(&self, cur: usize, args: &[Arg]) -> bool {
+        use crate::zir::Src;
+        args.first().is_some_and(|arg| match arg {
+            Arg::Src(Src::National(_)) => true,
+            Arg::Src(Src::Loc(loc)) => self.loc_type(cur, loc).is_national(),
+            Arg::Src(Src::Func(func, args, _)) => self.function_national(cur, *func, args),
+            _ => false,
+        })
+    }
+
+    /// The bytes of a U function argument: national as UTF-16, others as
+    /// they are stored (UTF-8 data in an alphanumeric item).
+    fn unicode_bytes(&mut self, cur: usize, v: Option<&Val>, national: bool) -> RResult<Vec<u8>> {
+        let Some(v) = v else { return Ok(Vec::new()) };
+        if national {
+            self.national_bytes(cur, v)
+        } else {
+            self.alnum_bytes(cur, v, 0)
+        }
+    }
+
     pub(super) fn function_national(&self, cur: usize, func: Func, args: &[Arg]) -> bool {
         use crate::zir::Src;
         func == Func::NationalOf
@@ -59,6 +81,7 @@ impl Machine {
                 Func::UpperCase
                     | Func::LowerCase
                     | Func::Reverse
+                    | Func::Usubstr
                     | Func::Trim
                     | Func::TrimL
                     | Func::TrimR
@@ -247,6 +270,11 @@ impl Machine {
                     Some(Val::Item(ty, b)) if ty.is_national() && func == Func::Length => {
                         b.len() / 2
                     }
+                    // UTF-8: n for PIC U(n); the characters in the data for
+                    // BYTE-LENGTH items and literals (LRM, LENGTH function)
+                    Some(Val::Item(DataType::Utf8 { chars }, b)) if func == Func::Length => {
+                        chars.map_or_else(|| super::data::utf8_count(b), |n| n as usize)
+                    }
                     Some(Val::Item(DataType::Numeric(_), b) | Val::Item(_, b)) => b.len(),
                     Some(Val::Alnum(b) | Val::All(b)) => b.len(),
                     Some(Val::NumLit(_, d)) => d.len(),
@@ -254,6 +282,45 @@ impl Machine {
                     Some(Val::Num(_)) | None => 0,
                 };
                 Dec::from_i64(n as i64)
+            }
+            // positions and widths count bytes for UTF-8 (alphanumeric)
+            // and for UTF-16 (national), except USUPPLEMENTARY and UVALID
+            // of national data, which count encoding units (Language
+            // Reference, ULENGTH ... UWIDTH)
+            Func::Ulength | Func::Upos | Func::Uwidth | Func::Usupplementary | Func::Uvalid => {
+                let national = self.unicode_national(cur, args);
+                let vals = self.arg_values(cur, args)?;
+                let bytes = self.unicode_bytes(cur, vals.first(), national)?;
+                let unit = if national { 2 } else { 1 };
+                if func == Func::Uvalid {
+                    return Ok(Dec::from_i64(match unicode_chars(&bytes, national) {
+                        Ok(_) => 0,
+                        Err(at) => (at / unit + 1) as i64,
+                    }));
+                }
+                let chars = unicode_chars(&bytes, national).map_err(|at| {
+                    super::RunError(format!(
+                        "FUNCTION {func:?}: invalid {} data at byte {}",
+                        if national { "UTF-16" } else { "UTF-8" },
+                        at + 1
+                    ))
+                })?;
+                let nth = |me: &mut Self| -> RResult<Option<(usize, usize)>> {
+                    let n = super::data::to_raw(me.val_num(&vals[1]), 0, false);
+                    Ok(usize::try_from(n)
+                        .ok()
+                        .filter(|n| *n >= 1)
+                        .and_then(|n| chars.get(n - 1).copied()))
+                };
+                Dec::from_i64(match func {
+                    Func::Ulength => chars.len() as i64,
+                    Func::Upos => nth(self)?.map_or(0, |(at, _)| at as i64 + 1),
+                    Func::Uwidth => nth(self)?.map_or(0, |(_, w)| w as i64),
+                    _ => chars
+                        .iter()
+                        .find(|(_, w)| *w == 4)
+                        .map_or(0, |(at, _)| (at / unit) as i64 + 1),
+                })
             }
             Func::Ord => {
                 let vals = self.arg_values(cur, args)?;
@@ -407,6 +474,26 @@ impl Machine {
             // the code page: the second argument (a CCSID), else the
             // program's
             Func::NationalOf | Func::DisplayOf => {
+                // CCSID 1208 is UTF-8; it is also the source code page of
+                // NATIONAL-OF for a UTF-8 argument when argument-2 is
+                // omitted (LRM, NATIONAL-OF and DISPLAY-OF)
+                let ccsid = match vals.get(1) {
+                    Some(v) => Some(super::data::to_raw(self.val_num(v), 0, false)),
+                    None => None,
+                };
+                let utf8_arg = matches!(vals.first(), Some(Val::Item(DataType::Utf8 { .. }, _)));
+                if ccsid == Some(1208) || (ccsid.is_none() && utf8_arg && func == Func::NationalOf) {
+                    return Ok(match (func, vals.first()) {
+                        (Func::NationalOf, Some(Val::Item(DataType::Utf8 { .. }, b))) => {
+                            super::data::national_of_utf8(b)
+                        }
+                        (Func::NationalOf, Some(v)) => {
+                            super::data::national_of_utf8(&self.alnum_bytes(cur, v, 0)?)
+                        }
+                        (Func::DisplayOf, Some(v)) => self.utf8_bytes(cur, v)?,
+                        _ => vec![],
+                    });
+                }
                 let cp = match vals.get(1) {
                     Some(v) => {
                         let c = super::data::to_raw(self.val_num(v), 0, false);
@@ -627,6 +714,31 @@ impl Machine {
                     &t[10..12],
                     &t[12..14]
                 ))
+            }
+            // a version 4 UUID in lower-case hexadecimal (Language Reference,
+            // UUID4: "4ed161b5-0d3c-4f06-8381-5f14678e13da"); random bits from a
+            // generator seeded by the clock, so runs differ as on z/OS
+            Func::Uuid4 => ebcdic::encode(&uuid4()),
+            // USUBSTR(a, n, m): m characters from the nth
+            Func::Usubstr => {
+                let bytes = self.unicode_bytes(cur, vals.first(), national)?;
+                let chars = unicode_chars(&bytes, national).map_err(|at| {
+                    super::RunError(format!("FUNCTION USUBSTR: invalid data at byte {}", at + 1))
+                })?;
+                let n = super::data::to_raw(self.val_num(&vals[1]), 0, false);
+                let m = super::data::to_raw(self.val_num(&vals[2]), 0, false);
+                if n < 1 || m < 0 || (n + m - 1) as usize > chars.len() {
+                    return Err(super::RunError(
+                        "FUNCTION USUBSTR: the substring is outside the argument".into(),
+                    ));
+                }
+                if m == 0 {
+                    Vec::new()
+                } else {
+                    let (start, _) = chars[n as usize - 1];
+                    let (last, w) = chars[(n + m - 2) as usize];
+                    bytes[start..last + w].to_vec()
+                }
             }
             Func::CurrentDate => {
                 let now = crate::clock::now().as_secs_f64();
@@ -978,6 +1090,113 @@ fn numeric_function(func: Func, v: &[Dec]) -> RResult<Dec> {
         }
         _ => return err(format!("function {func:?} is not supported yet")),
     })
+}
+
+/// The characters of UTF-8 (Language Reference, table 75) or UTF-16 (table
+/// 76) data as (byte offset, width in bytes); Err(byte offset) at the first
+/// invalid element.
+fn unicode_chars(b: &[u8], national: bool) -> Result<Vec<(usize, usize)>, usize> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    if national {
+        while i + 1 < b.len() {
+            let u = u16::from_be_bytes([b[i], b[i + 1]]);
+            match u {
+                0xD800..=0xDBFF => {
+                    let next = b
+                        .get(i + 2..i + 4)
+                        .map(|p| u16::from_be_bytes([p[0], p[1]]));
+                    if !next.is_some_and(|n| (0xDC00..=0xDFFF).contains(&n)) {
+                        return Err(i);
+                    }
+                    out.push((i, 4));
+                    i += 4;
+                }
+                0xDC00..=0xDFFF => return Err(i),
+                _ => {
+                    out.push((i, 2));
+                    i += 2;
+                }
+            }
+        }
+        if i < b.len() {
+            return Err(i);
+        }
+        return Ok(out);
+    }
+    let cont = |k: usize, lo: u8, hi: u8| b.get(k).is_some_and(|c| (lo..=hi).contains(c));
+    while i < b.len() {
+        let c = b[i];
+        let w = match c {
+            0x00..=0x7F => 1,
+            0xC2..=0xDF if cont(i + 1, 0x80, 0xBF) => 2,
+            0xE0 if cont(i + 1, 0xA0, 0xBF) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xE1..=0xEC | 0xEE..=0xEF if cont(i + 1, 0x80, 0xBF) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xED if cont(i + 1, 0x80, 0x9F) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xF0 if cont(i + 1, 0x90, 0xBF)
+                && cont(i + 2, 0x80, 0xBF)
+                && cont(i + 3, 0x80, 0xBF) =>
+            {
+                4
+            }
+            0xF1..=0xF3
+                if cont(i + 1, 0x80, 0xBF)
+                    && cont(i + 2, 0x80, 0xBF)
+                    && cont(i + 3, 0x80, 0xBF) =>
+            {
+                4
+            }
+            0xF4 if cont(i + 1, 0x80, 0x8F)
+                && cont(i + 2, 0x80, 0xBF)
+                && cont(i + 3, 0x80, 0xBF) =>
+            {
+                4
+            }
+            _ => return Err(i),
+        };
+        out.push((i, w));
+        i += w;
+    }
+    Ok(out)
+}
+
+/// A version 4 UUID: 122 random bits, version 4, variant 10. The generator
+/// is seeded from the clock, so runs differ (shared with PL/I UUID4).
+pub fn uuid4() -> String {
+    use std::cell::Cell;
+    thread_local! {
+        static STATE: Cell<u64> = const { Cell::new(0) };
+    }
+    let next = || {
+        STATE.with(|s| {
+            let mut x = s.get();
+            if x == 0 {
+                let t = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default();
+                x = ((t.as_nanos() as u64) ^ (u64::from(std::process::id()) << 32)) | 1;
+            }
+            x ^= x << 13;
+            x ^= x >> 7;
+            x ^= x << 17;
+            s.set(x);
+            x
+        })
+    };
+    let mut r = [0u8; 16];
+    r[..8].copy_from_slice(&next().to_be_bytes());
+    r[8..].copy_from_slice(&next().to_be_bytes());
+    r[6] = (r[6] & 0x0f) | 0x40;
+    r[8] = (r[8] & 0x3f) | 0x80;
+    let h: String = r.iter().map(|c| format!("{c:02x}")).collect();
+    format!(
+        "{}-{}-{}-{}-{}",
+        &h[0..8],
+        &h[8..12],
+        &h[12..16],
+        &h[16..20],
+        &h[20..32]
+    )
 }
 
 #[cfg(test)]

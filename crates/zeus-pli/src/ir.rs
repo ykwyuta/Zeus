@@ -106,7 +106,7 @@ pub enum Bound {
 pub struct Dim {
     pub lb: Bound,
     pub ub: Bound,
-    /// Distance between elements in bytes (bits for packed bit arrays).
+    /// Distance between elements in bits (the VM locates elements by bit).
     pub stride: u32,
 }
 
@@ -213,6 +213,8 @@ pub mod cond {
     pub const STRINGSIZE: u16 = 128;
     pub const SUBSCRIPTRANGE: u16 = 256;
     pub const INVALIDOP: u16 = 512;
+    /// disabled by default (Language Reference, CONFORMANCE condition)
+    pub const CONFORMANCE: u16 = 1024;
     /// enabled by default
     pub const DEFAULT: u16 =
         CONVERSION | FIXEDOVERFLOW | OVERFLOW | UNDERFLOW | ZERODIVIDE | INVALIDOP;
@@ -229,6 +231,7 @@ pub mod cond {
             "STRINGSIZE" | "STRZ" => STRINGSIZE,
             "SUBSCRIPTRANGE" | "SUBRG" => SUBSCRIPTRANGE,
             "INVALIDOP" => INVALIDOP,
+            "CONFORMANCE" => CONFORMANCE,
             _ => return None,
         })
     }
@@ -272,6 +275,7 @@ pub enum Cond {
     Name(FileId),
     Condition(u32),
     Assertion,
+    Conformance,
 }
 
 impl Cond {
@@ -294,6 +298,7 @@ impl Cond {
             Cond::InvalidOp => "INVALIDOP",
             Cond::AnyCondition => "ANYCONDITION",
             Cond::Assertion => "ASSERTION",
+            Cond::Conformance => "CONFORMANCE",
             Cond::EndFile(_) => "ENDFILE",
             Cond::EndPage(_) => "ENDPAGE",
             Cond::Key(_) => "KEY",
@@ -546,6 +551,15 @@ pub enum Stmt {
     Call(Callee, Vec<Arg>),
     /// CALL of a built-in subroutine (PLIRETC, PLIDUMP ...).
     CallBuiltin(crate::builtin::Bif, Vec<Expr>),
+    /// LOCNEWSPACE / LOCNEWVALUE: allocate the located type `ty` in the
+    /// area, set the offset target, and store the value (already of type
+    /// `ty`; a varying string gets only the space its value needs).
+    LocNew {
+        target: Target,
+        area: Ref,
+        ty: Ty,
+        value: Option<Expr>,
+    },
     Return(Option<Expr>),
     GoTo(Expr),
     Leave(LoopId),
@@ -568,10 +582,15 @@ pub enum Stmt {
     Resignal,
     Stop,
     Exit,
+    /// ATTACH: the call, run as a new thread, and the task variable.
+    Attach(Box<Stmt>, Option<Ref>),
+    /// WAIT / DETACH / CANCEL THREAD of the task variable.
+    Thread(crate::ast::ThreadOp, Expr),
     Put(Stream),
     Get(Stream),
     Open(Vec<OpenSpec>),
     Close(Vec<Expr>),
+    Flush(Option<Expr>),
     Read(RecordIo),
     Write(RecordIo),
     Rewrite(RecordIo),

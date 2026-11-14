@@ -45,11 +45,17 @@ pub struct FrontOptions {
     pub apost: bool,
     /// NOZWB: a signed zoned item compared with alphanumeric keeps its sign
     pub nozwb: bool,
+    /// QUALIFY(EXTEND): a complete set of qualifiers may resolve a name
+    pub qualify_extend: bool,
     /// INTDATE(LILIAN): integer dates count from 15 October 1582
     pub lilian: bool,
     pub awo: bool,
     pub block0: bool,
     pub ssrange: bool,
+    /// NUMCHECK flags (crate::zir::numcheck); 0 is NONUMCHECK.
+    pub numcheck: u8,
+    /// INITCHECK: 0 NOINITCHECK, 1 LAX, 2 STRICT.
+    pub initcheck: u8,
     pub codepage: Option<u32>,
     pub dynam: bool,
     pub dll: bool,
@@ -92,10 +98,13 @@ thread_local! {
     static COMPILE_CCSID: std::cell::Cell<u32> = const { std::cell::Cell::new(37) };
     static APOST: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static NOZWB: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static QUALIFY_EXTEND: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static LILIAN: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static AWO: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static BLOCK0: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static SSRANGE: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+    static NUMCHECK: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
+    static INITCHECK: std::cell::Cell<u8> = const { std::cell::Cell::new(0) };
     static NSYMBOL_DBCS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
     static TRUNC: std::cell::Cell<Trunc> = const { std::cell::Cell::new(Trunc::Std) };
     static NUMERIC: std::cell::Cell<crate::numeric::Settings> = const { std::cell::Cell::new(crate::numeric::Settings {
@@ -115,6 +124,9 @@ pub(crate) fn apost() -> bool {
 pub(crate) fn nozwb() -> bool {
     NOZWB.get()
 }
+pub(crate) fn qualify_extend() -> bool {
+    QUALIFY_EXTEND.get()
+}
 pub(crate) fn lilian() -> bool {
     LILIAN.get()
 }
@@ -126,6 +138,12 @@ pub(crate) fn block0() -> bool {
 }
 pub(crate) fn ssrange() -> bool {
     SSRANGE.get()
+}
+pub(crate) fn numcheck() -> u8 {
+    NUMCHECK.get()
+}
+pub(crate) fn initcheck() -> u8 {
+    INITCHECK.get()
 }
 pub(crate) fn dynam() -> bool {
     DYNAM.get()
@@ -476,10 +494,13 @@ pub fn source_unit_tokens(
     NUMERIC.set(settings.numeric);
     APOST.set(settings.apost);
     NOZWB.set(settings.nozwb);
+    QUALIFY_EXTEND.set(settings.qualify_extend);
     LILIAN.set(settings.lilian);
     AWO.set(settings.awo);
     BLOCK0.set(settings.block0);
     SSRANGE.set(settings.ssrange);
+    NUMCHECK.set(settings.numcheck);
+    INITCHECK.set(settings.initcheck);
     DYNAM.set(settings.dynam);
     DLL.set(settings.dll);
     EXPORTALL.set(settings.exportall);

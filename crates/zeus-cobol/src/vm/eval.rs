@@ -97,8 +97,23 @@ impl Machine {
         }
     }
 
-    /// Absolute address and length of a location.
+    /// Absolute address and length of a location. For a dynamic-length
+    /// item, the content buffer and the current length.
     pub(super) fn addr(&mut self, cur: usize, loc: &Loc) -> RResult<(usize, usize)> {
+        self.addr_at(cur, loc, true)
+    }
+
+    /// The descriptor of a dynamic-length item: its address and the
+    /// content address, current length and capacity it holds.
+    pub(super) fn dynamic_descriptor(&mut self, cur: usize, loc: &Loc) -> RResult<[usize; 4]> {
+        let (a, _) = self.addr_at(cur, loc, false)?;
+        let word = |m: &[u8], k: usize| {
+            u32::from_be_bytes([m[a + k], m[a + k + 1], m[a + k + 2], m[a + k + 3]]) as usize
+        };
+        Ok([a, word(&self.mem, 0), word(&self.mem, 4), word(&self.mem, 8)])
+    }
+
+    pub(super) fn addr_at(&mut self, cur: usize, loc: &Loc, follow: bool) -> RResult<(usize, usize)> {
         let code = self.instances[cur].code.clone();
         let checking = self.range_checks(cur);
         let desc = &code.descs[loc.desc as usize];
@@ -231,6 +246,15 @@ impl Machine {
                 desc.name
             ));
         }
+        if follow && desc.dynamic_limit.is_some() {
+            // the descriptor's content address and current length; a
+            // reference modification works within the current length
+            let mut sub = loc.clone();
+            sub.refmod = None;
+            let [_, content, current, _] = self.dynamic_descriptor(cur, &sub)?;
+            a = content;
+            len = current;
+        }
         if let Some((start, l)) = &loc.refmod {
             // national items are positioned in characters (two bytes)
             let w = if desc.ty.is_national() { 2 } else { 1 };
@@ -291,6 +315,10 @@ impl Machine {
             Ex::Load(loc) => {
                 let (a, l) = self.addr(cur, loc)?;
                 let ty = self.loc_type(cur, loc);
+                let flags = self.instances[cur].code.numcheck;
+                if flags != 0 {
+                    self.numcheck(cur, flags, &ty, a, l)?;
+                }
                 d::value_of(&ty, &self.mem[a..a + l])
             }
             Ex::LengthOf(loc) => {
@@ -328,6 +356,7 @@ impl Machine {
             }
             Src::Alnum(b) => Val::Alnum(b.clone()),
             Src::National(b) => Val::Item(DataType::National, b.clone()),
+            Src::Utf8(b) => Val::Item(DataType::Utf8 { chars: None }, b.clone()),
             Src::NumLit(v, digits) => Val::NumLit(*v, digits.clone()),
             Src::Float(text) => Val::Item(
                 DataType::Float { long: true },
@@ -417,11 +446,85 @@ impl Machine {
         })
     }
 
+    /// MOVE into a dynamic-length item (not reference-modified): its length
+    /// becomes the sender's, at most the LIMIT, truncated on the right (at
+    /// a character boundary for UTF-8); a figurative constant or ALL
+    /// literal has the item's current length, at least one character (LRM,
+    /// "Dynamic-length items", "Figurative constants").
+    fn move_dynamic(&mut self, cur: usize, v: &Val, dst: &Loc, limit: usize) -> RResult<()> {
+        let ty = self.instances[cur].code.descs[dst.desc as usize].ty.clone();
+        let [at, content, current, capacity] = self.dynamic_descriptor(cur, dst)?;
+        let mut bytes = match v {
+            Val::Fig(_) | Val::All(_) => {
+                let mut out = vec![0u8; current.max(1)];
+                move_into(v, &ty, &mut out);
+                out
+            }
+            _ if ty.is_utf8() => utf8_source(v),
+            _ => alnum_source(v),
+        };
+        if bytes.len() > limit {
+            let mut end = limit;
+            if ty.is_utf8() {
+                while end > 0 && (bytes[end] & 0xC0) == 0x80 {
+                    end -= 1;
+                }
+            }
+            bytes.truncate(end);
+        }
+        let (content, capacity) = if bytes.len() > capacity {
+            (self.alloc(&bytes), bytes.len())
+        } else {
+            self.mem[content..content + bytes.len()].copy_from_slice(&bytes);
+            (content, capacity)
+        };
+        self.set_dynamic(at, content, bytes.len(), capacity);
+        Ok(())
+    }
+
+    pub(super) fn set_dynamic(&mut self, at: usize, content: usize, len: usize, capacity: usize) {
+        for (k, w) in [content, len, capacity].into_iter().enumerate() {
+            self.mem[at + 4 * k..at + 4 * k + 4].copy_from_slice(&(w as u32).to_be_bytes());
+        }
+    }
+
+    /// SET LENGTH OF a dynamic-length item: truncated, or lengthened
+    /// without padding (the new positions are not initialized; Zeus has
+    /// zeros there when the buffer grows).
+    pub(super) fn set_dynamic_length(&mut self, cur: usize, dst: &Loc, n: &Ex) -> RResult<()> {
+        let limit = self.instances[cur].code.descs[dst.desc as usize]
+            .dynamic_limit
+            .unwrap_or(0) as i64;
+        let n = self.int_of(cur, n)?.clamp(0, limit) as usize;
+        let [at, content, _, capacity] = self.dynamic_descriptor(cur, dst)?;
+        if n > capacity {
+            let mut bytes = vec![0u8; n];
+            if content != 0 {
+                bytes[..capacity].copy_from_slice(&self.mem[content..content + capacity]);
+            }
+            let a = self.alloc(&bytes);
+            self.set_dynamic(at, a, n, n);
+        } else {
+            self.set_dynamic(at, content, n, capacity);
+        }
+        Ok(())
+    }
+
+    /// An operand as UTF-8 data: UTF-8 as it is, other data converted.
+    pub(super) fn utf8_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
+        Ok(match v {
+            Val::Item(ty, b) if ty.is_utf8() => b.clone(),
+            Val::Item(ty, b) if ty.is_national() => d::utf8_of_national(b),
+            _ => d::utf8_of_national(&self.national_bytes(cur, v)?),
+        })
+    }
+
     /// An operand as national data (UTF-16): national as it is, DBCS and
     /// alphanumeric data converted from the code page.
     pub(super) fn national_bytes(&self, cur: usize, v: &Val) -> RResult<Vec<u8>> {
         Ok(match v {
             Val::Item(ty, b) if ty.is_national() => b.clone(),
+            Val::Item(DataType::Utf8 { .. }, b) => d::national_of_utf8(b),
             Val::Item(DataType::Dbcs, b) => d::utf16(&crate::codepage::active().decode_dbcs(b)),
             Val::Fig(f) => d::national_fig(fig_byte(*f)),
             Val::All(p) => d::national_of(p),
@@ -529,6 +632,11 @@ impl Machine {
     // ---- MOVE ----------------------------------------------------------
 
     pub(super) fn move_val(&mut self, cur: usize, v: &Val, dst: &Loc) -> RResult<()> {
+        if let Some(limit) = self.instances[cur].code.descs[dst.desc as usize].dynamic_limit
+            && dst.refmod.is_none()
+        {
+            return self.move_dynamic(cur, v, dst, limit as usize);
+        }
         let (a, mut l) = self.addr(cur, dst)?;
         // A receiving group that contains its own OCCURS DEPENDING ON
         // object is used with its maximum length.
@@ -813,6 +921,37 @@ impl Machine {
                 let vb = self.eval_src(cur, b)?;
                 let ord = match mode {
                     CmpMode::Numeric => unreachable!(),
+                    // UTF-8 comparison: an operand that is not UTF-8 is
+                    // converted to UTF-8, the shorter padded with UX'20',
+                    // then compared byte by byte (LRM, "UTF-8 comparisons")
+                    CmpMode::Alnum
+                        if matches!(&va, Val::Item(t, _) if t.is_utf8())
+                            || matches!(&vb, Val::Item(t, _) if t.is_utf8()) =>
+                    {
+                        let item = |v: &Val| -> RResult<Option<Vec<u8>>> {
+                            Ok(match v {
+                                Val::Fig(_) | Val::All(_) => None,
+                                _ => Some(self.utf8_bytes(cur, v)?),
+                            })
+                        };
+                        let (x, y) = (item(&va)?, item(&vb)?);
+                        // a figurative constant or ALL literal takes the
+                        // other operand's length
+                        let n = x.as_ref().or(y.as_ref()).map_or(1, |b| b.len()).max(1);
+                        let fill = |v: &Val, b: Option<Vec<u8>>| {
+                            b.unwrap_or_else(|| {
+                                let mut out = vec![0u8; n];
+                                move_into(v, &DataType::Utf8 { chars: None }, &mut out);
+                                out
+                            })
+                        };
+                        let mut x = fill(&va, x);
+                        let mut y = fill(&vb, y);
+                        let n = x.len().max(y.len());
+                        x.resize(n, 0x20);
+                        y.resize(n, 0x20);
+                        x.cmp(&y)
+                    }
                     // national comparison: both operands as national
                     // data, the shorter padded with national spaces
                     CmpMode::Alnum
@@ -1149,6 +1288,58 @@ fn is_lower(b: u8) -> bool {
     matches!(b, 0x81..=0x89 | 0x91..=0x99 | 0xA2..=0xA9)
 }
 
+impl super::Machine {
+    /// NUMCHECK: a zoned or packed sending item must pass the NUMERIC class
+    /// test, and a binary one must fit its PICTURE digits. MSG warns and
+    /// goes on as NONUMCHECK would; ABD ends the run (Programming Guide,
+    /// NUMCHECK).
+    pub(super) fn numcheck(
+        &mut self,
+        cur: usize,
+        flags: u8,
+        ty: &DataType,
+        a: usize,
+        l: usize,
+    ) -> RResult<()> {
+        use crate::zir::numcheck::*;
+        let DataType::Numeric(t) = ty else {
+            return Ok(());
+        };
+        let bytes = &self.mem[a..a + l];
+        let valid = match t.usage {
+            NumUsage::Display if flags & ZON != 0 => class_test(
+                &Val::Item(ty.clone(), bytes.to_vec()),
+                &ClassKind::Numeric,
+                self.instances[cur].code.numeric.unwrap_or_default(),
+            ),
+            NumUsage::Packed if flags & PAC != 0 => class_test(
+                &Val::Item(ty.clone(), bytes.to_vec()),
+                &ClassKind::Numeric,
+                self.instances[cur].code.numeric.unwrap_or_default(),
+            ),
+            NumUsage::Binary if flags & BIN != 0 => {
+                let raw = binary::read(bytes, t.signed);
+                raw.unsigned_abs() < 10u128.pow(t.digits)
+            }
+            _ => true,
+        };
+        if valid {
+            return Ok(());
+        }
+        let what = match t.usage {
+            NumUsage::Binary => "has more digits than its PICTURE allows",
+            _ => "is not NUMERIC",
+        };
+        if flags & ABD != 0 {
+            return Err(super::RunError(format!(
+                "NUMCHECK: a sending data item {what}"
+            )));
+        }
+        eprintln!("zcobc: NUMCHECK: a sending data item {what}");
+        Ok(())
+    }
+}
+
 fn class_test(v: &Val, k: &ClassKind, settings: crate::numeric::Settings) -> bool {
     let bytes: &[u8] = match v {
         Val::Item(_, b) | Val::Alnum(b) => b,
@@ -1315,6 +1506,17 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         d::edit_alnum(edit, &src, out);
         return;
     }
+    // UTF-8 receivers: the sending data converted to UTF-8 characters
+    // (LRM MOVE, "UTF-8" receiving items).
+    if let DataType::Utf8 { chars } = ty {
+        match v {
+            Val::Fig(Fig::High) => d::high_utf8(*chars, out),
+            Val::Fig(f) => d::fill_utf8(&d::utf8_of_national(&d::national_fig(fig_byte(*f))), *chars, out),
+            Val::All(p) => d::fill_utf8(&d::utf8_of_national(&d::national_of(p)), *chars, out),
+            _ => d::move_utf8(&utf8_source(v), *chars, out),
+        }
+        return;
+    }
     // Figurative constants and ALL literals (national receivers take
     // them as national characters).
     if *ty == DataType::National {
@@ -1451,6 +1653,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
         // padded with national spaces
         DataType::National => match v {
             Val::Item(ty, b) if ty.is_national() => d::move_national(b, out),
+            Val::Item(DataType::Utf8 { .. }, b) => d::move_national(&d::national_of_utf8(b), out),
             Val::Item(DataType::Dbcs, b) => {
                 d::move_national(&d::utf16(&crate::codepage::active().decode_dbcs(b)), out)
             }
@@ -1462,7 +1665,7 @@ pub fn move_into(v: &Val, ty: &DataType, out: &mut [u8]) {
             let bytes = alnum_source(v);
             d::edit_alnum(edit, &bytes, out);
         }
-        DataType::Group => unreachable!(),
+        DataType::Group | DataType::Utf8 { .. } => unreachable!(),
     }
 }
 
@@ -1472,6 +1675,17 @@ fn numeric_val(v: &Val) -> Dec {
         Val::NumLit(x, _) | Val::Num(x) => *x,
         Val::Alnum(b) | Val::All(b) => d::alnum_as_number(b),
         Val::Fig(_) => Dec::ZERO,
+    }
+}
+
+/// Source bytes for a UTF-8 receiving item: UTF-8 data as it is, national
+/// and DBCS data converted from UTF-16, other data from the code page.
+pub(super) fn utf8_source(v: &Val) -> Vec<u8> {
+    match v {
+        Val::Item(DataType::Utf8 { .. }, b) => b.clone(),
+        Val::Item(ty, b) if ty.is_national() => d::utf8_of_national(b),
+        Val::Item(DataType::Dbcs, b) => crate::codepage::active().decode_dbcs(b).into_bytes(),
+        _ => d::utf8_of_national(&d::national_of(&alnum_source(v))),
     }
 }
 

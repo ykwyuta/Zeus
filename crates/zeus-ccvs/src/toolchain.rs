@@ -160,6 +160,10 @@ impl Toolchain {
                 ])
                 .arg(format!("{program}.zo"))
                 .arg(source);
+                // the code page of G constants and DBCS data (manifest ccsid)
+                if let Some(cp) = ccsid {
+                    cmd.env("ZEUS_CCSID", cp.to_string());
+                }
                 cmd
             }
             Toolchain::GnuCobol { cobc } => {

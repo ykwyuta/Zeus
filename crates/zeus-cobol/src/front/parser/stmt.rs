@@ -379,6 +379,49 @@ impl Parser {
                     pos,
                 }
             }
+            "ALLOCATE" => {
+                let start = self.i;
+                let (mut item, mut chars) = (None, None);
+                match self.expr() {
+                    Ok(e) if self.accept("CHARACTERS") => chars = Some(e),
+                    _ => {
+                        self.i = start;
+                        item = Some(self.data_ref()?);
+                    }
+                }
+                let initialized = self.accept("INITIALIZED") || self.accept("INITIALISED");
+                let mut loc = None;
+                if self.accept("LOC") {
+                    let pos = self.pos();
+                    let n = match self.peek().map(|t| &t.tok) {
+                        Some(Tok::Num(n)) => n.parse::<u32>().ok(),
+                        _ => None,
+                    }
+                    .filter(|n| matches!(n, 24 | 31 | 64))
+                    .ok_or_else(|| crate::diag::Diag::error(pos, "LOC requires 24, 31 or 64"))?;
+                    self.i += 1;
+                    loc = Some(n);
+                }
+                let returning = if self.accept("RETURNING") {
+                    Some(self.data_ref()?)
+                } else {
+                    None
+                };
+                Stmt::Allocate {
+                    item,
+                    chars,
+                    initialized,
+                    loc,
+                    returning,
+                }
+            }
+            "FREE" => {
+                let mut items = Vec::new();
+                while self.is_operand_start() {
+                    items.push(self.data_ref()?);
+                }
+                Stmt::Free(items)
+            }
             "CANCEL" => {
                 let mut progs = Vec::new();
                 while self.is_operand_start() {
@@ -1577,6 +1620,13 @@ impl Parser {
                 out.extend(names.into_iter().map(|n| (n, on)));
             }
             return Ok(Stmt::Set(SetStmt::Switch(out)));
+        }
+        if self.is("LENGTH") && self.is_at(1, "OF") {
+            self.i += 2;
+            let target = self.data_ref()?;
+            self.expect("TO")?;
+            let v = self.operand()?;
+            return Ok(Stmt::Set(SetStmt::Length(target, v)));
         }
         if self.is("ADDRESS") && self.is_at(1, "OF") {
             let mut targets = Vec::new();

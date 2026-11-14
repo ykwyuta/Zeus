@@ -11,6 +11,14 @@ pub fn mk(k: Ek, ty: Ty) -> Expr {
     Expr { k: Box::new(k), ty }
 }
 
+/// A UCHAR value of any length (comparison and concatenation operands).
+pub fn uchar_any() -> Ty {
+    Ty::Uchar {
+        len: Ext::Star,
+        var: Varying::Varying,
+    }
+}
+
 /// Natural-length character type of an expression result.
 pub fn char_any() -> Ty {
     Ty::Char {
@@ -232,6 +240,10 @@ impl Compiler {
             || matches!(b.ty, Ty::Pointer | Ty::Offset(_))
         {
             (self.conv(a, &Ty::Pointer), self.conv(b, &Ty::Pointer))
+        } else if matches!(a.ty, Ty::Uchar { .. }) || matches!(b.ty, Ty::Uchar { .. }) {
+            // uchar comparison ranks above widechar, graphic, character
+            // and bit (LRM, comparison operations)
+            (self.conv(a, &uchar_any()), self.conv(b, &uchar_any()))
         } else if a.ty.is_char() || b.ty.is_char() {
             (self.to_char(a), self.to_char(b))
         } else if a.ty.is_bit() || b.ty.is_bit() {
@@ -243,6 +255,17 @@ impl Compiler {
     }
 
     fn concat(&self, a: Expr, b: Expr) -> Expr {
+        // if either operand is uchar, the result is uchar (LRM)
+        if matches!(a.ty, Ty::Uchar { .. }) || matches!(b.ty, Ty::Uchar { .. }) {
+            let len = match (const_len(&a.ty), const_len(&b.ty)) {
+                (Some(x), Some(y)) if matches!(a.ty, Ty::Uchar { .. }) && matches!(b.ty, Ty::Uchar { .. }) => {
+                    Ext::Const(x + y)
+                }
+                _ => Ext::Star,
+            };
+            let (a, b) = (self.conv(a, &uchar_any()), self.conv(b, &uchar_any()));
+            return mk(Ek::Concat(a, b), Ty::Uchar { len, var: Varying::Varying });
+        }
         // RULES(IBM): BIT when either operand is a bit string or binary
         // arithmetic, otherwise CHARACTER
         let bitish = |t: &Ty| t.is_bit() || (matches!(t, Ty::Fixed { dec: false, .. }));
@@ -375,7 +398,11 @@ impl Compiler {
                     .ok_or_else(|| self.err(pos, "PROCEDURENAME outside a procedure"))?;
                 text(&self.m.procs[p as usize].name)
             }
-            // no PACKAGE statement: the outermost procedure
+            // the label of the PACKAGE statement; with none, the outermost
+            // procedure (LRM, PACKAGENAME)
+            PackageName if self.package_name.is_some() => {
+                text(self.package_name.as_deref().unwrap_or_default())
+            }
             PackageName => {
                 let p = proc_of(self.outer)
                     .ok_or_else(|| self.err(pos, "PACKAGENAME outside a procedure"))?;
@@ -409,9 +436,34 @@ impl Compiler {
                 let n = b.len() as u32;
                 mk(Ek::Char(b), Ty::char(n))
             }
-            StrKind::Hex => {
-                let t: String = text.chars().filter(|c| !c.is_whitespace()).collect();
-                if !t.len().is_multiple_of(2) {
+            // UX: hexadecimal UTF-8 bytes, which must be valid UTF-8; U:
+            // the characters of the constant (LRM, UX (hex) UCHAR constant)
+            StrKind::Uchar => {
+                let b = text.as_bytes().to_vec();
+                let n = crate::vm::conv::uchar_count(&b) as u32;
+                mk(Ek::Char(b), Ty::Uchar { len: Ext::Const(n), var: Varying::Fixed })
+            }
+            StrKind::UcharHex => {
+                let t: String = text.chars().filter(|c| !c.is_whitespace() && *c != '_').collect();
+                let b: Vec<u8> = (0..t.len() / 2 * 2)
+                    .step_by(2)
+                    .map(|i| u8::from_str_radix(&t[i..i + 2], 16))
+                    .collect::<std::result::Result<_, _>>()
+                    .map_err(|_| bad())?;
+                if t.len() % 2 != 0 || std::str::from_utf8(&b).is_err() {
+                    return Err(bad());
+                }
+                let n = crate::vm::conv::uchar_count(&b) as u32;
+                mk(Ek::Char(b), Ty::Uchar { len: Ext::Const(n), var: Varying::Fixed })
+            }
+            StrKind::Hex | StrKind::WideHex => {
+                // the break character _ may separate the digits (LRM)
+                let t: String = text
+                    .chars()
+                    .filter(|c| !c.is_whitespace() && *c != '_')
+                    .collect();
+                let unit = if kind == StrKind::WideHex { 4 } else { 2 };
+                if !t.len().is_multiple_of(unit) {
                     return Err(bad());
                 }
                 let b: Vec<u8> = (0..t.len())
@@ -420,7 +472,18 @@ impl Compiler {
                     .collect::<std::result::Result<_, _>>()
                     .map_err(|_| bad())?;
                 let n = b.len() as u32;
-                mk(Ek::Char(b), Ty::char(n))
+                if kind == StrKind::WideHex {
+                    mk(
+                        Ek::Char(b),
+                        Ty::Wchar {
+                            len: crate::types::Ext::Const(n / 2),
+                            var: crate::types::Var::Fixed,
+                            graphic: false,
+                        },
+                    )
+                } else {
+                    mk(Ek::Char(b), Ty::char(n))
+                }
             }
             StrKind::Bit(r) => {
                 let mut bits = Vec::new();
@@ -619,11 +682,37 @@ impl Compiler {
             })
     }
 
+    /// TYPE(h) (LRM, TYPE built-in function and pseudovariable): the typed
+    /// structure located by the handle, as the BASED structure of its type
+    /// with the handle as its locator (h => the whole structure).
+    pub fn type_deref(&self, e: &ast::Expr) -> Option<ast::Expr> {
+        let ast::Expr::Ref(r) = e else { return None };
+        let [(name, lists)] = &r.parts[..] else {
+            return None;
+        };
+        if name != "TYPE" || r.locator.is_some() || self.resolve_var(std::slice::from_ref(name)).is_some()
+        {
+            return None;
+        }
+        let [l] = &lists[..] else { return None };
+        let [ast::Expr::Ref(h)] = &l[..] else {
+            return None;
+        };
+        let v = self.resolve_var(&self.ref_names(h))?;
+        let t = self.handle_type(v)?;
+        Some(ast::Expr::Ref(ast::Ref {
+            locator: Some(Box::new(h.clone())),
+            parts: vec![(format!("%{t}"), Vec::new())],
+            pos: r.pos,
+        }))
+    }
+
     /// The qualified names of a reference; after a handle (h => x) they
     /// are in the BASED structure of its type.
     pub fn ref_names(&self, r: &ast::Ref) -> Vec<String> {
         let mut names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
-        if let Some(l) = &r.locator
+        if !names[0].starts_with('%')
+            && let Some(l) = &r.locator
             && let Some(v) = self.resolve_var(&self.ref_names(l))
             && let Some(t) = self.handle_type(v)
         {
@@ -1164,15 +1253,159 @@ impl Compiler {
                 let e = self.array_search(b, args, pos)?;
                 Ok(Stmt::CallBuiltin(b, vec![e]))
             }
-            PliFill | PliMove => {
+            PliFill | PliMove | PliTran11 | PliTran12 | PliTran21 | PliTran22 => {
                 let mut v = Vec::new();
                 for a in args {
                     v.push(self.expr(a)?);
                 }
                 Ok(Stmt::CallBuiltin(b, v))
             }
+            // PLIASCII(x, y, z), PLIEBCDIC(x, y, z): z bytes at y converted
+            // to x (LRM); x and y are pointers or OFFSETs with an area
+            PliAscii | PliEbcdic => {
+                let [x, y, z] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs three arguments")));
+                };
+                let mut v = Vec::new();
+                for a in [x, y] {
+                    let e = self.expr(a)?;
+                    if !matches!(e.ty, Ty::Pointer | Ty::Offset(Some(_))) {
+                        return Err(self.err(
+                            pos,
+                            format!("{b:?}: x and y must be POINTER or OFFSET with an AREA"),
+                        ));
+                    }
+                    v.push(self.conv(e, &Ty::Pointer));
+                }
+                let z = self.expr(z)?;
+                let z = self.to_arith(z);
+                v.push(self.conv(z, &Ty::fixed_bin(31, 0)));
+                Ok(Stmt::CallBuiltin(b, v))
+            }
+            // PLIATTN raises ATTENTION (LRM)
+            PliAttn => Ok(Stmt::CallBuiltin(b, Vec::new())),
+            // PLICANC cancels the automatic restart facility, which Zeus
+            // does not have: nothing to do
+            PliCanc => Ok(Stmt::CallBuiltin(PliDump, Vec::new())),
+            // PLIDELETE(x) is PLIFREE(PTRVALUE(x)) (LRM); storage of NEW is
+            // not reused, as for PLIFREE
+            PliDelete => {
+                let [x] = args else {
+                    return Err(self.err(pos, "PLIDELETE needs a handle"));
+                };
+                self.expr(x)?;
+                Ok(Stmt::CallBuiltin(PliDump, Vec::new()))
+            }
+            // LOCNEWSPACE(x [,a]), LOCNEWVALUE(v, x [,a]) (LRM)
+            LocNewSpace | LocNewValue => {
+                let (v, rest) = if b == LocNewValue {
+                    let (v, rest) = args
+                        .split_first()
+                        .ok_or_else(|| self.err(pos, "LOCNEWVALUE needs a value"))?;
+                    (Some(v), rest)
+                } else {
+                    (None, args)
+                };
+                let (Some(ast::Expr::Ref(x)), 1..=2) = (rest.first(), rest.len()) else {
+                    return Err(self.err(pos, format!("{b:?} needs an OFFSET with LOCATES")));
+                };
+                let xr = self.reference(x, true)?;
+                let (area, ty) = self.locates_area(&xr, rest.get(1), pos)?;
+                let value = match v {
+                    Some(v) => {
+                        let x = self.expr(v)?;
+                        Some(self.conv(x, &ty))
+                    }
+                    None => None,
+                };
+                Ok(Stmt::LocNew {
+                    target: Target::Ref(xr),
+                    area,
+                    ty,
+                    value,
+                })
+            }
             _ => Err(self.err(pos, format!("built-in subroutine {b:?} is not supported"))),
         }
+    }
+
+    /// The area and the located type of an OFFSET with LOCATES: the area
+    /// given, else the one in its OFFSET attribute.
+    pub fn locates_area(
+        &mut self,
+        xr: &Ref,
+        a: Option<&ast::Expr>,
+        pos: Pos,
+    ) -> Result<(Ref, Ty)> {
+        let Some(&h) = self.locates.get(&xr.var) else {
+            return Err(self.err(pos, "an OFFSET with the LOCATES attribute is needed"));
+        };
+        let ty = self.m.vars[h as usize].ty.clone().unwrap();
+        let area = match a {
+            Some(ast::Expr::Ref(a)) => {
+                let ar = self.reference(a, true)?;
+                if !matches!(self.m.vars[ar.var as usize].ty, Some(Ty::Area(_))) {
+                    return Err(self.err(pos, "not an AREA reference"));
+                }
+                ar
+            }
+            Some(_) => return Err(self.err(pos, "not an AREA reference")),
+            None => match self.m.vars[xr.var as usize].ty {
+                Some(Ty::Offset(Some(a))) => Ref {
+                    var: a,
+                    subs: Vec::new(),
+                    locator: None,
+                },
+                _ => return Err(self.err(pos, "the OFFSET has no AREA; give the area")),
+            },
+        };
+        Ok((area, ty))
+    }
+
+    /// LOCVAL(x [,a]): the based variable of the located type at the
+    /// offset x in the area.
+    fn locval_ref(&mut self, args: &[ast::Expr], pos: Pos) -> Result<(Ref, Ty)> {
+        let (Some(ast::Expr::Ref(x)), 1..=2) = (args.first(), args.len()) else {
+            return Err(self.err(pos, "LOCVAL needs an OFFSET with LOCATES"));
+        };
+        let xr = self.reference(x, true)?;
+        let (area, ty) = self.locates_area(&xr, args.get(1), pos)?;
+        let h = self.locates[&xr.var];
+        let off = self.load(xr, pos)?;
+        let ptr = mk(Ek::RefBuiltin(Bif::PointerOf, area, vec![off]), Ty::Pointer);
+        Ok((
+            Ref {
+                var: h,
+                subs: Vec::new(),
+                locator: Some(Box::new(ptr)),
+            },
+            ty,
+        ))
+    }
+
+    /// LOCSTG: the sizes of the located types of the OFFSETs with LOCATES
+    /// in v, times their elements (the dimensions not given a subscript
+    /// in the reference). Zeus needs constant bounds here.
+    fn locstg(&mut self, v: VarId, fixed: &[bool], pos: Pos) -> Result<u32> {
+        let var = &self.m.vars[v as usize];
+        if let Some(&h) = self.locates.get(&v) {
+            let mut n = self.m.vars[h as usize].size;
+            for (k, d) in var.dims.iter().enumerate() {
+                if fixed.get(k).copied().unwrap_or(false) {
+                    continue;
+                }
+                let (crate::ir::Bound::Const(l), crate::ir::Bound::Const(u)) = (d.lb, d.ub) else {
+                    return Err(self.err(pos, "LOCSTG with non-constant bounds is not supported yet"));
+                };
+                n *= (u - l + 1).max(0) as u32;
+            }
+            return Ok(n);
+        }
+        let mut n = 0;
+        for m in var.members.clone() {
+            n += self.locstg(m, fixed, pos)?;
+        }
+        Ok(n)
     }
 
     /// QUICKSORT(x [,n [,m]]) and BINSEARCH(x, y [,n [,m]]) on a
@@ -1380,6 +1613,79 @@ impl Compiler {
             ProcedureName | PackageName | SourceFile | SourceLine | IsMain | MainName => {
                 return self.program_info(b, pos);
             }
+            // ALLCOMPARE(x, y [,z]): every leaf element of x compared with the
+            // corresponding one of y by z (EQ, LE, LT, GT, GE, NE; EQ when
+            // omitted), x and y similar structures (LRM)
+            AllCompare => {
+                let structure = |c: &mut Self, e: Option<&ast::Expr>| -> Result<Ref> {
+                    match e {
+                        Some(ast::Expr::Ref(r)) => c.reference(r, true),
+                        _ => Err(c.err(pos, "ALLCOMPARE requires structure references")),
+                    }
+                };
+                let x = structure(self, args.first())?;
+                let y = structure(self, args.get(1))?;
+                let op = match args.get(2) {
+                    None => CmpOp::Eq,
+                    Some(ast::Expr::Str { text, .. }) => match text.to_ascii_uppercase().as_str() {
+                        "EQ" => CmpOp::Eq,
+                        "NE" => CmpOp::Ne,
+                        "LT" => CmpOp::Lt,
+                        "LE" => CmpOp::Le,
+                        "GT" => CmpOp::Gt,
+                        "GE" => CmpOp::Ge,
+                        _ => return Err(self.err(pos, "ALLCOMPARE: the third argument must be EQ, LE, LT, GT, GE or NE")),
+                    },
+                    Some(_) => return Err(self.err(pos, "ALLCOMPARE: the third argument must be a CHAR(2) constant")),
+                };
+                fn leaves(m: &crate::ir::Module, v: VarId, out: &mut Vec<VarId>) {
+                    let members = &m.vars[v as usize].members;
+                    if members.is_empty() {
+                        out.push(v);
+                    }
+                    for &k in members {
+                        leaves(m, k, out);
+                    }
+                }
+                let (mut lx, mut ly) = (Vec::new(), Vec::new());
+                leaves(&self.m, x.var, &mut lx);
+                leaves(&self.m, y.var, &mut ly);
+                // arrays among the elements or of the structures are not
+                // expanded here
+                let flat = |c: &Self, r: &Ref, l: &[VarId]| {
+                    r.subs.is_empty() && l.iter().all(|&v| c.m.vars[v as usize].dims.is_empty())
+                };
+                if lx.len() != ly.len() || lx.len() < 2 || !flat(self, &x, &lx) || !flat(self, &y, &ly) {
+                    return Err(self.err(pos, "ALLCOMPARE of these structures is not supported yet (similar structures of scalars only)"));
+                }
+                let mut acc: Option<Expr> = None;
+                for (a, b) in lx.iter().zip(&ly) {
+                    let ea = self.load(Ref { var: *a, subs: Vec::new(), locator: x.locator.clone() }, pos)?;
+                    let eb = self.load(Ref { var: *b, subs: Vec::new(), locator: y.locator.clone() }, pos)?;
+                    let c = self.compare(op, ea, eb);
+                    acc = Some(match acc {
+                        None => c,
+                        Some(p) => self.bits(BitOp::And, p, c),
+                    });
+                }
+                return Ok(acc.unwrap());
+            }
+            // INDICATORS(x): the elements at the next logical level of the
+            // structure x, a restricted expression (LRM)
+            Indicators => {
+                let structure = match args.first() {
+                    Some(ast::Expr::Ref(r)) => match self.lookup(r.name()).into_iter().next() {
+                        Some((_, Sym::Var(v))) => Some(v),
+                        _ => None,
+                    },
+                    _ => None,
+                };
+                let n = structure
+                    .map(|v| self.m.vars[v as usize].members.len())
+                    .filter(|&n| n > 0)
+                    .ok_or_else(|| self.err(pos, "INDICATORS requires a structure"))?;
+                return Ok(mk(Ek::Fixed(n as i128, 0), Ty::fixed_bin(31, 0)));
+            }
             // CODEPAGE: the CODEPAGE compiler option (Programming Guide: the
             // default CCSID is 1140)
             CodePage => {
@@ -1466,9 +1772,190 @@ impl Compiler {
                     ty: Ty::Pic(Box::new(p)),
                 });
             }
+            // REGEX(i, j, p, x [,n [,c]]): i and j are set through their
+            // addresses (scalars, or one-dimensional arrays for the
+            // subexpressions)
+            Regex => {
+                if !(4..=6).contains(&args.len()) {
+                    return Err(self.err(pos, "REGEX: wrong number of arguments"));
+                }
+                let mut v = Vec::new();
+                for a in &args[2..4] {
+                    let x = self.expr(a)?;
+                    v.push(self.to_char(x));
+                }
+                let int = |c: &mut Compiler, a: Option<&ast::Expr>, d: i128| -> Result<Expr> {
+                    Ok(match a {
+                        Some(a) => {
+                            let x = c.expr(a)?;
+                            let x = c.to_arith(x);
+                            c.conv(x, &Ty::fixed_bin(31, 0))
+                        }
+                        None => mk(Ek::Fixed(d, 0), Ty::fixed_bin(31, 0)),
+                    })
+                };
+                v.push(int(self, args.get(4), 1)?);
+                v.push(int(self, args.get(5), 0)?);
+                let mut shape = Vec::new();
+                for a in &args[..2] {
+                    let ast::Expr::Ref(r) = a else {
+                        return Err(self.err(pos, "REGEX: i and j must be references"));
+                    };
+                    let mut rr = self.reference(r, true)?;
+                    let var = &self.m.vars[rr.var as usize];
+                    let size = match &var.ty {
+                        Some(t @ Ty::Fixed { dec: false, q: 0, .. }) => t.storage(true).0,
+                        _ => {
+                            return Err(self.err(pos, "REGEX: i and j must be REAL FIXED BIN(p,0)"));
+                        }
+                    };
+                    let (count, stride) = match (&var.dims[..], &rr.subs[..]) {
+                        ([], _) => (1, size),
+                        ([d], [None]) => match (d.lb, d.ub) {
+                            (crate::ir::Bound::Const(l), crate::ir::Bound::Const(u)) => {
+                                rr.subs = vec![Some(mk(Ek::Fixed(i128::from(l), 0), Ty::fixed_bin(31, 0)))];
+                                // the stride is in bits
+                                ((u - l + 1).max(0) as u32, d.stride / 8)
+                            }
+                            _ => {
+                                return Err(self.err(pos, "REGEX: arrays need constant bounds here"));
+                            }
+                        },
+                        _ => return Err(self.err(pos, "REGEX: i and j must be scalars or vectors")),
+                    };
+                    shape.push((count, size, stride));
+                    v.push(mk(Ek::RefBuiltin(Addr, rr, Vec::new()), Ty::Pointer));
+                }
+                if shape[0].0 != shape[1].0 {
+                    return Err(self.err(pos, "REGEX: i and j must have matching bounds"));
+                }
+                for (count, size, stride) in [shape[0], shape[1]] {
+                    for n in [count, size, stride] {
+                        v.push(mk(Ek::Fixed(i128::from(n), 0), Ty::fixed_bin(31, 0)));
+                    }
+                }
+                return Ok(mk(Ek::Builtin(b, v), Ty::fixed_bin(31, 0)));
+            }
+            // CHARGRAPHIC(x [,y]): GRAPHIC to a mixed string; MPSTR(x, r
+            // [,y]): a mixed string cut at a DBCS boundary (LRM). Without y,
+            // the length of the conversion (SO, the DBCS bytes, SI) or of x.
+            CharGraphic | Mpstr => {
+                let (lo, hi) = if b == CharGraphic { (1, 2) } else { (2, 3) };
+                if args.len() < lo || args.len() > hi {
+                    return Err(self.err(pos, format!("{b:?}: wrong number of arguments")));
+                }
+                let x = if b == CharGraphic {
+                    let x = self.expr_wide(&args[0])?;
+                    if !matches!(x.ty, Ty::Wchar { graphic: true, .. }) {
+                        return Err(self.err(pos, "CHARGRAPHIC needs a GRAPHIC string"));
+                    }
+                    x
+                } else {
+                    let x = self.expr(&args[0])?;
+                    self.to_char(x)
+                };
+                let mut v = vec![x.clone()];
+                if b == Mpstr {
+                    let r = self.expr(&args[1])?;
+                    v.push(self.to_char(r));
+                }
+                let y = match args.get(lo) {
+                    Some(y) => {
+                        let e = self.expr(y)?;
+                        let e = self.to_arith(e);
+                        v.push(self.conv(e, &Ty::fixed_bin(31, 0)));
+                        Some(self.const_int(y))
+                    }
+                    None => None,
+                };
+                let len = match &x.ty {
+                    Ty::Wchar { len: Ext::Const(n), var: Varying::Fixed, .. } => {
+                        Some(if *n == 0 { 0 } else { 2 * n + 2 })
+                    }
+                    Ty::Char { len: Ext::Const(n), var: Varying::Fixed } => Some(*n),
+                    _ => None,
+                };
+                let ty = match (y, len) {
+                    (Some(Some(n)), _) => Ty::char(n.max(0) as u32),
+                    (None, Some(n)) => Ty::char(n),
+                    _ => Ty::char_var(32767),
+                };
+                return Ok(mk(Ek::Builtin(b, v), ty));
+            }
+            LocVal => {
+                let (r, _) = self.locval_ref(args, pos)?;
+                return self.load(r, pos);
+            }
+            // LOCSTG(x): the bytes for every located value of x at the size
+            // of its LOCATES type (LRM, LOCSTG)
+            LocStg => {
+                let [ast::Expr::Ref(x)] = args else {
+                    return Err(self.err(pos, "LOCSTG needs a reference"));
+                };
+                let xr = self.reference(x, true)?;
+                let fixed: Vec<bool> = xr.subs.iter().map(Option::is_some).collect();
+                let n = self.locstg(xr.var, &fixed, pos)?;
+                return Ok(mk(Ek::Fixed(i128::from(n), 0), Ty::fixed_bin(31, 0)));
+            }
+            // VALIDVALUE(x, y): y, converted to the type of x, against the
+            // value set of x (LRM): INLIST for VALUELIST, BETWEEN for
+            // VALUERANGE
+            ValidValue => {
+                let (Some(ast::Expr::Ref(r)), 1..=2) = (args.first(), args.len()) else {
+                    return Err(self.err(pos, "VALIDVALUE needs a reference and an expression"));
+                };
+                let rr = self.reference(r, true)?;
+                let Some((range, set)) = self.valuesets.get(&rr.var).cloned() else {
+                    return Err(self.err(
+                        pos,
+                        "VALIDVALUE needs a reference with VALUELIST or VALUERANGE",
+                    ));
+                };
+                let Some(xty) = self.m.vars[rr.var as usize].ty.clone() else {
+                    return Err(self.err(pos, "VALIDVALUE needs a scalar reference"));
+                };
+                let y = match args.get(1) {
+                    Some(y) => self.expr(y)?,
+                    None => self.load(rr, pos)?,
+                };
+                let mut v = vec![self.conv(y, &xty)];
+                for e in &set {
+                    let x = self.expr(e)?;
+                    v.push(self.conv(x, &xty));
+                }
+                let bb = if range { Between } else { InList };
+                return Ok(mk(Ek::Builtin(bb, v), Ty::bit(1)));
+            }
+            // the bounds of the dimension a DIMACROSS structure gave its
+            // members: LBOUND / HBOUND of the first member in that dimension
+            HboundAcross | LboundAcross => {
+                let [ast::Expr::Ref(r)] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs a DIMACROSS reference")));
+                };
+                let rr = self.reference(r, true)?;
+                let v = &self.m.vars[rr.var as usize];
+                if !self.dimacross.contains(&rr.var) || v.members.is_empty() {
+                    return Err(self.err(pos, format!("{b:?} needs a DIMACROSS reference")));
+                }
+                let k = rr.subs.len() as i128 + 1;
+                let first = v.members[0];
+                let n = self.m.vars[first as usize].dims.len();
+                let mut subs = rr.subs.clone();
+                subs.resize(n, None);
+                let mr = Ref {
+                    var: first,
+                    subs,
+                    locator: rr.locator.clone(),
+                };
+                let dim = mk(Ek::Fixed(k, 0), Ty::fixed_bin(31, 0));
+                let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
+                let bb = if b == HboundAcross { Hbound } else { Lbound };
+                return Ok(mk(Ek::RefBuiltin(bb, mr, vec![dim]), ty));
+            }
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField | OnText
             | OnActual | OnExpected | OnOperator | OnPackage | OnSubscript | OnLbound
-            | OnHbound | OnLine | OnArea | OnCondCond | OnCondId => {
+            | OnHbound | OnLine | OnArea | OnCondCond | OnCondId | OnUchar | OnUsource
+            | OnWchar | OnWsource => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
                 return Ok(mk(Ek::OnValue(b), ty));
             }
@@ -1556,7 +2043,20 @@ impl Compiler {
         // value arguments (HEX: the bytes of GRAPHIC and WIDECHAR)
         let mut xs = Vec::new();
         for a in args {
-            xs.push(if matches!(b, Hex | Unspec | Rank) {
+            xs.push(if matches!(
+                b,
+                Hex | Unspec
+                    | Rank
+                    | Ulength
+                    | Ulength8
+                    | Ulength16
+                    | Upos
+                    | Usubstr
+                    | Usupplementary
+                    | Uvalid
+                    | Uwidth
+                    | Utf8
+            ) {
                 self.expr_wide(a)?
             } else {
                 self.expr(a)?
@@ -1569,6 +2069,36 @@ impl Compiler {
             let x = c.to_arith(x);
             c.conv(x, &Ty::fixed_bin(31, 0))
         };
+        // UCHAR arguments: only to the built-ins that take them; others
+        // are refused rather than run on the UTF-8 bytes as characters
+        let uchar = |t: &Ty| matches!(t, Ty::Uchar { .. });
+        if xs.iter().any(|x| uchar(&x.ty)) {
+            match b {
+                Length | ByteLength | LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1
+                | FoldedFullMatch | FoldedSimpleMatch => {}
+                _ => {
+                    return Err(self.err(pos, format!("a UCHAR argument to {b:?} is not supported yet")));
+                }
+            }
+        }
+        match b {
+            Length if xs.first().is_some_and(|x| uchar(&x.ty)) => {
+                return Ok(mk(Ek::Builtin(b, xs), rt));
+            }
+            ByteLength | LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1 => {
+                let x = xs.into_iter().next().ok_or_else(|| self.err(pos, format!("{b:?} needs an argument")))?;
+                if !uchar(&x.ty) {
+                    return Err(self.err(pos, format!("{b:?} requires a UCHAR argument")));
+                }
+                return Ok(mk(Ek::Builtin(b, vec![x]), rt));
+            }
+            // the arguments are converted to UCHAR if necessary (LRM)
+            FoldedFullMatch | FoldedSimpleMatch => {
+                let v = xs.into_iter().map(|x| self.conv(x, &uchar_any())).collect();
+                return Ok(mk(Ek::Builtin(b, v), rt));
+            }
+            _ => {}
+        }
         let xs: Vec<Expr> = match b {
             // conversion built-ins
             Binary | Decimal | Fixed | Float | FixedBin | FixedDec | FloatBin | FloatDec
@@ -1621,13 +2151,33 @@ impl Compiler {
                 v
             }
             WHigh | WLow | WcharVal | Alloc31 => xs.into_iter().map(|x| int(self, x)).collect(),
-            SubTo => {
+            // UTF8(x [,c]), UTF8TOCHAR(x [,c]): the code page c defaults
+            // to the CODEPAGE option; x of another type than CHAR or
+            // WIDECHAR is converted to CHAR first
+            Utf8 | Utf8ToChar => {
+                let mut it = xs.into_iter();
+                let x = it.next().unwrap();
+                let x = if matches!(x.ty, Ty::Char { .. } | Ty::Wchar { .. }) {
+                    x
+                } else {
+                    self.conv(x, &Ty::char_var(32767))
+                };
+                let c = match it.next() {
+                    Some(c) => int(self, c),
+                    None => mk(Ek::Fixed(i128::from(self.m.ccsid), 0), Ty::fixed_bin(31, 0)),
+                };
+                vec![x, c]
+            }
+            Utf8ToWchar | MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24
+            | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | FileOpen | FileId
+            | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern | Utf8Stg | ThreadId => xs,
+            SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];
                 v.extend(it.map(|x| int(self, x)));
                 v
             }
-            Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+            Erf | Erfc | Gamma | LogGamma | Sqrt | SqrtF | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
             | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => xs
                 .into_iter()
                 .map(|x| {
@@ -1817,6 +2367,10 @@ impl Compiler {
             };
             if let Some(b) = pseudo {
                 let args = &r.parts[0].1[0];
+                if b == Bif::LocVal {
+                    let (r, ty) = self.locval_ref(args_of(r), r.pos)?;
+                    return Ok((Target::Ref(r), Some(ty)));
+                }
                 if matches!(b, Bif::OnChar | Bif::OnSource) {
                     if !args.is_empty() {
                         return Err(self.err(r.pos, "condition pseudovariable takes no arguments"));
@@ -1947,4 +2501,9 @@ fn generic_matches(words: &[String], ty: &Ty) -> bool {
         "AREA" => matches!(ty, Ty::Area(_)),
         _ => false,
     })
+}
+
+/// The first argument list of a one-part reference.
+fn args_of(r: &ast::Ref) -> &[ast::Expr] {
+    &r.parts[0].1[0]
 }

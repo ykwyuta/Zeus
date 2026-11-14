@@ -1703,6 +1703,11 @@ impl<'a> Gen<'a> {
         } else {
             None
         };
+        let initcheck_items = if crate::front::initcheck() == 0 {
+            Vec::new()
+        } else {
+            self.initcheck_items()
+        };
         Ok(zir::ProgramCode {
             ccsid: None,
             compiled_at: None,
@@ -1740,6 +1745,7 @@ impl<'a> Gen<'a> {
                     .collect()
             },
             ssrange: crate::front::ssrange(),
+            numcheck: crate::front::numcheck(),
             dynam: crate::front::dynam(),
             dll: crate::front::dll() || crate::front::lp64(),
             exportall: crate::front::exportall(),
@@ -1862,9 +1868,48 @@ impl<'a> Gen<'a> {
                 .flatten()
                 .find(|&&id| self.dm.items[id].area == super::data::Area::Special)
                 .map(|&id| self.dm.items[id].desc),
+            initcheck_items,
             stmt_pos: self.stmt_pos,
             instr_stmt: self.instr_stmt,
         })
+    }
+
+    /// Items INITCHECK tracks: elementary WORKING-STORAGE and LOCAL-STORAGE
+    /// items with no VALUE clause on themselves or a containing group, not
+    /// EXTERNAL or GLOBAL (Programming Guide, INITCHECK restrictions), and
+    /// not items Zeus adds itself (debugging and report items).
+    fn initcheck_items(&self) -> Vec<u32> {
+        let items = &self.dm.items;
+        (0..items.len())
+            .filter(|&id| {
+                let it = &items[id];
+                if it.area != Area::Working
+                    || !it.children.is_empty()
+                    || it.cond_of.is_some()
+                    || it.index_of.is_some()
+                    || it.owner.is_some()
+                    || it.renames.is_some()
+                    || it.level == 66
+                    || it.level == 88
+                {
+                    return false;
+                }
+                let mut cur = Some(id);
+                while let Some(c) = cur {
+                    let x = &items[c];
+                    if x.entry.value.is_some()
+                        || x.global
+                        || x.entry.external
+                        || x.name.as_deref().is_some_and(|n| n.starts_with("DEBUG-") || n.starts_with("RW#"))
+                    {
+                        return false;
+                    }
+                    cur = x.parent;
+                }
+                true
+            })
+            .map(|id| items[id].desc)
+            .collect()
     }
 
     fn collating(&self) -> Result<Option<Vec<u16>>> {
@@ -2488,6 +2533,47 @@ impl<'a> Gen<'a> {
         Ok(())
     }
 
+    /// Statements that would treat UTF-8 data as single-byte characters
+    /// refuse it (the LRM allows UTF-8 in STRING and UNSTRING since
+    /// PH57297; not implemented here).
+    fn refuse_utf8(&self, verb: &str, srcs: &[&Src], locs: &[&Loc]) -> Result<()> {
+        let utf8 = srcs.iter().any(|s| match s {
+            Src::Utf8(_) => true,
+            Src::Loc(l) => self.dm.descs[l.desc as usize].ty.is_utf8(),
+            _ => false,
+        }) || locs.iter().any(|l| self.dm.descs[l.desc as usize].ty.is_utf8());
+        if utf8 {
+            return Err(Diag::error(
+                self.pos,
+                format!("UTF-8 data in {verb} is not supported yet"),
+            ));
+        }
+        Ok(())
+    }
+
+    /// A dynamic-length item as a receiver other than in MOVE and SET
+    /// LENGTH OF, or as a CALL argument. `allowed`: the LRM takes such an
+    /// item there (STRING, UNSTRING, ACCEPT FROM DATE and the like, CALL)
+    /// but Zeus does not yet, rather than writing it at its current
+    /// length; otherwise the LRM forbids it (INITIALIZE, INSPECT, ACCEPT
+    /// from a device, READ INTO).
+    fn refuse_dynamic(&self, verb: &str, locs: &[&Loc], allowed: bool) -> Result<()> {
+        if locs
+            .iter()
+            .any(|l| l.refmod.is_none() && self.dm.descs[l.desc as usize].dynamic_limit.is_some())
+        {
+            return Err(Diag::error(
+                self.pos,
+                if allowed {
+                    format!("a dynamic-length item in {verb} is not supported yet")
+                } else {
+                    format!("the receiving item of {verb} must not be a dynamic-length item")
+                },
+            ));
+        }
+        Ok(())
+    }
+
     /// Pairs of corresponding elementary items of two groups.
     /// The category of an elementary MOVE operand (Language Reference,
     /// "Valid and invalid elementary moves", Table 51). None when the table
@@ -2496,6 +2582,7 @@ impl<'a> Gen<'a> {
     fn move_category(&self, src: &Src) -> Option<MoveCat> {
         let ty = match src {
             Src::National(_) => return Some(MoveCat::National),
+            Src::Utf8(_) => return Some(MoveCat::Utf8),
             Src::NumLit(v, _) => {
                 return Some(if v.scale == 0 {
                     MoveCat::Integer
@@ -2522,6 +2609,7 @@ impl<'a> Gen<'a> {
             DataType::Float { .. } | DataType::ExternalFloat { .. } => MoveCat::Floating,
             DataType::Dbcs => MoveCat::Dbcs,
             DataType::National => MoveCat::National,
+            DataType::Utf8 { .. } => MoveCat::Utf8,
             _ => return None,
         })
     }
@@ -2543,12 +2631,13 @@ impl<'a> Gen<'a> {
         let valid = match from {
             Alphabetic | AlphanumericEdited => !to_numeric && to != Dbcs,
             Alphanumeric => to != Dbcs,
-            Integer => to != Alphabetic && to != Dbcs,
+            Integer => to != Alphabetic && to != Dbcs && to != Utf8,
             Noninteger | Floating => to_numeric,
             NumericEdited => to != Alphabetic && to != Dbcs,
             Dbcs => to == Dbcs || to_national,
             National => !to_alpha && to != Dbcs,
-            NationalEdited => to_national,
+            NationalEdited => to_national || to == Utf8,
+            Utf8 => to_national || to == Utf8,
         };
         if valid {
             Ok(())
@@ -3171,6 +3260,8 @@ impl<'a> Gen<'a> {
             Stmt::Accept { target, from, pos } => {
                 self.pos = *pos;
                 let dst = self.loc(target)?;
+                self.refuse_utf8("ACCEPT", &[], &[&dst])?;
+                self.refuse_dynamic("ACCEPT", &[&dst], from.is_some())?;
                 let from = match from.as_deref() {
                     None => zir::AcceptFrom::Stdin,
                     Some("DATE") => zir::AcceptFrom::Date,
@@ -3260,18 +3351,35 @@ impl<'a> Gen<'a> {
                             Advancing::Page => zir::Advance::Page,
                             Advancing::Lines(n) => zir::Advance::Lines(self.ex_operand(n)?),
                             Advancing::Mnemonic(m) => {
-                                // C01 / TOP-OF-PAGE style channel names
-                                let is_page = self.prog.env.mnemonics.iter().any(|(imp, mn)| {
-                                    mn == m
-                                        && (imp == "C01"
-                                            || imp == "TOP"
-                                            || imp.starts_with("CSP")
-                                            || imp == "FORMFEED")
-                                });
-                                if is_page {
-                                    zir::Advance::Page
-                                } else {
-                                    zir::Advance::Lines(Ex::Lit(Dec::from_i64(1)))
+                                let imp = self
+                                    .prog
+                                    .env
+                                    .mnemonics
+                                    .iter()
+                                    .find(|(_, mn)| mn == m)
+                                    .map(|(imp, _)| imp.as_str())
+                                    .unwrap_or("");
+                                match imp {
+                                    // C01: skip to channel 1, the top of
+                                    // the next page
+                                    "C01" | "TOP" | "FORMFEED" => zir::Advance::Page,
+                                    // CSP: suppress spacing (LRM, table 5
+                                    // "Meanings of environment names"):
+                                    // the line is printed over the last
+                                    "CSP" => zir::Advance::Lines(Ex::Lit(Dec::ZERO)),
+                                    // the line of channels 2-12 is set by
+                                    // the forms control buffer, which Zeus
+                                    // does not model
+                                    c if c.len() == 3
+                                        && c.starts_with('C')
+                                        && c[1..].parse::<u8>().is_ok_and(|n| (2..=12).contains(&n)) =>
+                                    {
+                                        return Err(Diag::error(
+                                            self.pos,
+                                            format!("WRITE ADVANCING {c} (skip to channel {}) is not supported yet", c[1..].parse::<u8>().unwrap_or(0)),
+                                        ));
+                                    }
+                                    _ => zir::Advance::Lines(Ex::Lit(Dec::from_i64(1))),
                                 }
                             }
                         },
@@ -3320,6 +3428,7 @@ impl<'a> Gen<'a> {
                     Some(i) => Some(self.loc(i)?),
                     None => None,
                 };
+                self.refuse_dynamic("READ INTO", &into.iter().collect::<Vec<_>>(), false)?;
                 let key = match key {
                     Some(k) => {
                         let kl = self.loc(k)?;
@@ -3384,12 +3493,15 @@ impl<'a> Gen<'a> {
                 for a in using {
                     args.push(match a {
                         CallArg::Reference(Operand::Ref(r)) => {
-                            zir::CallArgMode::Reference(self.loc(r)?)
+                            let l = self.loc(r)?;
+                            self.refuse_dynamic("CALL", &[&l], true)?;
+                            zir::CallArgMode::Reference(l)
                         }
                         CallArg::Reference(op) | CallArg::Content(op) => {
                             let len = match op {
                                 Operand::Ref(r) => {
                                     let l = self.loc(r)?;
+                                    self.refuse_dynamic("CALL", &[&l], true)?;
                                     self.dm.descs[l.desc as usize].len
                                 }
                                 Operand::Lit(l) => super::lit::literal_bytes(l).len() as u32,
@@ -3456,6 +3568,81 @@ impl<'a> Gen<'a> {
                     self.emit(Instr::Cancel(s));
                 }
             }
+            // ALLOCATE (Language Reference, ALLOCATE statement): the size of
+            // a LINKAGE record (its maximum length) or of an expression;
+            // LOC selects storage below the line or bar, which Zeus does not
+            // distinguish
+            Stmt::Allocate {
+                item,
+                chars,
+                initialized,
+                loc,
+                returning,
+            } => {
+                if *loc == Some(64) {
+                    return Err(Diag::error(self.pos, "ALLOCATE LOC 64 requires LP(64)"));
+                }
+                let ret = match returning {
+                    Some(r) => Some(self.loc(r)?),
+                    None => None,
+                };
+                match (item, chars) {
+                    (Some(t), _) => {
+                        let id = self.dm.resolve(t)?;
+                        let Area::Linkage(n) = self.dm.items[id].area else {
+                            return Err(Diag::error(
+                                t.pos,
+                                format!("{} is not a LINKAGE SECTION record", t.name),
+                            ));
+                        };
+                        if self.dm.items[id].parent.is_some() {
+                            return Err(Diag::error(
+                                t.pos,
+                                format!("{} is not a level-01 or level-77 item", t.name),
+                            ));
+                        }
+                        let len = i64::from(self.dm.items[id].len);
+                        self.emit(Instr::Allocate {
+                            size: Ex::Lit(Dec::from_i64(len)),
+                            zero: false,
+                            link: Some(n),
+                            ret,
+                        });
+                        // INITIALIZE data-name-1 WITH FILLER ALL TO VALUE
+                        // THEN TO DEFAULT
+                        if *initialized {
+                            let options = crate::front::ast::InitializeOptions {
+                                with_filler: true,
+                                value_categories: vec!["ALL".into()],
+                                to_default: true,
+                            };
+                            self.initialize(t, &[], &options)?;
+                        }
+                    }
+                    (None, Some(e)) => {
+                        if ret.is_none() {
+                            return Err(Diag::error(
+                                self.pos,
+                                "ALLOCATE CHARACTERS requires RETURNING",
+                            ));
+                        }
+                        let size = self.ex(e)?;
+                        self.emit(Instr::Allocate {
+                            size,
+                            zero: *initialized,
+                            link: None,
+                            ret,
+                        });
+                    }
+                    (None, None) => return Err(Diag::error(self.pos, "ALLOCATE needs an operand")),
+                }
+            }
+            Stmt::Free(items) => {
+                for t in items {
+                    let l = self.loc(t)?;
+                    self.emit(Instr::Free(l));
+                }
+            }
             Stmt::Set(set) => self.set(set)?,
             Stmt::Initialize {
                 targets,
@@ -3463,10 +3650,23 @@ impl<'a> Gen<'a> {
                 options,
             } => {
                 for t in targets {
+                    if let Ok(id) = self.dm.resolve(t) {
+                        let l = Loc {
+                            desc: self.dm.items[id].desc,
+                            subs: Vec::new(),
+                            refmod: None,
+                        };
+                        self.refuse_dynamic("INITIALIZE", &[&l], false)?;
+                    }
                     self.initialize(t, replacing, options)?;
                 }
             }
-            Stmt::Inspect { target, ops } => self.inspect(target, ops)?,
+            Stmt::Inspect { target, ops } => {
+                let loc = self.loc(target)?;
+                self.refuse_utf8("INSPECT", &[], &[&loc])?;
+                self.refuse_dynamic("INSPECT", &[&loc], false)?;
+                self.inspect(target, ops)?
+            }
             Stmt::InspectValue { value, ops } => self.inspect_value(value, ops)?,
             Stmt::String {
                 sources,
@@ -3483,6 +3683,9 @@ impl<'a> Gen<'a> {
                     srcs.push((self.src(s)?, d));
                 }
                 let into = self.loc(into)?;
+                let all: Vec<&Src> = srcs.iter().flat_map(|(s, d)| std::iter::once(s).chain(d)).collect();
+                self.refuse_utf8("STRING", &all, &[&into])?;
+                self.refuse_dynamic("STRING", &[&into], true)?;
                 let pointer = match pointer {
                     Some(p) => Some(self.loc(p)?),
                     None => None,
@@ -3528,6 +3731,14 @@ impl<'a> Gen<'a> {
                     Some(t) => Some(self.loc(t)?),
                     None => None,
                 };
+                let srcs: Vec<&Src> = delims.iter().map(|(_, d)| d).collect();
+                let mut locs: Vec<&Loc> = vec![&source];
+                for (t, d, _) in &targets {
+                    locs.push(t);
+                    locs.extend(d.iter());
+                }
+                self.refuse_utf8("UNSTRING", &srcs, &locs)?;
+                self.refuse_dynamic("UNSTRING", &locs[1..], true)?;
                 self.emit(Instr::Unstring {
                     source,
                     delims,
@@ -3779,6 +3990,17 @@ impl<'a> Gen<'a> {
                     self.emit(Instr::SetSwitch(idx, *on));
                 }
             }
+            SetStmt::Length(target, value) => {
+                let loc = self.loc(target)?;
+                if self.dm.descs[loc.desc as usize].dynamic_limit.is_none() || loc.refmod.is_some() {
+                    return Err(Diag::error(
+                        target.pos,
+                        format!("{} is not a dynamic-length elementary item", target.name),
+                    ));
+                }
+                let v = self.ex_operand(value)?;
+                self.emit(Instr::SetDynamicLength(loc, v));
+            }
             SetStmt::Address(targets, value) => {
                 let v = self.ex_operand(value)?;
                 for t in targets {
@@ -3878,6 +4100,7 @@ impl<'a> Gen<'a> {
                 DataType::Alphanumeric { .. } | DataType::Group => "ALPHANUMERIC",
                 DataType::Dbcs => "DBCS",
                 DataType::National => "NATIONAL",
+                DataType::Utf8 { .. } => "UTF-8",
                 DataType::Numeric(_) | DataType::Float { .. } | DataType::ExternalFloat { .. } => {
                     "NUMERIC"
                 }
@@ -4791,6 +5014,15 @@ pub fn compile(programs: &[ast::Program]) -> Result<zir::Module> {
     // IBM uses the first literal CALL convention for a name throughout
     // a compilation unit, diagnosing later conflicting conventions.
     let mut diagnostics = Vec::new();
+    if crate::front::initcheck() != 0 {
+        for program in &out {
+            diagnostics.extend(super::initcheck::analyze(
+                program,
+                &program.initcheck_items,
+                crate::front::initcheck() == 2,
+            ));
+        }
+    }
     let mut conventions = HashMap::new();
     for program in &mut out {
         if program.parent.is_none() {
@@ -4923,7 +5155,7 @@ fn compile_nested<'a>(
 }
 
 /// Data references of an instruction: (location, receiving operand).
-fn instr_locs(ins: &Instr) -> Vec<(Loc, bool)> {
+pub(super) fn instr_locs(ins: &Instr) -> Vec<(Loc, bool)> {
     fn walk(v: &serde_json::Value, receiving: bool, out: &mut Vec<(Loc, bool)>) {
         match v {
             serde_json::Value::Object(m) => {
@@ -5114,6 +5346,7 @@ enum MoveCat {
     Dbcs,
     National,
     NationalEdited,
+    Utf8,
 }
 
 impl std::fmt::Display for MoveCat {
@@ -5129,6 +5362,7 @@ impl std::fmt::Display for MoveCat {
             Self::Dbcs => "DBCS",
             Self::National => "national",
             Self::NationalEdited => "national-edited",
+            Self::Utf8 => "UTF-8",
         })
     }
 }

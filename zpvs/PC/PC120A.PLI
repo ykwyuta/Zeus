@@ -1,0 +1,60 @@
+ PC120A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* PLITRAN11, PLITRAN12, PLITRAN21, PLITRAN22 and UTF8STG (Enterprise
+    PL/I 6.1 Language Reference). PLITRANxy translates the source
+    buffer of n bytes, in x-byte units, through a translate table of
+    256 (x=1) or 65536 (x=2) entries of y bytes, into the target
+    buffer. The tables are aligned on a doubleword boundary: the
+    one-byte tables are CHAR scalars with ALIGNED(8) (ALIGNED(8) on an
+    array would align each element), the larger ones follow a
+    doubleword member of a structure. UTF8STG(x) is the number of
+    bytes of the UTF-8 character that starts with x, zero when x
+    cannot start one. ALIGNED(n) gives an alignment, not a
+    precision: UNSIGNED FIXED BIN(16) ALIGNED(8) still takes 2 bytes. */
+ DCL T11 CHAR(256) ALIGNED(8);
+ DCL T12 CHAR(512) ALIGNED(8);
+ DCL 1 T21 STATIC,
+       2 D FLOAT BIN(53),
+       2 E(0:65535) UNSIGNED FIXED BIN(8);
+ DCL 1 T22 STATIC,
+       2 D FLOAT BIN(53),
+       2 E(0:65535) UNSIGNED FIXED BIN(16);
+ DCL H UNSIGNED FIXED BIN(16);
+ DCL AH UNSIGNED FIXED BIN(16) ALIGNED(8);
+ DCL HC CHAR(2) BASED(ADDR(H));
+ DCL I FIXED BIN(31);
+ DCL S1 CHAR(3) INIT('C1C2C3'X);
+ DCL S2 CHAR(4) INIT('0141_C242'X);
+ DCL O1 CHAR(3);
+ DCL O2 CHAR(6);
+ DCL O4 CHAR(4);
+ DCL O2B CHAR(2);
+
+ OPEN FILE(REPORT);
+
+ T11 = COLLATE();
+ SUBSTR(T11, 194, 2) = '8182'X;
+ DO I = 0 TO 255;
+   H = I + 4096; SUBSTR(T12, 2 * I + 1, 2) = HC;
+ END;
+ DO I = 0 TO 65535;
+   T21.E(I) = MOD(I, 256); T22.E(I) = MOD(I + 1, 65536);
+ END;
+ CALL PLITRAN11(ADDR(O1), ADDR(S1), 3, ADDR(T11));
+ CALL ZCHECK('PLITRAN11', O1 = '8182C3'X);
+ CALL PLITRAN12(ADDR(O2), ADDR(S1), 3, ADDR(T12));
+ CALL ZCHECK('PLITRAN12', O2 = '10C1_10C2_10C3'X);
+ CALL PLITRAN21(ADDR(O2B), ADDR(S2), 4, ADDR(T21.E));
+ CALL ZCHECK('PLITRAN21', O2B = '4142'X);
+ CALL PLITRAN22(ADDR(O4), ADDR(S2), 4, ADDR(T22.E));
+ CALL ZCHECK('PLITRAN22', O4 = '0142_C243'X);
+ CALL ZCHECK('UTF8STG',
+   UTF8STG('41'X) = 1 & UTF8STG('C3'X) = 2 & UTF8STG('E2'X) = 3 &
+   UTF8STG('F0'X) = 4);
+ CALL ZCHECK('UTF8STG-NOT-A-START',
+   UTF8STG('80'X) = 0 & UTF8STG('BF'X) = 0);
+ CALL ZCHECK('ALIGNED-N-NOT-PRECISION', STORAGE(AH) = 2);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC120A;

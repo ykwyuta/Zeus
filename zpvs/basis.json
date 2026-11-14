@@ -660,6 +660,661 @@
       }
     }
   },
+  "PC113A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ULENGTH | ULENGTH returns a FIXED BINARY(31) value that is the number of UTF characters held in a string.",
+      "PLI-LRM: WX (hex) widechar constant | Each group of 4 hex digits represents one UTF-16 character."
+    ],
+    "tests": {
+      "ULENGTH-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPOS | For example, if x equals the CHARACTER string '4b_c3_a4_66_65_72'x",
+          "PLI-LRM: ULENGTH | ULENGTH will return the number of UTF-8 or UTF-16 characters held in the CHAR or WIDECHAR argument"
+        ]
+      },
+      "ULENGTH-COMBINING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH | but ULENGTH will return 1 for the string 'c3_a4'x and 2 for the string '61_cc_88'x."
+        ]
+      },
+      "ULENGTH8-WIDECHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH8 | For example, if x equals the WIDECHAR string '004B_00E4_0073_0065'wx, then ULENGTH8(x) returns 5."
+        ]
+      },
+      "ULENGTH8-CHAR-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH8 | If x has CHARACTER type, then ULENGTH8 is the same as LENGTH"
+        ]
+      },
+      "ULENGTH16-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULENGTH16 | For example, if x equals the CHARACTER string '4b_c3_a4_73_65'x, then ULENGTH16(x) returns 4."
+        ]
+      },
+      "UPOS-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPOS | UPOS(x,n) will return the position of the byte where the nth UTF-8 character starts"
+        ]
+      },
+      "UPOS-OUT-OF-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPOS | If n is not positive or if n is larger than ULENGTH(x), then zero will be returned."
+        ]
+      },
+      "UWIDTH-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UWIDTH | UWIDTH(x,n) will return the width of the nth UTF-8 character"
+        ]
+      },
+      "USUBSTR-1-2": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | USUBSTR(x,1,2) returns '4b_c3_a4'x"
+        ]
+      },
+      "USUBSTR-2-1": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | USUBSTR(x,2,1) returns 'c3_a4'x"
+        ]
+      },
+      "USUBSTR-3-2": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | USUBSTR(x,3,2) returns '66_65'x"
+        ]
+      },
+      "USUBSTR-RANGE-ERROR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUBSTR | The ERROR condition (and not the STRINGRANGE condition) will also be raised if"
+        ]
+      },
+      "USUPPLEMENTARY-PAIR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUPPLEMENTARY | the musical G-clef is represented by the UTF-16 surrogate pair 'D834_DD1E'wx, and hence in the following code, the value 3 will be listed:"
+        ]
+      },
+      "USUPPLEMENTARY-NONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: USUPPLEMENTARY | or zero if the string contains no UTF surrogate pairs."
+        ]
+      },
+      "ULENGTH-SURROGATES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | It is a unicode surrogate pair and would be 4 bytes if UTF-8"
+        ]
+      },
+      "UWIDTH-SURROGATES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UWIDTH | if x has WIDECHAR type, then UWIDTH(x,n) will return the width of the nth UTF-16 character."
+        ]
+      },
+      "UVALID-VALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | UVALID returns a FIXED BINARY(31) value which is zero if a string contains valid UTF data"
+        ]
+      },
+      "UVALID-UTF8-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | '80'x - 'c1'x, it is invalid",
+          "PLI-LRM: UVALID | when the first byte is 'e0'x, the second and third bytes must be in the ranges 'a0'x to 'bf'x"
+        ]
+      },
+      "UVALID-UTF16-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UVALID | 'dc00'wx - 'dfff'wx, it is valid only when it is the second half of a surrogate pair"
+        ]
+      }
+    }
+  },
+  "PC114A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UTF8 | UTF8(x) returns a CHAR value that is the UTF-8 equivalent of x."
+    ],
+    "tests": {
+      "UTF8-CODEPAGE-1140": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | For example, UTF8('babb'x,1140) and UTF8('63fc'x,1141) will both return '5b5d'x."
+        ]
+      },
+      "UTF8-CODEPAGE-1141": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | For example, UTF8('babb'x,1140) and UTF8('63fc'x,1141) will both return '5b5d'x."
+        ]
+      },
+      "UTF8-CODEPAGE-OPTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | the CODEPAGE option specifies the value for the code page of x when it is converted to UTF-8."
+        ]
+      },
+      "UTF8-WIDECHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8 | If x has the WIDECHAR type, it is converted to UTF-8 under the assumption that x holds UTF-16."
+        ]
+      },
+      "UTF8TOCHAR-1140": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8TOCHAR | UTF8TOCHAR(x) returns a CHAR value holding x converted from UTF-8.",
+          "PLI-LRM: UTF8 | on code page 1140, 'ba'x and 'bb'x correspond to UTF-8 characters '5b'x and '5d'x"
+        ]
+      },
+      "UTF8TOWCHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8TOWCHAR | UTF8TOWCHAR(x) returns a WCHAR value holding x converted from UTF-8 to UTF-16."
+        ]
+      },
+      "UTF8TOWCHAR-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8TOWCHAR | Note: If x holds invalid UTF-8 data, the generated code raises the ERROR condition."
+        ]
+      },
+      "MEMUVALID8-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID8 | This function returns a size_t value of zero if the buffer contains valid UTF-8; otherwise, it returns the index of the first invalid byte."
+        ]
+      },
+      "MEMUVALID8-VALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID8 | This function returns a size_t value of zero if the buffer contains valid UTF-8; otherwise, it returns the index of the first invalid byte."
+        ]
+      },
+      "MEMUVALID16-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID16 | This function returns a size_t value of zero if the buffer contains valid UTF-16; otherwise, it returns the index of the first invalid byte.",
+          "PLI-LRM: UVALID | 'dc00'wx - 'dfff'wx, it is valid only when it is the second half of a surrogate pair"
+        ]
+      },
+      "MEMUVALID16-VALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMUVALID16 | This function returns a size_t value of zero if the buffer contains valid UTF-16; otherwise, it returns the index of the first invalid byte."
+        ]
+      }
+    }
+  },
+  "PC115A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: MEMCU12 | MEMCU12 converts the data in a source buffer from UTF-8 to UTF-16, stores the result in a target buffer, and returns a size_t 1 value that indicates the number of bytes that are written to the target buffer."
+    ],
+    "tests": {
+      "MEMCU12": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU12 | MEMCU12 converts the data in a source buffer from UTF-8 to UTF-16"
+        ]
+      },
+      "MEMCU14": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU14 | MEMCU14 converts the data in a source buffer from UTF-8 to UTF-32"
+        ]
+      },
+      "MEMCU21": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU21 | MEMCU21 converts the data in a source buffer from UTF-16 to UTF-8"
+        ]
+      },
+      "MEMCU24-SURROGATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU24 | MEMCU24 converts the data in a source buffer from UTF-16 to UTF-32",
+          "PLI-LRM: USUPPLEMENTARY | the musical G-clef is represented by the UTF-16 surrogate pair 'D834_DD1E'wx"
+        ]
+      },
+      "MEMCU41": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU41 | MEMCU41 converts the data in a source buffer from UTF-32 to UTF-8"
+        ]
+      },
+      "MEMCU42": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU42 | MEMCU42 converts the data in a source buffer from UTF-32 to UTF-16"
+        ]
+      },
+      "MEMCU12-TOO-SMALL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU12 | If the target buffer is too small or if the source UTF-8 is invalid, a value of -1 is returned."
+        ]
+      },
+      "MEMCU12-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCU12 | If the target buffer is too small or if the source UTF-8 is invalid, a value of -1 is returned."
+        ]
+      },
+      "MEMCONVERT-1140-1141": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCONVERT | MEMCONVERT converts the data in a source buffer from the specified source codepage to a specified target codepage",
+          "PLI-LRM: UTF8 | Because on code page 1140, 'ba'x and 'bb'x correspond to UTF-8 characters '5b'x and '5d'x; but on code page 1141, '63'x and 'fc'x map to UTF-8 characters '5b'x and '5d'x."
+        ]
+      },
+      "MEMCONVERT-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MEMCONVERT | If either buffer length is zero, the result is zero."
+        ]
+      }
+    }
+  },
+  "PC116A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: NULLENTRY | NULLENTRY can be assigned to or compared with any other entry variable."
+    ],
+    "tests": {
+      "NULLENTRY-ASSIGN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | NULLENTRY can be assigned to or compared with any other entry variable."
+        ]
+      },
+      "NULLENTRY-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | NULLENTRY can be assigned to or compared with any other entry variable."
+        ]
+      },
+      "NULLENTRY-STATIC-INIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | You can use NULLENTRY to initialize an entry variable in static storage."
+        ]
+      },
+      "ENTRYADDR-NULLENTRY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NULLENTRY | ENTRYADDR(NULLENTRY) returns the same value as SYSNULL."
+        ]
+      }
+    }
+  },
+  "PC117A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONFORMANCE condition | CONFORMANCE is disabled throughout the program, except within the scope of the CONFORMANCE condition prefix."
+    ],
+    "tests": {
+      "CONFORMANCE-ORDINAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONFORMANCE condition | An argument in ORDINALNAME, ORDINALPRED, and ORDINALSUCC is invalid.",
+          "PLI-MC: 559 | The specified hex value is not valid for the ORDINAL type."
+        ]
+      },
+      "CONFORMANCE-DISABLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONFORMANCE condition | CONFORMANCE is disabled throughout the program, except within the scope of the CONFORMANCE condition prefix."
+        ]
+      },
+      "SIGNAL-DISABLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SIGNAL statement | If the specified condition is disabled, the SIGNAL statement becomes equivalent to a null statement."
+        ]
+      },
+      "SIGNAL-CODE-550": {
+        "basis": "spec",
+        "refs": [
+          "PLI-MC: 550 | Signal CONFORMANCE statement executed."
+        ]
+      },
+      "NORMAL-RETURN-ERROR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONFORMANCE condition | Normal return from a CONFORMANCE ON-unit raises the ERROR condition."
+        ]
+      }
+    }
+  },
+  "PC118A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REPATTERN | REPATTERN takes a value holding a date in one pattern and returns that value converted to a date in a second pattern."
+    ],
+    "tests": {
+      "REPATTERN-1999": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('990101','YYYYMMDD','YYMMDD', 1950) returns '19990101'"
+        ]
+      },
+      "REPATTERN-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('000101','YYYYMMDD','YYMMDD', 1950) returns '20000101'"
+        ]
+      },
+      "REPATTERN-TO-YY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('19990101','YYMMDD','YYYYMMDD', 1950) returns '990101'"
+        ]
+      },
+      "REPATTERN-TO-YY-2000": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('20000101','YYMMDD','YYYYMMDD', 1950) returns '000101'"
+        ]
+      },
+      "REPATTERN-OUT-OF-WINDOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | REPATTERN('19490101','YYMMDD','YYYYMMDD', 1950) raises ERROR"
+        ]
+      },
+      "REPATTERN-NO-SOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REPATTERN | If omitted, then the first argument must be NONVARYING CHAR with length 17, 20, or 26",
+          "PLI-LRM: Table 65. Date/time patterns | MM/DD/YYYY MM/DD/YY"
+        ]
+      },
+      "INDICATORS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INDICATORS | INDICATORS returns a FIXED BIN value giving the number of the elements at the next logical level in a structure x.",
+          "PLI-LRM: INDICATORS | INDICATORS(x) always forms a restricted expression."
+        ]
+      }
+    }
+  },
+  "PC119A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ALLCOMPARE | ALLCOMPARE(x, y, z) returns a BIT(1) value that indicates the result of comparing all the elements of two structures."
+    ],
+    "tests": {
+      "ALLCOMPARE-EQ-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | If you do not specify z, EQ is the default value."
+        ]
+      },
+      "ALLCOMPARE-LT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | ALLCOMPARE(x, y, 'lt') returns '1'B if every leaf element of x is less than the corresponding leaf element of y."
+        ]
+      },
+      "ALLCOMPARE-ONE-DIFFERS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | ALLCOMPARE(x, y, 'lt') returns '1'B if every leaf element of x is less than the corresponding leaf element of y."
+        ]
+      },
+      "ALLCOMPARE-LOWER-CASE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      },
+      "ALLCOMPARE-LE-GE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      },
+      "ALLCOMPARE-NE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALLCOMPARE | When uppercased, the constant must have one of these values: EQ, LE, LT, GT, GE, or NE."
+        ]
+      }
+    }
+  },
+  "PC120A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLITRAN11 | PLITRAN11 translates one-byte data from a source buffer to one-byte data in a target buffer."
+    ],
+    "tests": {
+      "PLITRAN11": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN11 | Address of the 256-byte translate table."
+        ]
+      },
+      "PLITRAN12": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN12 | PLITRAN12 translates one-byte data from a source buffer to two-byte data in a target buffer.",
+          "PLI-LRM: PLITRAN12 | Address of the 512-byte translate table."
+        ]
+      },
+      "PLITRAN21": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN21 | PLITRAN21 translates two-byte data from a source buffer to one-byte data in a target buffer."
+        ]
+      },
+      "PLITRAN22": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLITRAN22 | PLITRAN22 translates two-byte data from a source buffer to two-byte data in a target buffer.",
+          "PLI-LRM: PLITRAN22 | Address of the 128K-byte translate table."
+        ]
+      },
+      "UTF8STG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8STG | UTF8STG returns a FIXED BIN value that specifies the number of bytes that must be present if the input character is the start of a valid UTF-8 character."
+        ]
+      },
+      "UTF8STG-NOT-A-START": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UTF8STG | For example, if the character has the value '80'x, UTF8STG returns zero."
+        ]
+      },
+      "ALIGNED-N-NOT-PRECISION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ALIGNED and UNALIGNED attributes | ALIGNED(n) specifies an alignment that overrides the default alignment for the data type. The only valid values for n in ALIGNED(n) are 1, 2, 4, and 8."
+        ]
+      }
+    }
+  },
+  "PC121A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UCHAR data | UCHAR data can contain any UTF-8 string. Each UCHAR occupies 1 to 4 bytes of storage."
+    ],
+    "tests": {
+      "UCHAR-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIT, CHARACTER, GRAPHIC, UCHAR and WIDECHAR | For UCHAR data, the number of bytes allocated to the string is 4 times its length.",
+          "PLI-LRM: BYTELENGTH | Given DCL X UCHAR(8) VARYING, then STG(X) = 34"
+        ]
+      },
+      "BYTELENGTH-A": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | BYTELENGTH(X) = 1 (since X holds '41'ux )"
+        ]
+      },
+      "BYTELENGTH-A-UMLAUT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | BYTELENGTH(X) = 2 (since X holds 'C3_84'ux )",
+          "PLI-LRM: UX (hex) UCHAR constant | The UX UCHAR constant is a contiguous sequence of hex digits, enclosed in single or double quotation marks and followed immediately by UX."
+        ]
+      },
+      "BYTELENGTH-STRASSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | BYTELENGTH(X) = 7 (since X holds '53_74_72_C39F_61_65'ux )"
+        ]
+      },
+      "UCHAR-VARYING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYTELENGTH | If x has UCHAR VARYING or UCHAR VARYING4 type, the value returned by BYTELENGTH(x) does not count the number of prefix bytes.",
+          "PLI-LRM: BIT, CHARACTER, GRAPHIC, UCHAR and WIDECHAR | the value for a UCHAR VARYING string is the current number of UTF-8 characters in the string."
+        ]
+      },
+      "UCHAR-PADDED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Converting string lengths | uchar strings with uchar blanks",
+          "PLI-LRM: Comparison operations | Is a left-to-right, uchar-by-uchar comparison of characters according to the binary value of the UTF-8 characters."
+        ]
+      },
+      "UCHAR-TO-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Comparison operations | The precedence of comparison types is (1) algebraic (highest), (2) uchar, (3) widechar, (4) graphic, (5) character, (6) bit.",
+          "PLI-LRM: UCHAR | Conversion from uchar is performed only if all the uchars have a representation in the target code page"
+        ]
+      },
+      "UPPERASCII": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPPERASCII | UPPERASCII returns a UCHAR string with all of its ASCII characters converted to their corresponding uppercase characters."
+        ]
+      },
+      "UPPERLATIN1": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UPPERLATIN1 | The letters Y with DIAERESIS(ÿ) and SHARP S(ß) are not changed."
+        ]
+      },
+      "LOWERASCII": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWERASCII | LOWERASCII returns a UCHAR string with all of its ASCII characters converted to their corresponding lowercase characters."
+        ]
+      },
+      "LOWERLATIN1": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOWERLATIN1 | LOWERLATIN1 returns a UCHAR string with all of its ASCII and Latin-1 supplement characters converted to their corresponding lowercase characters."
+        ]
+      },
+      "FOLDEDFULLMATCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FOLDEDFULLMATCH | not only Haus and HAUS would match, but Straße and STRASSE would also match."
+        ]
+      },
+      "FOLDEDSIMPLEMATCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FOLDEDSIMPLEMATCH | For example, Haus and HAUS would match, but Straße and STRASSE would not match."
+        ]
+      }
+    }
+  },
+  "PC122A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ONUSOURCE | ONUSOURCE returns a UCHAR string whose value is the contents of the field that was being processed when a CONVERSION condition was raised."
+    ],
+    "tests": {
+      "ONUCHAR-OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONUCHAR | If the ONUCHAR built-in function is used out of context, a UTF-8 blank is returned.",
+          "PLI-LRM: ONUSOURCE | If the ONUSOURCE built-in function is used out of context, a null string is returned."
+        ]
+      },
+      "ONWCHAR-OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONWCHAR | If the ONWCHAR built-in function is used out of context, a widechar blank is returned.",
+          "PLI-LRM: ONWSOURCE | If ONWSOURCE is used out of context, a null string is returned."
+        ]
+      },
+      "ONUSOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONUSOURCE | ONUSOURCE returns a UCHAR string whose value is the contents of the field that was being processed when a CONVERSION condition was raised."
+        ]
+      },
+      "ONUCHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONUCHAR | ONUCHAR returns a UCHAR(1) string containing the UTF-8 data that caused a CONVERSION condition."
+        ]
+      },
+      "ONWSOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONWSOURCE | ONWSOURCE returns a WIDECHAR string whose value is the contents of the field that was being processed when the CONVERSION condition was raised."
+        ]
+      },
+      "ONWCHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONWCHAR | ONWCHAR returns a widechar(1) string containing the widechar that caused the CONVERSION condition to be raised."
+        ]
+      }
+    }
+  },
+  "PC123A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ORDER or REORDER | ORDER and REORDER are optimization options that are specified for a procedure or begin-block."
+    ],
+    "tests": {
+      "REORDER-RESULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDER or REORDER | The REORDER option allows the compiler to generate optimized code to produce the result specified",
+          "PLI-LRM: ORDER or REORDER | by the source program when error-free execution takes place."
+        ]
+      },
+      "REORDER-BEGIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDER or REORDER | The REORDER option allows the compiler to generate optimized code to produce the result specified",
+          "PLI-LRM: ORDER or REORDER | by the source program when error-free execution takes place."
+        ]
+      },
+      "ORDER-ONUNIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDER or REORDER | ORDER indicates that only the most recently assigned values of variables modified in the block are"
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
@@ -1137,6 +1792,225 @@
       }
     }
   },
+  "PD112A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UNION attribute | The UNION attribute allows you to specify that a variable is a union and that its members are those that follow it and are at the next logically higher level."
+    ],
+    "tests": {
+      "UNION-OVERLAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Unions | A union is a collection of member elements that overlay each other, occupying the same storage."
+        ]
+      },
+      "UNION-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Unions | The storage occupied by the union is equal to the storage required by the largest member."
+        ]
+      },
+      "UNION-LARGEST-MEMBER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Unions | The storage occupied by the union is equal to the storage required by the largest member."
+        ]
+      },
+      "CELL-SYNONYM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UNION attribute | CELL is accepted as a synonym for UNION."
+        ]
+      },
+      "UNION-MAPPING-C": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure and union mapping | It means that C starts with the fourth byte of H and that F starts with the third byte of H."
+        ]
+      },
+      "UNION-MAPPING-F": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure and union mapping | It means that C starts with the fourth byte of H and that F starts with the third byte of H."
+        ]
+      },
+      "UNION-MAPPING-SIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure and union mapping | Three bytes of padding are added between A and B. Two bytes are added between A and E. No padding bytes are between A and H."
+        ]
+      }
+    }
+  },
+  "PD113A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: BYADDR or BYVALUE | These specify how arguments and parameters are passed and received. BYADDR is the default."
+    ],
+    "tests": {
+      "BYADDR-CHANGES-ARG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BYADDR or BYVALUE | These specify how arguments and parameters are passed and received. BYADDR is the default."
+        ]
+      },
+      "PARAMETER-ATTRIBUTE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Parameter attribute | The PARAMETER attribute can also be specified in the declaration."
+        ]
+      },
+      "CONNECTED-OVERLAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONNECTED and NONCONNECTED attributes | therefore, allows the parameter to be used as a target or source in record-oriented I/O, or as a base in string overlay defining."
+        ]
+      },
+      "INTERNAL-NEW-OBJECT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: INTERNAL and EXTERNAL attributes | INTERNAL specifies that the name can be known only in the declaring block. Any other explicit declaration of that name refers to a new object with a different scope that does not overlap."
+        ]
+      },
+      "LIMITED-ENTRY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIMITED attribute | The LIMITED attribute indicates that the entry variable has only non-nested entry constants as values.",
+          "PLI-LRM: LIMITED attribute | A LIMITED static entry variable can be initialized with the value of a non-nested entry constant"
+        ]
+      }
+    }
+  },
+  "PD114A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: XDECLARE statement | The XDECLARE statement is the same as the DECLARE statement except:"
+    ],
+    "tests": {
+      "XDECLARE-TWICE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDECLARE statement | If the level-1 name specified in an XDECLARE statement was already specified in a previous (X)DECLARE statement, the attributes in the two specifications must match."
+        ]
+      },
+      "XDEFINE-ALIAS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDEFINE ALIAS statement | if the specified name has already appeared in a previous (X)DEFINE ALIAS statement, this XDEFINE statement will be ignored."
+        ]
+      },
+      "XDEFINE-ORDINAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDEFINE ORDINAL statement | if the specified name has already appeared in a previous (X)DEFINE ORDINAL statement, this XDEFINE statement will be ignored.",
+          "PLI-LRM: BINARYVALUE | BINARYVALUE converts x, which can be a pointer, offset, or ordinal, to an integer."
+        ]
+      },
+      "XDEFINE-STRUCTURE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XDEFINE STRUCTURE statement | if the specified name has already appeared in a previous (X)DEFINE STRUCTURE statement, this XDEFINE statement will be ignored."
+        ]
+      },
+      "XPROCEDURE-FIRST-KEPT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: XPROCEDURE statement | the preprocessor will ignore rather than flag any subsequent occurrence of an XPROCEDURE statement if the leftmost name on the statement is the name of an already defined preprocessor procedure."
+        ]
+      }
+    }
+  },
+  "PD115A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DIMACROSS attribute | The DIMACROSS attribute specifies a DIMENSION attribute on a structure, but one which will be removed"
+    ],
+    "tests": {
+      "DIMACROSS-MEMBERS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIMACROSS attribute | The children of the variable are arrays."
+        ]
+      },
+      "DIMACROSS-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIMACROSS attribute | As an example, the following declarations are equivalent:",
+          "PLI-LRM: DIMACROSS attribute | from the structure and propagated to its members."
+        ]
+      },
+      "BOUNDACROSS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HBOUNDACROSS | HBOUNDACROSS returns a FIXED BINARY value that specifies the current upper bound of a DIMACROSS",
+          "PLI-LRM: LBOUNDACROSS | LBOUNDACROSS returns a FIXED BINARY value that specifies the current lower bound of a DIMACROSS"
+        ]
+      },
+      "BY-DIMACROSS-SOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure assignments using the BY DIMACROSS option | using the DIMACROSS expression as the index into the associated array elements.",
+          "PLI-LRM: HBOUNDACROSS | a = xa, by dimacross(jx);"
+        ]
+      },
+      "BY-DIMACROSS-TARGET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure assignments using the BY DIMACROSS option | using the DIMACROSS expression as the index into the associated array elements."
+        ]
+      },
+      "BY-DIMACROSS-BOUNDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure assignments using the BY DIMACROSS option | using the DIMACROSS expression as the index into the associated array elements.",
+          "PLI-LRM: Assignment statements that use the BY DIMACROSS option | Specifies an expression that is used as the index appended to the associated DIMACROSS structure"
+        ]
+      }
+    }
+  },
+  "PD116A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: VALIDVALUE | VALIDVALUE returns a value that indicates whether the value of an expression matches one of the"
+    ],
+    "tests": {
+      "VALIDVALUE-LIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | x has the VALUELIST attribute and its contents are one of the elements in that list.",
+          "PLI-LRM: VALIDVALUE | If y is omitted, it defaults to x. VALIDVALUE(x) is equivalent to VALIDVALUE(x,x).",
+          "PLI-LRM: VALUELIST attribute | The VALUELIST attribute specifies a list of values to limit the set of values that a variable, an argument, or"
+        ]
+      },
+      "VALIDVALUE-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | x has the VALUERANGE attribute and its contents are within that range.",
+          "PLI-LRM: VALUERANGE attribute | The VALUERANGE attribute specifies an inclusive range of values to limit the set of values that a variable,"
+        ]
+      },
+      "VALIDVALUE-EQUIVALENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALUERANGE attribute | specified in these attributes. For example, given the statements above, these expressions are equivalent.",
+          "PLI-LRM: VALUERANGE attribute | BETWEEN( imonth, 1, 12 )"
+        ]
+      },
+      "VALIDVALUE-CONVERT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | must also have a computational type and will be converted, if necessary, to the same type as x;"
+        ]
+      },
+      "VALIDVALUE-ORDINAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | If x has an ordinal type, then y must have the same ordinal type.",
+          "PLI-LRM: VALUELIST attribute | The VALUELIST attribute is valid only with computational and ordinal types."
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [
@@ -1502,6 +2376,82 @@
         "refs": [
           "PLI-LRM: ONKEY | ONKEY returns a character string whose value is the key of the record that raised an input/output condition.",
           "PLI-MC: Condition codes 1 through 500 | Key specified cannot be found."
+        ]
+      }
+    }
+  },
+  "PF108A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+    ],
+    "tests": {
+      "FILEOPEN-CLOSED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+        ]
+      },
+      "FILEOPEN-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+        ]
+      },
+      "FILEOPEN-AFTER-CLOSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEOPEN | FILEOPEN returns '1'B if the file x is open and '0'B if the file is not open."
+        ]
+      },
+      "FILEID-NOT-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEID | The ERROR condition with oncode 1010 is raised when the file is not open."
+        ]
+      },
+      "FILEID-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEID | FILEID returns a size_t 1 value that is the system token for a PL/I file constant or variable."
+        ]
+      },
+      "FILEDDWORD-RECORD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDWORD | TYPE returns RECORD or STREAM.",
+          "PLI-LRM: FILEDDWORD | ACCESS returns SEQUENTIAL or DIRECT.",
+          "PLI-LRM: FILEDDWORD | ACTION returns INPUT, OUTPUT, or UPDATE."
+        ]
+      },
+      "FILEDDWORD-CHARSET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDWORD | CHARSET returns ASCII or EBCDIC."
+        ]
+      },
+      "FILEDDINT-RECSIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDINT | FILEDDINT returns a size_t value that is the value of attribute c for file x."
+        ]
+      },
+      "FILEDDWORD-STREAM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDWORD | TYPE returns RECORD or STREAM."
+        ]
+      },
+      "FILEDDTEST-PRINT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEDDTEST | FILEDDTEST returns a FIXED BIN(31) value that holds the value 1 if the attribute c applies to file x. Otherwise, a value of 0 is returned."
+        ]
+      },
+      "FILENEW-NOT-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILENEW | If x has been specified, the attributes in the declaration of that file are used."
         ]
       }
     }
@@ -3425,6 +4375,288 @@
       }
     }
   },
+  "PM120A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %DECLARE statement | Dimension specification for array variables. No more than 15 dimensions can be specified."
+    ],
+    "tests": {
+      "PP-ARRAY-ELEMENTS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | While an array can be declared outside of a preprocessor procedure (so that it can be shared across multiple procedures), it must not be referenced outside a procedure (except as the first argument to one of the array-enquiry built-in functions)."
+        ]
+      },
+      "PP-ARRAY-2D": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | While an array can be declared outside of a preprocessor procedure (so that it can be shared across multiple procedures), it must not be referenced outside a procedure (except as the first argument to one of the array-enquiry built-in functions).",
+          "PLI-LRM: %DECLARE statement | The desired lower bound for that dimension. The default is 1."
+        ]
+      },
+      "PP-CHAR-ARRAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | While an array can be declared outside of a preprocessor procedure (so that it can be shared across multiple procedures), it must not be referenced outside a procedure (except as the first argument to one of the array-enquiry built-in functions)."
+        ]
+      },
+      "PP-LBOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | The desired lower bound for that dimension. The default is 1.",
+          "PLI-LRM: LBOUND | LBOUND returns a FIXED value specifying current lower bound of dimension y of x."
+        ]
+      },
+      "PP-HBOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HBOUND | HBOUND returns a FIXED value specifying current upper bound of dimension y of x."
+        ]
+      },
+      "PP-DIMENSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIMENSION | DIMENSION returns a FIXED value specifying current extent of dimension y of x."
+        ]
+      },
+      "PP-BOUND-EXPRESSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: %DECLARE statement | %dcl b(2+hbound(a)) fixed;"
+        ]
+      }
+    }
+  },
+  "PM121A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: MACCOL | MACCOL returns a FIXED value that represents the column where the outermost macro invocation starts in the source text that contains the macro invocation."
+    ],
+    "tests": {
+      "MACCOL-COLUMN-6": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACCOL | MACCOL returns a FIXED value that represents the column where the outermost macro invocation starts"
+        ]
+      },
+      "MACCOL-COLUMN-14": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACCOL | MACCOL returns a FIXED value that represents the column where the outermost macro invocation starts"
+        ]
+      },
+      "MACCOL-NESTED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MACCOL | The value returned is not affected by nested macro invocations."
+        ]
+      }
+    }
+  },
+  "PM122A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences."
+    ],
+    "tests": {
+      "SQRTF-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      },
+      "SQRTF-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      },
+      "SQRTF-AS-SQRT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      },
+      "SQRTF-SQUARE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: SQRTF | SQRTF is the same as SQRT except for some differences.",
+          "PLI-LRM: SQRTF | The argument must be real."
+        ]
+      }
+    }
+  },
+  "PM123A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CHARGRAPHIC | CHARGRAPHIC converts a GRAPHIC (DBCS) string x to a mixed character string with a length specified by"
+    ],
+    "tests": {
+      "CHARGRAPHIC-FULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | CHARGRAPHIC returns a mixed character string that is converted from x.",
+          "PLI-LRM: CHARGRAPHIC | Abbreviation: CHARG"
+        ]
+      },
+      "CHARGRAPHIC-PAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | If y is greater than the length needed to contain the character string, the result is padded with SBCS"
+        ]
+      },
+      "CHARGRAPHIC-TRUNC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | If y is less than the length needed to contain the character string, the result is truncated. The integrity",
+          "PLI-LRM: CHARGRAPHIC | is preserved by truncating after a graphic and appending an SBCS blank, if necessary, to complete the"
+        ]
+      },
+      "CHARGRAPHIC-ZERO-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | If y = 0, the result is the null character string.",
+          "PLI-LRM: CHARGRAPHIC | If y = 1, the result is a character string of 1 blank."
+        ]
+      },
+      "GRAPHIC-MIXED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GRAPHIC | GRAPHIC explicitly converts character (or mixed character) data to GRAPHIC data. All other data first",
+          "PLI-LRM: GRAPHIC | truncation. When x is nongraphic, it is converted to character, if necessary. SBCS characters are",
+          "PLI-LRM: GRAPHIC | If y is greater than the length needed to contain the graphic string, the result is padded with graphic"
+        ]
+      },
+      "CHARACTER-CONVERSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | When x is GRAPHIC, CHARACTER returns x converted to SBCS characters. If a DBCS character cannot"
+        ]
+      },
+      "MPSTR-SQUEEZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MPSTR | Removes any null DBCS strings, creates a new string, and returns a mixed string.",
+          "PLI-LRM: MPSTR | It does not truncate a double-byte character between bytes. The length of the returned string is equal to"
+        ]
+      },
+      "MPSTR-TRUNCATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MPSTR | blanks. If y is less than the length needed to contain x, the result is truncated by discarding excess",
+          "PLI-LRM: MPSTR | MPSTR truncates a string at a logical boundary and returns a mixed character string."
+        ]
+      }
+    }
+  },
+  "PM124A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REGEX | REGEX returns a FIXED BIN(31) that indicates the success of matching a specified regular expression or"
+    ],
+    "tests": {
+      "REGEX-FIRST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | regex( i, j, p, x ) will return 0 and set i to 3 and j to 5 (because it has found the match for the"
+        ]
+      },
+      "REGEX-FROM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | regex( i, j, p, x, 4 ) will return 0 and set i to 9 and j to 5 (because it has found the match for",
+          "PLI-LRM: REGEX | regex( i, j, p, x, 10 ) will return 0 and set i to 20 and j to 5 (because it has found the match"
+        ]
+      },
+      "REGEX-NO-MATCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | regex( i, j, p, x , 21 ) will return 1 (because there are no more matches).",
+          "PLI-LRM: REGEX | the length j to 0. Otherwise, REGEX will return the value 0 and set the index i and the length j",
+          "PLI-LRM: REGEX | The search for a match to the regular expression is case sensitive."
+        ]
+      },
+      "REGEX-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | The preceding set of matches could also have been found via the following loop, which uses the optional"
+        ]
+      },
+      "REGEX-CLASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | If p = \"[hc]+at\" and x = \"the cat in the hat\", then regex( i, j, p, x, n ) will find the match for"
+        ]
+      },
+      "REGEX-LONGEST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | The pattern p must conform to the POSIX standard for Extended Regular Expressions (EREs) (and not"
+        ]
+      },
+      "REGEX-SUBEXPRESSIONS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | the second and subsequent elements of each array will be assigned the index and length of the",
+          "PLI-LRM: REGEX | a_index(4) and a_length(4) will give the index and length for TESTDB"
+        ]
+      },
+      "REGEX-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | If the string p does not specify a valid regular expression, then REGEX will return a value greater than"
+        ]
+      },
+      "REGEX-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | If n is less than 1 or if n is greater than 1 + length(x), the STRINGRANGE condition will be raised if"
+        ]
+      }
+    }
+  },
+  "PM125A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLIASCII | PLIASCII converts z bytes of an EBCDIC value at location y to an ASCII value at location x."
+    ],
+    "tests": {
+      "PLIASCII": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIASCII | PLIASCII converts z bytes of an EBCDIC value at location y to an ASCII value at location x."
+        ]
+      },
+      "PLIEBCDIC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIEBCDIC | PLIEBCDIC converts z bytes of an ASCII value at location y to an EBCDIC value at location x."
+        ]
+      },
+      "PLIASCII-SAME-LOCATION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIASCII | The storage at location x and y must not overlap unless they specify the same location."
+        ]
+      },
+      "PLIATTN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIATTN | PLIATTN causes the ATTENTION condition to be raised at that point in the code. It gives you explicit"
+        ]
+      },
+      "PLIDELETE-PLICANC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIDELETE | CALL PLIDELETE(x) is equivalent to CALL PLIFREE(PTRVALUE(x)).",
+          "PLI-LRM: PLICANC | PLICANC allows you to cancel the automatic restart facility."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [
@@ -3560,6 +4792,198 @@
         "basis": "spec",
         "refs": [
           "PLI-LRM: PLIFREE"
+        ]
+      }
+    }
+  },
+  "PS107A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DELAY statement | The DELAY statement suspends the execution of the next statement in the application program for the specified period of time."
+    ],
+    "tests": {
+      "DELAY-300-MS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DELAY statement | Execution is suspended for the number of milliseconds specified.",
+          "PLI-LRM: MICROSECS | If d is omitted, it is assumed to be the value returned by TIMESTAMP()."
+        ]
+      },
+      "FLUSH-KEEPS-OPEN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLUSH statement | The FLUSH statement flushes the buffers associated with an open output file or with all open output files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement can be used to flush one or all files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement has no effect on record output files."
+        ]
+      },
+      "FLUSH-RECORDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FLUSH statement | The FLUSH statement flushes the buffers associated with an open output file or with all open output files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement can be used to flush one or all files.",
+          "PLI-LRM: FLUSH statement | The FLUSH statement has no effect on record output files."
+        ]
+      }
+    }
+  },
+  "PS108A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: Packages | The name of the package. All PACKAGE names must be unique within a linked module."
+    ],
+    "tests": {
+      "PACKAGE-SHARED-VAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC | It is also the default for variables declared in a package, outside of any procedure.",
+          "PLI-LRM: Packages | Is the name of a level-1 procedure within the package."
+        ]
+      },
+      "PACKAGE-PROC-SEES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC | It is also the default for variables declared in a package, outside of any procedure.",
+          "PLI-LRM: Packages | Is the name of a level-1 procedure within the package."
+        ]
+      },
+      "PACKAGE-SHARED-CHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STATIC | It is also the default for variables declared in a package, outside of any procedure."
+        ]
+      },
+      "PACKAGENAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PACKAGENAME | PACKAGENAME returns a nonvarying character string containing the name of the package in which it is invoked."
+        ]
+      }
+    }
+  },
+  "PS109A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ATTACH statement | A thread is attached (or created) by the execution of the ATTACH statement.",
+      "PLI-PG: Using the ATTACH statement | The ATTACH statement in a PL/I program uses the underlying pthread library to perform thread management.",
+      "LE-PR: POSIX | POSIX specifies if the enclave can run with the POSIX semantics."
+    ],
+    "tests": {
+      "ATTACH-WAIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Waiting for a thread to complete | The current thread is suspended until the specified thread terminates.",
+          "PLI-LRM: Detaching a thread | Normally, this statement would be executed immediately after the WAIT statement for the terminating thread."
+        ]
+      },
+      "ATTACH-POINTER-ARG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ATTACH statement | The ATTACHed entry must be declared as having no parameters or as having exactly one BYVALUE POINTER parameter."
+        ]
+      },
+      "THREADID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: THREADID built-in function | THREADID (short for thread identifier) returns a POINTER value that is the address of the operating system thread identifier for an attached thread.",
+          "PLI-LRM: Task data and attribute | A task variable is associated with a thread by the task reference in the THREAD option of the ATTACH statement creating the thread."
+        ]
+      },
+      "ERROR-ENDS-THREAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Terminating a thread | The ERROR condition is raised and either there is no ERROR ON-unit or the ERROR ON-unit terminates normally",
+          "PLI-LRM: Terminating a thread | The ON-units that are in effect at the time a thread is created are not inherited by the new attached thread."
+        ]
+      },
+      "EXIT-ENDS-THREAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Terminating a thread | The EXIT statement is executed in any procedure within the thread.",
+          "PLI-LRM: Canceling a thread | You can cancel a thread by using the CANCEL THREAD statement."
+        ]
+      }
+    }
+  },
+  "PS110A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LOCATES attribute | The LOCATES attributes turn the associated offset into a typed offset. Then you can use the LOCVAL"
+    ],
+    "tests": {
+      "LOCNEWSPACE-LOCVAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCNEWSPACE | The LOCNEWSPACE(x, a) built-in subroutine allocates space in a for the variable type described by the",
+          "PLI-LRM: LOCVAL | LOCVAL(x, a) returns the value at the offset that is specified by x in the a area. The type of the value is",
+          "PLI-LRM: LOCVAL | If you do not specify a, the OFFSET attribute for x must have specified an"
+        ]
+      },
+      "LOCNEWVALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCNEWVALUE | The LOCNEWVALUE(v, x, a) built-in subroutine allocates space in a for the variable type described by the"
+        ]
+      },
+      "LOCATES-ASSIGN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCATES attribute | source is computational, the assignment is converted into a call to the LOCNEWVALUE built-in subroutine."
+        ]
+      },
+      "LOCATES-ARITHMETIC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCATES attribute | the located type to be any computational type, an ORDINAL type, or a STRUCT type.",
+          "PLI-LRM: LOCATES attribute | built-in function and pseudovariable to dereference the typed offset. The process of dereferencing is the"
+        ]
+      },
+      "LOCNEWVALUE-AREA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCNEWVALUE | call locnewvalue(v, x, a);"
+        ]
+      },
+      "LOCSTG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCSTG | LOCSTG(x) returns a FIXED BIN value that specifies the number of bytes that are needed for the storage",
+          "PLI-LRM: LOCSTG | With the following declaration, the reference locstag(data) returns the value 96*actual_count:"
+        ]
+      }
+    }
+  },
+  "PS111A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: TYPE | TYPE returns the typed structure or union located by the handle, x."
+    ],
+    "tests": {
+      "TYPE-FUNCTION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE | TYPE(x) dereferences the typed structure (or union) x.",
+          "PLI-LRM: TYPE pseudovariable | D1 = type(P2);           /* Assigns the storage located by P2 to D1 */"
+        ]
+      },
+      "TYPE-PSEUDO-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE pseudovariable | type(P1) = type(P2);"
+        ]
+      },
+      "TYPE-PSEUDO-VAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE pseudovariable | type(P1) = D2;           /* Assigns D2 to the storage located by P1 */",
+          "PLI-LRM: TYPE pseudovariable | The TYPE pseudovariable assigns a typed structure or union to the storage located by the handle x."
+        ]
+      },
+      "TYPE-OF-HANDLE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: TYPE pseudovariable | type(P1) = D2;           /* Assigns D2 to the storage located by P1 */",
+          "PLI-LRM: TYPE pseudovariable | The TYPE pseudovariable assigns a typed structure or union to the storage located by the handle x."
         ]
       }
     }

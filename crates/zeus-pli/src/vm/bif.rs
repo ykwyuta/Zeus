@@ -468,12 +468,12 @@ impl Machine {
                     })
                 }
             },
-            Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin
+            Sqrt | SqrtF | Exp | Log | Log2 | Log10 | Sin | Cos | Tan | Sinh | Cosh | Tanh | Asin
             | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => {
                 let x = v[0].as_f64();
                 let deg = std::f64::consts::PI / 180.0;
                 let r = match b {
-                    Sqrt => {
+                    Sqrt | SqrtF => {
                         if x < 0.0 {
                             self.raise(Cond::Error, 1500, act)?;
                         }
@@ -574,6 +574,61 @@ impl Machine {
                     }
                 };
                 Value::int(r as i64)
+            }
+            // UCHAR: characters, not bytes
+            Length if matches!(args[0].ty, Ty::Uchar { .. }) => {
+                Value::int(super::conv::uchar_count(&chars(&v[0])) as i64)
+            }
+            // BYTELENGTH: the UTF-8 bytes of the value, without a VARYING
+            // prefix or VARYINGZ terminator (LRM)
+            ByteLength => Value::int(chars(&v[0]).len() as i64),
+            LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1 => {
+                let text = std::string::String::from_utf8_lossy(&chars(&v[0])).into_owned();
+                let latin = matches!(b, LowerLatin1 | UpperLatin1);
+                let lower = matches!(b, LowerAscii | LowerLatin1);
+                let out: std::string::String = text
+                    .chars()
+                    .map(|c| {
+                        let in_range = if latin { (c as u32) < 0x100 } else { c.is_ascii() };
+                        // y diaeresis and sharp s are not changed (LRM)
+                        if !in_range || c == 'ÿ' || c == 'ß' || c == '×' || c == '÷' {
+                            return c;
+                        }
+                        let m: Vec<char> = if lower {
+                            c.to_lowercase().collect()
+                        } else {
+                            c.to_uppercase().collect()
+                        };
+                        match m.as_slice() {
+                            [x] if (*x as u32) < 0x100 => *x,
+                            _ => c,
+                        }
+                    })
+                    .collect();
+                Value::Char(out.into_bytes())
+            }
+            // 0 when the strings match under Unicode case folding. Zeus folds
+            // with the lowercase mapping; full folding also maps sharp s
+            // (and capital sharp s) to ss, as the LRM example Strasse needs.
+            FoldedFullMatch | FoldedSimpleMatch => {
+                let full = b != FoldedSimpleMatch;
+                let fold = |bytes: &[u8]| -> std::string::String {
+                    let t = std::string::String::from_utf8_lossy(bytes);
+                    t.chars()
+                        .flat_map(|c| {
+                            if full && (c == 'ß' || c == 'ẞ') {
+                                return vec!['s', 's'];
+                            }
+                            if c == 'ẞ' {
+                                return vec!['ß'];
+                            }
+                            let l: Vec<char> = c.to_lowercase().collect();
+                            if l.len() == 1 || full { l } else { vec![c] }
+                        })
+                        .collect()
+                };
+                let (x, y) = (fold(&chars(&v[0])), fold(&chars(&v[1])));
+                Value::int(i64::from(x != y))
             }
             Length => Value::int(match &v[0] {
                 Value::Char(c) => c.len(),
@@ -817,6 +872,33 @@ impl Machine {
                     Value::int(datefmt::lilian_day(st.y, st.m, st.d))
                 }
             },
+            // REPATTERN(d, p [,q [,w]]): d in pattern q, as pattern p; without
+            // q, the pattern is the one of length 17, 20 or 26 (LRM)
+            Repattern => {
+                let d = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let target = pattern(&v, 1, "YYYYMMDD");
+                let source = match v.get(2) {
+                    Some(_) => pattern(&v, 2, ""),
+                    None => match d.len() {
+                        17 => "YYYYMMDDHHMISS999".into(),
+                        20 => "YYYYMMDDHHMISS999999".into(),
+                        26 => "YYYY-MM-DD-HH.MI.SS.999999".into(),
+                        _ => return err("REPATTERN without a source pattern needs a date of length 17, 20 or 26"),
+                    },
+                };
+                let w = window(int(3));
+                let text = d.trim_start();
+                match datefmt::parse(text, &source, w) {
+                    // a two-digit target year must lie in the window
+                    Some(st) if !datefmt::two_digit_year(&target) || (w..w + 100).contains(&st.y) => {
+                        Value::Char(ebcdic(&datefmt::format(&st, &target)))
+                    }
+                    _ => {
+                        self.raise(Cond::Error, 2512, act)?;
+                        Value::Char(Vec::new())
+                    }
+                }
+            }
             DaysToDate => {
                 let p = pattern(&v, 1, "YYYYMMDDHHMISS999");
                 let st = datefmt::Stamp::from_micros(int(0).unwrap_or(1) * 86_400_000_000);
@@ -989,6 +1071,69 @@ impl Machine {
                     _ => hi != Greater,
                 };
                 Value::bit1(left_ok && right_ok)
+            }
+            // REGEX: 0 matched, 1 no match (or n out of range), 2 an
+            // invalid pattern, -1 an unknown code page (LRM, REGEX)
+            Regex => {
+                let (Value::Char(p), Value::Char(x)) = (&v[0], &v[1]) else {
+                    return err("REGEX: not character values");
+                };
+                let n = int(2).unwrap_or(1);
+                let c = int(3).unwrap_or(0);
+                let page = if c == 0 {
+                    Some(zeus_cobol::codepage::active())
+                } else {
+                    u32::try_from(c).ok().and_then(zeus_cobol::codepage::get)
+                };
+                let addr = |k: usize| match &v[k] {
+                    Value::Ptr(a) => *a,
+                    _ => 0,
+                };
+                let (ai, aj) = (addr(4), addr(5));
+                let shape = |k: usize| (int(k).unwrap_or(0) as u32, int(k + 1).unwrap_or(0) as u32, int(k + 2).unwrap_or(0) as u32);
+                let ((count, si, sti), (_, sj, stj)) = (shape(6), shape(9));
+                let Some(page) = page.filter(|p| !p.is_mixed()) else {
+                    return Ok(Value::int(-1));
+                };
+                if n < 1 || n > x.len() as i64 + 1 {
+                    if self.enabled_now(act, crate::ir::cond::STRINGRANGE) {
+                        self.raise(Cond::StringRange, 350, act)?;
+                    }
+                    return Ok(Value::int(1));
+                }
+                let text = |b: &[u8]| -> Vec<char> {
+                    b.iter().map(|&c| page.decode(&[c]).chars().next().unwrap_or('\u{1a}')).collect()
+                };
+                let Ok(re) = super::ere::Regex::new(&text(p).into_iter().collect::<std::string::String>()) else {
+                    return Ok(Value::int(2));
+                };
+                let Ok(found) = re.find(&text(x), n as usize - 1) else {
+                    return err("REGEX: the pattern needs too many steps");
+                };
+                for k in 0..count as usize {
+                    let (i, l) = match found.as_ref().and_then(|m| m.get(k).copied().flatten()) {
+                        Some((s, l)) => (s as i64 + 1, l as i64),
+                        None => (0, 0),
+                    };
+                    for (base, size, stride, val) in [(ai, si, sti, i), (aj, sj, stj, l)] {
+                        let bytes = val.to_be_bytes();
+                        self.write(base + k as u32 * stride, &bytes[8 - size as usize..])?;
+                    }
+                }
+                Value::int(i64::from(found.is_none()))
+            }
+            CharGraphic => {
+                let Value::Char(g) = &v[0] else {
+                    return err("CHARGRAPHIC: not a GRAPHIC value");
+                };
+                Value::Char(char_graphic(g, int(1)))
+            }
+            Mpstr => {
+                let (Value::Char(x), Value::Char(r)) = (&v[0], &v[1]) else {
+                    return err("MPSTR: not a character value");
+                };
+                let r = zeus_cobol::ebcdic::decode(r).to_ascii_uppercase();
+                Value::Char(mpstr(x, r.contains('S') && !r.contains('V'), int(2)))
             }
             InList => {
                 let mut hit = false;
@@ -1223,6 +1368,220 @@ impl Machine {
                 }
                 Value::bit1(ok)
             }
+            // UTF built-ins: CHARACTER holds UTF-8, WIDECHAR UTF-16 (LRM,
+            // ULENGTH ... UWIDTH). Positions and widths count bytes for
+            // CHARACTER and widechars for WIDECHAR.
+            Ulength | Ulength8 | Ulength16 | Upos | Usubstr | Usupplementary | Uvalid | Uwidth => {
+                let wide = matches!(args[0].ty, Ty::Wchar { .. });
+                let s = chars(&v[0]);
+                let unit = if wide { 2 } else { 1 };
+                let units = |s: &[u8]| -> R<Vec<(usize, usize)>> {
+                    match utf_units(s, wide) {
+                        Ok(u) => Ok(u),
+                        Err(at) => err(format!(
+                            "{b:?}: the string does not contain valid {} data (element {})",
+                            if wide { "UTF-16" } else { "UTF-8" },
+                            at + 1
+                        )),
+                    }
+                };
+                match b {
+                    Uvalid => Value::int(match utf_units(&s, wide) {
+                        Ok(_) => 0,
+                        Err(at) => at as i64 + 1,
+                    }),
+                    // not checked: the first 4-byte UTF-8 character or the
+                    // first high surrogate
+                    Usupplementary => Value::int(if wide {
+                        s.chunks(2)
+                            .position(|c| c.len() == 2 && (0xD8..=0xDB).contains(&c[0]))
+                            .map_or(0, |k| k as i64 + 1)
+                    } else {
+                        s.iter().position(|&c| c >= 0xF0).map_or(0, |k| k as i64 + 1)
+                    }),
+                    Ulength8 if !wide => Value::int(s.len() as i64),
+                    Ulength16 if wide => Value::int((s.len() / 2) as i64),
+                    Ulength => Value::int(units(&s)?.len() as i64),
+                    // the UTF-8 length of each UTF-16 character: 1, 2, 3 or
+                    // (a surrogate pair) 4 bytes
+                    Ulength8 => Value::int(
+                        units(&s)?
+                            .iter()
+                            .map(|&(at, n)| {
+                                let c = u16::from_be_bytes([s[at], s[at + 1]]);
+                                match (n, c) {
+                                    (4, _) => 4,
+                                    (_, 0..=0x7F) => 1,
+                                    (_, 0x80..=0x7FF) => 2,
+                                    _ => 3,
+                                }
+                            })
+                            .sum::<i64>(),
+                    ),
+                    // a 4-byte UTF-8 character is a surrogate pair
+                    Ulength16 => {
+                        Value::int(units(&s)?.iter().map(|&(_, n)| if n == 4 { 2 } else { 1 }).sum::<i64>())
+                    }
+                    Upos | Uwidth => {
+                        let u = units(&s)?;
+                        let n = int(1).unwrap_or(0);
+                        Value::int(match (n >= 1).then(|| u.get(n as usize - 1)).flatten() {
+                            Some(&(at, _)) if b == Upos => (at / unit) as i64 + 1,
+                            Some(&(_, len)) => (len / unit) as i64,
+                            None => 0,
+                        })
+                    }
+                    _ => {
+                        let u = units(&s)?;
+                        let (i, j) = (int(1).unwrap_or(0), int(2).unwrap_or(0));
+                        // the ERROR condition, not STRINGRANGE (LRM); the
+                        // ONCODE is not compared with the IBM library
+                        if i < 1 || j < 0 || i + j - 1 > u.len() as i64 {
+                            self.raise(Cond::Error, 3, act)?;
+                            return Ok(Value::Char(Vec::new()));
+                        }
+                        let (i, j) = (i as usize, j as usize);
+                        let start = u.get(i - 1).map_or(s.len(), |&(at, _)| at);
+                        let end = u.get(i - 1 + j).map_or(s.len(), |&(at, _)| at);
+                        Value::Char(s[start..end].to_vec())
+                    }
+                }
+            }
+            Utf8 | Utf8ToChar | Utf8ToWchar => {
+                let s = chars(&v[0]);
+                let page = |c: i64| match u32::try_from(c).ok().and_then(zeus_cobol::codepage::get) {
+                    Some(cp) => Ok(cp),
+                    None => err(format!("{b:?}: code page {c} is not supported")),
+                };
+                match b {
+                    // WIDECHAR holds UTF-16; other types are in the code page
+                    Utf8 if matches!(args[0].ty, Ty::Wchar { .. }) => match utf_units(&s, true) {
+                        Ok(_) => Value::Char(zeus_cobol::vm::data::from_utf16(&s).into_bytes()),
+                        Err(_) => {
+                            self.raise(Cond::Error, 3, act)?;
+                            Value::Char(Vec::new())
+                        }
+                    },
+                    Utf8 => Value::Char(page(int(1).unwrap_or(0))?.decode(&s).into_bytes()),
+                    _ => match std::str::from_utf8(&s) {
+                        // invalid UTF-8 raises ERROR (LRM); the ONCODE is not
+                        // compared with the IBM library
+                        Err(_) => {
+                            self.raise(Cond::Error, 3, act)?;
+                            Value::Char(Vec::new())
+                        }
+                        Ok(text) if b == Utf8ToWchar => {
+                            Value::Char(text.encode_utf16().flat_map(u16::to_be_bytes).collect())
+                        }
+                        Ok(text) => Value::Char(page(int(1).unwrap_or(0))?.encode(text)),
+                    },
+                }
+            }
+            // NULLENTRY: the entry value that names no entry point; it
+            // compares unequal to every entry constant
+            NullEntry => Value::Entry(NULL_ENTRY, 0),
+            // ENTRYADDR(NULLENTRY) is SYSNULL (LRM). Zeus entry points have
+            // no machine address, so other entries are refused.
+            EntryAddr => match &v[0] {
+                Value::Entry(p, _) if *p == NULL_ENTRY => Value::Ptr(0),
+                _ => return err("ENTRYADDR of an entry point is not supported"),
+            },
+            // MEMCUxy(p, n, q, m): the m bytes at q from UTF-x to UTF-y
+            // (1: UTF-8, 2: UTF-16, 4: UTF-32, big-endian) into the n bytes
+            // at p; the bytes written, or -1 when the target is too small
+            // or the source invalid (LRM, MEMCU12 ... MEMCU42)
+            MemCu12 | MemCu14 | MemCu21 | MemCu24 | MemCu41 | MemCu42 => {
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[2]) else {
+                    return err(format!("{b:?} requires locators"));
+                };
+                let (p, q) = (*p, *q);
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let m = int(3).unwrap_or(0).max(0) as usize;
+                let src = self.read(q, m)?.to_vec();
+                let (from, to) = match b {
+                    MemCu12 => (1, 2),
+                    MemCu14 => (1, 4),
+                    MemCu21 => (2, 1),
+                    MemCu24 => (2, 4),
+                    MemCu41 => (4, 1),
+                    _ => (4, 2),
+                };
+                let text: Option<std::string::String> = match from {
+                    1 => std::str::from_utf8(&src).ok().map(str::to_string),
+                    2 => (src.len() % 2 == 0)
+                        .then(|| {
+                            let u: Vec<u16> =
+                                src.chunks(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+                            std::string::String::from_utf16(&u).ok()
+                        })
+                        .flatten(),
+                    _ => (src.len() % 4 == 0)
+                        .then(|| {
+                            src.chunks(4)
+                                .map(|c| char::from_u32(u32::from_be_bytes([c[0], c[1], c[2], c[3]])))
+                                .collect::<Option<std::string::String>>()
+                        })
+                        .flatten(),
+                };
+                let out: Option<Vec<u8>> = text.map(|t| match to {
+                    1 => t.into_bytes(),
+                    2 => t.encode_utf16().flat_map(u16::to_be_bytes).collect(),
+                    _ => t.chars().flat_map(|c| (c as u32).to_be_bytes()).collect(),
+                });
+                match out {
+                    Some(o) if o.len() <= n => {
+                        self.write(p, &o)?;
+                        Value::int(o.len() as i64)
+                    }
+                    _ => Value::int(-1),
+                }
+            }
+            // MEMCONVERT(p, n, c, q, m, d): the m bytes at q from code page d
+            // to code page c into the n bytes at p
+            MemConvert => {
+                let (Value::Ptr(p), Value::Ptr(q)) = (&v[0], &v[3]) else {
+                    return err("MEMCONVERT requires locators");
+                };
+                let (p, q) = (*p, *q);
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let m = int(4).unwrap_or(0).max(0) as usize;
+                if v.len() > 6 {
+                    return err("MEMCONVERT: the conversion technique is not supported");
+                }
+                if n == 0 || m == 0 {
+                    Value::int(0)
+                } else {
+                    let page = |c: i64| match u32::try_from(c).ok().and_then(zeus_cobol::codepage::get) {
+                        Some(cp) => Ok(cp),
+                        None => err(format!("MEMCONVERT: code page {c} is not supported")),
+                    };
+                    let target = page(int(2).unwrap_or(0))?;
+                    let source = page(int(5).unwrap_or(0))?;
+                    let out = target.encode(&source.decode(&self.read(q, m)?));
+                    // the LRM does not say what a too small target gives
+                    if out.len() > n {
+                        return err("MEMCONVERT: the target buffer is too small");
+                    }
+                    self.write(p, &out)?;
+                    Value::int(out.len() as i64)
+                }
+            }
+            // MEMUVALID8 / MEMUVALID16(p, n): zero, or the index of the
+            // first invalid byte of the n bytes at p
+            MemUvalid8 | MemUvalid16 => {
+                let Value::Ptr(p) = &v[0] else {
+                    return err(format!("{b:?} requires a locator"));
+                };
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let buf = self.read(*p, n)?.to_vec();
+                let wide = b == MemUvalid16;
+                Value::int(match utf_units(&buf, wide) {
+                    Ok(_) if !wide || n % 2 == 0 => 0,
+                    Ok(_) => n as i64,
+                    Err(k) if wide => 2 * k as i64 + 1,
+                    Err(k) => k as i64 + 1,
+                })
+            }
             // WCHARVAL(n): the widechar whose bits are UNSIGNED FIXED BIN(16) n
             WcharVal => Value::Char((v[0].as_i64() as u16).to_be_bytes().to_vec()),
             WHigh | WLow => {
@@ -1281,6 +1640,91 @@ impl Machine {
                     }
                 }
             }
+            // THREADID(x): the thread identification held in the task
+            // variable x (a token in Zeus, not an operating system address)
+            ThreadId => match &v[0] {
+                Value::Ptr(p) => Value::Ptr(*p),
+                _ => return err("THREADID requires a task variable"),
+            },
+            // UTF8STG(x): the bytes of the UTF-8 character that starts with
+            // x, zero if x cannot start one (LRM)
+            Utf8Stg => Value::int(match chars(&v[0]).first().copied().unwrap_or(0x80) {
+                0x00..=0x7F => 1,
+                0xC2..=0xDF => 2,
+                0xE0..=0xEF => 3,
+                0xF0..=0xF4 => 4,
+                _ => 0,
+            }),
+            // FILEOPEN: whether the file is open
+            FileOpen => match &v[0] {
+                Value::File(f) => Value::bit1(self.files[*f as usize].open),
+                _ => return err("FILEOPEN requires a file"),
+            },
+            // FILEID and the FILEDD functions: ERROR with ONCODE 1010 when
+            // the file is not open or the attribute is not valid for it
+            // (LRM). FILEID is a token, not a DCB address, in Zeus.
+            FileId | FileDdTest | FileDdInt | FileDdWord => {
+                let Value::File(f) = &v[0] else {
+                    return err(format!("{b:?} requires a file"));
+                };
+                let f = *f;
+                let st = &self.files[f as usize];
+                let attr = v
+                    .get(1)
+                    .map(|a| zeus_cobol::ebcdic::decode(&chars(a)).trim().to_ascii_uppercase())
+                    .unwrap_or_default();
+                let fixed_len = match st.format.or(st.decl.record_format) {
+                    Some(zeus_ds::format::RecordFormat::Fixed(n)) => Some(n),
+                    _ => None,
+                };
+                let txt = |t: &str| Value::Char(zeus_cobol::ebcdic::encode(t));
+                let answer: Option<Value> = if !st.open {
+                    None
+                } else {
+                    match (b, attr.as_str()) {
+                        (FileId, _) => Some(Value::int(i64::from(f) + 1)),
+                        (FileDdTest, "PRINT") => Some(Value::int(i64::from(st.print))),
+                        (FileDdInt, "RECSIZE") if !st.stream => fixed_len.map(|n| Value::int(i64::from(n))),
+                        (FileDdWord, "TYPE") => Some(txt(if st.stream { "STREAM" } else { "RECORD" })),
+                        (FileDdWord, "ACCESS") if !st.stream => {
+                            Some(txt(if st.decl.direct { "DIRECT" } else { "SEQUENTIAL" }))
+                        }
+                        (FileDdWord, "ACTION") => Some(txt(if st.update {
+                            "UPDATE"
+                        } else if st.output {
+                            "OUTPUT"
+                        } else {
+                            "INPUT"
+                        })),
+                        (FileDdWord, "CHARSET") => Some(txt("EBCDIC")),
+                        _ => {
+                            return err(format!(
+                                "{b:?}('{attr}') is not supported for this file"
+                            ));
+                        }
+                    }
+                };
+                match answer {
+                    Some(x) => x,
+                    None => {
+                        self.raise(Cond::Error, 1010, act)?;
+                        match b {
+                            FileDdWord => Value::Char(Vec::new()),
+                            _ => Value::int(0),
+                        }
+                    }
+                }
+            }
+            // FILENEW([x]): a new file constant with the attributes of x
+            FileNew => {
+                let decl = match v.first() {
+                    Some(Value::File(f)) => self.files[*f as usize].decl.clone(),
+                    _ => self.files.first().map(|s| s.decl.clone()).ok_or_else(|| Intr::Fatal("FILENEW without files".into()))?,
+                };
+                std::rc::Rc::make_mut(&mut self.module).files.push(decl.clone());
+                self.files.push(super::stream::FileState::new(&decl));
+                Value::File((self.files.len() - 1) as crate::ir::FileId)
+            }
             // COUNT: the data items of the last GET or PUT on the file
             Count => match &v[0] {
                 Value::File(f) => {
@@ -1318,26 +1762,8 @@ impl Machine {
                 }
             }
             // a version 4 UUID: random bits, version nibble 4, variant 10
-            Uuid4 => {
-                let mut r = [0u8; 16];
-                for chunk in r.chunks_mut(8) {
-                    self.random ^= self.random << 13;
-                    self.random ^= self.random >> 7;
-                    self.random ^= self.random << 17;
-                    chunk.copy_from_slice(&self.random.to_be_bytes()[..chunk.len()]);
-                }
-                r[6] = (r[6] & 0x0f) | 0x40;
-                r[8] = (r[8] & 0x3f) | 0x80;
-                let h: std::string::String = r.iter().map(|c| format!("{c:02x}")).collect();
-                Value::Char(ebcdic(&format!(
-                    "{}-{}-{}-{}-{}",
-                    &h[0..8],
-                    &h[8..12],
-                    &h[12..16],
-                    &h[16..20],
-                    &h[20..32]
-                )))
-            }
+            // a new version 4 UUID at each reference and in each run
+            Uuid4 => Value::Char(ebcdic(&zeus_cobol::vm::uuid4())),
             // buffer functions on UTF-16: whitespace \t \f \v \n \r, base 64
             // digits as UTF-16 characters
             // XMLSCRUB(p, m, q, n), XMLSCRUB16: the scrubbed source, its
@@ -1752,6 +2178,11 @@ impl Machine {
                     at += 9 + n;
                 }
                 let k = members.iter().position(|m| m.0 == x);
+                // a value outside the ordinal type: CONFORMANCE when it is
+                // enabled (LRM; ONCODE 559, Messages and Codes)
+                if k.is_none() && self.enabled_now(act, crate::ir::cond::CONFORMANCE) {
+                    self.raise(Cond::Conformance, 559, act)?;
+                }
                 match b {
                     OrdinalName => Value::Char(zeus_cobol::ebcdic::encode(
                         &k.map(|k| members[k].1.clone()).unwrap_or_default(),
@@ -2327,4 +2758,158 @@ mod tests {
         assert_eq!(lilian(1988, 5, 16), 148_138);
         assert_eq!(civil(148_138 - 141_428), (1988, 5, 16));
     }
+}
+
+/// The UTF characters of a string as (byte offset, byte length), by the
+/// validity rules of UVALID (Enterprise PL/I LRM): UTF-8 for CHARACTER,
+/// UTF-16 (big-endian widechars) for WIDECHAR. Err: the element (byte or
+/// widechar, from zero) where the first invalid data starts.
+fn utf_units(s: &[u8], wide: bool) -> Result<Vec<(usize, usize)>, usize> {
+    let mut out = Vec::new();
+    let mut i = 0;
+    if wide {
+        let w: Vec<u16> = s.chunks(2).map(|c| u16::from_be_bytes([c[0], *c.get(1).unwrap_or(&0)])).collect();
+        while i < w.len() {
+            match w[i] {
+                0xD800..=0xDBFF if w.get(i + 1).is_some_and(|x| (0xDC00..=0xDFFF).contains(x)) => {
+                    out.push((2 * i, 4));
+                    i += 2;
+                }
+                0xD800..=0xDFFF => return Err(i),
+                _ => {
+                    out.push((2 * i, 2));
+                    i += 1;
+                }
+            }
+        }
+        return Ok(out);
+    }
+    let cont = |k: usize, lo: u8, hi: u8| s.get(k).is_some_and(|b| (lo..=hi).contains(b));
+    while i < s.len() {
+        let n = match s[i] {
+            0x00..=0x7F => 1,
+            0xC2..=0xDF if cont(i + 1, 0x80, 0xBF) => 2,
+            0xE0 if cont(i + 1, 0xA0, 0xBF) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xE1..=0xEC | 0xEE..=0xEF if cont(i + 1, 0x80, 0xBF) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xED if cont(i + 1, 0x80, 0x9F) && cont(i + 2, 0x80, 0xBF) => 3,
+            0xF0 if cont(i + 1, 0x90, 0xBF) && cont(i + 2, 0x80, 0xBF) && cont(i + 3, 0x80, 0xBF) => 4,
+            0xF1..=0xF3
+                if cont(i + 1, 0x80, 0xBF) && cont(i + 2, 0x80, 0xBF) && cont(i + 3, 0x80, 0xBF) =>
+            {
+                4
+            }
+            0xF4 if cont(i + 1, 0x80, 0x8F) && cont(i + 2, 0x80, 0xBF) && cont(i + 3, 0x80, 0xBF) => 4,
+            _ => return Err(i),
+        };
+        out.push((i, n));
+        i += n;
+    }
+    Ok(out)
+}
+
+/// The procedure number of NULLENTRY.
+pub(crate) const NULL_ENTRY: u32 = u32::MAX;
+
+/// CHARGRAPHIC (LRM): SO, the DBCS characters, SI; with a length y, padded
+/// with SBCS blanks, or cut after a whole DBCS character with SI and, if
+/// one byte is left, an SBCS blank. y = 1 gives one blank. With fewer than
+/// four bytes no DBCS character fits; Zeus then gives SO SI and blanks,
+/// which has not been compared with z/OS.
+fn char_graphic(g: &[u8], y: Option<i64>) -> Vec<u8> {
+    use super::conv::{SI, SO};
+    let full: Vec<u8> = if g.is_empty() {
+        Vec::new()
+    } else {
+        let mut f = vec![SO];
+        f.extend_from_slice(g);
+        f.push(SI);
+        f
+    };
+    let Some(y) = y else { return full };
+    let y = y.max(0) as usize;
+    if y <= 1 || full.is_empty() {
+        return vec![SPACE; y];
+    }
+    if y >= full.len() {
+        let mut f = full;
+        f.resize(y, SPACE);
+        return f;
+    }
+    let k = (y - 2) / 2;
+    let mut out = vec![SO];
+    out.extend_from_slice(&g[..2 * k]);
+    out.push(SI);
+    out.resize(y, SPACE);
+    out
+}
+
+/// MPSTR (LRM): with S (and not V) the null DBCS strings (SO SI) are
+/// removed; the string is cut to y bytes without splitting a DBCS
+/// character, by dropping SBCS characters or whole DBCS characters from the
+/// right and closing an open DBCS part with SI; it is padded with blanks.
+/// An invalid mixed string under V is left as it is (the LRM does not say
+/// what V does with one).
+fn mpstr(x: &[u8], squeeze: bool, y: Option<i64>) -> Vec<u8> {
+    use super::conv::{SI, SO};
+    let mut s: Vec<u8> = Vec::with_capacity(x.len());
+    let mut i = 0;
+    while i < x.len() {
+        if squeeze && x[i] == SO && x.get(i + 1) == Some(&SI) {
+            i += 2;
+            continue;
+        }
+        s.push(x[i]);
+        i += 1;
+    }
+    let y = match y {
+        Some(y) => y.max(0) as usize,
+        None => x.len(),
+    };
+    if s.len() <= y {
+        s.resize(y, SPACE);
+        return s;
+    }
+    // the longest prefix that fits with its SI
+    let mut out = Vec::new();
+    let mut dbcs = false;
+    let mut i = 0;
+    while i < s.len() {
+        let c = s[i];
+        if dbcs {
+            if c == SI {
+                if out.len() + 1 > y {
+                    break;
+                }
+                out.push(SI);
+                dbcs = false;
+                i += 1;
+                continue;
+            }
+            // a DBCS character and the SI that closes the part
+            if out.len() + 3 > y || i + 1 >= s.len() {
+                break;
+            }
+            out.extend_from_slice(&s[i..i + 2]);
+            i += 2;
+        } else if c == SO {
+            // SO needs room for SI after it
+            if out.len() + 2 > y {
+                break;
+            }
+            out.push(SO);
+            dbcs = true;
+            i += 1;
+        } else {
+            if out.len() + 1 > y {
+                break;
+            }
+            out.push(c);
+            i += 1;
+        }
+    }
+    if dbcs {
+        out.push(SI);
+    }
+    out.resize(y, SPACE);
+    out
 }

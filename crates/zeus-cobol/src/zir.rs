@@ -119,6 +119,10 @@ pub struct ProgramCode {
     pub exportall: bool,
     #[serde(default)]
     pub ssrange: bool,
+    /// NUMCHECK: the data types whose sending items are checked before use
+    /// (numcheck::ZON, PAC, BIN) and ABD; 0 is NONUMCHECK.
+    #[serde(default)]
+    pub numcheck: u8,
     #[serde(default)]
     pub dynam: bool,
     #[serde(default)]
@@ -210,6 +214,10 @@ pub struct ProgramCode {
     /// `u32::MAX`).
     #[serde(default)]
     pub instr_stmt: Vec<u32>,
+    /// INITCHECK: descriptors of the items the analysis tracks (compile
+    /// time only).
+    #[serde(skip)]
+    pub initcheck_items: Vec<u32>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -489,6 +497,13 @@ pub enum DataType {
     Dbcs,
     /// National data: UTF-16 big-endian.
     National,
+    /// UTF-8 data (USAGE UTF-8, PICTURE U). `chars` is n for a fixed
+    /// character-length item PIC U(n), which reserves 4n bytes; None for
+    /// PIC U BYTE-LENGTH m (fixed byte length, varying characters) and for
+    /// UTF-8 literals and function results.
+    Utf8 {
+        chars: Option<u32>,
+    },
     Numeric(NumType),
     NumericEdited {
         #[serde(default)]
@@ -566,6 +581,9 @@ impl DataType {
     pub fn is_entry_pointer(&self) -> bool {
         matches!(self, Self::ProcedurePointer | Self::FunctionPointer)
     }
+    pub fn is_utf8(&self) -> bool {
+        matches!(self, Self::Utf8 { .. })
+    }
     pub fn is_national(&self) -> bool {
         matches!(
             self,
@@ -604,6 +622,12 @@ pub struct Desc {
     pub dynamic_offset: Option<Box<Ex>>,
     #[serde(default)]
     pub dynamic_len: Option<Box<Ex>>,
+    /// DYNAMIC LENGTH item: its LIMIT (bytes). The item's storage is a
+    /// descriptor of three big-endian words, the address of the content
+    /// buffer, the current length and the buffer's capacity; the content
+    /// lives in heap storage.
+    #[serde(default)]
+    pub dynamic_limit: Option<u32>,
     #[serde(default)]
     pub abi: Vec<AbiField>,
     pub name: String,
@@ -709,6 +733,16 @@ pub enum Func {
     Char,
     Cos,
     CurrentDate,
+    /// UUID4: a version 4 UUID (36 characters).
+    Uuid4,
+    /// ULENGTH, UPOS, USUBSTR, USUPPLEMENTARY, UVALID, UWIDTH: Unicode
+    /// characters of UTF-8 (alphanumeric) or UTF-16 (national) data.
+    Ulength,
+    Upos,
+    Usubstr,
+    Usupplementary,
+    Uvalid,
+    Uwidth,
     DateOfInteger,
     DayOfInteger,
     Factorial,
@@ -795,6 +829,8 @@ pub enum Src {
     Alnum(Vec<u8>),
     /// National literal (UTF-16 big-endian).
     National(Vec<u8>),
+    /// UTF-8 literal (UTF-8 bytes).
+    Utf8(Vec<u8>),
     /// Numeric literal: value and its digits as EBCDIC characters.
     NumLit(Dec, Vec<u8>),
     Fig(Fig),
@@ -1060,6 +1096,19 @@ pub enum Instr {
     Segment(u8),
     /// SET ADDRESS OF a linkage record (linkage base number) TO value.
     SetAddress(u32, Ex),
+    /// SET LENGTH OF a dynamic-length item TO value.
+    SetDynamicLength(Loc, Ex),
+    /// ALLOCATE: `size` bytes (rounded up; NULL when not positive), binary
+    /// zeros when `zero`; the address goes to the LINKAGE record `link`
+    /// and/or the pointer `ret`.
+    Allocate {
+        size: Ex,
+        zero: bool,
+        link: Option<u32>,
+        ret: Option<Loc>,
+    },
+    /// FREE: release the storage a pointer addresses and set it to NULL.
+    Free(Loc),
     SetEntry(Vec<Loc>, Src),
     /// Explicit CALLINTERFACE selection; old SetEntry retains compiler defaults.
     SetEntryWithInterface(Vec<Loc>, Src, CallInterface),
@@ -1233,4 +1282,12 @@ pub enum AcceptFrom {
     DayYyyyddd,
     DayOfWeek,
     Time,
+}
+
+/// NUMCHECK flags of ProgramCode::numcheck.
+pub mod numcheck {
+    pub const ZON: u8 = 1;
+    pub const PAC: u8 = 2;
+    pub const BIN: u8 = 4;
+    pub const ABD: u8 = 0x80;
 }

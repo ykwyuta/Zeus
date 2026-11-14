@@ -18,6 +18,9 @@ ccsid = 939
 [programs.ZN106M]
 ccsid = 939
 
+[programs.ZF115A]
+jcl = "ZF115A.JCL"
+
 [programs.ZF201M]
 jcl = "ZF201M.JCL"
 
@@ -27,6 +30,10 @@ parm = "/DEBUG"
 [programs.ZS103M]
 parm = "NIGHTLY,20261016"
 expect_exit_code = 4
+
+[programs.ZA130A]
+# NUMCHECK(...,ABD) with an invalid zoned sender ends the run unit (Zeus RC 16; z/OS to be recorded)
+expect_exit_code = 16
 
 [programs.ZA124A]
 # NUMVAL with an invalid argument ends the run unit (Zeus RC 16; z/OS to be recorded)
@@ -296,3 +303,26 @@ diagnostic_contains = "invalid elementary MOVE: national sending item, alphanume
 
 [programs.ZE146P]
 expect = "compile-only"
+
+[programs.ZE147N]
+expect = "compile-error"
+diagnostic_contains = "C OF A is ambiguous"
+
+[programs.ZE147P]
+expect = "compile-only"
+
+[programs.ZE148N]
+expect = "compile-only"
+expect_compile_rc = 4
+
+[programs.ZE148P]
+expect = "compile-only"
+expect_compile_rc = 0
+
+[programs.ZE149N]
+expect = "compile-only"
+expect_compile_rc = 4
+
+[programs.ZE149P]
+expect = "compile-only"
+expect_compile_rc = 0

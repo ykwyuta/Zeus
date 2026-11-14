@@ -1032,6 +1032,174 @@
       }
     }
   },
+  "ZA127A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: UUID4 | The UUID4 function returns a 36-character alphanumeric string that is a version 4 universally unique identifier(UUID)."
+    ],
+    "tests": {
+      "UUID4-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | The UUID4 function returns a 36-character alphanumeric string"
+        ]
+      },
+      "UUID4-HYPHENS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | 4ed161b5-0d3c-4f06-8381-5f14678e13da"
+        ]
+      },
+      "UUID4-HEX-DIGITS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | 4ed161b5-0d3c-4f06-8381-5f14678e13da"
+        ]
+      },
+      "UUID4-VERSION": {
+        "basis": "zos",
+        "note": "版 4 (15 桁目が 4) と変種 (20 桁目が 8・9・a・b) は RFC の UUID の形で、LRM は例を 1 つ示すだけ。小文字の 16 進であることも例による",
+        "refs": [
+          "COB-LRM: UUID4 | Version 4 UUID is generated based on random numbers."
+        ]
+      },
+      "UUID4-DIFFERENT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UUID4 | It produces unique identifiers from separate applications without the coordination of a centralized agent or process."
+        ]
+      }
+    }
+  },
+  "ZA128A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: CONTENT-OF | The CONTENT-OF intrinsic function returns the content of the argument."
+    ],
+    "tests": {
+      "CONTENT-OF-ALNUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CONTENT-OF | The returned value is the content of argument-1. The size of the returned value is the size of argument-1."
+        ]
+      },
+      "CONTENT-OF-NUMERIC": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CONTENT-OF | The type of this function depends on the type of argument-1 as follows:"
+        ]
+      },
+      "CONTENT-OF-NATIONAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CONTENT-OF | The type of this function depends on the type of argument-1 as follows:"
+        ]
+      },
+      "CONTENT-OF-REFMOD": {
+        "basis": "zos",
+        "note": "英数字の結果の関数参照を部分参照できることは、英数字の関数一般の規則による (CONTENT-OF の節は例を示していない)",
+        "refs": [
+          "COB-LRM: CONTENT-OF | Alphanumeric Alphanumeric"
+        ]
+      }
+    }
+  },
+  "ZA129A": {
+    "basis": "spec",
+    "tests": {
+      "ULENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ULENGTH | The returned value is the number of UTF-8 or UTF-16 characters in argument-1.",
+          "COB-LRM: ULENGTH | U+0061 + U+0308 x'61CC88' 2",
+          "COB-LRM: ULENGTH | the returned value from ULENGTH(B) will be 7."
+        ]
+      },
+      "UPOS-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UPOS | UPOS(A 3) returns 4",
+          "COB-LRM: UPOS | If argument-2 is not positive or if argument-2 is larger than ULENGTH(argument-1), zero is returned."
+        ]
+      },
+      "UPOS-UTF16": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UPOS | UPOS (B 7) returns 15"
+        ]
+      },
+      "USUBSTR-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: USUBSTR | USUBSTR(A 2 2) returns x'C3A466' ('äf')",
+          "COB-LRM: USUBSTR | USUBSTR (C 2 1) returns x'CC88' (¨)"
+        ]
+      },
+      "USUBSTR-UTF16": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: USUBSTR | USUBSTR(B 5 2) returns x'0072D858DC6B'"
+        ]
+      },
+      "USUPPLEMENTARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: USUPPLEMENTARY | the output of both DISPLAY statements is value 3.",
+          "COB-LRM: USUPPLEMENTARY | If argument-1 contains no supplementary characters, the returned value is zero."
+        ]
+      },
+      "UVALID": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UVALID | the returned value from UVALID(C) is 2 because x'D9C3' does not have a low surrogate pair.",
+          "COB-LRM: UVALID | the returned value from UVALID(D) is 4 because x'DC01' does not have a corresponding high",
+          "COB-LRM: Table 75. Byte validity for UTF-8 data | x'80' - x'C1' None Invalid"
+        ]
+      },
+      "UWIDTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UWIDTH | UWIDTH(A 2) returns 2",
+          "COB-LRM: UWIDTH | If argument-2 is not positive or if argument-2 is larger than ULENGTH(argument-1), zero is returned."
+        ]
+      }
+    }
+  },
+  "ZA130A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: NUMCHECK | The NUMCHECK compiler option tells the compiler whether to generate extra code to validate data items when they are used as sending data items."
+    ],
+    "tests": {
+      "NC-VALID-ADD": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | If the data is NUMERIC, the external behavior of the statement is the same as NUMCHECK(NOZON), other than being slower.",
+          "COB-PG: NUMCHECK | For binary data items, the compiler generates SIZE ERROR checking to see whether the data item has more digits than its PICTURE clause allows."
+        ]
+      },
+      "NC-VALID-COMPUTE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | If the data is NUMERIC, the external behavior of the statement is the same as NUMCHECK(NOZON), other than being slower.",
+          "COB-PG: NUMCHECK | For binary data items, the compiler generates SIZE ERROR checking to see whether the data item has more digits than its PICTURE clause allows."
+        ]
+      },
+      "NC-VALID-COMPARE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | If the data is NUMERIC, the external behavior of the statement is the same as NUMCHECK(NOZON), other than being slower."
+        ]
+      },
+      "NC-SEND-RECEIVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: NUMCHECK | Receivers are not checked, unless they are both a sender and a receiver, such as data item B in the following sample statements:",
+          "COB-PG: NUMCHECK | If the data is NOT NUMERIC, either a warning message for NUMCHECK(ZON,MSG) or a terminating message for NUMCHECK(ZON,ABD) is issued."
+        ]
+      }
+    }
+  },
   "ZD101A": {
     "basis": "spec",
     "refs": [
@@ -1657,6 +1825,19 @@
       "COB-LRM: DISPLAY-OF"
     ]
   },
+  "ZE147N": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: QUALIFY | Default is: QUALIFY(COMPAT)",
+      "COB-PG: QUALIFY | If QUALIFY(COMPAT) is in effect, references to data items must be unique."
+    ]
+  },
+  "ZE147P": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: QUALIFY | If every level in the containing hierarchy of names is specified, the set of qualifiers is called a complete set of qualifiers."
+    ]
+  },
   "ZF101A": {
     "basis": "spec",
     "refs": [
@@ -1842,6 +2023,40 @@
       "COB-LRM: OPEN statement notes",
       "COB-PG: Logical records"
     ]
+  },
+  "ZF115A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: Allocating line-sequential files | A DD statement that specifies PATH='absolute-path-name'"
+    ],
+    "tests": {
+      "LS-READ-PADDED": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Adding records to line-sequential files | Blanks at the end of the record area are removed, and the record delimiter is added.",
+          "COB-PG: Reading records from line-sequential files | The delimiter is discarded and the remainder of the record area is filled with spaces."
+        ]
+      },
+      "LS-EXTEND-EOF": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Reading records from line-sequential files | The delimiter is discarded and the remainder of the record area is filled with spaces.",
+          "COB-PG: Adding records to line-sequential files | To add to a line-sequential file, open the file as EXTEND and use the WRITE statement to add records immediately after the last record in the file."
+        ]
+      },
+      "LS-NEWLINE-DATA": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Control characters in line-sequential files | if a line-sequential file contains a newline character (X'15'), the newline character will function as a record delimiter."
+        ]
+      },
+      "LS-SHORT-AREA": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Reading records from line-sequential files | Otherwise the next unread character is the first character to be read by the next READ."
+        ]
+      }
+    }
   },
   "ZF201M": {
     "basis": "spec",
@@ -2159,6 +2374,41 @@
       }
     }
   },
+  "ZN115A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: CODEPAGE | Use CODEPAGE to specify the coded character set identifier (CCSID) for an EBCDIC code page for processing compile-time and runtime COBOL operations that are sensitive to character encoding."
+    ],
+    "tests": {
+      "CP1140-EURO": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Table 14. Hexadecimal values of the euro sign | 1140 USA, Canada, Netherlands, Portugal, Australia, New 037 X'9F'",
+          "COB-LRM: NATIONAL-OF | Otherwise, the source code page is the one that was in effect for the CODEPAGE compiler option when the source code was compiled."
+        ]
+      },
+      "CP1140-DISPLAY-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: Table 14. Hexadecimal values of the euro sign | 1140 USA, Canada, Netherlands, Portugal, Australia, New 037 X'9F'",
+          "COB-LRM: DISPLAY-OF | The DISPLAY-OF function returns an alphanumeric character string consisting of the"
+        ]
+      },
+      "CP1140-LETTERS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NATIONAL-OF | Otherwise, the source code page is the one that was in effect for the CODEPAGE compiler option when the source code was compiled.",
+          "COB-PG: CODEPAGE | The default CCSID 1140 is the equivalent of CCSID 37 (COM EUROPE EBCDIC), but additionally includes the euro symbol."
+        ]
+      },
+      "CCSID-ARGUMENT-037": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NATIONAL-OF | argument-2 identifies the source code page for the conversion."
+        ]
+      }
+    }
+  },
   "ZP101A": {
     "basis": "spec",
     "refs": [
@@ -2452,6 +2702,110 @@
         "basis": "spec",
         "refs": [
           "COB-LRM: Debugging lines | To specify a debugging line in your program, code a D in column 7 (the indicator area)."
+        ]
+      }
+    }
+  },
+  "ZP115A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: CALLINTERFACE | The CALLINTERFACE directive specifies the interface convention for CALL and SET statements.",
+      "COB-PG: DYNAM | Default is: NODYNAM"
+    ],
+    "tests": {
+      "STATIC-CANCEL-NOOP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CALLINTERFACE | Specifies that the interface convention for subsequent CALL statements and subsequent SET function pointer and procedure pointer statements is static",
+          "COB-LRM: CANCEL statement | Has not been dynamically called in this run unit by another COBOL program",
+          "COB-PG: Performance considerations of static and dynamic calls | Statically called programs cannot be deleted using CANCEL"
+        ]
+      },
+      "DIRECTIVE-RESET": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CANCEL statement | Has not been dynamically called in this run unit by another COBOL program",
+          "COB-LRM: CALLINTERFACE | If the >>CALLINTERFACE directive has no suboptions, the interface convention for subsequent CALL and SET statements is determined by the setting of the DLL and DYNAM compiler options."
+        ]
+      },
+      "DYNAMIC-CANCEL-RESET": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: CALLINTERFACE | Specifies that the interface convention for subsequent CALL literal statements and subsequent SET function-pointer and procedure-pointer statements is dynamic",
+          "COB-LRM: CANCEL statement | The CANCEL statement ensures that the referenced subprogram is entered in initial state the next time"
+        ]
+      }
+    }
+  },
+  "ZP116A": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: QUALIFY | If QUALIFY(EXTEND) is in effect, qualification rules are extended so that some references that are not unique by COBOL standard rules can be unique."
+    ],
+    "tests": {
+      "EXTEND-RECORD-A": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: QUALIFY | Move space to A *> Refers to 01 level A (unique only with QUALIFY(EXTEND))"
+        ]
+      },
+      "EXTEND-C-OF-A": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: QUALIFY | Move space to C of A *> Refers to 02 level C (unique only with"
+        ]
+      },
+      "STANDARD-OF-B": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: QUALIFY | Move space to C of B *> Refers to 03 level C (unique by COBOL standard"
+        ]
+      }
+    }
+  },
+  "ZP117A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ALLOCATE statement | The ALLOCATE statement obtains dynamic storage from the Language Environment heap."
+    ],
+    "tests": {
+      "ALLOC-INITIALIZED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If both data-name-1 and the INITIALIZED phrase are specified, the allocated storage is initialized as if an INITIALIZE data-name-1 WITH FILLER ALL TO VALUE THEN TO DEFAULT statement were executed.",
+          "COB-LRM: VALUE clause for condition-name | A VALUE clause in file and LINKAGE SECTION other than in condition-"
+        ]
+      },
+      "ALLOC-RETURNING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If data-name-1 is specified, the address of the data item is set to the address of the obtained storage",
+          "COB-LRM: ALLOCATE statement | If a RETURNING data item is also specified, the pointer data item will contain that address."
+        ]
+      },
+      "ALLOC-CHARS-ZEROS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If both arithmetic-expression-1 and the INITIALIZED phrase are specified, all bytes of the allocated storage are initialized to binary zeros."
+        ]
+      },
+      "ALLOC-DISTINCT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If arithmetic-expression-1 does not evaluate to an integer, the result is rounded up to the next whole number."
+        ]
+      },
+      "ALLOC-ZERO-NULL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ALLOCATE statement | If arithmetic-expression-1 evaluates to 0 or a negative value, the data item referenced by data-"
+        ]
+      },
+      "FREE-SETS-NULL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: FREE statement | that storage is released and the pointer referenced by data-name-1 is set to NULL",
+          "COB-LRM: FREE statement | If more than one data-name-1 is specified in a FREE statement, the result of executing this FREE"
         ]
       }
     }
@@ -3022,5 +3376,290 @@
         ]
       }
     }
+  },
+  "ZN116A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: UTF-8 items | The PICTURE character-string can contain one or more occurrences of the picture symbol U. Each U represents a single UTF-8 character position."
+    ],
+    "tests": {
+      "U-FIXED-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Alignment rules | 4 bytes of storage are reserved for each character position described by the item's PICTURE character-string.",
+          "COB-LRM: LENGTH OF | The LENGTH OF special register contains the number of bytes used by a data item."
+        ]
+      },
+      "U-FIXED-LENGTH-FN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH | For example, if argument-1 is defined as PIC U(n), the returned value is always n"
+        ]
+      },
+      "U-BYTE-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BYTE-LENGTH integer-1 | The number of bytes occupied by a UTF-8 data item defined with the BYTE-LENGTH phrase of the PICTURE clause is indicated by integer-1."
+        ]
+      },
+      "U-BYTE-LENGTH-FN": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BYTE-LENGTH | BYTE-LENGTH always returns the byte length of argument-1, even when argument-1 is of class national or UTF-8."
+        ]
+      },
+      "U-VALUE-ALNUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UTF-8 items | Any associated VALUE clause must specify an alphanumeric literal, a UTF-8 literal, or one of the following figurative constants:",
+          "COB-LRM: BYTE-LENGTH integer-1 | are always padded with UTF-8 spaces (x'20') to a byte length of integer-1."
+        ]
+      },
+      "U-LITERAL-ESCAPE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Basic UTF-8 literals | Wherever a Unicode escape sequence appears in a basic UTF-8 literal, it is replaced by the compiler with the corresponding UTF-8 encoding of the Unicode code point"
+        ]
+      },
+      "U-LITERAL-HEX": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Hexadecimal notation for UTF-8 literals | Each group of two hexadecimal digits represents a single encoding unit of a UTF-8 character."
+        ]
+      },
+      "U-TRUNC-CHARS": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Alignment rules | The data is aligned at the leftmost character position, and (if necessary) truncated or padded with default UTF-8 spaces (UX'20') at the right. Truncation occurs at the boundary of a UTF-8 character position."
+        ]
+      },
+      "U-TRUNC-BOUNDARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: BYTE-LENGTH integer-1 | UTF-8 data items defined with the BYTE-LENGTH phrase of the PICTURE clause are truncated on UTF-8 character boundaries when truncation is needed"
+        ]
+      },
+      "U-SUPPLEMENTARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Basic UTF-8 literals | \\U00hhhhh, where each h represents a hexadecimal digit",
+          "COB-LRM: Basic UTF-8 literals | Unicode code points in the range U+10000 through U+10FFFF (e.g., an emoji symbol)."
+        ]
+      },
+      "U-LENGTH-BYTE-ITEM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH | If argument-1 is defined with the BYTE-LENGTH phrase of the PICTURE clause or the DYNAMIC LENGTH clause, then the character length is computed at runtime by examining all bytes occupied by the data in argument-1 and counting the number of characters represented."
+        ]
+      },
+      "U-HIGH-BYTE-TAIL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Figurative constants | the value of HIGH-VALUE is UX'EFBFBF' (U+FFFF), UX'DFBF' (U+07FF), and UX'7F' (U+007F), respectively."
+        ]
+      },
+      "U-HIGH-FIXED": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Figurative constants | The value is UTF-8 character UX'F48FBFBF' corresponding to Unicode code point U+10FFFF"
+        ]
+      },
+      "U-LOW-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Figurative constants | The value is UTF-8 character UX'00' corresponding to Unicode code point U+0000."
+        ]
+      },
+      "U-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Valid and invalid elementary moves | Includes UTF-8 data items, UTF-8 literals, UTF-8 functions, and figurative constants ZERO, SPACE, QUOTE, and ALL UTF-8 literal."
+        ]
+      },
+      "U-INITIALIZE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: INITIALIZE statement | SPACE is the implied sending item for receiving items of category alphabetic, alphanumeric, alphanumeric-edited, DBCS, EGCS, national, national-edited, or UTF-8."
+        ]
+      },
+      "U-FROM-NATIONAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Elementary moves | If the representation of the sending item is not UTF-8 characters, the sending data is converted to UTF-8 characters"
+        ]
+      },
+      "U-FROM-ALNUM": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Elementary moves | If the representation of the sending item is not UTF-8 characters, the sending data is converted to UTF-8 characters",
+          "COB-LRM: Valid and invalid elementary moves | Alphanumeric sending"
+        ]
+      },
+      "U-TO-NATIONAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Valid and invalid elementary moves | UTF-8 sending item10 No No No No No No No No Yes Yes Yes"
+        ]
+      },
+      "U-NATIONAL-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: NATIONAL-OF | If argument-2 is omitted and argument-1 is of class UTF-8, then the source code page is 1208."
+        ]
+      },
+      "U-DISPLAY-OF": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DISPLAY-OF | Must be of class national (categories national, national-edited, and numeric-edited described with usage NATIONAL) or class UTF-8."
+        ]
+      },
+      "U-COMPARE-PAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UTF-8 comparisons | When the relation condition specifies an operand that is not class UTF-8, that operand is converted to a data item of category UTF-8 before the comparison.",
+          "COB-LRM: Comparison of two UTF-8 operands | the comparison proceeds as though the shorter operand were padded on the right with the default UTF-8 space character (UX'20')"
+        ]
+      },
+      "U-COMPARE-UTF8": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: UTF-8 comparisons | Alphanumeric characters are converted to the corresponding UTF-8 characters."
+        ]
+      },
+      "U-COMPARE-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Comparison of two UTF-8 operands | the comparison proceeds by comparing corresponding UTF-8 character positions in the two operands, starting from the leftmost position"
+        ]
+      }
+    }
+  },
+  "ZD116A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: DYNAMIC LENGTH clause | A dynamic-length elementary item is a data item whose length can vary at runtime. The length of a data item is the current number of characters contained by this data item."
+    ],
+    "tests": {
+      "DL-INITIAL-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DYNAMIC LENGTH clause | A dynamic-length elementary item has a minimum length of zero"
+        ]
+      },
+      "DL-MOVE-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | The length of the receiver is then set to the length of the sender.",
+          "COB-LRM: LENGTH OF | LENGTH OF creates an implicit special register that contains the current byte length of the data item"
+        ]
+      },
+      "DL-MOVE-CONTENT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | The length of the receiver is then set to the length of the sender."
+        ]
+      },
+      "DL-SHORTER-MOVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | The length of the receiver is then set to the length of the sender."
+        ]
+      },
+      "DL-LIMIT-TRUNC": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Elementary moves | If the receiving item is a dynamic-length elementary item, the length of the receiver is set to the minimum of the length of the sender or the specified or implied value of the LIMIT phrase."
+        ]
+      },
+      "DL-SENDER-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | the item is treated as a fixed-length data item with a length that is the same as the current length of the dynamic-length elementary item."
+        ]
+      },
+      "DL-COMPARE-PAD": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | the item is treated as a fixed-length data item with a length that is the same as the current length of the dynamic-length elementary item."
+        ]
+      },
+      "DL-FIG-CURRENT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | If the sender is a figurative constant, the length of the operand is as specified in",
+          "COB-LRM: Figurative constants | is equal to 1 or the number of character positions in the associated data item, whichever is greater."
+        ]
+      },
+      "DL-FIG-EMPTY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | If the sender is a figurative constant, the length of the operand is as specified in",
+          "COB-LRM: Figurative constants | is equal to 1 or the number of character positions in the associated data item, whichever is greater."
+        ]
+      },
+      "DL-SET-TRUNCATE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Format 8: SET for length of dynamic-length elementary items | then the length of identifier-1 is set to the specified value and identifier-1 is truncated on the right."
+        ]
+      },
+      "DL-SET-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Format 8: SET for length of dynamic-length elementary items | If identifier-2 is less than zero then the length of identifier-1 is set to zero."
+        ]
+      },
+      "DL-REFMOD-RECEIVER": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Dynamic-length elementary items | If a dynamic-length elementary item is used as a receiving operand and is reference-modified, the item is treated as a fixed-length item with a length that is the same as the current length of the dynamic-length elementary item."
+        ]
+      },
+      "DL-UTF8-BOUNDARY": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: DYNAMIC LENGTH clause | When the PICTURE clause is PIC U, integer-1 represents the maximum bytes that the data item can contain.",
+          "COB-LRM: DYNAMIC LENGTH clause | will result in truncation at a character boundary on the right."
+        ]
+      },
+      "DL-UTF8-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH | If argument-1 is defined with the BYTE-LENGTH phrase of the PICTURE clause or the DYNAMIC LENGTH clause, then the character length is computed at runtime"
+        ]
+      },
+      "DL-UTF8-BYTES": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: LENGTH OF | The LENGTH OF special register contains the number of bytes used by a data item."
+        ]
+      }
+    }
+  },
+  "ZE148N": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | If INITCHECK or INITCHECK(LAX) is in effect, the compiler will check for uninitialized data items and issue a warning message when a data item is used without being initialized.",
+      "COB-PG: INITCHECK | Suboption default is: INITCHECK(LAX) if INITCHECK is specified with no suboption"
+    ]
+  },
+  "ZE148P": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | However, if a data item is initialized on at least one logical path to a statement, no warning message will be issued."
+    ]
+  },
+  "ZE149N": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | INITCHECK(STRICT) will issue a warning message about uninitialized data for a data item used in a statement unless the data item is initialized on all logical paths to the statement.",
+      "COB-PG: INITCHECK | Z is initialized on one path to the DISPLAY statement but not the other"
+    ]
+  },
+  "ZE149P": {
+    "basis": "spec",
+    "refs": [
+      "COB-PG: INITCHECK | if INITCHECK(LAX) is in effect, a warning message will be issued for Y only, while INITCHECK(STRICT) will also issue a warning message for Z."
+    ]
   }
 }

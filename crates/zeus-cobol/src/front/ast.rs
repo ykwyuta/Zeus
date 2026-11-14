@@ -232,6 +232,8 @@ pub enum Usage {
     Display1,
     /// NATIONAL: UTF-16 data.
     National,
+    /// UTF-8: UTF-8 data (PICTURE U).
+    Utf8,
     Binary,
     Packed,
     /// COMP-5: native binary, not truncated to the picture.
@@ -272,6 +274,11 @@ pub struct DataEntry {
     pub external: bool,
     pub global: bool,
     pub picture: Option<String>,
+    /// PICTURE U BYTE-LENGTH m.
+    pub byte_length: Option<u32>,
+    /// DYNAMIC [LENGTH] [LIMIT [IS] n]: Some(limit) for a dynamic-length
+    /// elementary item.
+    pub dynamic: Option<Option<u32>>,
     pub usage: Option<Usage>,
     pub group_national: bool,
     /// SIGN clause: (leading, separate)
@@ -457,6 +464,8 @@ pub enum Literal {
     Hex(Vec<u8>),
     /// National literal (UTF-16 big-endian).
     National(Vec<u8>),
+    /// UTF-8 literal (UTF-8 bytes).
+    Utf8(Vec<u8>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -709,6 +718,8 @@ pub enum SetStmt {
     CondFalse(Vec<DataRef>),
     /// SET ADDRESS OF linkage-items TO pointer value
     Address(Vec<DataRef>, Operand),
+    /// SET LENGTH OF dynamic-length-item TO value
+    Length(DataRef, Operand),
 }
 
 /// Enterprise COBOL INITIALIZE selection phrases.
@@ -760,6 +771,17 @@ pub enum Stmt {
         pos: Pos,
     },
     Cancel(Vec<Operand>),
+    /// ALLOCATE data-name-1 | arithmetic-expression-1 CHARACTERS
+    /// [INITIALIZED] [LOC n] [RETURNING data-name-2]
+    Allocate {
+        item: Option<DataRef>,
+        chars: Option<Expr>,
+        initialized: bool,
+        loc: Option<u32>,
+        returning: Option<DataRef>,
+    },
+    /// FREE data-name-1 ...
+    Free(Vec<DataRef>),
     Close(Vec<(String, Option<String>)>),
     Compute {
         targets: Vec<Receiver>,

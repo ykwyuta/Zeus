@@ -196,6 +196,34 @@ fn field(record: &[char], start: usize, end: usize) -> String {
         .collect()
 }
 
+/// A record of the AINSERT buffer or an AREAD source record as a statement
+/// in the standard format (columns 1-71, sequence 73-80); None for a
+/// comment.
+pub(super) fn record_statement(text: &str, file: &str, line: usize) -> Option<Statement> {
+    let record: Vec<char> = text.chars().collect();
+    let area: String = field(&record, 0, 71);
+    if area.starts_with('*') || area.starts_with(".*") || area.trim().is_empty() {
+        return None;
+    }
+    Some(parse(
+        area.trim_end(),
+        Path::new(file),
+        line,
+        field(&record, 72, 80),
+    ))
+}
+
+/// The source record at `line` (1-based) of `file`, as 80 characters.
+pub(super) fn raw_record(file: &str, line: usize, options: &AssemblyOptions) -> Option<String> {
+    let records = records(Path::new(file), &options.source_encoding).ok()?;
+    let mut text: String = records.get(line.checked_sub(1)?)?.iter().collect();
+    text = text.chars().take(80).collect();
+    while text.chars().count() < 80 {
+        text.push(' ');
+    }
+    Some(text)
+}
+
 fn parse(area: &str, path: &Path, line: usize, sequence: String) -> Statement {
     let mut rest = area;
     let label = if rest.starts_with(char::is_whitespace) {

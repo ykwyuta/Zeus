@@ -1,0 +1,41 @@
+ PC117A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* The CONFORMANCE condition (Enterprise PL/I 6.1 Language
+    Reference). It is disabled except within the scope of the
+    CONFORMANCE condition prefix, and is raised there when the
+    argument of ORDINALSUCC, ORDINALPRED or ORDINALNAME is invalid
+    (condition code 559, a value that is not valid for the ordinal
+    type; 550 for SIGNAL CONFORMANCE, Messages and Codes). A normal
+    return from a CONFORMANCE ON-unit raises ERROR. */
+ DEFINE ORDINAL COLOR (RED, GREEN, BLUE);
+ DCL C ORDINAL COLOR;
+ DCL (HIT, ERR) BIT(1);
+ DCL CODE FIXED BIN(31);
+
+ OPEN FILE(REPORT);
+
+ ON CONFORMANCE BEGIN; HIT = '1'B; CODE = ONCODE(); GOTO AFTER1; END;
+ HIT = '0'B; CODE = 0;
+ UNSPEC(C) = (8)'1'B;
+ (CONFORMANCE): C = ORDINALSUCC(C);
+ AFTER1:
+ CALL ZCHECK('CONFORMANCE-ORDINAL', HIT & CODE = 559);
+ HIT = '0'B;
+ UNSPEC(C) = (8)'1'B;
+ C = ORDINALPRED(C);
+ CALL ZCHECK('CONFORMANCE-DISABLED', ^HIT);
+ HIT = '0'B;
+ SIGNAL CONFORMANCE;
+ CALL ZCHECK('SIGNAL-DISABLED', ^HIT);
+ ON CONFORMANCE BEGIN; HIT = '1'B; CODE = ONCODE(); END;
+ ON ERROR BEGIN; ERR = '1'B; GOTO AFTER2; END;
+ HIT = '0'B; ERR = '0'B; CODE = 0;
+ (CONFORMANCE): SIGNAL CONFORMANCE;
+ AFTER2:
+ REVERT ERROR;
+ CALL ZCHECK('SIGNAL-CODE-550', HIT & CODE = 550);
+ CALL ZCHECK('NORMAL-RETURN-ERROR', ERR);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC117A;

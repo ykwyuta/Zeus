@@ -1,0 +1,41 @@
+ PD112A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* The UNION attribute (CELL is a synonym) (Enterprise PL/I 6.1
+    Language Reference, "Unions" and "Structure and union mapping").
+    The members of a union overlay each other and the union occupies
+    the storage of its largest member. Each member is mapped as a
+    structure member: in the LRM example union A, member B (CHAR(1),
+    FIXED BIN(31)) starts 3 bytes in and member E (CHAR(2), FIXED
+    BIN(31)) 2 bytes in, so C is the fourth byte of H and F the third
+    and fourth. */
+ DCL 1 U UNION,
+       2 X FIXED BIN(31),
+       2 Y CHAR(4);
+ DCL 1 A UNION,
+       2 B,
+         3 C CHAR(1),
+         3 D FIXED BIN(31),
+       2 E,
+         3 F CHAR(2),
+         3 G FIXED BIN(31),
+       2 H CHAR(8);
+ DCL 1 V CELL,
+       2 S CHAR(2),
+       2 L CHAR(6);
+
+ OPEN FILE(REPORT);
+
+ Y = '0000_0041'X;
+ CALL ZCHECK('UNION-OVERLAY', X = 65);
+ CALL ZCHECK('UNION-SIZE', STORAGE(U) = 4);
+ CALL ZCHECK('UNION-LARGEST-MEMBER', STORAGE(V) = 6);
+ L = 'ABCDEF';
+ CALL ZCHECK('CELL-SYNONYM', S = 'AB');
+ H = 'ABCDEFGH';
+ CALL ZCHECK('UNION-MAPPING-C', C = 'D');
+ CALL ZCHECK('UNION-MAPPING-F', F = 'CD');
+ CALL ZCHECK('UNION-MAPPING-SIZE', STORAGE(A) = 8);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PD112A;

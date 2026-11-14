@@ -21,6 +21,12 @@ pub fn operand(o: &Operand) -> String {
                 b.iter().map(|x| format!("{x:02X}")).collect::<String>()
             )
         }
+        Operand::Lit(Literal::Utf8(b)) => {
+            format!(
+                "UX'{}'",
+                b.iter().map(|x| format!("{x:02X}")).collect::<String>()
+            )
+        }
         Operand::Fig(f) => match f {
             Figurative::Zero => "ZERO".into(),
             Figurative::Space => "SPACE".into(),
@@ -48,6 +54,9 @@ pub fn clauses(e: &DataEntry, redefines: bool, values: bool) -> Vec<String> {
     if let Some(p) = &e.picture {
         c.push(format!("PIC {p}"));
     }
+    if let Some(m) = e.byte_length {
+        c.push(format!("BYTE-LENGTH {m}"));
+    }
     if e.group_national {
         c.push("GROUP-USAGE NATIONAL".into());
     }
@@ -56,6 +65,7 @@ pub fn clauses(e: &DataEntry, redefines: bool, values: bool) -> Vec<String> {
             Usage::Display => "",
             Usage::Display1 => "DISPLAY-1",
             Usage::National => "NATIONAL",
+            Usage::Utf8 => "UTF-8",
             Usage::Binary => "COMP",
             Usage::Packed => "COMP-3",
             Usage::NativeBinary => "COMP-5",

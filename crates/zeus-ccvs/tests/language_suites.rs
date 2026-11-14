@@ -195,7 +195,12 @@ fn jcl_exports_the_right_compiler_sources_and_shared_adapters() {
             for entry in fs::read_dir(out.path().join(directory)).unwrap() {
                 let path = entry.unwrap().path();
                 for line in fs::read_to_string(&path).unwrap().lines() {
-                    assert!(line.len() <= 80, "{}: {line}", path.display());
+                    // the record on z/OS: double-byte characters and SO/SI
+                    assert!(
+                        zeus_ccvs::jcl::record_width(line) <= 80,
+                        "{}: {line}",
+                        path.display()
+                    );
                 }
             }
         }

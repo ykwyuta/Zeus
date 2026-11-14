@@ -93,6 +93,8 @@
       "DXD-Q-ALIGNED",
       "RSECT-DATA",
       "RSECT-SYSSTYP",
+      "QD-MATCHES-Q",
+      "QY-LONG-DISP",
       "ENTRY-VCON"
     ]
   },
@@ -101,6 +103,14 @@
     "tests": [
       "ICTL-COLUMN1-IGNORED",
       "ICTL-LABEL-COLUMN2"
+    ]
+  },
+  "HA111A": {
+    "expect": "run",
+    "tests": [
+      "EXTRN-ACON-CALL",
+      "EXTRN-TYPE-ATTR",
+      "PROCESS-OPTABLE"
     ]
   },
   "HD101A": {
@@ -209,6 +219,28 @@
       "Z-NEGATIVE",
       "E-ROUND-HALF",
       "DS-UNINITIALIZED"
+    ]
+  },
+  "HD108A": {
+    "expect": "run",
+    "tests": [
+      "LQ-QUADWORD-ALIGN",
+      "L-DOUBLEWORD-ALIGN",
+      "LQ-IMPLICIT-LENGTH",
+      "LQ-VALUE-ONE",
+      "LQ-EQUALS-L"
+    ]
+  },
+  "HD109A": {
+    "expect": "run",
+    "tests": [
+      "G-NO-SO-SI",
+      "G-DUPLICATION",
+      "G-LENGTH-PADDED",
+      "G-LENGTH-TRUNCATED",
+      "G-LENGTH-ATTRIBUTE",
+      "G-TYPE-ATTRIBUTE",
+      "G-SYSOPT-DBCS"
     ]
   },
   "HE101N": {
@@ -1601,6 +1633,35 @@
       "TDCDT-NONZERO"
     ]
   },
+  "HI132A": {
+    "expect": "run",
+    "tests": [
+      "TDGDT-SAFE-ZERO",
+      "TDGDT-ZERO-SIGN",
+      "TDGDT-ZERO-EXTREME",
+      "TDGDT-NZ-EXTREME",
+      "TDGDT-SAFE-NONZERO",
+      "TDGDT-MINUS-SAFE",
+      "TDGDT-LMD-NONZERO",
+      "TDGDT-LMD-NOT-SAFE",
+      "TDGDT-SPECIAL-INF",
+      "TDGDT-SAFE-PAIR",
+      "TDGET-SAFE-NONZERO",
+      "TDGET-LMD-NONZERO",
+      "TDGXT-SAFE-NONZERO",
+      "TDGXT-SPECIAL-NAN"
+    ]
+  },
+  "HI133A": {
+    "expect": "run",
+    "tests": [
+      "CSST-FC0-EQUAL",
+      "CSST-FC0-UNEQUAL",
+      "CSST-SC0-ONE-BYTE",
+      "CSST-SC1-HALFWORD",
+      "CSST-FC1-SC3"
+    ]
+  },
   "HM101A": {
     "expect": "run",
     "tests": [
@@ -1753,6 +1814,18 @@
       "SYSLIN-OBJECT",
       "SYSPRINT-LISTING",
       "UNUSED-DD-NULL"
+    ]
+  },
+  "HM111A": {
+    "expect": "run",
+    "tests": [
+      "AREAD-RECORD",
+      "AREAD-80-COLUMNS",
+      "AREAD-SUCCESSIVE",
+      "AINSERT-FRONT-BACK",
+      "AINSERT-OPEN-CODE",
+      "AREAD-FROM-AINSERT",
+      "AREAD-CLOCKD"
     ]
   },
   "HS101A": {

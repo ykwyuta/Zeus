@@ -3,9 +3,10 @@
 
 mod bif;
 mod cics;
-mod conv;
+pub(crate) mod conv;
 mod datefmt;
 mod digest;
+mod ere;
 mod record;
 mod sql;
 mod stream;
@@ -77,6 +78,8 @@ pub enum Intr {
     Iterate(LoopId),
     Return(Option<Value>),
     Stop,
+    /// EXIT in an attached thread: that thread ends.
+    ExitThread,
     /// The program ends abnormally after ERROR.
     Terminate,
     Fatal(String),
@@ -184,6 +187,11 @@ pub struct Machine {
     pub env: RunEnv,
     files: Vec<stream::FileState>,
     rc: i32,
+    /// The first activation of the running thread (0: the main thread):
+    /// conditions are not handled across thread boundaries.
+    thread_base: usize,
+    /// Threads attached so far (THREADID tokens).
+    threads: u32,
     /// Heap allocations of ALLOCATE (address, size), each followed by
     /// eight 'FF'X bytes (CHECKSTG, ALLOCSIZE, UNALLOCATED).
     pub(crate) allocs: std::collections::BTreeMap<u32, u32>,
@@ -245,6 +253,8 @@ impl Machine {
             env,
             files,
             rc: 0,
+            thread_base: 0,
+            threads: 0,
             allocs: std::collections::BTreeMap::new(),
             random: 0x2545_F491_4F6C_DD1D,
             depth: 0,
@@ -1214,6 +1224,27 @@ impl Machine {
                 })?;
                 Value::cplx(re, im)
             }
+            // UCHAR: n characters in 4n bytes; VARYING: the 2-byte count of
+            // characters first; VARYINGZ: up to a '00'ux
+            Ty::Uchar { len, var } => {
+                let n = match len {
+                    Ext::Const(n) => *n as usize,
+                    _ => 0,
+                };
+                match var {
+                    Varying::Fixed => Value::Char(conv::uchar_take(&self.read(addr, 4 * n)?, n).0),
+                    Varying::Varying => {
+                        let l = self.read(addr, 2)?;
+                        let cur = usize::from(u16::from_be_bytes([l[0], l[1]])).min(n);
+                        Value::Char(conv::uchar_take(&self.read(addr + 2, 4 * n)?, cur).0)
+                    }
+                    Varying::VaryingZ => {
+                        let b = self.read(addr, 4 * n + 1)?;
+                        let end = b.iter().position(|&c| c == 0).unwrap_or(b.len());
+                        Value::Char(conv::uchar_take(&b[..end], n).0)
+                    }
+                }
+            }
             // GRAPHIC, WIDECHAR: the stored bytes
             Ty::Wchar { len, var, .. } => {
                 let n = match len {
@@ -1349,6 +1380,29 @@ impl Machine {
                     },
                     &c.1,
                 )?;
+            }
+            (Ty::Uchar { len, var }, Value::Char(s)) => {
+                let n = match len {
+                    Ext::Const(n) => *n as usize,
+                    _ => conv::uchar_count(s),
+                };
+                match var {
+                    Varying::Fixed => {
+                        let mut b = conv::uchar_fit(s, n);
+                        b.resize(4 * n, 0x20);
+                        self.write(addr, &b)?;
+                    }
+                    Varying::Varying => {
+                        let (b, k) = conv::uchar_take(s, n);
+                        self.write(addr, &(k as u16).to_be_bytes())?;
+                        self.write(addr + 2, &b)?;
+                    }
+                    Varying::VaryingZ => {
+                        let (mut b, _) = conv::uchar_take(s, n);
+                        b.push(0);
+                        self.write(addr, &b)?;
+                    }
+                }
             }
             (Ty::Wchar { len, var, graphic }, Value::Char(s)) => {
                 let n = match len {
@@ -1682,6 +1736,41 @@ impl Machine {
                 Ok(())
             }
             Stmt::CallBuiltin(b, args) => self.call_builtin(*b, args, act),
+            Stmt::LocNew {
+                target,
+                area,
+                ty,
+                value,
+            } => {
+                let v = match value {
+                    Some(x) => Some(self.eval(x, act)?),
+                    None => None,
+                };
+                // LOCNEWVALUE allocates what the value needs: a varying
+                // string its current length (LRM: 17 bytes for a 15
+                // character CHAR VARYING value); LOCNEWSPACE the maximum
+                let size = match (&v, ty.varying()) {
+                    (Some(Value::Char(b)), crate::types::Var::Varying) => b.len() as u32 + 2,
+                    (Some(Value::Bit(b)), crate::types::Var::Varying) => {
+                        b.len().div_ceil(8) as u32 + 2
+                    }
+                    _ => ty.storage(false).0,
+                };
+                let Some(p) = self.area_allocate(area, size, false, act)? else {
+                    return Ok(());
+                };
+                let off = p.wrapping_sub(self.area_base(area.var, act)?);
+                let l = self.target_loc(target, act)?;
+                self.assign_target(target, l, Value::Ptr(off), &Ty::Offset(Some(area.var)), act)?;
+                if let Some(v) = v {
+                    let loc = Loc {
+                        bit: u64::from(p) * 8,
+                        ty: ty.clone(),
+                    };
+                    self.assign_loc(&loc, v, ty, act)?;
+                }
+                Ok(())
+            }
             Stmt::Return(v) => {
                 let v = match v {
                     Some(e) => Some(self.eval(e, act)?),
@@ -1765,6 +1854,7 @@ impl Machine {
                     Cond::StringRange => self.enabled_now(act, cond::STRINGRANGE),
                     Cond::StringSize => self.enabled_now(act, cond::STRINGSIZE),
                     Cond::SubscriptRange => self.enabled_now(act, cond::SUBSCRIPTRANGE),
+                    Cond::Conformance => self.enabled_now(act, cond::CONFORMANCE),
                     _ => true,
                 };
                 if enabled {
@@ -1787,7 +1877,38 @@ impl Machine {
                 Ok(())
             }
             Stmt::Stop => Err(Intr::Stop),
+            // EXIT ends the thread; in the main thread, the program
+            Stmt::Exit if self.thread_base > 0 => Err(Intr::ExitThread),
             Stmt::Exit => Err(Intr::Stop),
+            // ATTACH: Zeus runs the attached thread to its end at once, one
+            // valid scheduling of the threads. ON-units are not inherited,
+            // and ERROR or EXIT ends only the thread; STOP ends the program
+            // (LRM, Multithreading facility).
+            Stmt::Attach(call, task) => {
+                self.threads += 1;
+                let id = 0x7F00_0000u32 + self.threads;
+                if let Some(t) = task {
+                    let loc = self.locate(t, act)?;
+                    self.assign_loc(&loc, Value::Ptr(id), &Ty::Pointer, act)?;
+                }
+                let save = self.thread_base;
+                let base = self.acts.len();
+                self.thread_base = base;
+                let r = self.exec(call, act);
+                self.thread_base = save;
+                if self.acts.len() > base {
+                    self.deactivate(base);
+                }
+                match r {
+                    Ok(()) | Err(Intr::Terminate | Intr::ExitThread) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            // the attached thread has ended already
+            Stmt::Thread(_, task) => {
+                self.eval(task, act)?;
+                Ok(())
+            }
             Stmt::Put(s) => self.put(s, act),
             Stmt::Get(s) => self.get(s, act),
             Stmt::Open(specs) => {
@@ -1800,6 +1921,21 @@ impl Machine {
                 for f in files {
                     if let Value::File(id) = self.eval(f, act)? {
                         self.close(id)?;
+                    }
+                }
+                Ok(())
+            }
+            Stmt::Flush(file) => {
+                match file {
+                    Some(f) => {
+                        if let Value::File(id) = self.eval(f, act)? {
+                            self.flush_file(id)?;
+                        }
+                    }
+                    None => {
+                        for id in 0..self.files.len() {
+                            self.flush_file(id as FileId)?;
+                        }
                     }
                 }
                 Ok(())
@@ -2216,6 +2352,7 @@ impl Machine {
             Callee::Entry(p, k) => (*p, Some(*k), act),
             Callee::External(name) => return self.call_external(name, args, act, rt),
             Callee::Var(e) => match self.eval(e, act)? {
+                Value::Entry(p, _) if p == bif::NULL_ENTRY => return err("call of NULLENTRY"),
                 Value::Entry(p, a) => (p, None, a),
                 _ => return err("call of a non-entry value"),
             },
@@ -2741,6 +2878,36 @@ impl Machine {
                 self.rc = self.eval(&args[0], act)?.as_i64() as i32;
             }
             PliDump => {}
+            PliAttn => self.raise(Cond::Attention, 400, act)?,
+            // the code page of the CODEPAGE option and ISO 8859-1 (a
+            // character without a place in the other set becomes SUB); the
+            // tables of the IBM library have not been compared
+            PliAscii | PliEbcdic => {
+                let p = self.eval(&args[0], act)?;
+                let q = self.eval(&args[1], act)?;
+                let n = self.eval(&args[2], act)?.as_i64().max(0) as usize;
+                let (Value::Ptr(p), Value::Ptr(q)) = (p, q) else {
+                    return err(format!("{b:?} requires pointers"));
+                };
+                let src = self.read(q, n)?;
+                let page = zeus_cobol::codepage::active();
+                let out: Vec<u8> = if b == PliAscii {
+                    src.iter()
+                        .map(|&c| {
+                            let ch = page.decode(&[c]).chars().next().unwrap_or('\u{1a}');
+                            u8::try_from(u32::from(ch)).unwrap_or(0x1A)
+                        })
+                        .collect()
+                } else {
+                    src.iter()
+                        .map(|&c| {
+                            let e = page.encode(&char::from(c).to_string());
+                            if e.len() == 1 { e[0] } else { 0x3F }
+                        })
+                        .collect()
+                };
+                self.write(p, &out)?;
+            }
             QuickSort | QuickSortX => {
                 self.eval(&args[0], act)?;
             }
@@ -2752,6 +2919,37 @@ impl Machine {
                     let byte = c.first().copied().unwrap_or(SPACE);
                     self.write(p, &vec![byte; n.max(0) as usize])?;
                 }
+            }
+            // PLITRANxy(p, q, n, t): the n bytes at q, in x-byte units,
+            // translated through the table at t into y-byte units at p
+            // (LRM; the tables hold 256 or 65536 entries of y bytes)
+            PliTran11 | PliTran12 | PliTran21 | PliTran22 => {
+                let p = self.eval(&args[0], act)?;
+                let q = self.eval(&args[1], act)?;
+                let n = self.eval(&args[2], act)?.as_i64().max(0) as usize;
+                let t = self.eval(&args[3], act)?;
+                let (Value::Ptr(p), Value::Ptr(q), Value::Ptr(t)) = (p, q, t) else {
+                    return err(format!("{b:?} requires pointers"));
+                };
+                let (from, to) = match b {
+                    PliTran11 => (1, 1),
+                    PliTran12 => (1, 2),
+                    PliTran21 => (2, 1),
+                    _ => (2, 2),
+                };
+                let entries = if from == 1 { 256 } else { 65536 };
+                let table = self.read(t, entries * to)?;
+                let src = self.read(q, n)?;
+                let mut out = Vec::with_capacity(n / from * to);
+                for unit in src.chunks(from) {
+                    let k = if from == 1 {
+                        unit[0] as usize
+                    } else {
+                        u16::from_be_bytes([unit[0], *unit.get(1).unwrap_or(&0)]) as usize
+                    };
+                    out.extend_from_slice(&table[k * to..k * to + to]);
+                }
+                self.write(p, &out)?;
             }
             PliMove => {
                 let d = self.eval(&args[0], act)?;
@@ -2814,7 +3012,7 @@ impl Machine {
                     }
                 }
             }
-            if i == 0 {
+            if i <= self.thread_base {
                 break;
             }
             i -= 1;
@@ -2910,7 +3108,8 @@ impl Machine {
             Cond::UndefinedFile(_) => 21,
             Cond::Underflow => 22,
             Cond::ZeroDivide => 23,
-            Cond::AnyCondition => 0,
+            // the LRM's list of ONCONDID values has none for CONFORMANCE
+            Cond::AnyCondition | Cond::Conformance => 0,
         };
         if let Cond::Condition(n) = c {
             info.condname = self
@@ -2938,6 +3137,8 @@ impl Machine {
     fn after_unit(&mut self, c: Cond, code: i32, act: usize, signalled: bool) -> R<()> {
         match c {
             Cond::Error => self.terminate(act),
+            // also after SIGNAL (LRM, CONFORMANCE condition: normal return)
+            Cond::Conformance => self.raise(Cond::Error, code, act),
             Cond::ZeroDivide
             | Cond::Overflow
             | Cond::SubscriptRange
@@ -3046,7 +3247,10 @@ impl Machine {
 
     /// ERROR without recovery: FINISH, then the program ends.
     fn terminate(&mut self, act: usize) -> R<()> {
-        let _ = self.raise(Cond::Finish, 4, act);
+        // FINISH is raised only in the thread that ends the program
+        if self.thread_base == 0 {
+            let _ = self.raise(Cond::Finish, 4, act);
+        }
         Err(Intr::Terminate)
     }
 
@@ -3381,6 +3585,21 @@ impl Machine {
 
     fn on_value(&self, b: crate::builtin::Bif, act: usize) -> Value {
         use crate::builtin::Bif::*;
+        // ONUCHAR, ONUSOURCE, ONWCHAR, ONWSOURCE: Zeus converts a UCHAR or
+        // WIDECHAR source to arithmetic through CHARACTER, so these are
+        // ONCHAR and ONSOURCE as UTF-8 or UTF-16; out of context, a blank
+        // or a null string (LRM)
+        if matches!(b, OnUchar | OnUsource | OnWchar | OnWsource) {
+            let src = match self.on_value(if matches!(b, OnUchar | OnWchar) { OnChar } else { OnSource }, act) {
+                Value::Char(c) => c,
+                _ => Vec::new(),
+            };
+            let text = zeus_cobol::ebcdic::decode(&src);
+            return Value::Char(match b {
+                OnUchar | OnUsource => text.into_bytes(),
+                _ => text.encode_utf16().flat_map(u16::to_be_bytes).collect(),
+            });
+        }
         if let Some((source, bad)) = PENDING_CONV.with(|p| p.borrow().clone()) {
             if b == OnChar {
                 return Value::Char(vec![bad]);
@@ -3478,6 +3697,7 @@ fn signal_code(c: &Cond) -> i32 {
         Cond::Area => 360,
         Cond::Attention => 400,
         Cond::InvalidOp => 290,
+        Cond::Conformance => 550,
         Cond::AnyCondition => 0,
         Cond::Assertion => 430,
     }

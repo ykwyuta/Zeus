@@ -74,6 +74,7 @@ impl Compiler {
             "INVALIDOP" => Cond::InvalidOp,
             "ANYCONDITION" | "ANYCOND" => Cond::AnyCondition,
             "ASSERTION" => Cond::Assertion,
+            "CONFORMANCE" => Cond::Conformance,
             "ENDFILE" => Cond::EndFile(file(self)?),
             "ENDPAGE" => Cond::EndPage(file(self)?),
             "KEY" => Cond::Key(file(self)?),
@@ -436,6 +437,7 @@ impl Compiler {
         targets: Vec<Target>,
         value: &ast::Expr,
         by_name: bool,
+        across: Option<&ast::Expr>,
         pos: Pos,
     ) -> Result<Stmt> {
         let Target::Ref(first) = &targets[0] else {
@@ -460,7 +462,7 @@ impl Compiler {
             let mut stmts = Vec::new();
             for t in &targets {
                 let Target::Ref(t) = t else { continue };
-                self.expand_struct_assign(t, src.as_ref(), value, by_name, pos, &mut stmts)?;
+                self.expand_struct_assign(t, src.as_ref(), value, by_name, across, pos, &mut stmts)?;
             }
             let id = self.new_list_id();
             let line = pos.line;
@@ -507,6 +509,7 @@ impl Compiler {
         src: Option<&Ref>,
         value: &ast::Expr,
         by_name: bool,
+        across: Option<&ast::Expr>,
         pos: Pos,
         out: &mut Vec<Stmt>,
     ) -> Result<()> {
@@ -545,19 +548,19 @@ impl Compiler {
                 Some(s) if by_name => {
                     let name = &self.m.vars[*m as usize].name;
                     match sm.iter().find(|x| &self.m.vars[**x as usize].name == name) {
-                        Some(x) => Some(member_ref(s, *x, &self.m)),
+                        Some(x) => Some(self.across_ref(s, *x, across, pos)?),
                         None => continue,
                     }
                 }
                 Some(s) => match sm.get(i) {
-                    Some(x) => Some(member_ref(s, *x, &self.m)),
+                    Some(x) => Some(self.across_ref(s, *x, across, pos)?),
                     None => {
                         return Err(self.err(pos, "structures do not have the same structuring"));
                     }
                 },
             };
-            let tr = member_ref(t, *m, &self.m);
-            self.expand_struct_assign(&tr, sub_src.as_ref(), value, by_name, pos, out)?;
+            let tr = self.across_ref(t, *m, across, pos)?;
+            self.expand_struct_assign(&tr, sub_src.as_ref(), value, by_name, across, pos, out)?;
         }
         Ok(())
     }
@@ -576,7 +579,18 @@ impl Compiler {
                 op,
                 value,
                 by_name,
+                by_dimacross,
             } => {
+                // TYPE(h) on either side: the structure the handle locates
+                let targets: Vec<ast::Expr> = targets
+                    .iter()
+                    .map(|t| self.type_deref(t).unwrap_or_else(|| t.clone()))
+                    .collect();
+                let targets = &targets;
+                let value = &self.type_deref(value).unwrap_or_else(|| value.clone());
+                if by_dimacross.is_some() && targets.len() > 1 {
+                    return Err(self.err(pos, "BY DIMACROSS is not allowed in multiple assignments"));
+                }
                 let mut ts = Vec::new();
                 let mut tys = Vec::new();
                 for t in targets {
@@ -597,8 +611,30 @@ impl Compiler {
                     }
                     None => value.clone(),
                 };
+                // a computational value assigned to an OFFSET with LOCATES
+                // and an area is LOCNEWVALUE (LRM, "LOCATES attribute")
+                if let [Target::Ref(r)] = &ts[..]
+                    && self.locates.contains_key(&r.var)
+                    && matches!(self.m.vars[r.var as usize].ty, Some(Ty::Offset(Some(_))))
+                    && op.is_none()
+                {
+                    let x = self.expr(&value)?;
+                    if x.ty.is_arith() || x.ty.is_string() {
+                        let r = r.clone();
+                        let (area, ty) = self.locates_area(&r, None, pos)?;
+                        return Ok(Stmt::LocNew {
+                            target: Target::Ref(r),
+                            area,
+                            ty: ty.clone(),
+                            value: Some(self.conv(x, &ty)),
+                        });
+                    }
+                }
                 if aggregate {
-                    return self.aggregate_assign(ts, &value, *by_name, pos);
+                    return self.aggregate_assign(ts, &value, *by_name, by_dimacross.as_ref(), pos);
+                }
+                if by_dimacross.is_some() {
+                    return Err(self.err(pos, "BY DIMACROSS needs a structure target"));
                 }
                 let x = if matches!(tys[0], Some(Ty::Entry)) {
                     self.entry_expr(&value)?
@@ -815,6 +851,18 @@ impl Compiler {
             StmtKind::Resignal => Stmt::Resignal,
             StmtKind::Stop => Stmt::Stop,
             StmtKind::Exit => Stmt::Exit,
+            StmtKind::Attach(entry, task) => {
+                let call = self.call_stmt(entry)?;
+                let task = match task {
+                    Some(t) => Some(self.reference(t, false)?),
+                    None => None,
+                };
+                Stmt::Attach(Box::new(call), task)
+            }
+            StmtKind::Thread(op, task) => {
+                let r = self.reference(task, false)?;
+                Stmt::Thread(*op, self.load(r, pos)?)
+            }
             StmtKind::Put(o) => Stmt::Put(self.stream(o, false, pos)?),
             StmtKind::Get(o) => Stmt::Get(self.stream(o, true, pos)?),
             StmtKind::Open(files) => {
@@ -854,6 +902,10 @@ impl Compiler {
                 }
                 Stmt::Close(v)
             }
+            StmtKind::Flush(file) => Stmt::Flush(match file {
+                Some(f) => self.file_expr(&Some(f.clone()), pos)?,
+                None => None,
+            }),
             StmtKind::Read(o) => Stmt::Read(self.record(o, pos)?),
             StmtKind::Write(o) => Stmt::Write(self.record(o, pos)?),
             StmtKind::Rewrite(o) => Stmt::Rewrite(self.record(o, pos)?),
@@ -1026,6 +1078,34 @@ impl Compiler {
 
 /// A reference to a member with the subscripts of the containing
 /// reference (members have the same leading dimensions).
+impl Compiler {
+    /// A member of a structure in a structure assignment. Under BY
+    /// DIMACROSS, a member of a DIMACROSS structure takes the DIMACROSS
+    /// expression as the subscript of the dimension it got from the
+    /// structure (LRM, "Structure assignments using the BY DIMACROSS
+    /// option"). The expression is evaluated for each member.
+    fn across_ref(
+        &mut self,
+        parent: &Ref,
+        member: VarId,
+        across: Option<&ast::Expr>,
+        pos: Pos,
+    ) -> Result<Ref> {
+        let mut r = member_ref(parent, member, &self.m);
+        if let Some(x) = across
+            && self.dimacross.contains(&parent.var)
+        {
+            let k = parent.subs.len();
+            if r.subs.len() != k + 1 {
+                return Err(self.err(pos, "BY DIMACROSS needs a one-dimensional DIMACROSS structure"));
+            }
+            let x = self.expr(x)?;
+            r.subs[k] = Some(self.conv(x, &Ty::fixed_bin(31, 0)));
+        }
+        Ok(r)
+    }
+}
+
 fn member_ref(parent: &Ref, member: VarId, m: &Module) -> Ref {
     let n = m.vars[member as usize].dims.len();
     let mut subs = parent.subs.clone();

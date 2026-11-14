@@ -37,6 +37,44 @@ pub fn to_wide(s: &[u8], graphic: bool) -> Vec<u8> {
     out
 }
 
+/// Shift-out and shift-in around the DBCS part of a mixed string.
+pub const SO: u8 = 0x0E;
+pub const SI: u8 = 0x0F;
+
+/// A mixed character string as GRAPHIC: SBCS characters become their DBCS
+/// equivalents ('42xx'X, the blank '4040'X) and the pairs between SO and SI
+/// are kept (LRM, GRAPHIC: "SBCS characters are converted to equivalent
+/// DBCS characters", the content checked as for mixed constants). None
+/// when the string is not a valid mixed string: an SI outside DBCS, no SI
+/// after an SO, or an odd number of bytes between them.
+pub fn mixed_to_graphic(s: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(2 * s.len());
+    let mut i = 0;
+    while i < s.len() {
+        match s[i] {
+            SO => {
+                let end = i + 1 + s[i + 1..].iter().position(|&c| c == SI)?;
+                let dbcs = &s[i + 1..end];
+                if dbcs.len() % 2 != 0 || dbcs.contains(&SO) {
+                    return None;
+                }
+                out.extend_from_slice(dbcs);
+                i = end + 1;
+            }
+            SI => return None,
+            SPACE => {
+                out.extend([0x40, 0x40]);
+                i += 1;
+            }
+            c => {
+                out.extend([0x42, c]);
+                i += 1;
+            }
+        }
+    }
+    Some(out)
+}
+
 /// GRAPHIC or WIDECHAR bytes as EBCDIC characters (those without a
 /// single-byte form: SUB, X'3F').
 pub fn from_wide(b: &[u8], graphic: bool) -> Vec<u8> {
@@ -155,6 +193,68 @@ impl Machine {
 
     /// Converts a value of type `from` to type `to` (assignment rules).
     pub fn convert(&mut self, v: Value, from: &Ty, to: &Ty, act: usize) -> R<Value> {
+        // UCHAR: to another UCHAR, fitted in characters; to WIDECHAR, as
+        // UTF-16; to any other type, through CHARACTER in the code page,
+        // CONVERSION when a character has no representation there (LRM)
+        if let Ty::Uchar { .. } = from {
+            let Value::Char(b) = v else {
+                return err("uchar value");
+            };
+            return match to {
+                Ty::Uchar { len, .. } => Ok(Value::Char(match len {
+                    Ext::Const(n) if to.varying() == crate::types::Var::Fixed => {
+                        uchar_fit(&b, *n as usize)
+                    }
+                    Ext::Const(n) => uchar_take(&b, *n as usize).0,
+                    _ => b,
+                })),
+                Ty::Wchar { graphic: false, .. } => {
+                    let text = std::string::String::from_utf8_lossy(&b).into_owned();
+                    let w: Vec<u8> = text.encode_utf16().flat_map(u16::to_be_bytes).collect();
+                    self.convert(Value::Char(w), &Ty::Wchar { len: Ext::Const(0), var: crate::types::Var::Varying, graphic: false }, to, act)
+                }
+                _ => {
+                    let text = std::string::String::from_utf8_lossy(&b).into_owned();
+                    let mut out = Vec::new();
+                    let mut bad = false;
+                    for c in text.chars() {
+                        let e = ebcdic(&c.to_string());
+                        if e.len() == 1 && ebcdic_text(&e).starts_with(c) {
+                            out.push(e[0]);
+                        } else {
+                            bad = true;
+                            out.push(0x3F);
+                        }
+                    }
+                    if bad && self.enabled_now(act, cond::CONVERSION) {
+                        self.raise(Cond::Conversion, 600, act)?;
+                    }
+                    self.convert(Value::Char(out), &crate::sema::expr::char_any(), to, act)
+                }
+            };
+        }
+        if let Ty::Uchar { len, var } = to {
+            let utf8: Vec<u8> = match (v, from) {
+                (Value::Char(b), Ty::Wchar { graphic: false, .. }) => {
+                    let units: Vec<u16> = b
+                        .chunks(2)
+                        .map(|p| u16::from_be_bytes([p[0], *p.get(1).unwrap_or(&0)]))
+                        .collect();
+                    std::string::String::from_utf16_lossy(&units).into_bytes()
+                }
+                (v, _) => {
+                    let Value::Char(s) = self.convert(v, from, &crate::sema::expr::char_any(), act)? else {
+                        return err("uchar value");
+                    };
+                    ebcdic_text(&s).into_bytes()
+                }
+            };
+            return Ok(Value::Char(match len {
+                Ext::Const(n) if *var == crate::types::Var::Fixed => uchar_fit(&utf8, *n as usize),
+                Ext::Const(n) => uchar_take(&utf8, *n as usize).0,
+                _ => utf8,
+            }));
+        }
         // GRAPHIC and WIDECHAR: through CHARACTER unless of the same kind
         if let Ty::Wchar { graphic: fg, .. } = from {
             let same = matches!(to, Ty::Wchar { graphic, .. } if graphic == fg);
@@ -162,6 +262,15 @@ impl Machine {
                 let Value::Char(b) = v else {
                     return err("wide string value");
                 };
+                // a DBCS character without an SBCS equivalent: CONVERSION
+                // (LRM, CHARACTER: "If a DBCS character cannot be translated
+                // to an SBCS equivalent, the CONVERSION condition is raised")
+                if *fg
+                    && b.chunks(2).any(|p| !matches!(p, [0x40, 0x40] | [0x42, _]))
+                    && self.enabled_now(act, cond::CONVERSION)
+                {
+                    self.raise(Cond::Conversion, 600, act)?;
+                }
                 let c = Value::Char(from_wide(&b, *fg));
                 return self.convert(c, &crate::sema::expr::char_any(), to, act);
             }
@@ -204,7 +313,22 @@ impl Machine {
                         else {
                             return err("wide string value");
                         };
-                        to_wide(&s, *graphic)
+                        if *graphic {
+                            match mixed_to_graphic(&s) {
+                                Some(g) => g,
+                                None => {
+                                    // not a valid mixed string: CONVERSION,
+                                    // then byte by byte (the code of the
+                                    // condition is not compared with z/OS)
+                                    if self.enabled_now(act, cond::CONVERSION) {
+                                        self.raise(Cond::Conversion, 600, act)?;
+                                    }
+                                    to_wide(&s, true)
+                                }
+                            }
+                        } else {
+                            to_wide(&s, false)
+                        }
                     }
                 };
                 // fit to the length in characters
@@ -641,6 +765,18 @@ impl Machine {
     /// Compares two values converted to a common class by the compiler.
     pub fn compare(&mut self, a: &Value, at: &Ty, b: &Value, bt: &Ty) -> R<Ordering> {
         Ok(match (a, b) {
+            // UCHAR: UTF-8 bytes in order, the shorter padded with uchar
+            // blanks ('20'ux)
+            (Value::Char(x), Value::Char(y))
+                if matches!(at, Ty::Uchar { .. }) || matches!(bt, Ty::Uchar { .. }) =>
+            {
+                let n = x.len().max(y.len());
+                let mut x = x.clone();
+                let mut y = y.clone();
+                x.resize(n, 0x20);
+                y.resize(n, 0x20);
+                x.cmp(&y)
+            }
             (Value::Char(x), Value::Char(y)) if !(at.arith().is_some() && bt.arith().is_some()) => {
                 let n = x.len().max(y.len());
                 let mut x = x.clone();
@@ -754,4 +890,41 @@ pub fn fit_bits(mut b: Vec<bool>, len: Ext, var: Varying) -> Vec<bool> {
         }
         _ => b,
     }
+}
+
+/// Byte width of the UTF-8 character starting with `lead` (an invalid lead
+/// byte counts as one byte).
+pub fn utf8_width(lead: u8) -> usize {
+    match lead {
+        0xC0..=0xDF => 2,
+        0xE0..=0xEF => 3,
+        0xF0..=0xF7 => 4,
+        _ => 1,
+    }
+}
+
+/// The first `n` UTF-8 characters of `b` (fewer if `b` ends first) and how
+/// many there are.
+pub fn uchar_take(b: &[u8], n: usize) -> (Vec<u8>, usize) {
+    let mut i = 0;
+    let mut k = 0;
+    while k < n && i < b.len() {
+        let w = utf8_width(b[i]).min(b.len() - i);
+        i += w;
+        k += 1;
+    }
+    (b[..i].to_vec(), k)
+}
+
+/// The number of UTF-8 characters in `b`.
+pub fn uchar_count(b: &[u8]) -> usize {
+    uchar_take(b, usize::MAX).1
+}
+
+/// `b` made exactly `n` UTF-8 characters: truncated on the right, or padded
+/// with uchar blanks ('20'ux) (LRM, string length conversion).
+pub fn uchar_fit(b: &[u8], n: usize) -> Vec<u8> {
+    let (mut out, k) = uchar_take(b, n);
+    out.resize(out.len() + (n - k), 0x20);
+    out
 }

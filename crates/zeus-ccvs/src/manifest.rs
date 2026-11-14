@@ -24,6 +24,9 @@ pub struct ProgramConfig {
     pub ccsid: Option<u32>,
     pub parm: Option<String>,
     pub expect_exit_code: Option<i32>,
+    /// The compile return code that must result: 4 for a program that must
+    /// draw a warning (INITCHECK), 0 for its control.
+    pub expect_compile_rc: Option<i32>,
     pub jcl: Option<String>,
     pub expect: ExpectKind,
     pub diagnostic_contains: Option<String>,
@@ -120,6 +123,11 @@ impl Manifest {
                         "expect_exit_code" => {
                             cfg.expect_exit_code = Some(val.parse().with_context(|| {
                                 format!("line {}: invalid expect_exit_code", lineno + 1)
+                            })?);
+                        }
+                        "expect_compile_rc" => {
+                            cfg.expect_compile_rc = Some(val.parse().with_context(|| {
+                                format!("line {}: invalid expect_compile_rc", lineno + 1)
                             })?);
                         }
                         "jcl" => cfg.jcl = Some(parse_str(val, lineno + 1)?),
@@ -227,12 +235,18 @@ jcl = "ZF201M.JCL"
 [programs.ZE101N]
 expect = "compile-error"
 diagnostic_contains = "END PROGRAM"
+
+[programs.ZE148N]
+expect = "compile-only"
+expect_compile_rc = 4
 "#;
         let m = Manifest::parse(toml).unwrap();
         assert_eq!(m.name, "ZCVS");
         assert_eq!(m.required_modules.len(), 7);
         assert_eq!(m.optional_modules, vec!["ZX"]);
         assert_eq!(m.programs["ZN106M"].ccsid, Some(939));
+        assert_eq!(m.programs["ZE148N"].expect_compile_rc, Some(4));
+        assert_eq!(m.programs["ZN106M"].expect_compile_rc, None);
         assert_eq!(
             m.programs["ZS103M"].parm.as_deref(),
             Some("NIGHTLY,20261016")

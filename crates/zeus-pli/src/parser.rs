@@ -280,7 +280,14 @@ impl Parser {
                 {
                     self.bump();
                     let text = match kind {
-                        StrKind::Char | StrKind::Bit(_) | StrKind::Hex => text.repeat(n),
+                        StrKind::Char
+                        | StrKind::Bit(_)
+                        | StrKind::Hex
+                        | StrKind::WideHex
+                        | StrKind::UcharHex
+                        | StrKind::Uchar => {
+                            text.repeat(n)
+                        }
                         _ => text,
                     };
                     return Ok(Expr::Str { text, kind, pos });
@@ -510,6 +517,61 @@ impl Parser {
         Ok(())
     }
 
+    /// DEFINE STRUCTURE / ALIAS / ORDINAL (after the keyword DEFINE).
+    fn define_stmt(&mut self, pos: Pos) -> Result<StmtKind> {
+        if self.eat_word("STRUCTURE") {
+            let mut items = self.declare()?;
+            match items.first_mut() {
+                Some(root) if root.level == 1 => root.attrs.push(Attr::StructDef),
+                _ => return Err(self.unexpected("a level-1 structure name")),
+            }
+            return Ok(StmtKind::Declare(items));
+        }
+        if self.eat_word("ALIAS") {
+            let name = self.ident()?;
+            let attrs = self.attributes()?;
+            self.semi()?;
+            return Ok(StmtKind::Declare(vec![DeclItem {
+                level: 1,
+                name,
+                dims: Vec::new(),
+                attrs: vec![Attr::AliasDef(attrs)],
+                pos,
+            }]));
+        }
+        if self.eat_word("ORDINAL") {
+            let name = self.ident()?;
+            self.expect_op("(")?;
+            let mut members = Vec::new();
+            loop {
+                let m = self.ident()?;
+                let v = if self.eat_word("VALUE") {
+                    Some(self.paren_expr()?)
+                } else {
+                    None
+                };
+                members.push((m, v));
+                if self.eat_op(",") {
+                    continue;
+                }
+                self.expect_op(")")?;
+                break;
+            }
+            while !self.is_op(";") && !matches!(self.tok(), Tok::Eof) {
+                self.bump();
+            }
+            self.semi()?;
+            return Ok(StmtKind::Declare(vec![DeclItem {
+                level: 1,
+                name,
+                dims: Vec::new(),
+                attrs: vec![Attr::OrdinalDef(members)],
+                pos,
+            }]));
+        }
+        Err(self.unexpected("STRUCTURE, ALIAS or ORDINAL"))
+    }
+
     /// Attributes up to ',' / ';' / ')' at this level.
     pub fn attributes(&mut self) -> Result<Vec<Attr>> {
         let mut attrs = Vec::new();
@@ -549,6 +611,7 @@ impl Parser {
                 "BIT" => Attr::Bit(self.opt_extent()?),
                 "GRAPHIC" | "G" => Attr::Graphic(self.opt_extent()?),
                 "WIDECHAR" | "WCHAR" => Attr::Widechar(self.opt_extent()?),
+                "UCHAR" => Attr::Uchar(self.opt_extent()?),
                 "VARYING" | "VAR" => Attr::Varying,
                 "VARYINGZ" | "VARZ" => Attr::VaryingZ,
                 "NONVARYING" | "NONVAR" => Attr::Nonvarying,
@@ -556,7 +619,9 @@ impl Parser {
                     Tok::Str { text, .. } => Attr::Picture(text),
                     _ => return Err(self.unexpected("picture string")),
                 },
-                "POINTER" | "PTR" => Attr::Pointer,
+                // TASK: a task variable holds the thread identification,
+                // kept as a pointer (THREADID)
+                "POINTER" | "PTR" | "TASK" => Attr::Pointer,
                 "OFFSET" => {
                     let area = if self.is_op("(") {
                         Some(self.paren_text()?.trim().to_ascii_uppercase())
@@ -687,8 +752,30 @@ impl Parser {
                     }
                 }
                 "INTERNAL" | "INT" => Attr::Internal,
+                // ALIGNED(n): the (n) is not a precision of the type
+                "ALIGNED" if self.is_op("(") => {
+                    self.bump();
+                    let n = match self.bump() {
+                        Tok::Num { text, .. } => text.parse::<u32>().ok(),
+                        _ => None,
+                    }
+                    .filter(|n| matches!(n, 1 | 2 | 4 | 8))
+                    .ok_or_else(|| self.unexpected("1, 2, 4 or 8"))?;
+                    self.expect_op(")")?;
+                    attrs.push(Attr::Aligned);
+                    Attr::AlignedTo(n)
+                }
                 "ALIGNED" => Attr::Aligned,
                 "UNALIGNED" | "UNAL" => Attr::Unaligned,
+                "UNION" | "CELL" => Attr::Union,
+                "DIMACROSS" => {
+                    if self.is_op("(") {
+                        self.bump();
+                        Attr::DimAcross(Some(self.bounds()?))
+                    } else {
+                        Attr::DimAcross(None)
+                    }
+                }
                 "DIMENSION" | "DIM" => {
                     self.expect_op("(")?;
                     Attr::Dimension(self.bounds()?)
@@ -697,6 +784,30 @@ impl Parser {
                 "BUILTIN" => Attr::Builtin,
                 "VARIABLE" => Attr::Variable,
                 "CONDITION" | "COND" => Attr::Condition,
+                "LOCATES" => {
+                    self.expect_op("(")?;
+                    let a = self.attributes()?;
+                    self.expect_op(")")?;
+                    Attr::Locates(a)
+                }
+                "VALUELIST" => {
+                    self.expect_op("(")?;
+                    let mut v = vec![self.expr()?];
+                    while self.is_op(",") {
+                        self.bump();
+                        v.push(self.expr()?);
+                    }
+                    self.expect_op(")")?;
+                    Attr::ValueList(v)
+                }
+                "VALUERANGE" => {
+                    self.expect_op("(")?;
+                    let a = self.expr()?;
+                    self.expect_op(",")?;
+                    let b = self.expr()?;
+                    self.expect_op(")")?;
+                    Attr::ValueRange(a, b)
+                }
                 "VALUE" => {
                     self.expect_op("(")?;
                     let e = self.expr()?;
@@ -1337,6 +1448,13 @@ impl Parser {
             self.i += 3;
             by_name = true;
         }
+        let mut by_dimacross = None;
+        if self.is_op(",") && self.is_word_at(1, "BY") && self.is_word_at(2, "DIMACROSS") {
+            self.i += 3;
+            self.expect_op("(")?;
+            by_dimacross = Some(self.expr()?);
+            self.expect_op(")")?;
+        }
         if !self.is_op(";") {
             self.i = save;
             return Ok(None);
@@ -1347,6 +1465,7 @@ impl Parser {
             op,
             value,
             by_name,
+            by_dimacross,
         }))
     }
 
@@ -1525,56 +1644,25 @@ impl Parser {
             "DECLARE" | "DCL" => StmtKind::Declare(self.declare()?),
             // DEFINE ORDINAL name (member [VALUE(n)], ...) [PRECISION(p)]
             // [SIGNED | UNSIGNED]: the declaration of the type's name
-            "DEFINE" if self.eat_word("STRUCTURE") => {
+            "DEFINE" => self.define_stmt(pos)?,
+            // XDECLARE / XDEFINE: ignored when the name was declared or
+            // defined before (Language Reference, XDECLARE, XDEFINE)
+            "XDECLARE" | "XDCL" => {
                 let mut items = self.declare()?;
-                match items.first_mut() {
-                    Some(root) if root.level == 1 => root.attrs.push(Attr::StructDef),
-                    _ => return Err(self.unexpected("a level-1 structure name")),
+                for it in items.iter_mut().filter(|it| it.level <= 1) {
+                    it.attrs.push(Attr::XDecl);
                 }
                 StmtKind::Declare(items)
             }
-            "DEFINE" if self.eat_word("ALIAS") => {
-                let name = self.ident()?;
-                let attrs = self.attributes()?;
-                self.semi()?;
-                StmtKind::Declare(vec![DeclItem {
-                    level: 1,
-                    name,
-                    dims: Vec::new(),
-                    attrs: vec![Attr::AliasDef(attrs)],
-                    pos,
-                }])
-            }
-            "DEFINE" if self.eat_word("ORDINAL") => {
-                let name = self.ident()?;
-                self.expect_op("(")?;
-                let mut members = Vec::new();
-                loop {
-                    let m = self.ident()?;
-                    let v = if self.eat_word("VALUE") {
-                        Some(self.paren_expr()?)
-                    } else {
-                        None
-                    };
-                    members.push((m, v));
-                    if self.eat_op(",") {
-                        continue;
+            "XDEFINE" => match self.define_stmt(pos)? {
+                StmtKind::Declare(mut items) => {
+                    if let Some(root) = items.first_mut() {
+                        root.attrs.push(Attr::XDecl);
                     }
-                    self.expect_op(")")?;
-                    break;
+                    StmtKind::Declare(items)
                 }
-                while !self.is_op(";") && !matches!(self.tok(), Tok::Eof) {
-                    self.bump();
-                }
-                self.semi()?;
-                StmtKind::Declare(vec![DeclItem {
-                    level: 1,
-                    name,
-                    dims: Vec::new(),
-                    attrs: vec![Attr::OrdinalDef(members)],
-                    pos,
-                }])
-            }
+                other => other,
+            },
             "DEFAULT" | "DFT" => {
                 use crate::ast::{DefaultRange, DefaultRule};
                 let mut rules = Vec::new();
@@ -1831,6 +1919,37 @@ impl Parser {
                 self.semi()?;
                 StmtKind::Stop
             }
+            "ATTACH" => {
+                let entry = self.reference()?;
+                let mut task = None;
+                loop {
+                    if self.eat_word("THREAD") {
+                        self.expect_op("(")?;
+                        task = Some(self.reference()?);
+                        self.expect_op(")")?;
+                    } else if self.is_word("ENVIRONMENT") || self.is_word("ENV") {
+                        self.bump();
+                        self.paren_text()?;
+                    } else {
+                        break;
+                    }
+                }
+                self.semi()?;
+                StmtKind::Attach(entry, task)
+            }
+            "WAIT" | "DETACH" | "CANCEL" if self.is_word("THREAD") => {
+                let op = match w.as_str() {
+                    "WAIT" => crate::ast::ThreadOp::Wait,
+                    "DETACH" => crate::ast::ThreadOp::Detach,
+                    _ => crate::ast::ThreadOp::Cancel,
+                };
+                self.bump();
+                self.expect_op("(")?;
+                let task = self.reference()?;
+                self.expect_op(")")?;
+                self.semi()?;
+                StmtKind::Thread(op, task)
+            }
             "EXIT" => {
                 self.semi()?;
                 StmtKind::Exit
@@ -1855,6 +1974,21 @@ impl Parser {
                     break;
                 }
                 StmtKind::Close(files)
+            }
+            "FLUSH" => {
+                if !self.eat_word("FILE") {
+                    return Err(self.unexpected("FILE"));
+                }
+                let file = if matches!(self.tok_at(1), Tok::Op(o) if *o == "*") {
+                    self.bump();
+                    self.bump();
+                    self.expect_op(")")?;
+                    None
+                } else {
+                    Some(self.paren_expr()?)
+                };
+                self.semi()?;
+                StmtKind::Flush(file)
             }
             "READ" => StmtKind::Read(self.record_opts()?),
             "WRITE" => StmtKind::Write(self.record_opts()?),

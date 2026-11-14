@@ -15,10 +15,13 @@ pub(super) struct Effective {
     pub defines: std::collections::HashMap<String, String>,
     pub apost: bool,
     pub nozwb: bool,
+    pub qualify_extend: bool,
     pub lilian: bool,
     pub awo: bool,
     pub block0: bool,
     pub ssrange: bool,
+    pub numcheck: u8,
+    pub initcheck: u8,
     pub codepage: Option<u32>,
     pub dynam: bool,
     pub dll: bool,
@@ -42,10 +45,13 @@ impl Effective {
             defines: self.defines.clone(),
             apost: self.apost,
             nozwb: self.nozwb,
+            qualify_extend: self.qualify_extend,
             lilian: self.lilian,
             awo: self.awo,
             block0: self.block0,
             ssrange: self.ssrange,
+            numcheck: self.numcheck,
+            initcheck: self.initcheck,
             codepage: self.codepage,
             dynam: self.dynam,
             dll: self.dll,
@@ -71,10 +77,13 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
     let mut defines = defaults.defines.clone();
     let mut apost = defaults.apost;
     let mut nozwb = defaults.nozwb;
+    let mut qualify_extend = defaults.qualify_extend;
     let mut lilian = defaults.lilian;
     let mut awo = defaults.awo;
     let mut block0 = defaults.block0;
     let mut ssrange = defaults.ssrange;
+    let mut numcheck = defaults.numcheck;
+    let mut initcheck = defaults.initcheck;
     let mut codepage = defaults.codepage;
     let mut dynam = defaults.dynam;
     let mut dll = defaults.dll;
@@ -190,10 +199,38 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
             }
             ("SSRANGE" | "SSR", None) => ssrange = true,
             ("NOSSRANGE" | "NOSSR", None) => ssrange = false,
+            ("NONUMCHECK" | "NONC", None) => numcheck = 0,
+            ("NUMCHECK" | "NC", value) => numcheck = parse_numcheck(value.unwrap_or(""))?,
+            ("NOINITCHECK" | "NOIC", None) => initcheck = 0,
+            // INITCHECK alone is INITCHECK(LAX) (Programming Guide, INITCHECK)
+            ("INITCHECK" | "IC", value) => {
+                initcheck = match value.map(str::to_ascii_uppercase).as_deref() {
+                    None | Some("" | "LAX") => 1,
+                    Some("STRICT") => 2,
+                    Some(other) => {
+                        return Err(Diag::error(
+                            Default::default(),
+                            format!("INITCHECK suboption {other} is not valid"),
+                        ));
+                    }
+                }
+            }
             ("APOST", None) => apost = true,
             ("QUOTE", None) => apost = false,
             ("ZWB", None) => nozwb = false,
             ("NOZWB", None) => nozwb = true,
+            // QUALIFY(COMPAT|EXTEND): references must be unique, or a
+            // complete set of qualifiers may pick one (Programming Guide)
+            ("QUALIFY" | "QUA", Some(v)) => match v.to_ascii_uppercase().as_str() {
+                "COMPAT" | "C" => qualify_extend = false,
+                "EXTEND" | "E" => qualify_extend = true,
+                _ => {
+                    return Err(Diag::error(
+                        Default::default(),
+                        "QUALIFY accepts COMPAT or EXTEND",
+                    ));
+                }
+            },
             ("INTDATE", Some("ANSI")) => lilian = false,
             ("INTDATE", Some("LILIAN")) => lilian = true,
             ("AWO", None) => awo = true,
@@ -330,6 +367,8 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         dynam,
         codepage,
         ssrange,
+        numcheck,
+        initcheck,
         cics,
         dbcs,
         trunc,
@@ -337,6 +376,7 @@ pub(super) fn parse(text: &str, defaults: &FrontOptions) -> Result<Effective> {
         defines,
         apost,
         nozwb,
+        qualify_extend,
         lilian,
         awo,
         block0,
@@ -385,4 +425,53 @@ fn cics_options(arg: &str) -> bool {
         && options
             .split(',')
             .all(|option| matches!(option.trim(), "SP" | "EDF" | "DLI"))
+}
+
+/// NUMCHECK suboptions as flags (crate::zir::numcheck): with no data type
+/// suboption ZON, PAC and BIN are checked; otherwise only those named; MSG
+/// unless ABD (Programming Guide, NUMCHECK). The ZON suboptions ALPHNUM and
+/// LAX/STRICT and the BIN suboption TRUNCBIN are accepted; Zeus checks every
+/// zoned sender as STRICT does.
+fn parse_numcheck(text: &str) -> Result<u8> {
+    use crate::zir::numcheck::*;
+    let mut parts = Vec::new();
+    let (mut depth, mut start) = (0, 0);
+    for (i, c) in text.char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => depth -= 1,
+            ',' if depth == 0 => {
+                parts.push(&text[start..i]);
+                start = i + 1;
+            }
+            _ => {}
+        }
+    }
+    parts.push(&text[start..]);
+    let (mut types, mut named, mut abd) = (0u8, false, false);
+    for part in parts.iter().map(|p| p.trim().to_ascii_uppercase()) {
+        let word = part.split('(').next().unwrap_or("").trim().to_string();
+        match word.as_str() {
+            "" => {}
+            "ZON" => (types, named) = (types | ZON, true),
+            "PAC" => (types, named) = (types | PAC, true),
+            "BIN" => (types, named) = (types | BIN, true),
+            "NOZON" | "NOPAC" | "NOBIN" => named = true,
+            "MSG" => abd = false,
+            "ABD" => abd = true,
+            _ => {
+                return Err(Diag::error(
+                    Default::default(),
+                    format!("NUMCHECK suboption {part} is not supported"),
+                ));
+            }
+        }
+    }
+    if !named {
+        types = ZON | PAC | BIN;
+    }
+    if types == 0 {
+        return Ok(0);
+    }
+    Ok(types | if abd { ABD } else { 0 })
 }

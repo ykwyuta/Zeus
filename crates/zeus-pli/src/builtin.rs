@@ -35,6 +35,7 @@ pub enum Bif {
     Unsigned,
     // mathematical
     Sqrt,
+    SqrtF,
     Exp,
     Log,
     Log2,
@@ -61,6 +62,8 @@ pub enum Bif {
     Dim,
     Lbound,
     Hbound,
+    HboundAcross,
+    LboundAcross,
     // strings
     Bit,
     Char,
@@ -156,6 +159,19 @@ pub enum Bif {
     BetweenLeftExclusive,
     BetweenRightExclusive,
     InList,
+    ValidValue,
+    LocVal,
+    CharGraphic,
+    Regex,
+    PliAscii,
+    PliEbcdic,
+    PliAttn,
+    PliCanc,
+    PliDelete,
+    Mpstr,
+    LocStg,
+    LocNewSpace,
+    LocNewValue,
     IfThenElse,
     Iclz,
     Irll,
@@ -202,6 +218,54 @@ pub enum Bif {
     QuickSortX,
     BinSearchX,
     WcharVal,
+    Ulength,
+    Ulength8,
+    Ulength16,
+    Upos,
+    Usubstr,
+    Usupplementary,
+    Uvalid,
+    Uwidth,
+    Utf8,
+    Utf8ToChar,
+    Utf8ToWchar,
+    MemUvalid8,
+    MemUvalid16,
+    MemCu12,
+    MemCu14,
+    MemCu21,
+    MemCu24,
+    MemCu41,
+    MemCu42,
+    MemConvert,
+    NullEntry,
+    EntryAddr,
+    FileOpen,
+    FileId,
+    FileNew,
+    FileDdTest,
+    FileDdInt,
+    FileDdWord,
+    Repattern,
+    Indicators,
+    AllCompare,
+    PliTran11,
+    PliTran12,
+    PliTran21,
+    PliTran22,
+    Utf8Stg,
+    ThreadId,
+    ByteLength,
+    LowerAscii,
+    UpperAscii,
+    LowerLatin1,
+    UpperLatin1,
+    FoldedFullMatch,
+    FoldedSimpleMatch,
+    OnUchar,
+    OnUsource,
+    OnWchar,
+    OnWsource,
     PicSpec,
     CodePage,
     SubTo,
@@ -351,6 +415,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "SIGNED" => Signed,
         "UNSIGNED" => Unsigned,
         "SQRT" => Sqrt,
+        "SQRTF" => SqrtF,
         "EXP" => Exp,
         "LOG" => Log,
         "LOG2" => Log2,
@@ -376,6 +441,8 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "DIMENSION" | "DIM" => Dim,
         "LBOUND" => Lbound,
         "HBOUND" => Hbound,
+        "HBOUNDACROSS" => HboundAcross,
+        "LBOUNDACROSS" => LboundAcross,
         "BIT" => Bit,
         "CHARACTER" | "CHAR" => Char,
         "BOOL" => Bool,
@@ -494,6 +561,19 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "BETWEENLEFTEXCLUSIVE" => BetweenLeftExclusive,
         "BETWEENRIGHTEXCLUSIVE" => BetweenRightExclusive,
         "INLIST" => InList,
+        "VALIDVALUE" => ValidValue,
+        "LOCVAL" => LocVal,
+        "CHARGRAPHIC" | "CHARG" => CharGraphic,
+        "MPSTR" => Mpstr,
+        "REGEX" => Regex,
+        "PLIASCII" => PliAscii,
+        "PLIEBCDIC" => PliEbcdic,
+        "PLIATTN" => PliAttn,
+        "PLICANC" => PliCanc,
+        "PLIDELETE" => PliDelete,
+        "LOCSTG" => LocStg,
+        "LOCNEWSPACE" => LocNewSpace,
+        "LOCNEWVALUE" => LocNewValue,
         "IFTHENELSE" => IfThenElse,
         "ICLZ" => Iclz,
         "IRLL" => Irll,
@@ -536,6 +616,54 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "QUICKSORTX" => QuickSortX,
         "BINSEARCHX" => BinSearchX,
         "WCHARVAL" => WcharVal,
+        "ULENGTH" => Ulength,
+        "ULENGTH8" => Ulength8,
+        "ULENGTH16" => Ulength16,
+        "UPOS" => Upos,
+        "USUBSTR" => Usubstr,
+        "USUPPLEMENTARY" => Usupplementary,
+        "UVALID" => Uvalid,
+        "UWIDTH" => Uwidth,
+        "UTF8" => Utf8,
+        "UTF8TOCHAR" => Utf8ToChar,
+        "UTF8TOWCHAR" => Utf8ToWchar,
+        "MEMUVALID8" => MemUvalid8,
+        "MEMUVALID16" => MemUvalid16,
+        "MEMCU12" => MemCu12,
+        "MEMCU14" => MemCu14,
+        "MEMCU21" => MemCu21,
+        "MEMCU24" => MemCu24,
+        "MEMCU41" => MemCu41,
+        "MEMCU42" => MemCu42,
+        "MEMCONVERT" => MemConvert,
+        "NULLENTRY" => NullEntry,
+        "ENTRYADDR" => EntryAddr,
+        "FILEOPEN" => FileOpen,
+        "FILEID" => FileId,
+        "FILENEW" => FileNew,
+        "FILEDDTEST" => FileDdTest,
+        "FILEDDINT" => FileDdInt,
+        "FILEDDWORD" => FileDdWord,
+        "REPATTERN" => Repattern,
+        "INDICATORS" => Indicators,
+        "ALLCOMPARE" => AllCompare,
+        "PLITRAN11" => PliTran11,
+        "PLITRAN12" => PliTran12,
+        "PLITRAN21" => PliTran21,
+        "PLITRAN22" => PliTran22,
+        "UTF8STG" => Utf8Stg,
+        "THREADID" => ThreadId,
+        "BYTELENGTH" => ByteLength,
+        "LOWERASCII" => LowerAscii,
+        "UPPERASCII" => UpperAscii,
+        "LOWERLATIN1" => LowerLatin1,
+        "UPPERLATIN1" => UpperLatin1,
+        "FOLDEDFULLMATCH" => FoldedFullMatch,
+        "FOLDEDSIMPLEMATCH" => FoldedSimpleMatch,
+        "ONUCHAR" => OnUchar,
+        "ONUSOURCE" => OnUsource,
+        "ONWCHAR" => OnWchar,
+        "ONWSOURCE" => OnWsource,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -667,6 +795,10 @@ impl Bif {
                 | Collate
                 | OnCode
                 | OnChar
+                | OnUchar
+                | OnUsource
+                | OnWchar
+                | OnWsource
                 | OnSource
                 | OnKey
                 | OnFile
@@ -696,6 +828,8 @@ impl Bif {
                 | IsMain
                 | CodePage
                 | CheckStg
+                | NullEntry
+                | FileNew
                 | Uuid4
                 | Secs
                 | Timestamp
@@ -732,6 +866,12 @@ impl Bif {
                 | PageNo
                 | Count
                 | SameKey
+                | FileOpen
+                | FileId
+                | FileNew
+                | FileDdTest
+                | FileDdInt
+                | FileDdWord
                 | MaxLength
                 | Poly
                 | Valid
@@ -840,8 +980,13 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         SearchR | VerifyR | MaxExp | MinExp | Radix | PointerDiff | SecsToDays | OffsetDiff
         | BitLocation | Rank | Exponent | Cs | Cds => fixed_bin31(),
         PointerSubtract | AddrData => Ty::Pointer,
-        Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive | InList => {
+        Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive | InList | ValidValue => {
             Ty::bit(1)
+        }
+        LocStg => fixed_bin31(),
+        CharGraphic | Mpstr | Regex | PliAscii | PliEbcdic | PliAttn | PliCanc | PliDelete => return Err(format!("{b:?} is handled by the compiler")),
+        LocVal | LocNewSpace | LocNewValue => {
+            return Err(format!("{b:?} is handled by the compiler"));
         }
         Iclz | Places | PrecVal | ScaleVal | Compare | Location | OnCondId => fixed_bin31(),
         Irll | Irrl | Lower2 | Popcnt => match operand_arith(&arg(0)?) {
@@ -924,6 +1069,39 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         // size_t under LP(32)
         QuickSort | BinSearch | QuickSortX | BinSearchX => fixed_bin31(),
         PicSpec => Ty::char(1),
+        Ulength | Ulength8 | Ulength16 | Upos | Usupplementary | Uvalid | Uwidth => fixed_bin31(),
+        // a CHAR character is at most 3 UTF-8 bytes (a WIDECHAR, too)
+        Utf8 => Ty::char_var((3 * str_len(&arg(0)?).max(1)).min(32767)),
+        Utf8ToChar => Ty::char_var(str_len(&arg(0)?).max(1)),
+        Utf8ToWchar => Ty::Wchar {
+            len: crate::types::Ext::Const(str_len(&arg(0)?).max(1)),
+            var: crate::types::Var::Varying,
+            graphic: false,
+        },
+        MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24 | MemCu41 | MemCu42
+        | MemConvert => Ty::fixed_bin(63, 0),
+        NullEntry => Ty::Entry,
+        FileOpen => Ty::bit(1),
+        FileId | FileDdInt => Ty::fixed_bin(63, 0),
+        FileDdTest => fixed_bin31(),
+        FileDdWord => Ty::char_var(64),
+        FileNew => Ty::File,
+        Repattern => Ty::char_var(26),
+        Indicators => fixed_bin31(),
+        AllCompare => Ty::bit(1),
+        EntryAddr => Ty::Pointer,
+        // the same string type as x, at most its length
+        Usubstr => match arg(0)? {
+            Ty::Wchar { len, .. } => Ty::Wchar {
+                len,
+                var: crate::types::Var::Varying,
+                graphic: false,
+            },
+            a => Ty::Char {
+                len: crate::types::Ext::Const(str_len(&a).max(1)),
+                var: crate::types::Var::Varying,
+            },
+        },
         WcharVal => Ty::Wchar {
             len: crate::types::Ext::Const(1),
             var: crate::types::Var::Fixed,
@@ -974,7 +1152,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             _ => return Err(format!("{b:?} requires a floating-point argument")),
         },
         Sign | Index | Search | Verify | Tally | Length | MaxLength | Dim | Lbound | Hbound
-        | Size | CurrentSize | Allocation | OnCode | OnCount | PliRetV | Days | Weekday
+        | HboundAcross | LboundAcross | Size | CurrentSize | Allocation | OnCode | OnCount | PliRetV | Days | Weekday
         | LineNo | PageNo | Count => fixed_bin31(),
         SameKey => Ty::bit(1),
         Add | Subtract | Multiply | Divide => {
@@ -1136,7 +1314,11 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
                 unsigned: b == Unsigned,
             }
         }
-        Erf | Erfc | Gamma | LogGamma | Sqrt | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
+        // the LRM: the argument of SQRTF must be real
+        SqrtF if matches!(arg(0)?, Ty::Complex(_)) => {
+            return Err("the argument of SQRTF must be real".into())
+        }
+        Erf | Erfc | Gamma | LogGamma | Sqrt | SqrtF | Exp | Log | Log2 | Log10 | Sin | Cos | Tan
         | Sinh | Cosh | Tanh | Asin | Acos | Atan | Atanh | Sind | Cosd | Tand | Atand => {
             crate::types::to_float_ty(&operand_arith(&arg(0)?))
         }
@@ -1255,6 +1437,35 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         OnSource | DataField | OnKey => Ty::char_var(32767),
         OnFile | OnLoc => Ty::char_var(31),
         Omitted | Present => Ty::bit(1),
-        PliRetC | PliDump | PliSrtA | PliFill | PliMove | PliFree => Ty::Entry,
+        PliRetC | PliDump | PliSrtA | PliFill | PliMove | PliFree | PliTran11 | PliTran12
+        | PliTran21 | PliTran22 => Ty::Entry,
+        Utf8Stg => fixed_bin31(),
+        ThreadId => Ty::Pointer,
+        OnUchar => Ty::Uchar {
+            len: crate::types::Ext::Const(1),
+            var: crate::types::Var::Fixed,
+        },
+        OnUsource => Ty::Uchar {
+            len: crate::types::Ext::Star,
+            var: crate::types::Var::Varying,
+        },
+        OnWchar => Ty::Wchar {
+            len: crate::types::Ext::Const(1),
+            var: crate::types::Var::Fixed,
+            graphic: false,
+        },
+        OnWsource => Ty::Wchar {
+            len: crate::types::Ext::Const(32767),
+            var: crate::types::Var::Varying,
+            graphic: false,
+        },
+        ByteLength | FoldedFullMatch | FoldedSimpleMatch => fixed_bin31(),
+        LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1 => Ty::Uchar {
+            len: match arg(0)? {
+                Ty::Uchar { len, .. } => len,
+                _ => crate::types::Ext::Star,
+            },
+            var: crate::types::Var::Varying,
+        },
     })
 }

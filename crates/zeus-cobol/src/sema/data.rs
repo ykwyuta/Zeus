@@ -98,6 +98,12 @@ impl DataModel {
     /// from the current object values on every reference.
     fn dynamic_layout(&mut self) -> Result<()> {
         for (id, item) in self.items.iter().enumerate() {
+            if item.entry.justified && item.usage == Usage::Utf8 {
+                return Err(Diag::error(
+                    item.pos,
+                    "JUSTIFIED on a UTF-8 item is not supported yet",
+                ));
+            }
             if item.entry.justified
                 && (!item.children.is_empty()
                     || item.level == 66
@@ -518,6 +524,33 @@ impl DataModel {
     /// Storage length of an elementary item.
     fn elementary_len(&self, id: usize) -> Result<u32> {
         let it = &self.items[id];
+        if let Some(limit) = it.entry.dynamic {
+            // PIC X or PIC U, a single symbol (LRM, DYNAMIC LENGTH clause)
+            let pic = it.entry.picture.as_deref().map(str::to_ascii_uppercase);
+            if !matches!(pic.as_deref(), Some("X" | "U")) || it.entry.byte_length.is_some() {
+                return Err(Diag::error(
+                    it.pos,
+                    "a dynamic-length item requires PICTURE X or PICTURE U",
+                ));
+            }
+            if limit == Some(0) {
+                return Err(Diag::error(it.pos, "LIMIT must be at least 1"));
+            }
+            // Not implemented: a dynamic-length group (the item inside a
+            // group), tables, VALUE, REDEFINES.
+            if it.parent.is_some()
+                || it.entry.occurs.is_some()
+                || it.entry.value.is_some()
+                || it.entry.redefines.is_some()
+                || it.entry.justified
+            {
+                return Err(Diag::error(
+                    it.pos,
+                    "a dynamic-length item with a parent group, OCCURS, VALUE, REDEFINES or JUSTIFIED is not supported yet",
+                ));
+            }
+            return Ok(12);
+        }
         if matches!(
             it.usage,
             Usage::Index | Usage::Pointer | Usage::Pointer32 | Usage::Float | Usage::Double
@@ -579,6 +612,26 @@ impl DataModel {
                     .as_ref()
                     .ok_or_else(|| Diag::error(it.pos, "PICTURE required"))?;
                 (p.digits / 2 + 1).max(1)
+            }
+            Usage::Utf8 => {
+                let p = it
+                    .pic
+                    .as_ref()
+                    .ok_or_else(|| Diag::error(it.pos, "PICTURE required"))?;
+                if p.category != Category::Utf8 {
+                    return Err(Diag::error(it.pos, "USAGE UTF-8 requires PICTURE U"));
+                }
+                match it.entry.byte_length {
+                    Some(_) if p.size != 4 => {
+                        return Err(Diag::error(
+                            it.pos,
+                            "BYTE-LENGTH requires a PICTURE of a single U",
+                        ));
+                    }
+                    Some(0) => return Err(Diag::error(it.pos, "BYTE-LENGTH must be positive")),
+                    Some(m) => m,
+                    None => p.size,
+                }
             }
             Usage::Display | Usage::Display1 | Usage::National => {
                 let p = it.pic.as_ref().ok_or_else(|| {
@@ -679,6 +732,26 @@ impl DataModel {
                 ));
             }
             self.items[id].usage = Usage::National;
+        }
+        // PICTURE U is category UTF-8 and implies USAGE UTF-8 (LRM,
+        // PICTURE symbol U).
+        {
+            let item = &mut self.items[id];
+            let pic_u = item.pic.as_ref().is_some_and(|p| p.category == Category::Utf8);
+            if pic_u {
+                if item.entry.usage.is_some_and(|u| u != Usage::Utf8) {
+                    return Err(Diag::error(item.pos, "PICTURE U requires USAGE UTF-8"));
+                }
+                item.usage = Usage::Utf8;
+            } else if item.entry.byte_length.is_some() {
+                return Err(Diag::error(item.pos, "BYTE-LENGTH requires PICTURE U"));
+            } else if item.entry.usage == Some(Usage::Utf8) && !item.children.is_empty() {
+                // Rather than treating the group as alphanumeric data.
+                return Err(Diag::error(
+                    item.pos,
+                    "USAGE UTF-8 on a group item is not supported yet",
+                ));
+            }
         }
         // Inherit USAGE from groups.
         if let Some(parent) = self.items[id].parent
@@ -818,6 +891,13 @@ impl DataModel {
             },
             Category::Alphabetic => DataType::Alphabetic { just },
             Category::Alphanumeric => DataType::Alphanumeric { just },
+            Category::Utf8 => DataType::Utf8 {
+                chars: if it.entry.byte_length.is_some() || it.entry.dynamic.is_some() {
+                    None
+                } else {
+                    Some(p.size / 4)
+                },
+            },
             // PICTURE N: national with USAGE NATIONAL or NSYMBOL(NATIONAL)
             // (unless USAGE DISPLAY-1); PICTURE G: DBCS
             Category::Dbcs => {
@@ -1066,6 +1146,8 @@ impl DataModel {
             right_justify: it.entry.justified,
             dynamic_offset: None,
             dynamic_len: None,
+            // 999999999 when LIMIT is omitted (LRM, DYNAMIC LENGTH clause)
+            dynamic_limit: it.entry.dynamic.map(|l| l.unwrap_or(999_999_999)),
             abi: fields,
             name: it.name.clone().unwrap_or_else(|| "FILLER".into()),
             definition: (it.pos.file, it.pos.line),
@@ -1105,7 +1187,10 @@ impl DataModel {
                 self.store_value(&ty, field, v, it.pos)?;
                 continue;
             }
-            if it.children.is_empty() {
+            if it.entry.dynamic.is_some() {
+                // an empty dynamic-length item: no buffer, length zero
+                field.fill(0);
+            } else if it.children.is_empty() {
                 default_value(&ty, field);
             }
         }
@@ -1182,6 +1267,39 @@ impl DataModel {
                 "procedure/function-pointer VALUE must be NULL",
             ));
         }
+        // UTF-8 items: the VALUE literal converted to UTF-8 (alphanumeric
+        // from the code page, national from UTF-16), padded with UTF-8
+        // spaces; a numeric literal is not a valid sending item.
+        if let DataType::Utf8 { chars } = ty {
+            let chars = *chars;
+            match &value {
+                lit::Const::Utf8(b) => vdata::move_utf8(b, chars, field),
+                lit::Const::National(b) => vdata::move_utf8(&vdata::utf8_of_national(b), chars, field),
+                lit::Const::Bytes(b) => {
+                    vdata::move_utf8(&vdata::utf8_of_national(&vdata::national_of(b)), chars, field)
+                }
+                lit::Const::Fig(lit::FigByte::High) => vdata::high_utf8(chars, field),
+                lit::Const::Fig(f) => vdata::fill_utf8(
+                    &vdata::utf8_of_national(&vdata::national_fig(f.byte())),
+                    chars,
+                    field,
+                ),
+                lit::Const::All(p) => {
+                    vdata::fill_utf8(&vdata::utf8_of_national(&vdata::national_of(p)), chars, field)
+                }
+                lit::Const::Num(..) | lit::Const::Null => {
+                    return Err(Diag::error(pos, "VALUE of a UTF-8 item must be a nonnumeric literal"));
+                }
+            }
+            return Ok(());
+        }
+        if let lit::Const::Utf8(b) = &value {
+            if ty.is_national() {
+                vdata::move_national(&vdata::national_of_utf8(b), field);
+                return Ok(());
+            }
+            return Err(Diag::error(pos, "a UTF-8 literal is valid only for a UTF-8 or national item"));
+        }
         if ty.is_national() && *ty != DataType::National {
             match &value {
                 lit::Const::Num(d, _) => {
@@ -1192,6 +1310,7 @@ impl DataModel {
                 lit::Const::Fig(f) => vdata::fill_pattern(field, &vdata::national_fig(f.byte())),
                 lit::Const::All(b) => vdata::fill_pattern(field, &vdata::national_of(b)),
                 lit::Const::Null => field.fill(0),
+                lit::Const::Utf8(_) => unreachable!(),
             }
             return Ok(());
         }
@@ -1257,6 +1376,7 @@ impl DataModel {
             }
             (lit::Const::Bytes(b), _) => vdata::move_alnum(b, field, false),
             (lit::Const::Null, _) => field.fill(0),
+            (lit::Const::Utf8(_), _) => unreachable!(),
         }
         Ok(())
     }
@@ -1463,6 +1583,20 @@ pub fn build(prog: &ast::Program, settings: &Settings) -> Result<DataModel> {
         }
     }
     let ws = dm.build_tree(&working, &mut |_| Area::Working)?;
+    for e in prog
+        .data
+        .local
+        .iter()
+        .chain(&prog.data.linkage)
+        .chain(prog.data.files.iter().flat_map(|f| &f.records))
+    {
+        if e.dynamic.is_some() {
+            return Err(Diag::error(
+                e.pos,
+                "a dynamic-length item outside WORKING-STORAGE is not supported yet",
+            ));
+        }
+    }
     for e in &prog.data.local {
         if e.external {
             return Err(Diag::error(e.pos, "LOCAL-STORAGE cannot specify EXTERNAL"));
@@ -2010,14 +2144,29 @@ impl DataModel {
             )),
             1 => Ok(cands[0]),
             _ => {
-                // An unqualified reference to a record-level name wins.
-                let top: Vec<usize> = cands
-                    .iter()
-                    .copied()
-                    .filter(|&c| self.items[c].parent.is_none())
-                    .collect();
-                if top.len() == 1 {
-                    return Ok(top[0]);
+                // QUALIFY(EXTEND): the one item whose qualifiers name every
+                // containing level (a complete set of qualifiers) wins, even
+                // if the same names qualify another item incompletely; an
+                // unqualified record-level name has an empty complete set.
+                // Under QUALIFY(COMPAT), the default, the reference must be
+                // unique (Programming Guide, QUALIFY).
+                if crate::front::qualify_extend() {
+                    let complete: Vec<usize> = cands
+                        .iter()
+                        .copied()
+                        .filter(|&c| {
+                            let mut chain = Vec::new();
+                            let mut at = self.items[c].parent;
+                            while let Some(p) = at {
+                                chain.push(self.items[p].name.clone().unwrap_or_default());
+                                at = self.items[p].parent;
+                            }
+                            chain == r.qualifiers
+                        })
+                        .collect();
+                    if complete.len() == 1 {
+                        return Ok(complete[0]);
+                    }
                 }
                 Err(Diag::error(
                     r.pos,

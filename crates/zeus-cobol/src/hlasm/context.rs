@@ -21,6 +21,8 @@ pub struct AssemblyOptions {
     pub optable: Option<String>,
     /// Invocation COMPAT(MACROCASE/NOMACROCASE); None permits source selection.
     pub macrocase: Option<bool>,
+    /// DBCS / NODBCS from *PROCESS; None: not specified.
+    pub dbcs: Option<bool>,
     pub source_encoding: super::SourceEncoding,
     pub source_format: super::SourceFormat,
     pub sysparm: String,
@@ -39,6 +41,7 @@ impl Default for AssemblyOptions {
             pcontrol_specified: false,
             optable: None,
             macrocase: None,
+            dbcs: None,
             source_encoding: super::SourceEncoding::default(),
             source_format: super::SourceFormat::default(),
             sysparm: String::new(),

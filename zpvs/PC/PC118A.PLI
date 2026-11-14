@@ -1,0 +1,44 @@
+ PC118A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* REPATTERN and INDICATORS (Enterprise PL/I 6.1 Language
+    Reference). REPATTERN(d,p,q,w) converts the date d from pattern q
+    to pattern p with the window w; the LRM examples with the window
+    1950, where 1949 does not fit a two-digit year and raises ERROR.
+    Without q, a NONVARYING CHAR(17) date has the pattern
+    YYYYMMDDHHMISS999. INDICATORS(x) is the number of elements at the
+    next logical level of the structure x, a restricted expression
+    (here the bound of an array). */
+ DCL 1 S,
+       2 A FIXED BIN(31),
+       2 B,
+         3 B1 CHAR(1),
+         3 B2 CHAR(1),
+       2 C CHAR(4);
+ DCL IND(INDICATORS(S)) FIXED BIN(15);
+ DCL R CHAR(8) VARYING;
+ DCL D17 CHAR(17) INIT('20261113235959123');
+ DCL HIT BIT(1);
+
+ OPEN FILE(REPORT);
+
+ R = REPATTERN('990101', 'YYYYMMDD', 'YYMMDD', 1950);
+ CALL ZCHECK('REPATTERN-1999', R = '19990101');
+ R = REPATTERN('000101', 'YYYYMMDD', 'YYMMDD', 1950);
+ CALL ZCHECK('REPATTERN-2000', R = '20000101');
+ R = REPATTERN('19990101', 'YYMMDD', 'YYYYMMDD', 1950);
+ CALL ZCHECK('REPATTERN-TO-YY', R = '990101');
+ R = REPATTERN('20000101', 'YYMMDD', 'YYYYMMDD', 1950);
+ CALL ZCHECK('REPATTERN-TO-YY-2000', R = '000101');
+ HIT = '0'B;
+ ON ERROR BEGIN; HIT = '1'B; GOTO AFTER_ERR; END;
+ R = REPATTERN('19490101', 'YYMMDD', 'YYYYMMDD', 1950);
+ AFTER_ERR:
+ REVERT ERROR;
+ CALL ZCHECK('REPATTERN-OUT-OF-WINDOW', HIT);
+ R = REPATTERN(D17, 'MM/DD/YY');
+ CALL ZCHECK('REPATTERN-NO-SOURCE', R = '11/13/26');
+ CALL ZCHECK('INDICATORS', INDICATORS(S) = 3 & HBOUND(IND) = 3);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC118A;

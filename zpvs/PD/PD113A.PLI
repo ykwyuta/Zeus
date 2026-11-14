@@ -1,0 +1,58 @@
+ PD113P: PACKAGE EXPORTS(PD113A);
+ /* The BYADDR, PARAMETER, CONNECTED, INTERNAL and LIMITED attributes
+    (Enterprise PL/I 6.1 Language Reference). BYADDR, the default,
+    passes the argument by address, so an assignment to the parameter
+    changes the argument; PARAMETER declares a parameter explicitly;
+    a CONNECTED aggregate parameter is in connected storage and can be
+    the base of string overlay defining; an INTERNAL name is known
+    only in its block, and another declaration of it is a new object;
+    a LIMITED entry variable takes non-nested entry constants (the
+    level-1 procedures of a package) and can be initialized with them
+    in STATIC storage. */
+ SETNINE: PROC(X);
+   DCL X FIXED BIN(31) BYADDR;
+   X = 9;
+ END SETNINE;
+ SETSEVEN: PROC(X);
+   DCL X FIXED BIN(31) PARAMETER;
+   X = 7;
+ END SETSEVEN;
+ JOIN4: PROC(A) RETURNS(CHAR(4));
+   DCL A(4) CHAR(1) CONNECTED;
+   DCL S CHAR(4) DEFINED(A);
+   RETURN(S);
+ END JOIN4;
+ ONE: PROC RETURNS(FIXED BIN(31));
+   RETURN(1);
+ END ONE;
+ TWO: PROC RETURNS(FIXED BIN(31));
+   RETURN(2);
+ END TWO;
+
+ PD113A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL N FIXED BIN(31) INIT(0);
+ DCL L(4) CHAR(1) INIT('A', 'B', 'C', 'D');
+ DCL K FIXED BIN(31) INIT(5);
+ DCL F(2) ENTRY RETURNS(FIXED BIN(31)) LIMITED STATIC INIT(ONE, TWO);
+
+ OPEN FILE(REPORT);
+
+ CALL SETNINE(N);
+ CALL ZCHECK('BYADDR-CHANGES-ARG', N = 9);
+ CALL SETSEVEN(N);
+ CALL ZCHECK('PARAMETER-ATTRIBUTE', N = 7);
+ CALL ZCHECK('CONNECTED-OVERLAY', JOIN4(L) = 'ABCD');
+ CALL INNER;
+ CALL ZCHECK('INTERNAL-NEW-OBJECT', K = 5);
+ CALL ZCHECK('LIMITED-ENTRY', F(1)() = 1 & F(2)() = 2);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+
+ INNER: PROC;
+   DCL K FIXED BIN(31) INTERNAL;
+   K = 99;
+ END INNER;
+ END PD113A;
+ END PD113P;

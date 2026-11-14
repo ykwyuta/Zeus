@@ -96,6 +96,13 @@ pub struct Compiler {
     /// DEFINE STRUCTURE types: their members (levels from 1); DEFINE
     /// ALIAS types: their attributes.
     pub structs: HashMap<String, Vec<DeclItem>>,
+    /// Structures declared DIMACROSS (their members carry the dimension).
+    pub dimacross: std::collections::HashSet<VarId>,
+    /// VALUELIST (false) and VALUERANGE (true) sets of variables.
+    pub valuesets: HashMap<VarId, (bool, Vec<crate::ast::Expr>)>,
+    /// OFFSET variables with LOCATES: the based variable of the located
+    /// type that LOCVAL refers to.
+    pub locates: HashMap<VarId, VarId>,
     pub aliases: HashMap<String, Vec<crate::ast::Attr>>,
     /// The structure type of HANDLE variables.
     pub handles: HashMap<VarId, String>,
@@ -103,6 +110,8 @@ pub struct Compiler {
     pub decl_ast: HashMap<VarId, Vec<DeclItem>>,
     /// The outermost procedure block (implicit declarations).
     pub outer: BlockId,
+    /// The label of the PACKAGE statement, if the program has one.
+    pub package_name: Option<String>,
     /// Nesting depth of aggregate-index placeholders.
     pub index_rank: u8,
     pub in_select_subject: Option<Ty>,
@@ -151,10 +160,14 @@ impl Compiler {
             ordinal_members: HashMap::new(),
             defaults: Vec::new(),
             structs: HashMap::new(),
+            dimacross: Default::default(),
+            valuesets: HashMap::new(),
+            locates: HashMap::new(),
             aliases: HashMap::new(),
             handles: HashMap::new(),
             decl_ast: HashMap::new(),
             outer: 0,
+            package_name: None,
             index_rank: 0,
             in_select_subject: None,
             assert_condition: false,
@@ -535,6 +548,9 @@ impl Compiler {
         for s in stmts {
             if let StmtKind::Begin(body) = &s.kind {
                 // PACKAGE: its declarations and procedures
+                if self.package_name.is_none() {
+                    self.package_name = s.labels.first().cloned();
+                }
                 flat.extend(body.iter());
             } else {
                 flat.push(s);

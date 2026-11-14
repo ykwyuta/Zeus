@@ -15,6 +15,9 @@ pub enum DdKind {
     Tape,
     /// Disk dataset (`DSN=...`), mapped to `<dd>.dat`.
     Dataset,
+    /// A z/OS UNIX file (`PATH='...'`), mapped to `<dd>.txt`; exported with
+    /// the same path.
+    Path(String),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -75,7 +78,18 @@ pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
         ]
         .iter()
         .any(|u| rest.contains(u));
-        let kind = if is_tape {
+        let path = rest
+            .split_once("PATH='")
+            .and_then(|(_, r)| r.split_once('\''))
+            .map(|(p, _)| p.to_string());
+        let kind = if let Some(p) = path {
+            // the original spelling (the parsed text is upper-cased)
+            let original = stmt
+                .split_once("PATH='")
+                .and_then(|(_, r)| r.split_once('\''))
+                .map_or(p, |(p, _)| p.to_string());
+            DdKind::Path(original)
+        } else if is_tape {
             DdKind::Tape
         } else {
             DdKind::Dataset
@@ -295,6 +309,10 @@ fn render_other_steps(
         .unwrap_or_default();
     s.push_str(&format!("//G{member:<7} EXEC PGM={member}{parm},COND=(4,LT,L{member})\n//STEPLIB  DD DSN={hlq}.LOAD,DISP=SHR\n//         DD DSN=CEE.SCEERUN,DISP=SHR\n//REPORT   DD DSN={hlq}.REPORT({member}),DISP=SHR\n//SYSPRINT DD SYSOUT=*\n"));
     for dd in extra_dds {
+        if let DdKind::Path(path) = &dd.kind {
+            write_path_dd(&mut s, &dd.ddname, path);
+            continue;
+        }
         let unit = if dd.kind == DdKind::Tape {
             "3480"
         } else {
@@ -307,6 +325,17 @@ fn render_other_steps(
         );
     }
     s
+}
+
+/// A z/OS UNIX file DD: created for read and write, deleted at the end of
+/// the step, text data (line-sequential files).
+fn write_path_dd(s: &mut String, ddname: &str, path: &str) {
+    let _ = writeln!(s, "//{ddname:<8} DD PATH='{path}',");
+    let _ = writeln!(
+        s,
+        "//            PATHOPTS=(ORDWR,OCREAT),PATHMODE=(SIRUSR,SIWUSR),"
+    );
+    let _ = writeln!(s, "//            PATHDISP=(DELETE,DELETE),FILEDATA=TEXT");
 }
 
 fn stem_upper(path: &Path) -> Result<String> {
@@ -335,13 +364,38 @@ fn sorted_entries(dir: &Path, exts: &[&str]) -> Result<Vec<std::path::PathBuf>> 
     Ok(files)
 }
 
+/// Width of a source line as a z/OS record: a character outside Latin-1
+/// is a double-byte character (two bytes), and each run of them is
+/// enclosed in shift-out and shift-in (one byte each), as a mixed EBCDIC
+/// code page (930, 939, 1390, 1399) stores it.
+pub fn record_width(line: &str) -> usize {
+    let mut width = 0;
+    let mut dbcs = false;
+    for c in line.chars() {
+        let double = u32::from(c) > 0xFF;
+        if double && !dbcs {
+            width += 1;
+        } else if !double && dbcs {
+            width += 1;
+        }
+        dbcs = double;
+        width += if double { 2 } else { 1 };
+    }
+    if dbcs {
+        width += 1;
+    }
+    width
+}
+
+/// Pads each line to an 80-byte record, measured as the record will be on
+/// z/OS (`record_width`), not in host characters.
 fn format_fixed80(text: &str) -> Result<String> {
     let mut out = String::new();
     for (idx, line) in text.lines().enumerate() {
         let trimmed = line.trim_end_matches('\r');
-        let cols = trimmed.chars().count();
+        let cols = record_width(trimmed);
         if cols > 80 {
-            bail!("line {} exceeds 80 columns ({cols} cols)", idx + 1);
+            bail!("line {} exceeds 80 columns ({cols} bytes as a record)", idx + 1);
         }
         let pad = 80usize.saturating_sub(cols);
         let _ = writeln!(out, "{trimmed}{:pad$}", "");
@@ -425,6 +479,14 @@ fn render_program_steps(
     for n in 1..=7 {
         let _ = writeln!(s, "//SYSUT{n}   DD UNIT=SYSDA,SPACE=(CYL,(1,1))");
     }
+    if let Some(rc) = cfg.expect_compile_rc {
+        // ends the job with RC 16 unless the compile gave exactly `rc`
+        let _ = writeln!(s, "//V{member:<7} EXEC PGM=IDCAMS,COND=({rc},EQ,C{member})");
+        let _ = writeln!(s, "//SYSPRINT DD SYSOUT=*");
+        let _ = writeln!(s, "//SYSIN    DD *");
+        let _ = writeln!(s, " SET MAXCC = 16");
+        let _ = writeln!(s, "/*");
+    }
     let _ = writeln!(
         s,
         "//L{member:<7} EXEC PGM=IEWL,PARM='LIST,XREF,LET,RENT',COND=(4,LT,C{member})"
@@ -453,7 +515,7 @@ fn render_program_steps(
     let _ = writeln!(s, "//REPORT   DD DSN={hlq}.REPORT({member}),DISP=SHR");
     let _ = writeln!(s, "//SYSOUT   DD SYSOUT=*");
     for dd in extra_dds {
-        match dd.kind {
+        match &dd.kind {
             DdKind::Tape => {
                 let _ = writeln!(
                     s,
@@ -462,12 +524,13 @@ fn render_program_steps(
                 );
             }
             DdKind::Dataset => {
+                let _ = writeln!(s, "//{:<8} DD DSN={hlq}.{member}.{},", dd.ddname, dd.ddname);
                 let _ = writeln!(
                     s,
-                    "//{:<8} DD DSN={hlq}.{member}.{},UNIT=SYSDA,SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)",
-                    dd.ddname, dd.ddname
+                    "//            UNIT=SYSDA,SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)"
                 );
             }
+            DdKind::Path(path) => write_path_dd(&mut s, &dd.ddname, path),
         }
     }
     s
@@ -508,5 +571,16 @@ mod tests {
                 },
             ]
         );
+    }
+
+    #[test]
+    fn record_width_counts_double_byte_characters_and_shift_codes() {
+        assert_eq!(record_width("G1 DC C'A'"), 10);
+        // 'Käfer' is single-byte in an EBCDIC code page
+        assert_eq!(record_width("Käfer"), 5);
+        // G'日' is G ' SO 2 bytes SI ': 7 bytes
+        assert_eq!(record_width("G'日'"), 7);
+        assert_eq!(record_width("山田太郎"), 10);
+        assert_eq!(record_width("日X日"), 9);
     }
 }

@@ -172,6 +172,7 @@ impl Compiler {
         let mut unsigned = false;
         let mut string: Option<(bool, Ext)> = None;
         let mut wide: Option<(bool, Ext)> = None;
+        let mut uchar: Option<Ext> = None;
         for a in attrs {
             match a {
                 Attr::Fixed => fixed = true,
@@ -200,6 +201,12 @@ impl Compiler {
                         None => Ext::Const(1),
                     };
                     string = Some((matches!(a, Attr::Bit(_)), len));
+                }
+                Attr::Uchar(l) => {
+                    uchar = Some(match l {
+                        Some(e) => self.extent(e, block, dyn_ok, pos)?,
+                        None => Ext::Const(1),
+                    });
                 }
                 Attr::Graphic(l) | Attr::Widechar(l) => {
                     let len = match l {
@@ -241,6 +248,9 @@ impl Compiler {
                 Attr::File => return Ok(Ty::File),
                 _ => {}
             }
+        }
+        if let Some(len) = uchar {
+            return Ok(Ty::Uchar { len, var });
         }
         if let Some((graphic, len)) = wide {
             let var = if var == Varying::Fixed {
@@ -430,6 +440,23 @@ impl Compiler {
         }
         let mut late: Vec<(VarId, Vec<Attr>, Pos)> = Vec::new();
         for mut g in groups {
+            // XDECLARE / XDEFINE of a name declared or defined before in
+            // this block: ignored (LRM). Whether the attributes match, as
+            // XDECLARE requires, is not checked.
+            if g[0].attrs.iter().any(|a| matches!(a, Attr::XDecl)) {
+                g[0].attrs.retain(|a| !matches!(a, Attr::XDecl));
+                let name = &g[0].name;
+                let seen = match g[0].attrs.first() {
+                    Some(Attr::AliasDef(_)) => self.aliases.contains_key(name),
+                    _ if g[0].attrs.iter().any(|a| matches!(a, Attr::StructDef)) => {
+                        self.structs.contains_key(name)
+                    }
+                    _ => self.scopes[block as usize].names.contains_key(name),
+                };
+                if seen {
+                    continue;
+                }
+            }
             // DEFINE ALIAS
             if let Some(Attr::AliasDef(a)) = g[0].attrs.first() {
                 self.aliases.insert(g[0].name.clone(), a.clone());
@@ -450,7 +477,8 @@ impl Compiler {
                 g[0].name = format!("%{name}");
                 g[0].attrs.push(Attr::Based(None));
             }
-            let g = self.expand_like(&g)?;
+            let mut g = self.expand_like(&g)?;
+            dimacross(&mut g).map_err(|(pos, m)| self.err(pos, m))?;
             let tree = build_tree(&g);
             for t in tree {
                 let vars = self.declare_tree(&t, block, params, &mut late, &g)?;
@@ -505,6 +533,7 @@ impl Compiler {
                     | Attr::Format
                     | Attr::Graphic(_)
                     | Attr::Widechar(_)
+                    | Attr::Uchar(_)
                     | Attr::Type(_)
                     | Attr::Builtin
                     | Attr::Condition
@@ -1012,6 +1041,24 @@ impl Compiler {
             byvalue: has(attrs, |a| matches!(a, Attr::Byvalue)),
         });
         members.push(id);
+        if has(attrs, |a| matches!(a, Attr::DimAcross(_))) {
+            self.dimacross.insert(id);
+        }
+        for a in attrs {
+            match a {
+                Attr::ValueList(v) => {
+                    self.valuesets.insert(id, (false, v.clone()));
+                }
+                Attr::ValueRange(x, y) => {
+                    self.valuesets.insert(id, (true, vec![x.clone(), y.clone()]));
+                }
+                Attr::Locates(d) => {
+                    let (d, name, pos) = (d.clone(), it.name.clone(), it.pos);
+                    self.declare_locates(id, &d, &name, block, pos, attrs)?;
+                }
+                _ => {}
+            }
+        }
         self.define(block, &it.name, Sym::Var(id));
         // own dimensions
         let mut own: Vec<(Bound, Bound)> = Vec::new();
@@ -1054,6 +1101,14 @@ impl Compiler {
                     off: 0,
                 }
             } else {
+                // ALIGNED(n) overrides the alignment of the type (LRM)
+                let align = attrs
+                    .iter()
+                    .find_map(|a| match a {
+                        Attr::AlignedTo(n) => Some(*n),
+                        _ => None,
+                    })
+                    .unwrap_or(u32::from(align));
                 Unit {
                     len: u64::from(size) * 8,
                     align: u64::from(align) * 8,
@@ -1086,7 +1141,11 @@ impl Compiler {
                 units.push(u);
                 kids.push(start);
             }
-            let (u, offs) = pair(&units);
+            let (u, offs) = if has(attrs, |a| matches!(a, Attr::Union)) {
+                overlay(&units)
+            } else {
+                pair(&units)
+            };
             for (k, off) in kids.iter().zip(offs) {
                 self.shift(*k, off);
             }
@@ -1244,7 +1303,13 @@ impl Compiler {
             match it {
                 AstInit::Star => out.push(None),
                 AstInit::Value(e) => {
-                    let x = self.expr(e)?;
+                    // an ENTRY variable is initialized with entry constants:
+                    // a procedure name is not invoked, even with RETURNS
+                    let x = if matches!(ty, Ty::Entry) {
+                        self.entry_expr(e)?
+                    } else {
+                        self.expr(e)?
+                    };
                     out.push(Some(self.conv(x, ty)));
                 }
                 AstInit::Repeat(Extent::Star | Extent::Refer(..), inner) => {
@@ -1332,6 +1397,18 @@ fn pair(units: &[Unit]) -> (Unit, Vec<u64>) {
     (cur, offs)
 }
 
+/// The members of a union: each is mapped as a structure member, keeping
+/// its position relative to an 8-byte boundary, so members needing
+/// different padding do not start at the same byte (LRM, "Structure and
+/// union mapping"). The union holds the largest of them.
+fn overlay(units: &[Unit]) -> (Unit, Vec<u64>) {
+    let base = units.iter().map(|u| u.off).min().unwrap_or(0);
+    let offs: Vec<u64> = units.iter().map(|u| u.off - base).collect();
+    let len = units.iter().zip(&offs).map(|(u, o)| o + u.len).max().unwrap_or(0);
+    let align = units.iter().map(|u| u.align).max().unwrap_or(1);
+    (Unit { len, align, off: base }, offs)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1410,5 +1487,97 @@ mod mapping_tests {
             panic!()
         };
         assert_eq!((0x1000 + s) % 8, 4);
+    }
+}
+
+/// DIMACROSS (LRM, "DIMACROSS attribute"): the dimension is removed from
+/// the structure and given to each of its immediate members, which must
+/// not have a dimension of their own. The structure keeps the attribute
+/// as a mark for BY DIMACROSS and LBOUNDACROSS / HBOUNDACROSS.
+fn dimacross(g: &mut [DeclItem]) -> std::result::Result<(), (Pos, String)> {
+    for i in 0..g.len() {
+        let Some(k) = g[i].attrs.iter().position(|a| matches!(a, Attr::DimAcross(_))) else {
+            continue;
+        };
+        let dims = match &g[i].attrs[k] {
+            Attr::DimAcross(Some(b)) if g[i].dims.is_empty() => b.clone(),
+            Attr::DimAcross(None) if !g[i].dims.is_empty() => std::mem::take(&mut g[i].dims),
+            _ => return Err((g[i].pos, format!("DIMACROSS of {} needs one dimension list", g[i].name))),
+        };
+        g[i].attrs[k] = Attr::DimAcross(None);
+        let level = g[i].level;
+        let child = g[i + 1..]
+            .iter()
+            .take_while(|d| d.level > level)
+            .map(|d| d.level)
+            .min();
+        let Some(child) = child else {
+            return Err((g[i].pos, format!("DIMACROSS is valid only on structures: {}", g[i].name)));
+        };
+        for d in g[i + 1..].iter_mut().take_while(|d| d.level > level) {
+            if d.level != child {
+                continue;
+            }
+            if !d.dims.is_empty() {
+                return Err((
+                    d.pos,
+                    format!("{} has a dimension under the DIMACROSS structure", d.name),
+                ));
+            }
+            d.dims = dims.clone();
+        }
+    }
+    Ok(())
+}
+
+impl Compiler {
+    /// LOCATES (LRM, "LOCATES attribute"): the OFFSET gets a based
+    /// variable of the located type, which LOCVAL refers to through the
+    /// offset. Zeus takes the arithmetic types and CHARACTER and BIT
+    /// strings of constant length; the other located types (UCHAR,
+    /// WIDECHAR, ORDINAL, STRUCT) are refused rather than guessed.
+    fn declare_locates(
+        &mut self,
+        id: VarId,
+        d: &[Attr],
+        name: &str,
+        block: BlockId,
+        pos: Pos,
+        attrs: &[Attr],
+    ) -> Result<()> {
+        if !has(attrs, |a| matches!(a, Attr::Offset(_))) {
+            return Err(self.err(pos, format!("LOCATES is valid only with OFFSET: {name}")));
+        }
+        let ty = self.scalar_type(d, name, pos)?;
+        let ok = match &ty {
+            Ty::Fixed { .. } | Ty::Float { .. } => true,
+            Ty::Char { len, .. } | Ty::Bit { len, .. } => matches!(len, Ext::Const(_)),
+            _ => false,
+        };
+        if !ok {
+            return Err(self.err(
+                pos,
+                format!("LOCATES of this type is not supported yet: {name}"),
+            ));
+        }
+        let size = ty.storage(false).0;
+        let h = self.m.vars.len() as VarId;
+        self.m.vars.push(Var {
+            name: format!("%LOCVAL.{name}"),
+            block,
+            storage: Storage::Based(None),
+            root: h,
+            parent: None,
+            members: Vec::new(),
+            bit_offset: 0,
+            ty: Some(ty),
+            dims: Vec::new(),
+            size,
+            level: 1,
+            packed_bits: false,
+            byvalue: false,
+        });
+        self.locates.insert(id, h);
+        Ok(())
     }
 }

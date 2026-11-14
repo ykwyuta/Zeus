@@ -1,0 +1,27 @@
+ PC116A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* NULLENTRY and ENTRYADDR (Enterprise PL/I 6.1 Language Reference).
+    NULLENTRY returns a null entry value that can be assigned to or
+    compared with any entry variable, also to initialize an entry
+    variable in static storage; ENTRYADDR(NULLENTRY) returns the same
+    value as SYSNULL. */
+ DCL E ENTRY VARIABLE;
+ DCL F ENTRY VARIABLE STATIC INIT(NULLENTRY());
+ DCL P POINTER;
+
+ OPEN FILE(REPORT);
+
+ E = NULLENTRY();
+ CALL ZCHECK('NULLENTRY-ASSIGN', E = NULLENTRY());
+ E = WORK;
+ CALL ZCHECK('NULLENTRY-UNEQUAL', E ^= NULLENTRY());
+ CALL ZCHECK('NULLENTRY-STATIC-INIT', F = NULLENTRY());
+ P = ENTRYADDR(NULLENTRY());
+ CALL ZCHECK('ENTRYADDR-NULLENTRY', P = SYSNULL());
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+
+ WORK: PROC;
+ END WORK;
+ END PC116A;

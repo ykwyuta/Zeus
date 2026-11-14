@@ -364,6 +364,19 @@
         "refs": [
           "HLASM-LR: ENTRY instruction | The ENTRY instruction identifies symbols defined in this source module as “external” so that they can be referred to by another source module."
         ]
+      },
+      "QD-MATCHES-Q": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Offset constant—Q | QD-type: 8 bytes"
+        ]
+      },
+      "QY-LONG-DISP": {
+        "basis": "zos",
+        "note": "3 バイトの QY を「4 ビットの 0、DL 12 ビット、DH 8 ビット」(長変位の命令の B2 以降と同じ並び) と読んだ。LRM は並びを図で示していない",
+        "refs": [
+          "HLASM-LR: Offset constant—Q | inserts the offset into a QY-type constant in 20 bit signed long-displacement format."
+        ]
       }
     }
   },
@@ -385,6 +398,30 @@
         "refs": [
           "HLASM-LR: ICTL instruction | Specifies the begin column of the source statement.",
           "HLASM-LR: ICTL instruction | The ICTL instruction does not affect the format of statements brought in by a COPY"
+        ]
+      }
+    }
+  },
+  "HA111A": {
+    "basis": "spec",
+    "tests": {
+      "EXTRN-ACON-CALL": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: EXTRN instruction | The EXTRN instruction identifies “external” symbols referred to in this source module but defined in another source module."
+        ]
+      },
+      "EXTRN-TYPE-ATTR": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Type attribute (T') | T Identified as an external symbol by EXTRN instruction"
+        ]
+      },
+      "PROCESS-OPTABLE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_OPTABLE System Variable Symbol | Use &SYSOPT_OPTABLE to determine the value that was specified for the OPTABLE assembler option.",
+          "HLASM-PG: *PROCESS statement options | Process (*PROCESS) statements let you specify assembler options in your assembler source program."
         ]
       }
     }
@@ -883,6 +920,99 @@
         "note": "DS storage is not initialized by the assembler; Zeus loads it as zeros. On z/OS the loader may leave other contents; record them.",
         "refs": [
           "HLASM-LR: DS instruction"
+        ]
+      }
+    }
+  },
+  "HD108A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Hexadecimal floating-point constants—E, EH, D, DH, L, LH, LQ | The LQ-type is quadword aligned. A DC 0LQ forces the alignment to a quadword boundary."
+    ],
+    "tests": {
+      "LQ-QUADWORD-ALIGN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Hexadecimal floating-point constants—E, EH, D, DH, L, LH, LQ | The LQ-type is quadword aligned. A DC 0LQ forces the alignment to a quadword boundary."
+        ]
+      },
+      "L-DOUBLEWORD-ALIGN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Hexadecimal floating-point constants—E, EH, D, DH, L, LH, LQ | The L-type and LH-type floating-point constants are doubleword aligned."
+        ]
+      },
+      "LQ-IMPLICIT-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Table 16. Length attribute value of symbol naming constants | LQ 16 DC LQ'565.40' 16"
+        ]
+      },
+      "LQ-VALUE-ONE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Hexadecimal floating-point constants—E, EH, D, DH, L, LH, LQ | The characteristic for the second doubleword is equal to the characteristic for the first minus 14",
+          "HLASM-LR: Hexadecimal floating-point constants—E, EH, D, DH, L, LH, LQ | The L-type floating-point constant resembles two contiguous D-type constants."
+        ]
+      },
+      "LQ-EQUALS-L": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Hexadecimal floating-point constants—E, EH, D, DH, L, LH, LQ | LQ-type: Quadword"
+        ]
+      }
+    }
+  },
+  "HD109A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: Graphic constant—G | When the DBCS assembler option is specified, the graphic (G-type) constant is supported."
+    ],
+    "tests": {
+      "G-NO-SO-SI": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | data are not present in the assembled value of the graphic constant."
+        ]
+      },
+      "G-DUPLICATION": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | Because SO and SI are not assembled, if a duplication factor is used, no redundant SI/SO characters are created."
+        ]
+      },
+      "G-LENGTH-PADDED": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | The length modifier of 10 for DBCS2 causes padding of 2 double-byte spaces at the right of the nominal value."
+        ]
+      },
+      "G-LENGTH-TRUNCATED": {
+        "basis": "zos",
+        "note": "The DBCS code point comes from the IBM conversion table of CCSID 939 (日 X'4562'); the Language Reference does not list code points. Expected bytes are the current Zeus table (ICU ibm-939), as in ZCVS ZN103A.",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | The length modifier of 4 for DBCS3 causes truncation after the first 2 double-byte characters."
+        ]
+      },
+      "G-LENGTH-ATTRIBUTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | Because the length attribute does not include the SO and SI, the length attribute of DBCS1 is 6."
+        ]
+      },
+      "G-TYPE-ATTRIBUTE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Graphic constant—G | The type attribute of a graphic constant is @, not G."
+        ]
+      },
+      "G-SYSOPT-DBCS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: &SYSOPT_DBCS System Variable Symbol | If the DBCS assembler option was specified, &SYSOPT_DBCS is assigned a value of 1."
         ]
       }
     }
@@ -4463,6 +4593,146 @@
       }
     }
   },
+  "HI132A": {
+    "basis": "spec",
+    "refs": [
+      "POP: TEST DATA GROUP | The group and sign of the first operand are examined",
+      "POP: TEST DATA GROUP | bits 52-63, are used to specify 12 combinations of"
+    ],
+    "tests": {
+      "TDGDT-SAFE-ZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Condition code 0 or 1 is set according to whether the"
+        ]
+      },
+      "TDGDT-ZERO-SIGN": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Condition code 0 or 1 is set according to whether the"
+        ]
+      },
+      "TDGDT-SAFE-PAIR": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Condition code 0 or 1 is set according to whether the",
+          "POP: TEST DATA GROUP | whether a nonzero finite number is safe by set-"
+        ]
+      },
+      "TDGDT-ZERO-EXTREME": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Extreme Maximum right-units-view (RUV) exponent, Qmax, or"
+        ]
+      },
+      "TDGDT-NZ-EXTREME": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | Extreme Maximum right-units-view (RUV) exponent, Qmax, or"
+        ]
+      },
+      "TDGDT-SAFE-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the",
+          "POP: TEST DATA GROUP | whether a nonzero finite number is safe by set-"
+        ]
+      },
+      "TDGDT-MINUS-SAFE": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGDT-LMD-NOT-SAFE": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGET-SAFE-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGXT-SAFE-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | exponent is neither maximum nor minimum, and the"
+        ]
+      },
+      "TDGDT-LMD-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | whether a nonzero finite number has reached the"
+        ]
+      },
+      "TDGET-LMD-NONZERO": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | whether a nonzero finite number has reached the"
+        ]
+      },
+      "TDGDT-SPECIAL-INF": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | cial. The special group is defined for infinity and NaN."
+        ]
+      },
+      "TDGXT-SPECIAL-NAN": {
+        "basis": "spec",
+        "refs": [
+          "POP: TEST DATA GROUP | cial. The special group is defined for infinity and NaN."
+        ]
+      }
+    }
+  },
+  "HI133A": {
+    "basis": "spec",
+    "refs": [
+      "POP: COMPARE AND SWAP AND STORE | The first operand is compared with the third operand.",
+      "POP: COMPARE AND SWAP AND STORE | parameter list that contains the replacement value"
+    ],
+    "tests": {
+      "CSST-FC0-EQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | bits in length. The first operand is a word in stor-"
+        ]
+      },
+      "CSST-SC0-ONE-BYTE": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | An SC of 0 means that one byte is stored on a byte"
+        ]
+      },
+      "CSST-SC1-HALFWORD": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | An SC of 0 means that one byte is stored on a byte"
+        ]
+      },
+      "CSST-FC1-SC3": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | If they are equal, the replacement value is stored into",
+          "POP: COMPARE AND SWAP AND STORE | an SC of 3 means that eight bytes are stored on a",
+          "POP: COMPARE AND SWAP AND STORE | When the function code is 1, the operands are 64"
+        ]
+      },
+      "CSST-FC0-UNEQUAL": {
+        "basis": "spec",
+        "refs": [
+          "POP: COMPARE AND SWAP AND STORE | ond operand is not changed. The result is indicated",
+          "POP: COMPARE AND SWAP AND STORE | bits in length. The first operand is a word in stor-"
+        ]
+      }
+    }
+  },
   "HM101A": {
     "basis": "spec",
     "tests": {
@@ -5174,6 +5444,54 @@
           "HLASM-LR: &SYSPUNCH_DSN System Variable Symbol | Use &SYSPUNCH_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the object records when assembler option DECK is specified.",
           "HLASM-LR: &SYSTERM_DSN System Variable Symbol | Use &SYSTERM_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the terminal records.",
           "HLASM-LR: &SYSADATA_DSN System Variable Symbol | Use &SYSADATA_DSN in a macro definition to obtain the name of the data set to which the assembler is writing the associated data."
+        ]
+      }
+    }
+  },
+  "HM111A": {
+    "basis": "spec",
+    "tests": {
+      "AREAD-RECORD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | it reads the source record following the macro instruction and assigns an 80-character string to the SETC symbol in the name field."
+        ]
+      },
+      "AREAD-80-COLUMNS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | it reads the source record following the macro instruction and assigns an 80-character string to the SETC symbol in the name field."
+        ]
+      },
+      "AREAD-SUCCESSIVE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | Repeated AREAD instruction statements read successive records."
+        ]
+      },
+      "AREAD-FROM-AINSERT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AINSERT instruction | However, the AREAD instruction takes input records from the AINSERT buffer queue before reading the input stream."
+        ]
+      },
+      "AINSERT-FRONT-BACK": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AINSERT instruction | If it is used in a macro, the records are queued in an internal buffer until the macro generator has completed expanding the current outermost macro instruction.",
+          "HLASM-LR: AINSERT instruction | The record is placed at the front of the internal buffer."
+        ]
+      },
+      "AINSERT-OPEN-CODE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AINSERT instruction | If AINSERT is used in open code, the buffer queue only contains one record, which is inserted immediately after the AINSERT instruction."
+        ]
+      },
+      "AREAD-CLOCKD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: AREAD instruction | Assigns an 8-character string to SETC_symbol containing the local time in the format HHMMSSTH"
         ]
       }
     }

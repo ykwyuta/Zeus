@@ -221,6 +221,152 @@
       "INVALIDOP-SIGNAL"
     ]
   },
+  "PC113A": {
+    "expect": "run",
+    "tests": [
+      "ULENGTH-UTF8",
+      "ULENGTH-COMBINING",
+      "ULENGTH8-WIDECHAR",
+      "ULENGTH8-CHAR-LENGTH",
+      "ULENGTH16-UTF8",
+      "UPOS-BYTES",
+      "UPOS-OUT-OF-RANGE",
+      "UWIDTH-BYTES",
+      "USUBSTR-1-2",
+      "USUBSTR-2-1",
+      "USUBSTR-3-2",
+      "USUBSTR-RANGE-ERROR",
+      "USUPPLEMENTARY-PAIR",
+      "USUPPLEMENTARY-NONE",
+      "ULENGTH-SURROGATES",
+      "UWIDTH-SURROGATES",
+      "UVALID-VALID",
+      "UVALID-UTF8-INVALID",
+      "UVALID-UTF16-INVALID"
+    ]
+  },
+  "PC114A": {
+    "expect": "run",
+    "tests": [
+      "UTF8-CODEPAGE-1140",
+      "UTF8-CODEPAGE-1141",
+      "UTF8-CODEPAGE-OPTION",
+      "UTF8-WIDECHAR",
+      "UTF8TOCHAR-1140",
+      "UTF8TOWCHAR",
+      "UTF8TOWCHAR-INVALID",
+      "MEMUVALID8-INVALID",
+      "MEMUVALID8-VALID",
+      "MEMUVALID16-INVALID",
+      "MEMUVALID16-VALID"
+    ]
+  },
+  "PC115A": {
+    "expect": "run",
+    "tests": [
+      "MEMCU12",
+      "MEMCU14",
+      "MEMCU21",
+      "MEMCU24-SURROGATE",
+      "MEMCU41",
+      "MEMCU42",
+      "MEMCU12-TOO-SMALL",
+      "MEMCU12-INVALID",
+      "MEMCONVERT-1140-1141",
+      "MEMCONVERT-ZERO"
+    ]
+  },
+  "PC116A": {
+    "expect": "run",
+    "tests": [
+      "NULLENTRY-ASSIGN",
+      "NULLENTRY-UNEQUAL",
+      "NULLENTRY-STATIC-INIT",
+      "ENTRYADDR-NULLENTRY"
+    ]
+  },
+  "PC117A": {
+    "expect": "run",
+    "tests": [
+      "CONFORMANCE-ORDINAL",
+      "CONFORMANCE-DISABLED",
+      "SIGNAL-DISABLED",
+      "SIGNAL-CODE-550",
+      "NORMAL-RETURN-ERROR"
+    ]
+  },
+  "PC118A": {
+    "expect": "run",
+    "tests": [
+      "REPATTERN-1999",
+      "REPATTERN-2000",
+      "REPATTERN-TO-YY",
+      "REPATTERN-TO-YY-2000",
+      "REPATTERN-OUT-OF-WINDOW",
+      "REPATTERN-NO-SOURCE",
+      "INDICATORS"
+    ]
+  },
+  "PC119A": {
+    "expect": "run",
+    "tests": [
+      "ALLCOMPARE-EQ-DEFAULT",
+      "ALLCOMPARE-LT",
+      "ALLCOMPARE-LOWER-CASE",
+      "ALLCOMPARE-LE-GE",
+      "ALLCOMPARE-ONE-DIFFERS",
+      "ALLCOMPARE-NE"
+    ]
+  },
+  "PC120A": {
+    "expect": "run",
+    "tests": [
+      "PLITRAN11",
+      "PLITRAN12",
+      "PLITRAN21",
+      "PLITRAN22",
+      "UTF8STG",
+      "UTF8STG-NOT-A-START",
+      "ALIGNED-N-NOT-PRECISION"
+    ]
+  },
+  "PC121A": {
+    "expect": "run",
+    "tests": [
+      "UCHAR-STORAGE",
+      "BYTELENGTH-A",
+      "BYTELENGTH-A-UMLAUT",
+      "BYTELENGTH-STRASSE",
+      "UCHAR-VARYING",
+      "UCHAR-PADDED",
+      "UCHAR-TO-CHAR",
+      "UPPERASCII",
+      "UPPERLATIN1",
+      "LOWERASCII",
+      "LOWERLATIN1",
+      "FOLDEDFULLMATCH",
+      "FOLDEDSIMPLEMATCH"
+    ]
+  },
+  "PC122A": {
+    "expect": "run",
+    "tests": [
+      "ONUCHAR-OUT-OF-CONTEXT",
+      "ONWCHAR-OUT-OF-CONTEXT",
+      "ONUSOURCE",
+      "ONUCHAR",
+      "ONWSOURCE",
+      "ONWCHAR"
+    ]
+  },
+  "PC123A": {
+    "expect": "run",
+    "tests": [
+      "REORDER-RESULT",
+      "REORDER-BEGIN",
+      "ORDER-ONUNIT"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [
@@ -458,6 +604,59 @@
       "FREE-UNALLOCATED"
     ]
   },
+  "PD112A": {
+    "expect": "run",
+    "tests": [
+      "UNION-OVERLAY",
+      "UNION-SIZE",
+      "UNION-LARGEST-MEMBER",
+      "CELL-SYNONYM",
+      "UNION-MAPPING-C",
+      "UNION-MAPPING-F",
+      "UNION-MAPPING-SIZE"
+    ]
+  },
+  "PD113A": {
+    "expect": "run",
+    "tests": [
+      "BYADDR-CHANGES-ARG",
+      "PARAMETER-ATTRIBUTE",
+      "CONNECTED-OVERLAY",
+      "INTERNAL-NEW-OBJECT",
+      "LIMITED-ENTRY"
+    ]
+  },
+  "PD114A": {
+    "expect": "run",
+    "tests": [
+      "XDECLARE-TWICE",
+      "XDEFINE-ALIAS",
+      "XDEFINE-ORDINAL",
+      "XDEFINE-STRUCTURE",
+      "XPROCEDURE-FIRST-KEPT"
+    ]
+  },
+  "PD115A": {
+    "expect": "run",
+    "tests": [
+      "DIMACROSS-MEMBERS",
+      "DIMACROSS-STORAGE",
+      "BOUNDACROSS",
+      "BY-DIMACROSS-SOURCE",
+      "BY-DIMACROSS-TARGET",
+      "BY-DIMACROSS-BOUNDS"
+    ]
+  },
+  "PD116A": {
+    "expect": "run",
+    "tests": [
+      "VALIDVALUE-LIST",
+      "VALIDVALUE-RANGE",
+      "VALIDVALUE-EQUIVALENT",
+      "VALIDVALUE-CONVERT",
+      "VALIDVALUE-ORDINAL"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []
@@ -650,6 +849,22 @@
       "SAMEKEY-CLOSED",
       "KEY-THEN-NEXT",
       "ONKEY-MISSING"
+    ]
+  },
+  "PF108A": {
+    "expect": "run",
+    "tests": [
+      "FILEOPEN-CLOSED",
+      "FILEID-NOT-OPEN",
+      "FILEOPEN-OPEN",
+      "FILEID-OPEN",
+      "FILEDDWORD-RECORD",
+      "FILEDDWORD-CHARSET",
+      "FILEDDINT-RECSIZE",
+      "FILEDDWORD-STREAM",
+      "FILEDDTEST-PRINT",
+      "FILENEW-NOT-OPEN",
+      "FILEOPEN-AFTER-CLOSE"
     ]
   },
   "PM101A": {
@@ -1045,6 +1260,72 @@
       "XMLSCRUB16"
     ]
   },
+  "PM120A": {
+    "expect": "run",
+    "tests": [
+      "PP-ARRAY-ELEMENTS",
+      "PP-ARRAY-2D",
+      "PP-HBOUND",
+      "PP-LBOUND",
+      "PP-DIMENSION",
+      "PP-BOUND-EXPRESSION",
+      "PP-CHAR-ARRAY"
+    ]
+  },
+  "PM121A": {
+    "expect": "run",
+    "tests": [
+      "MACCOL-COLUMN-6",
+      "MACCOL-COLUMN-14",
+      "MACCOL-NESTED"
+    ]
+  },
+  "PM122A": {
+    "expect": "run",
+    "tests": [
+      "SQRTF-EXACT",
+      "SQRTF-ZERO",
+      "SQRTF-AS-SQRT",
+      "SQRTF-SQUARE"
+    ]
+  },
+  "PM123A": {
+    "expect": "run",
+    "tests": [
+      "CHARGRAPHIC-FULL",
+      "CHARGRAPHIC-PAD",
+      "CHARGRAPHIC-TRUNC",
+      "CHARGRAPHIC-ZERO-ONE",
+      "GRAPHIC-MIXED",
+      "CHARACTER-CONVERSION",
+      "MPSTR-SQUEEZE",
+      "MPSTR-TRUNCATE"
+    ]
+  },
+  "PM124A": {
+    "expect": "run",
+    "tests": [
+      "REGEX-FIRST",
+      "REGEX-FROM",
+      "REGEX-NO-MATCH",
+      "REGEX-LOOP",
+      "REGEX-CLASS",
+      "REGEX-LONGEST",
+      "REGEX-SUBEXPRESSIONS",
+      "REGEX-INVALID",
+      "REGEX-RANGE"
+    ]
+  },
+  "PM125A": {
+    "expect": "run",
+    "tests": [
+      "PLIASCII",
+      "PLIEBCDIC",
+      "PLIASCII-SAME-LOCATION",
+      "PLIATTN",
+      "PLIDELETE-PLICANC"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [
@@ -1108,6 +1389,53 @@
       "NEW-TYPED",
       "NEW-INDEPENDENT",
       "HANDLE-FREE"
+    ]
+  },
+  "PS107A": {
+    "expect": "run",
+    "tests": [
+      "DELAY-300-MS",
+      "FLUSH-KEEPS-OPEN",
+      "FLUSH-RECORDS"
+    ]
+  },
+  "PS108A": {
+    "expect": "run",
+    "tests": [
+      "PACKAGE-SHARED-VAR",
+      "PACKAGE-PROC-SEES",
+      "PACKAGE-SHARED-CHAR",
+      "PACKAGENAME"
+    ]
+  },
+  "PS109A": {
+    "expect": "run",
+    "tests": [
+      "ATTACH-WAIT",
+      "ATTACH-POINTER-ARG",
+      "THREADID",
+      "ERROR-ENDS-THREAD",
+      "EXIT-ENDS-THREAD"
+    ]
+  },
+  "PS110A": {
+    "expect": "run",
+    "tests": [
+      "LOCNEWSPACE-LOCVAL",
+      "LOCNEWVALUE",
+      "LOCATES-ASSIGN",
+      "LOCATES-ARITHMETIC",
+      "LOCNEWVALUE-AREA",
+      "LOCSTG"
+    ]
+  },
+  "PS111A": {
+    "expect": "run",
+    "tests": [
+      "TYPE-FUNCTION",
+      "TYPE-PSEUDO-TYPE",
+      "TYPE-PSEUDO-VAR",
+      "TYPE-OF-HANDLE"
     ]
   }
 }

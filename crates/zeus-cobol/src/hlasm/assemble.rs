@@ -342,6 +342,15 @@ pub(super) fn shift_operation(op: &str) -> bool {
     )
 }
 
+thread_local! {
+    /// *PROCESS NODBCS was given: G constants are refused.
+    static NODBCS: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
+pub(super) fn set_nodbcs(on: bool) {
+    NODBCS.set(on);
+}
+
 fn wide_memory(op: &str) -> bool {
     matches!(
         op,
@@ -864,6 +873,9 @@ pub(super) fn storage_item(
         ),
         b'C' => (crate::ebcdic::encode(&literal), 1),
         b'G' => {
+            if NODBCS.get() {
+                return Err("G constant requires the DBCS option".into());
+            }
             let cp = crate::codepage::active();
             if !cp.is_mixed() {
                 return Err("G constant requires a mixed DBCS ZEUS_CCSID".into());

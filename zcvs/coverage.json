@@ -827,6 +827,47 @@
       "NOZWB-POSITIVE-SIGN"
     ]
   },
+  "ZA127A": {
+    "expect": "run",
+    "tests": [
+      "UUID4-LENGTH",
+      "UUID4-HYPHENS",
+      "UUID4-HEX-DIGITS",
+      "UUID4-VERSION",
+      "UUID4-DIFFERENT"
+    ]
+  },
+  "ZA128A": {
+    "expect": "run",
+    "tests": [
+      "CONTENT-OF-ALNUM",
+      "CONTENT-OF-NUMERIC",
+      "CONTENT-OF-NATIONAL",
+      "CONTENT-OF-REFMOD"
+    ]
+  },
+  "ZA129A": {
+    "expect": "run",
+    "tests": [
+      "ULENGTH",
+      "UPOS-UTF8",
+      "UPOS-UTF16",
+      "USUBSTR-UTF8",
+      "USUBSTR-UTF16",
+      "USUPPLEMENTARY",
+      "UVALID",
+      "UWIDTH"
+    ]
+  },
+  "ZA130A": {
+    "expect": "run",
+    "tests": [
+      "NC-VALID-ADD",
+      "NC-VALID-COMPUTE",
+      "NC-VALID-COMPARE",
+      "NC-SEND-RECEIVE"
+    ]
+  },
   "ZD101A": {
     "expect": "run",
     "tests": [
@@ -1525,6 +1566,14 @@
     "expect": "compile-only",
     "tests": []
   },
+  "ZE147N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "ZE147P": {
+    "expect": "compile-only",
+    "tests": []
+  },
   "ZF101A": {
     "expect": "run",
     "tests": [
@@ -1788,6 +1837,15 @@
       "BLOCK-5-FINAL-EOF"
     ]
   },
+  "ZF115A": {
+    "expect": "run",
+    "tests": [
+      "LS-READ-PADDED",
+      "LS-NEWLINE-DATA",
+      "LS-EXTEND-EOF",
+      "LS-SHORT-AREA"
+    ]
+  },
   "ZF201M": {
     "expect": "run",
     "tests": [
@@ -1966,6 +2024,15 @@
       "MIXED-DECODE"
     ]
   },
+  "ZN115A": {
+    "expect": "run",
+    "tests": [
+      "CP1140-EURO",
+      "CP1140-DISPLAY-OF",
+      "CP1140-LETTERS",
+      "CCSID-ARGUMENT-037"
+    ]
+  },
   "ZP101A": {
     "expect": "run",
     "tests": [
@@ -2115,6 +2182,33 @@
       "DEBUG-GO-TO",
       "DEBUG-FALL-THROUGH",
       "DEBUGGING-LINE"
+    ]
+  },
+  "ZP115A": {
+    "expect": "run",
+    "tests": [
+      "STATIC-CANCEL-NOOP",
+      "DYNAMIC-CANCEL-RESET",
+      "DIRECTIVE-RESET"
+    ]
+  },
+  "ZP116A": {
+    "expect": "run",
+    "tests": [
+      "EXTEND-RECORD-A",
+      "EXTEND-C-OF-A",
+      "STANDARD-OF-B"
+    ]
+  },
+  "ZP117A": {
+    "expect": "run",
+    "tests": [
+      "ALLOC-INITIALIZED",
+      "ALLOC-RETURNING",
+      "ALLOC-CHARS-ZEROS",
+      "ALLOC-DISTINCT",
+      "FREE-SETS-NULL",
+      "ALLOC-ZERO-NULL"
     ]
   },
   "ZS101A": {
@@ -2345,5 +2439,70 @@
       "SET-TRUE-RANGE-FIRST",
       "SET-FALSE-RANGE"
     ]
+  },
+  "ZN116A": {
+    "expect": "run",
+    "tests": [
+      "U-FIXED-STORAGE",
+      "U-FIXED-LENGTH-FN",
+      "U-BYTE-STORAGE",
+      "U-BYTE-LENGTH-FN",
+      "U-VALUE-ALNUM",
+      "U-LITERAL-ESCAPE",
+      "U-LITERAL-HEX",
+      "U-TRUNC-CHARS",
+      "U-TRUNC-BOUNDARY",
+      "U-SUPPLEMENTARY",
+      "U-LENGTH-BYTE-ITEM",
+      "U-HIGH-BYTE-TAIL",
+      "U-HIGH-FIXED",
+      "U-LOW-VALUE",
+      "U-ZERO",
+      "U-INITIALIZE",
+      "U-FROM-NATIONAL",
+      "U-FROM-ALNUM",
+      "U-TO-NATIONAL",
+      "U-NATIONAL-OF",
+      "U-DISPLAY-OF",
+      "U-COMPARE-PAD",
+      "U-COMPARE-UTF8",
+      "U-COMPARE-UNEQUAL"
+    ]
+  },
+  "ZD116A": {
+    "expect": "run",
+    "tests": [
+      "DL-INITIAL-ZERO",
+      "DL-MOVE-LENGTH",
+      "DL-MOVE-CONTENT",
+      "DL-SHORTER-MOVE",
+      "DL-LIMIT-TRUNC",
+      "DL-SENDER-LENGTH",
+      "DL-COMPARE-PAD",
+      "DL-FIG-CURRENT",
+      "DL-FIG-EMPTY",
+      "DL-SET-TRUNCATE",
+      "DL-SET-NEGATIVE",
+      "DL-REFMOD-RECEIVER",
+      "DL-UTF8-BOUNDARY",
+      "DL-UTF8-LENGTH",
+      "DL-UTF8-BYTES"
+    ]
+  },
+  "ZE148N": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE148P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE149N": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "ZE149P": {
+    "expect": "compile-only",
+    "tests": []
   }
 }

@@ -1,0 +1,29 @@
+ %DCL (COLMAC, OUTMAC) ENTRY;
+ %COLMAC: PROC RETURNS(FIXED);
+   RETURN(MACCOL);
+ %END COLMAC;
+ %OUTMAC: PROC RETURNS(FIXED);
+   RETURN(COLMAC() + 1000);
+ %END OUTMAC;
+ PM121A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* MACCOL (Enterprise PL/I 6.1 Language Reference, preprocessor
+    built-in functions): the column where the outermost macro
+    invocation starts in the source text. COLMAC is invoked in
+    column 6 and in column 14; OUTMAC, invoked in column 6, invokes
+    COLMAC itself, and the value is not affected by that nested
+    invocation. */
+ DCL (N, M, K) FIXED BIN(31);
+
+ OPEN FILE(REPORT);
+
+ N = COLMAC;
+ M =         COLMAC;
+ K = OUTMAC;
+ CALL ZCHECK('MACCOL-COLUMN-6', N = 6);
+ CALL ZCHECK('MACCOL-COLUMN-14', M = 14);
+ CALL ZCHECK('MACCOL-NESTED', K = 1006);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM121A;

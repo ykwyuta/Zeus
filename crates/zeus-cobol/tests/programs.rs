@@ -313,3 +313,47 @@ NOT-FOUND.
         "READ FILE INTO RIDFLD LENGTH RESP".to_string()
     );
 }
+
+/// WRITE AFTER ADVANCING a mnemonic-name: CSP suppresses spacing (the line
+/// is printed over the last one) and C01 skips to the top of the next page
+/// (LRM, table 5 "Meanings of environment names"). CSP was taken as a page
+/// skip before. C02-C12 depend on the forms control buffer and are refused.
+#[test]
+fn write_advancing_csp_overprints_and_c01_skips_to_a_new_page() {
+    let dir = tempfile::tempdir().unwrap();
+    let prt = dir.path().join("prt.txt");
+    let src = "\
+IDENTIFICATION DIVISION.
+PROGRAM-ID. T.
+ENVIRONMENT DIVISION.
+CONFIGURATION SECTION.
+SPECIAL-NAMES.
+    C01 IS TOP-PAGE
+    CSP IS NO-SPACE.
+INPUT-OUTPUT SECTION.
+FILE-CONTROL.
+    SELECT P ASSIGN TO PRT.
+DATA DIVISION.
+FILE SECTION.
+FD  P.
+01  R PIC X(10).
+PROCEDURE DIVISION.
+    OPEN OUTPUT P.
+    MOVE \"AAA\" TO R. WRITE R AFTER ADVANCING 1 LINE.
+    MOVE \"___\" TO R. WRITE R AFTER ADVANCING NO-SPACE.
+    MOVE \"BBB\" TO R. WRITE R AFTER ADVANCING TOP-PAGE.
+    CLOSE P.
+    STOP RUN.";
+    run_with(src, false, &[("PRT", prt.clone())]);
+    assert_eq!(std::fs::read(&prt).unwrap(), b"AAA\r___\n\x0cBBB\n");
+
+    let path = dir.path().join("C.cbl");
+    let refused = src
+        .replace("C01 IS TOP-PAGE", "C02 IS TOP-PAGE")
+        .lines()
+        .map(|l| format!("       {l}\n"))
+        .collect::<String>();
+    std::fs::write(&path, refused).unwrap();
+    let err = zeus_cobol::compile_file(&path, &FrontOptions::default()).unwrap_err();
+    assert!(err.to_string().contains("skip to channel 2"), "{err}");
+}
