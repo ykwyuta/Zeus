@@ -359,6 +359,14 @@
       "ONWCHAR"
     ]
   },
+  "PC123A": {
+    "expect": "run",
+    "tests": [
+      "REORDER-RESULT",
+      "REORDER-BEGIN",
+      "ORDER-ONUNIT"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

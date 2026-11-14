@@ -1287,6 +1287,34 @@
       }
     }
   },
+  "PC123A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ORDER or REORDER | ORDER and REORDER are optimization options that are specified for a procedure or begin-block."
+    ],
+    "tests": {
+      "REORDER-RESULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDER or REORDER | The REORDER option allows the compiler to generate optimized code to produce the result specified",
+          "PLI-LRM: ORDER or REORDER | by the source program when error-free execution takes place."
+        ]
+      },
+      "REORDER-BEGIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDER or REORDER | The REORDER option allows the compiler to generate optimized code to produce the result specified",
+          "PLI-LRM: ORDER or REORDER | by the source program when error-free execution takes place."
+        ]
+      },
+      "ORDER-ONUNIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ORDER or REORDER | ORDER indicates that only the most recently assigned values of variables modified in the block are"
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

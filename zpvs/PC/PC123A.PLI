@@ -1,0 +1,56 @@
+ PC123A: PROC OPTIONS(MAIN REORDER);
+ %INCLUDE ZPVSRPT;
+ DCL (I, S) FIXED BIN(31);
+ DCL X FIXED BIN(31);
+ DCL Y FIXED DEC(5);
+ DCL SEEN FIXED BIN(31);
+
+ OPEN FILE(REPORT);
+
+ /* REORDER-RESULT: error-free execution gives the source result */
+ S = 0;
+ DO I = 1 TO 10;
+   S = S + I * I;
+ END;
+ CALL ZCHECK('REORDER-RESULT',
+   S=385 & SUMSQ(10)=385);
+
+ /* REORDER-BEGIN: a begin-block with REORDER */
+ BEGIN OPTIONS(REORDER);
+   DCL T FIXED BIN(31) INIT(0);
+   DO I = 1 TO 4;
+     T = T * 10 + I;
+   END;
+   CALL ZCHECK('REORDER-BEGIN',
+     T=1234);
+ END;
+
+ /* ORDER-ONUNIT: the latest value is seen by the ON-unit */
+ SEEN = -1;
+ CALL ORDERED;
+ CALL ZCHECK('ORDER-ONUNIT',
+   SEEN=5);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+
+ SUMSQ: PROC(N) RETURNS(FIXED BIN(31)) OPTIONS(REORDER);
+   DCL (N, K, R) FIXED BIN(31);
+   R = 0;
+   DO K = 1 TO N;
+     R = R + K * K;
+   END;
+   RETURN(R);
+ END SUMSQ;
+
+ ORDERED: PROC OPTIONS(ORDER);
+   ON ZERODIVIDE BEGIN;
+     SEEN = X;
+     GO TO OUT;
+   END;
+   X = 5;
+   Y = 0;
+   Y = X / Y;
+ OUT: ;
+ END ORDERED;
+ END PC123A;
