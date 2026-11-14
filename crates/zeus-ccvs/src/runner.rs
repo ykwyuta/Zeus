@@ -444,6 +444,15 @@ fn run_program(
         let stdout = fs::read(&stdout_file).unwrap_or_default();
         report::evaluate(sp.style, &report, &stdout)
     };
+    // a native executable of a program that passed is removed: one per
+    // program fills the disk of a whole suite (about 32 GB for ZCVS), and
+    // the tool must not make compile errors of its own. A failing one is
+    // kept for inspection.
+    if counts.fail == 0
+        && let Some(exe) = tc.native_executable(dir, program)
+    {
+        let _ = fs::remove_file(exe);
+    }
     Ok(Outcome::Ran { counts })
 }
 
