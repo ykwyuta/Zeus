@@ -899,6 +899,16 @@
       "NAME-NORMAL-RETURN"
     ]
   },
+  "PF110A": {
+    "expect": "run",
+    "tests": [
+      "FILEWRITE",
+      "FILEREAD",
+      "FILESEEK-CURRENT",
+      "FILEREAD-SHORT",
+      "FILESEEK-ORIGINS"
+    ]
+  },
   "PM101A": {
     "expect": "run",
     "tests": [

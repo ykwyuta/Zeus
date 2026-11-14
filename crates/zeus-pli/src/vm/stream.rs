@@ -64,6 +64,9 @@ pub struct FileState {
     pub pending: Option<(u32, usize, Option<Vec<u8>>)>,
     /// Data items transmitted by the last GET or PUT (COUNT).
     pub count: usize,
+    /// A TYPE(U) file: its bytes and the file position.
+    pub bytes: Vec<u8>,
+    pub bpos: usize,
 }
 
 impl FileState {
@@ -86,6 +89,8 @@ impl FileState {
             relative_ds: None,
             pending: None,
             count: 0,
+            bytes: Vec::new(),
+            bpos: 0,
             lineno: 1,
             pageno: 1,
             linesize: 120,
@@ -147,6 +152,7 @@ impl Machine {
                     regional: false,
                     record_format: None,
                     record_keys: None,
+                    unformatted: false,
                 };
                 Rc::make_mut(&mut self.module).files.push(decl.clone());
                 self.files.push(FileState::new(&decl));
@@ -192,7 +198,15 @@ impl Machine {
                 st.format = d.format.or(st.decl.record_format);
                 st.keys = d.keys.or(st.decl.record_keys);
                 st.relative = d.relative;
-                if st.stream && st.output {
+                if st.decl.unformatted {
+                    // TYPE(U): the bytes of the file, position 0
+                    st.bytes = if st.output && !st.update {
+                        Vec::new()
+                    } else {
+                        std::fs::read(&d.path).unwrap_or_default()
+                    };
+                    st.bpos = 0;
+                } else if st.stream && st.output {
                     st.sink = Some(match (d.sysout, st.format) {
                         (false, Some(fmt)) => Sink::Records(d.path.clone(), fmt, Vec::new()),
                         _ => {
@@ -298,7 +312,15 @@ impl Machine {
         if !self.files[f as usize].open {
             return Ok(());
         }
-        if self.files[f as usize].stream {
+        if self.files[f as usize].decl.unformatted {
+            let st = &mut self.files[f as usize];
+            if (st.output || st.update)
+                && let Some(p) = &st.path
+            {
+                let _ = std::fs::write(p, &st.bytes);
+            }
+            st.bytes.clear();
+        } else if self.files[f as usize].stream {
             self.flush_line(f, true)?;
             let st = &mut self.files[f as usize];
             if let Some(Sink::Records(path, fmt, recs)) = st.sink.take() {
@@ -645,6 +667,7 @@ impl Machine {
             regional: false,
             record_format: None,
             record_keys: None,
+            unformatted: false,
         };
         let mut st = FileState::new(&decl);
         st.open = true;
@@ -1003,6 +1026,7 @@ impl Machine {
                 regional: false,
                 record_format: None,
                 record_keys: None,
+                unformatted: false,
             });
             st.open = true;
             st.inrecs = vec![text];

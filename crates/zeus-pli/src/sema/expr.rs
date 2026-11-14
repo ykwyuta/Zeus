@@ -2205,7 +2205,7 @@ impl Compiler {
                 vec![x, c]
             }
             Utf8ToWchar | MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24
-            | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | FileOpen | FileId
+            | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | FileOpen | FileRead | FileWrite | FileSeek | FileTell | FileId
             | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern | Utf8Stg | ThreadId => xs,
             SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();

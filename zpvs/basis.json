@@ -2537,6 +2537,47 @@
       }
     }
   },
+  "PF110A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: FILEREAD | FILEREAD can read only zFS TYPE(U) files."
+    ],
+    "tests": {
+      "FILEWRITE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEWRITE | FILEWRITE attempts to write z storage units (bytes) to file x from location y It returns the number of",
+          "PLI-LRM: FILETELL | FILETELL returns a size_t 1 value that indicates the current position of the file x. The return value is an"
+        ]
+      },
+      "FILEREAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEREAD | FILEREAD attempts to read z storage units (bytes) from file x into location y. It returns the number of"
+        ]
+      },
+      "FILESEEK-CURRENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILESEEK | FILESEEK changes the current file position associated with file x to a new location within the file. The next",
+          "PLI-LRM: FILESEEK | FILESEEK returns a FIXED BIN(31) value. The value is 0 if the change in file position is successful; it is"
+        ]
+      },
+      "FILEREAD-SHORT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEREAD | storage units actually read."
+        ]
+      },
+      "FILESEEK-ORIGINS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILESEEK | Beginning of the file",
+          "PLI-LRM: FILESEEK | End of the file"
+        ]
+      }
+    }
+  },
   "PM101A": {
     "basis": "spec",
     "refs": [

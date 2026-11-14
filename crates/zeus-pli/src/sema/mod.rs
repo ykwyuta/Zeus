@@ -267,6 +267,7 @@ impl Compiler {
             regional: false,
             record_format: None,
             record_keys: None,
+            unformatted: false,
         };
         for a in attrs {
             match a {
@@ -285,6 +286,7 @@ impl Compiler {
                         .filter(|s| !s.is_empty())
                         .collect();
                     f.regional |= words.contains(&"REGIONAL");
+                    f.unformatted |= words.windows(2).any(|w| w == ["TYPE", "U"]);
                     let number = |key: &str| {
                         words
                             .iter()

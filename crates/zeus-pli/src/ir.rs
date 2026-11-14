@@ -184,6 +184,10 @@ pub struct FileDecl {
     pub record_format: Option<zeus_ds::format::RecordFormat>,
     #[serde(default)]
     pub record_keys: Option<(u32, u32)>,
+    /// ENVIRONMENT(TYPE(U)): an unformatted (byte) file, used only by
+    /// FILEREAD, FILEWRITE, FILESEEK and FILETELL.
+    #[serde(default)]
+    pub unformatted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

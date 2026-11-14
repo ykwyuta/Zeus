@@ -1,0 +1,44 @@
+ PF110A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL U FILE ENV(TYPE(U));
+ DCL BUF CHAR(10) INIT('ABCDEFGHIJ');
+ DCL IN CHAR(10);
+ DCL (N, T) FIXED BIN(31);
+
+ OPEN FILE(REPORT);
+
+ /* FILEWRITE: the bytes written, the position after them */
+ OPEN FILE(U) OUTPUT TITLE('UFILE');
+ N = FILEWRITE(U, ADDR(BUF), 10);
+ T = FILETELL(U);
+ CLOSE FILE(U);
+ CALL ZCHECK('FILEWRITE',
+   N=10 & T=10);
+
+ /* FILEREAD: the bytes read from the position */
+ OPEN FILE(U) INPUT TITLE('UFILE');
+ IN = '';
+ N = FILEREAD(U, ADDR(IN), 4);
+ CALL ZCHECK('FILEREAD',
+   N=4 & SUBSTR(IN,1,4)='ABCD' & FILETELL(U)=4);
+
+ /* FILESEEK-CURRENT: relative to the position */
+ CALL ZCHECK('FILESEEK-CURRENT',
+   FILESEEK(U, 2, 0)=0 & FILETELL(U)=6);
+
+ /* FILEREAD-SHORT: fewer bytes are left than asked for */
+ IN = '';
+ N = FILEREAD(U, ADDR(IN), 10);
+ CALL ZCHECK('FILEREAD-SHORT',
+   N=4 & SUBSTR(IN,1,4)='GHIJ' & FILETELL(U)=10);
+
+ /* FILESEEK-ORIGINS: the beginning and the end of the file */
+ CALL ZCHECK('FILESEEK-ORIGINS',
+   FILESEEK(U, 3, -1)=0 & FILETELL(U)=3 &
+   FILESEEK(U, 0, 1)=0 & FILETELL(U)=10 &
+   FILEREAD(U, ADDR(IN), 1)=0);
+ CLOSE FILE(U);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PF110A;

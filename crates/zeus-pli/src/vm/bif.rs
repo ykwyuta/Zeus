@@ -1656,6 +1656,69 @@ impl Machine {
                 _ => 0,
             }),
             // FILEOPEN: whether the file is open
+            // TYPE(U) files (LRM): FILEREAD and FILEWRITE move z bytes
+            // between the file position and storage, FILESEEK moves the
+            // position (origin -1 the start, 0 the position, 1 the end;
+            // 0 when it worked), FILETELL gives it. ERROR with ONCODE 1010
+            // when the file is not open (as for FILEID); a file that is not
+            // TYPE(U) is refused.
+            FileRead | FileWrite | FileSeek | FileTell => {
+                let Value::File(f) = &v[0] else {
+                    return err(format!("{b:?} requires a file"));
+                };
+                let f = *f as usize;
+                if !self.files[f].decl.unformatted {
+                    return err(format!("{b:?} needs a TYPE(U) file"));
+                }
+                if !self.files[f].open {
+                    self.raise(Cond::Error, 1010, act)?;
+                    return Ok(Value::int(0));
+                }
+                match b {
+                    FileTell => Value::int(self.files[f].bpos as i64),
+                    FileSeek => {
+                        let y = int(1).unwrap_or(0).max(0) as usize;
+                        let st = &mut self.files[f];
+                        let base = match int(2).unwrap_or(-1) {
+                            -1 => Some(0),
+                            0 => Some(st.bpos),
+                            1 => Some(st.bytes.len()),
+                            _ => None,
+                        };
+                        match base {
+                            Some(b) => {
+                                st.bpos = b + y;
+                                Value::int(0)
+                            }
+                            None => Value::int(-1),
+                        }
+                    }
+                    _ => {
+                        let Value::Ptr(p) = v[1] else {
+                            return err(format!("{b:?} requires a pointer"));
+                        };
+                        let z = int(2).unwrap_or(0).max(0) as usize;
+                        if b == FileRead {
+                            let st = &self.files[f];
+                            let from = st.bpos.min(st.bytes.len());
+                            let n = z.min(st.bytes.len() - from);
+                            let data = st.bytes[from..from + n].to_vec();
+                            self.write(p, &data)?;
+                            self.files[f].bpos = from + n;
+                            Value::int(n as i64)
+                        } else {
+                            let data = self.read(p, z)?;
+                            let st = &mut self.files[f];
+                            if st.bytes.len() < st.bpos + z {
+                                st.bytes.resize(st.bpos + z, 0);
+                            }
+                            st.bytes[st.bpos..st.bpos + z].copy_from_slice(&data);
+                            st.bpos += z;
+                            Value::int(z as i64)
+                        }
+                    }
+                }
+            }
             FileOpen => match &v[0] {
                 Value::File(f) => Value::bit1(self.files[*f as usize].open),
                 _ => return err("FILEOPEN requires a file"),
