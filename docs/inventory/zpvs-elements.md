@@ -1,6 +1,6 @@
 # ZPVS 網羅台帳 (Enterprise PL/I for z/OS)
 
-Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 634、対象外 30、未網羅 44。
+Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 635、対象外 30、未網羅 43。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -158,7 +158,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | File attributes and options | STRING | 使用あり | PF101A, PM110A, PM124A | - |  |
 | File attributes and options | COPY | 使用あり | PC103A, PD104A, PD110A, PM103A, PM117A, PS103A | - |  |
 | Conditions | AREA | 使用あり | PC112A, PD109A, PD111A, PE114P, PE115P, PM111A ほか 2 | - |  |
-| Conditions | ATTENTION | 使用あり | PM125A | - | 対象外: 端末の注意割込みで、バッチでは起こせない |
+| Conditions | ATTENTION | 使用あり | PM125A | - |  |
 | Conditions | CONDITION | 使用あり | PC105A, PC110A, PC112A, PD111A, PM112A | - |  |
 | Conditions | CONVERSION | 使用あり | PC107A, PC108A, PC110A, PC122A, PM123A | - |  |
 | Conditions | ENDFILE | 使用あり | PF103A, PF105A, PF107A, PS107A | - |  |
@@ -445,7 +445,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | PLACES | 使用あり | PM112A | - |  |
 | Built-in functions | PLIASCII | 使用あり | PM125A | - |  |
 | Built-in functions | PLIATTN | 使用あり | PM125A | - |  |
-| Built-in functions | PLICANC | 未網羅 |  | - |  |
+| Built-in functions | PLICANC | 使用あり | PM125A | - |  |
 | Built-in functions | PLICKPT | 未網羅 |  | - |  |
 | Built-in functions | PLIDELETE | 使用あり | PM125A | - |  |
 | Built-in functions | PLIDUMP | 未網羅 |  | - |  |
