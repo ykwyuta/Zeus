@@ -1,6 +1,6 @@
 # ZPVS 網羅台帳 (Enterprise PL/I for z/OS)
 
-Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 654、対象外 30、未網羅 24。
+Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 654、対象外 31、未網羅 23。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -580,7 +580,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | SUCC | 使用あり | PM112A | - |  |
 | Built-in functions | SUM | 使用あり | PA104A, PS102A, PS105A | - |  |
 | Built-in functions | SYSNULL | 使用あり | PC116A, PD109A, PD111A, PM113A, PM116A, PM119A ほか 2 | - |  |
-| Built-in functions | SYSTEM | 未網羅 |  | - |  |
+| Built-in functions | SYSTEM | 対象外 |  | - | 対象外: LRM の SYSTEM は 20 章のプリプロセッサの組込み関数で、言語の組込み関数ではない (在庫の取り出しの分類違い)。プリプロセッサの行は PM117A が使う |
 | Built-in functions | TALLY | 使用あり | PM103A, PM127A | - |  |
 | Built-in functions | TAN | 使用あり | PM110A | - |  |
 | Built-in functions | TAND | 使用あり | PM109A | - |  |
