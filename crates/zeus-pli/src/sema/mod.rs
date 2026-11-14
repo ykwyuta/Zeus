@@ -98,6 +98,8 @@ pub struct Compiler {
     pub structs: HashMap<String, Vec<DeclItem>>,
     /// Structures declared DIMACROSS (their members carry the dimension).
     pub dimacross: std::collections::HashSet<VarId>,
+    /// VALUELIST (false) and VALUERANGE (true) sets of variables.
+    pub valuesets: HashMap<VarId, (bool, Vec<crate::ast::Expr>)>,
     pub aliases: HashMap<String, Vec<crate::ast::Attr>>,
     /// The structure type of HANDLE variables.
     pub handles: HashMap<VarId, String>,
@@ -156,6 +158,7 @@ impl Compiler {
             defaults: Vec::new(),
             structs: HashMap::new(),
             dimacross: Default::default(),
+            valuesets: HashMap::new(),
             aliases: HashMap::new(),
             handles: HashMap::new(),
             decl_ast: HashMap::new(),

@@ -159,6 +159,7 @@ pub enum Bif {
     BetweenLeftExclusive,
     BetweenRightExclusive,
     InList,
+    ValidValue,
     IfThenElse,
     Iclz,
     Irll,
@@ -548,6 +549,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "BETWEENLEFTEXCLUSIVE" => BetweenLeftExclusive,
         "BETWEENRIGHTEXCLUSIVE" => BetweenRightExclusive,
         "INLIST" => InList,
+        "VALIDVALUE" => ValidValue,
         "IFTHENELSE" => IfThenElse,
         "ICLZ" => Iclz,
         "IRLL" => Irll,
@@ -954,7 +956,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         SearchR | VerifyR | MaxExp | MinExp | Radix | PointerDiff | SecsToDays | OffsetDiff
         | BitLocation | Rank | Exponent | Cs | Cds => fixed_bin31(),
         PointerSubtract | AddrData => Ty::Pointer,
-        Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive | InList => {
+        Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive | InList | ValidValue => {
             Ty::bit(1)
         }
         Iclz | Places | PrecVal | ScaleVal | Compare | Location | OnCondId => fixed_bin31(),

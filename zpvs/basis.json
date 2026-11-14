@@ -1940,6 +1940,49 @@
       }
     }
   },
+  "PD116A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: VALIDVALUE | VALIDVALUE returns a value that indicates whether the value of an expression matches one of the"
+    ],
+    "tests": {
+      "VALIDVALUE-LIST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | x has the VALUELIST attribute and its contents are one of the elements in that list.",
+          "PLI-LRM: VALIDVALUE | If y is omitted, it defaults to x. VALIDVALUE(x) is equivalent to VALIDVALUE(x,x).",
+          "PLI-LRM: VALUELIST attribute | The VALUELIST attribute specifies a list of values to limit the set of values that a variable, an argument, or"
+        ]
+      },
+      "VALIDVALUE-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | x has the VALUERANGE attribute and its contents are within that range.",
+          "PLI-LRM: VALUERANGE attribute | The VALUERANGE attribute specifies an inclusive range of values to limit the set of values that a variable,"
+        ]
+      },
+      "VALIDVALUE-EQUIVALENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALUERANGE attribute | specified in these attributes. For example, given the statements above, these expressions are equivalent.",
+          "PLI-LRM: VALUERANGE attribute | BETWEEN( imonth, 1, 12 )"
+        ]
+      },
+      "VALIDVALUE-CONVERT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | must also have a computational type and will be converted, if necessary, to the same type as x;"
+        ]
+      },
+      "VALIDVALUE-ORDINAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALIDVALUE | If x has an ordinal type, then y must have the same ordinal type.",
+          "PLI-LRM: VALUELIST attribute | The VALUELIST attribute is valid only with computational and ordinal types."
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [

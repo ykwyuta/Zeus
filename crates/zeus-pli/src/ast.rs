@@ -185,6 +185,10 @@ pub enum Attr {
     /// type's; also implies ALIGNED.
     AlignedTo(u32),
     Dimension(Vec<Bound>),
+    /// VALUELIST(e, ...): the values the item may have.
+    ValueList(Vec<Expr>),
+    /// VALUERANGE(e1, e2): the inclusive range of the item's values.
+    ValueRange(Expr, Expr),
     /// DIMACROSS: dimensions moved to the immediate members; the bounds
     /// are None when given after the name.
     DimAcross(Option<Vec<Bound>>),

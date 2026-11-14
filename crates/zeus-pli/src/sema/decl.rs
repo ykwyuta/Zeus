@@ -1044,6 +1044,17 @@ impl Compiler {
         if has(attrs, |a| matches!(a, Attr::DimAcross(_))) {
             self.dimacross.insert(id);
         }
+        for a in attrs {
+            match a {
+                Attr::ValueList(v) => {
+                    self.valuesets.insert(id, (false, v.clone()));
+                }
+                Attr::ValueRange(x, y) => {
+                    self.valuesets.insert(id, (true, vec![x.clone(), y.clone()]));
+                }
+                _ => {}
+            }
+        }
         self.define(block, &it.name, Sym::Var(id));
         // own dimensions
         let mut own: Vec<(Bound, Bound)> = Vec::new();

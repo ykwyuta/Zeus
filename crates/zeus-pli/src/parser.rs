@@ -784,6 +784,24 @@ impl Parser {
                 "BUILTIN" => Attr::Builtin,
                 "VARIABLE" => Attr::Variable,
                 "CONDITION" | "COND" => Attr::Condition,
+                "VALUELIST" => {
+                    self.expect_op("(")?;
+                    let mut v = vec![self.expr()?];
+                    while self.is_op(",") {
+                        self.bump();
+                        v.push(self.expr()?);
+                    }
+                    self.expect_op(")")?;
+                    Attr::ValueList(v)
+                }
+                "VALUERANGE" => {
+                    self.expect_op("(")?;
+                    let a = self.expr()?;
+                    self.expect_op(",")?;
+                    let b = self.expr()?;
+                    self.expect_op(")")?;
+                    Attr::ValueRange(a, b)
+                }
                 "VALUE" => {
                     self.expect_op("(")?;
                     let e = self.expr()?;

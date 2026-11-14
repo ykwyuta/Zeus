@@ -1602,6 +1602,35 @@ impl Compiler {
                     ty: Ty::Pic(Box::new(p)),
                 });
             }
+            // VALIDVALUE(x, y): y, converted to the type of x, against the
+            // value set of x (LRM): INLIST for VALUELIST, BETWEEN for
+            // VALUERANGE
+            ValidValue => {
+                let (Some(ast::Expr::Ref(r)), 1..=2) = (args.first(), args.len()) else {
+                    return Err(self.err(pos, "VALIDVALUE needs a reference and an expression"));
+                };
+                let rr = self.reference(r, true)?;
+                let Some((range, set)) = self.valuesets.get(&rr.var).cloned() else {
+                    return Err(self.err(
+                        pos,
+                        "VALIDVALUE needs a reference with VALUELIST or VALUERANGE",
+                    ));
+                };
+                let Some(xty) = self.m.vars[rr.var as usize].ty.clone() else {
+                    return Err(self.err(pos, "VALIDVALUE needs a scalar reference"));
+                };
+                let y = match args.get(1) {
+                    Some(y) => self.expr(y)?,
+                    None => self.load(rr, pos)?,
+                };
+                let mut v = vec![self.conv(y, &xty)];
+                for e in &set {
+                    let x = self.expr(e)?;
+                    v.push(self.conv(x, &xty));
+                }
+                let bb = if range { Between } else { InList };
+                return Ok(mk(Ek::Builtin(bb, v), Ty::bit(1)));
+            }
             // the bounds of the dimension a DIMACROSS structure gave its
             // members: LBOUND / HBOUND of the first member in that dimension
             HboundAcross | LboundAcross => {

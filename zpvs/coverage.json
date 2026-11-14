@@ -639,6 +639,16 @@
       "BY-DIMACROSS-BOUNDS"
     ]
   },
+  "PD116A": {
+    "expect": "run",
+    "tests": [
+      "VALIDVALUE-LIST",
+      "VALIDVALUE-RANGE",
+      "VALIDVALUE-EQUIVALENT",
+      "VALIDVALUE-CONVERT",
+      "VALIDVALUE-ORDINAL"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []
