@@ -163,6 +163,12 @@ pub fn prepare(text: &str, opts: &LexOptions) -> (String, (usize, usize)) {
             }
             header = false;
         }
+        // %LINE in columns 1-5 is a directive, outside the margins
+        // (LRM, %LINE directive); lib.rs checks it against LINEDIR
+        if line.get(..5).is_some_and(|h| h.eq_ignore_ascii_case("%LINE")) {
+            out.push('\n');
+            continue;
+        }
         let chars: Vec<char> = line.chars().collect();
         let (m1, m2) = margins;
         let width = m2 + 1 - m1;

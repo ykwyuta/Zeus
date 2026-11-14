@@ -1,0 +1,6 @@
+ /* %LINE without LINEDIR: one rule and its positive control. */
+ PE116N: PROC OPTIONS(MAIN);
+ DCL X FIXED BIN(31);
+%LINE(100, ORIGIN.PLI);
+ X = 1;
+ END PE116N;

@@ -118,6 +118,20 @@ diagnostic_contains = "not declared"
 [programs.PE115P]
 expect = "compile-only"
 
+[programs.PE116N]
+expect = "compile-error"
+diagnostic_contains = "LINEDIR"
+
+[programs.PE116P]
+expect = "compile-only"
+
+[programs.PE117N]
+expect = "compile-error"
+diagnostic_contains = "LINEDIR"
+
+[programs.PE117P]
+expect = "compile-only"
+
 [programs.PF102A]
 jcl = "PF102A.JCL"
 

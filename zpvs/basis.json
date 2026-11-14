@@ -2194,6 +2194,31 @@
       "PLI-LRM: Offset data and attribute"
     ]
   },
+  "PE116N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %LINE directive | The %LINE directive is invalid unless the LINEDIR compiler option is in effect."
+    ]
+  },
+  "PE116P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %LINE directive | The %LINE directive specifies that the next line should be treated in messages and in information",
+      "PLI-PG: LINEDIR | The LINEDIR option specifies that the compiler should accept %LINE directives."
+    ]
+  },
+  "PE117N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: LINEDIR | If the LINEDIR option is specified, the compiler will reject all %INCLUDE statements. If the LINEDIR"
+    ]
+  },
+  "PE117P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: LINEDIR | If the LINEDIR option is specified, the compiler will reject all %INCLUDE statements. If the LINEDIR"
+    ]
+  },
   "PF101A": {
     "basis": "spec",
     "refs": [

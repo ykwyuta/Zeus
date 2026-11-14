@@ -64,6 +64,15 @@ fn messages(diags: &[lexer::Diag], files: &[String]) -> Vec<String> {
 /// Compiles a source file. Returns the return code (0, 4 with warnings,
 /// 12 or 16 on errors) and the result.
 pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
+    if let Some(d) = linedir_check(path) {
+        return (
+            12,
+            Compiled {
+                module: None,
+                messages: messages(&[d], &[path.display().to_string()]),
+            },
+        );
+    }
     let lo = lexer::LexOptions {
         margins: opts.margins.unwrap_or((2, 72)),
         include_dirs: {
@@ -249,4 +258,44 @@ pub fn run_in(
     let mut m = vm::Machine::with_storage(module, env, sys);
     let end = m.run();
     (end, m.detach())
+}
+
+/// %LINE and the LINEDIR option (LRM, %LINE directive: "invalid unless the
+/// LINEDIR compiler option is in effect"; Programming Guide, LINEDIR: "the
+/// compiler will reject all %INCLUDE statements"). The line mapping itself
+/// is not kept: Zeus's messages give the lines of the file.
+fn linedir_check(path: &Path) -> Option<lexer::Diag> {
+    let text = std::fs::read_to_string(path).ok()?;
+    let process: Vec<String> = text
+        .lines()
+        .map(|l| l.trim_start().to_ascii_uppercase())
+        .take_while(|l| l.starts_with("*PROCESS") || l.starts_with("%PROCESS"))
+        .collect();
+    let linedir = process.iter().any(|l| {
+        l.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == "LINEDIR")
+    });
+    for (n, line) in text.lines().enumerate() {
+        let pos = lexer::Pos {
+            file: 0,
+            line: n as u32 + 1,
+            col: 0,
+        };
+        let u = line.to_ascii_uppercase();
+        if u.starts_with("%LINE") && !linedir {
+            return Some(lexer::Diag::error(
+                pos,
+                "%LINE is invalid unless the LINEDIR option is in effect",
+            ));
+        }
+        if linedir && !u.starts_with("*PROCESS") && !u.starts_with("%PROCESS") {
+            let words: Vec<&str> = u.split(|c: char| c == ';' || c.is_whitespace()).collect();
+            if words.iter().any(|w| matches!(*w, "%INCLUDE" | "%XINCLUDE")) {
+                return Some(lexer::Diag::error(
+                    pos,
+                    "%INCLUDE is rejected under the LINEDIR option",
+                ));
+            }
+        }
+    }
+    None
 }
