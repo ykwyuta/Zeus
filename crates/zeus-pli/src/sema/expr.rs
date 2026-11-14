@@ -1234,8 +1234,116 @@ impl Compiler {
                 }
                 Ok(Stmt::CallBuiltin(b, v))
             }
+            // LOCNEWSPACE(x [,a]), LOCNEWVALUE(v, x [,a]) (LRM)
+            LocNewSpace | LocNewValue => {
+                let (v, rest) = if b == LocNewValue {
+                    let (v, rest) = args
+                        .split_first()
+                        .ok_or_else(|| self.err(pos, "LOCNEWVALUE needs a value"))?;
+                    (Some(v), rest)
+                } else {
+                    (None, args)
+                };
+                let (Some(ast::Expr::Ref(x)), 1..=2) = (rest.first(), rest.len()) else {
+                    return Err(self.err(pos, format!("{b:?} needs an OFFSET with LOCATES")));
+                };
+                let xr = self.reference(x, true)?;
+                let (area, ty) = self.locates_area(&xr, rest.get(1), pos)?;
+                let value = match v {
+                    Some(v) => {
+                        let x = self.expr(v)?;
+                        Some(self.conv(x, &ty))
+                    }
+                    None => None,
+                };
+                Ok(Stmt::LocNew {
+                    target: Target::Ref(xr),
+                    area,
+                    ty,
+                    value,
+                })
+            }
             _ => Err(self.err(pos, format!("built-in subroutine {b:?} is not supported"))),
         }
+    }
+
+    /// The area and the located type of an OFFSET with LOCATES: the area
+    /// given, else the one in its OFFSET attribute.
+    pub fn locates_area(
+        &mut self,
+        xr: &Ref,
+        a: Option<&ast::Expr>,
+        pos: Pos,
+    ) -> Result<(Ref, Ty)> {
+        let Some(&h) = self.locates.get(&xr.var) else {
+            return Err(self.err(pos, "an OFFSET with the LOCATES attribute is needed"));
+        };
+        let ty = self.m.vars[h as usize].ty.clone().unwrap();
+        let area = match a {
+            Some(ast::Expr::Ref(a)) => {
+                let ar = self.reference(a, true)?;
+                if !matches!(self.m.vars[ar.var as usize].ty, Some(Ty::Area(_))) {
+                    return Err(self.err(pos, "not an AREA reference"));
+                }
+                ar
+            }
+            Some(_) => return Err(self.err(pos, "not an AREA reference")),
+            None => match self.m.vars[xr.var as usize].ty {
+                Some(Ty::Offset(Some(a))) => Ref {
+                    var: a,
+                    subs: Vec::new(),
+                    locator: None,
+                },
+                _ => return Err(self.err(pos, "the OFFSET has no AREA; give the area")),
+            },
+        };
+        Ok((area, ty))
+    }
+
+    /// LOCVAL(x [,a]): the based variable of the located type at the
+    /// offset x in the area.
+    fn locval_ref(&mut self, args: &[ast::Expr], pos: Pos) -> Result<(Ref, Ty)> {
+        let (Some(ast::Expr::Ref(x)), 1..=2) = (args.first(), args.len()) else {
+            return Err(self.err(pos, "LOCVAL needs an OFFSET with LOCATES"));
+        };
+        let xr = self.reference(x, true)?;
+        let (area, ty) = self.locates_area(&xr, args.get(1), pos)?;
+        let h = self.locates[&xr.var];
+        let off = self.load(xr, pos)?;
+        let ptr = mk(Ek::RefBuiltin(Bif::PointerOf, area, vec![off]), Ty::Pointer);
+        Ok((
+            Ref {
+                var: h,
+                subs: Vec::new(),
+                locator: Some(Box::new(ptr)),
+            },
+            ty,
+        ))
+    }
+
+    /// LOCSTG: the sizes of the located types of the OFFSETs with LOCATES
+    /// in v, times their elements (the dimensions not given a subscript
+    /// in the reference). Zeus needs constant bounds here.
+    fn locstg(&mut self, v: VarId, fixed: &[bool], pos: Pos) -> Result<u32> {
+        let var = &self.m.vars[v as usize];
+        if let Some(&h) = self.locates.get(&v) {
+            let mut n = self.m.vars[h as usize].size;
+            for (k, d) in var.dims.iter().enumerate() {
+                if fixed.get(k).copied().unwrap_or(false) {
+                    continue;
+                }
+                let (crate::ir::Bound::Const(l), crate::ir::Bound::Const(u)) = (d.lb, d.ub) else {
+                    return Err(self.err(pos, "LOCSTG with non-constant bounds is not supported yet"));
+                };
+                n *= (u - l + 1).max(0) as u32;
+            }
+            return Ok(n);
+        }
+        let mut n = 0;
+        for m in var.members.clone() {
+            n += self.locstg(m, fixed, pos)?;
+        }
+        Ok(n)
     }
 
     /// QUICKSORT(x [,n [,m]]) and BINSEARCH(x, y [,n [,m]]) on a
@@ -1601,6 +1709,21 @@ impl Compiler {
                     k: x.k,
                     ty: Ty::Pic(Box::new(p)),
                 });
+            }
+            LocVal => {
+                let (r, _) = self.locval_ref(args, pos)?;
+                return self.load(r, pos);
+            }
+            // LOCSTG(x): the bytes for every located value of x at the size
+            // of its LOCATES type (LRM, LOCSTG)
+            LocStg => {
+                let [ast::Expr::Ref(x)] = args else {
+                    return Err(self.err(pos, "LOCSTG needs a reference"));
+                };
+                let xr = self.reference(x, true)?;
+                let fixed: Vec<bool> = xr.subs.iter().map(Option::is_some).collect();
+                let n = self.locstg(xr.var, &fixed, pos)?;
+                return Ok(mk(Ek::Fixed(i128::from(n), 0), Ty::fixed_bin(31, 0)));
             }
             // VALIDVALUE(x, y): y, converted to the type of x, against the
             // value set of x (LRM): INLIST for VALUELIST, BETWEEN for
@@ -2072,6 +2195,10 @@ impl Compiler {
             };
             if let Some(b) = pseudo {
                 let args = &r.parts[0].1[0];
+                if b == Bif::LocVal {
+                    let (r, ty) = self.locval_ref(args_of(r), r.pos)?;
+                    return Ok((Target::Ref(r), Some(ty)));
+                }
                 if matches!(b, Bif::OnChar | Bif::OnSource) {
                     if !args.is_empty() {
                         return Err(self.err(r.pos, "condition pseudovariable takes no arguments"));
@@ -2202,4 +2329,9 @@ fn generic_matches(words: &[String], ty: &Ty) -> bool {
         "AREA" => matches!(ty, Ty::Area(_)),
         _ => false,
     })
+}
+
+/// The first argument list of a one-part reference.
+fn args_of(r: &ast::Ref) -> &[ast::Expr] {
+    &r.parts[0].1[0]
 }

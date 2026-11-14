@@ -604,6 +604,25 @@ impl Compiler {
                     }
                     None => value.clone(),
                 };
+                // a computational value assigned to an OFFSET with LOCATES
+                // and an area is LOCNEWVALUE (LRM, "LOCATES attribute")
+                if let [Target::Ref(r)] = &ts[..]
+                    && self.locates.contains_key(&r.var)
+                    && matches!(self.m.vars[r.var as usize].ty, Some(Ty::Offset(Some(_))))
+                    && op.is_none()
+                {
+                    let x = self.expr(&value)?;
+                    if x.ty.is_arith() || x.ty.is_string() {
+                        let r = r.clone();
+                        let (area, ty) = self.locates_area(&r, None, pos)?;
+                        return Ok(Stmt::LocNew {
+                            target: Target::Ref(r),
+                            area,
+                            ty: ty.clone(),
+                            value: Some(self.conv(x, &ty)),
+                        });
+                    }
+                }
                 if aggregate {
                     return self.aggregate_assign(ts, &value, *by_name, by_dimacross.as_ref(), pos);
                 }

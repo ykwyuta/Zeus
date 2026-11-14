@@ -100,6 +100,9 @@ pub struct Compiler {
     pub dimacross: std::collections::HashSet<VarId>,
     /// VALUELIST (false) and VALUERANGE (true) sets of variables.
     pub valuesets: HashMap<VarId, (bool, Vec<crate::ast::Expr>)>,
+    /// OFFSET variables with LOCATES: the based variable of the located
+    /// type that LOCVAL refers to.
+    pub locates: HashMap<VarId, VarId>,
     pub aliases: HashMap<String, Vec<crate::ast::Attr>>,
     /// The structure type of HANDLE variables.
     pub handles: HashMap<VarId, String>,
@@ -159,6 +162,7 @@ impl Compiler {
             structs: HashMap::new(),
             dimacross: Default::default(),
             valuesets: HashMap::new(),
+            locates: HashMap::new(),
             aliases: HashMap::new(),
             handles: HashMap::new(),
             decl_ast: HashMap::new(),

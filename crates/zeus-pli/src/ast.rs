@@ -185,6 +185,8 @@ pub enum Attr {
     /// type's; also implies ALIGNED.
     AlignedTo(u32),
     Dimension(Vec<Bound>),
+    /// LOCATES(description): the type an OFFSET locates in its area.
+    Locates(Vec<Attr>),
     /// VALUELIST(e, ...): the values the item may have.
     ValueList(Vec<Expr>),
     /// VALUERANGE(e1, e2): the inclusive range of the item's values.

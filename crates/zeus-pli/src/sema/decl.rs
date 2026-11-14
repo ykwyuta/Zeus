@@ -1052,6 +1052,10 @@ impl Compiler {
                 Attr::ValueRange(x, y) => {
                     self.valuesets.insert(id, (true, vec![x.clone(), y.clone()]));
                 }
+                Attr::Locates(d) => {
+                    let (d, name, pos) = (d.clone(), it.name.clone(), it.pos);
+                    self.declare_locates(id, &d, &name, block, pos, attrs)?;
+                }
                 _ => {}
             }
         }
@@ -1524,4 +1528,56 @@ fn dimacross(g: &mut [DeclItem]) -> std::result::Result<(), (Pos, String)> {
         }
     }
     Ok(())
+}
+
+impl Compiler {
+    /// LOCATES (LRM, "LOCATES attribute"): the OFFSET gets a based
+    /// variable of the located type, which LOCVAL refers to through the
+    /// offset. Zeus takes the arithmetic types and CHARACTER and BIT
+    /// strings of constant length; the other located types (UCHAR,
+    /// WIDECHAR, ORDINAL, STRUCT) are refused rather than guessed.
+    fn declare_locates(
+        &mut self,
+        id: VarId,
+        d: &[Attr],
+        name: &str,
+        block: BlockId,
+        pos: Pos,
+        attrs: &[Attr],
+    ) -> Result<()> {
+        if !has(attrs, |a| matches!(a, Attr::Offset(_))) {
+            return Err(self.err(pos, format!("LOCATES is valid only with OFFSET: {name}")));
+        }
+        let ty = self.scalar_type(d, name, pos)?;
+        let ok = match &ty {
+            Ty::Fixed { .. } | Ty::Float { .. } => true,
+            Ty::Char { len, .. } | Ty::Bit { len, .. } => matches!(len, Ext::Const(_)),
+            _ => false,
+        };
+        if !ok {
+            return Err(self.err(
+                pos,
+                format!("LOCATES of this type is not supported yet: {name}"),
+            ));
+        }
+        let size = ty.storage(false).0;
+        let h = self.m.vars.len() as VarId;
+        self.m.vars.push(Var {
+            name: format!("%LOCVAL.{name}"),
+            block,
+            storage: Storage::Based(None),
+            root: h,
+            parent: None,
+            members: Vec::new(),
+            bit_offset: 0,
+            ty: Some(ty),
+            dims: Vec::new(),
+            size,
+            level: 1,
+            packed_bits: false,
+            byvalue: false,
+        });
+        self.locates.insert(id, h);
+        Ok(())
+    }
 }

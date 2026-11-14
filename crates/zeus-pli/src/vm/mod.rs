@@ -1735,6 +1735,41 @@ impl Machine {
                 Ok(())
             }
             Stmt::CallBuiltin(b, args) => self.call_builtin(*b, args, act),
+            Stmt::LocNew {
+                target,
+                area,
+                ty,
+                value,
+            } => {
+                let v = match value {
+                    Some(x) => Some(self.eval(x, act)?),
+                    None => None,
+                };
+                // LOCNEWVALUE allocates what the value needs: a varying
+                // string its current length (LRM: 17 bytes for a 15
+                // character CHAR VARYING value); LOCNEWSPACE the maximum
+                let size = match (&v, ty.varying()) {
+                    (Some(Value::Char(b)), crate::types::Var::Varying) => b.len() as u32 + 2,
+                    (Some(Value::Bit(b)), crate::types::Var::Varying) => {
+                        b.len().div_ceil(8) as u32 + 2
+                    }
+                    _ => ty.storage(false).0,
+                };
+                let Some(p) = self.area_allocate(area, size, false, act)? else {
+                    return Ok(());
+                };
+                let off = p.wrapping_sub(self.area_base(area.var, act)?);
+                let l = self.target_loc(target, act)?;
+                self.assign_target(target, l, Value::Ptr(off), &Ty::Offset(Some(area.var)), act)?;
+                if let Some(v) = v {
+                    let loc = Loc {
+                        bit: u64::from(p) * 8,
+                        ty: ty.clone(),
+                    };
+                    self.assign_loc(&loc, v, ty, act)?;
+                }
+                Ok(())
+            }
             Stmt::Return(v) => {
                 let v = match v {
                     Some(e) => Some(self.eval(e, act)?),

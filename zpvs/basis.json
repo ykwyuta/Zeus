@@ -4708,5 +4708,53 @@
         ]
       }
     }
+  },
+  "PS110A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LOCATES attribute | The LOCATES attributes turn the associated offset into a typed offset. Then you can use the LOCVAL"
+    ],
+    "tests": {
+      "LOCNEWSPACE-LOCVAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCNEWSPACE | The LOCNEWSPACE(x, a) built-in subroutine allocates space in a for the variable type described by the",
+          "PLI-LRM: LOCVAL | LOCVAL(x, a) returns the value at the offset that is specified by x in the a area. The type of the value is",
+          "PLI-LRM: LOCVAL | If you do not specify a, the OFFSET attribute for x must have specified an"
+        ]
+      },
+      "LOCNEWVALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCNEWVALUE | The LOCNEWVALUE(v, x, a) built-in subroutine allocates space in a for the variable type described by the"
+        ]
+      },
+      "LOCATES-ASSIGN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCATES attribute | source is computational, the assignment is converted into a call to the LOCNEWVALUE built-in subroutine."
+        ]
+      },
+      "LOCATES-ARITHMETIC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCATES attribute | the located type to be any computational type, an ORDINAL type, or a STRUCT type.",
+          "PLI-LRM: LOCATES attribute | built-in function and pseudovariable to dereference the typed offset. The process of dereferencing is the"
+        ]
+      },
+      "LOCNEWVALUE-AREA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCNEWVALUE | call locnewvalue(v, x, a);"
+        ]
+      },
+      "LOCSTG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LOCSTG | LOCSTG(x) returns a FIXED BIN value that specifies the number of bytes that are needed for the storage",
+          "PLI-LRM: LOCSTG | With the following declaration, the reference locstag(data) returns the value 96*actual_count:"
+        ]
+      }
+    }
   }
 }

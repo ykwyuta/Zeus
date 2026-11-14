@@ -551,6 +551,15 @@ pub enum Stmt {
     Call(Callee, Vec<Arg>),
     /// CALL of a built-in subroutine (PLIRETC, PLIDUMP ...).
     CallBuiltin(crate::builtin::Bif, Vec<Expr>),
+    /// LOCNEWSPACE / LOCNEWVALUE: allocate the located type `ty` in the
+    /// area, set the offset target, and store the value (already of type
+    /// `ty`; a varying string gets only the space its value needs).
+    LocNew {
+        target: Target,
+        area: Ref,
+        ty: Ty,
+        value: Option<Expr>,
+    },
     Return(Option<Expr>),
     GoTo(Expr),
     Leave(LoopId),

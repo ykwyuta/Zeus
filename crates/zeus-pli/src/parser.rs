@@ -784,6 +784,12 @@ impl Parser {
                 "BUILTIN" => Attr::Builtin,
                 "VARIABLE" => Attr::Variable,
                 "CONDITION" | "COND" => Attr::Condition,
+                "LOCATES" => {
+                    self.expect_op("(")?;
+                    let a = self.attributes()?;
+                    self.expect_op(")")?;
+                    Attr::Locates(a)
+                }
                 "VALUELIST" => {
                     self.expect_op("(")?;
                     let mut v = vec![self.expr()?];

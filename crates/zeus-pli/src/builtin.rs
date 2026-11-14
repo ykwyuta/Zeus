@@ -160,6 +160,10 @@ pub enum Bif {
     BetweenRightExclusive,
     InList,
     ValidValue,
+    LocVal,
+    LocStg,
+    LocNewSpace,
+    LocNewValue,
     IfThenElse,
     Iclz,
     Irll,
@@ -550,6 +554,10 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "BETWEENRIGHTEXCLUSIVE" => BetweenRightExclusive,
         "INLIST" => InList,
         "VALIDVALUE" => ValidValue,
+        "LOCVAL" => LocVal,
+        "LOCSTG" => LocStg,
+        "LOCNEWSPACE" => LocNewSpace,
+        "LOCNEWVALUE" => LocNewValue,
         "IFTHENELSE" => IfThenElse,
         "ICLZ" => Iclz,
         "IRLL" => Irll,
@@ -958,6 +966,10 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         PointerSubtract | AddrData => Ty::Pointer,
         Between | BetweenExclusive | BetweenLeftExclusive | BetweenRightExclusive | InList | ValidValue => {
             Ty::bit(1)
+        }
+        LocStg => fixed_bin31(),
+        LocVal | LocNewSpace | LocNewValue => {
+            return Err(format!("{b:?} is handled by the compiler"));
         }
         Iclz | Places | PrecVal | ScaleVal | Compare | Location | OnCondId => fixed_bin31(),
         Irll | Irrl | Lower2 | Popcnt => match operand_arith(&arg(0)?) {
