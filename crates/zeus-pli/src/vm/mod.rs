@@ -167,6 +167,8 @@ struct Act {
 pub struct Loc {
     pub bit: u64,
     pub ty: Ty,
+    /// The storage representation (REPR_LITTLE, REPR_IEEE).
+    pub repr: u8,
 }
 
 pub struct Machine {
@@ -748,6 +750,7 @@ impl Machine {
         let loc = Loc {
             bit: rb + obj.bit_offset,
             ty: obj.ty.clone().unwrap_or(Ty::fixed_bin(31, 0)),
+            repr: obj.repr,
         };
         Ok(self.load(&loc)?.as_i64())
     }
@@ -1149,7 +1152,8 @@ impl Machine {
         let ty = self
             .resolve_ty(var.ty.as_ref(), r.var, act, rb)?
             .ok_or_else(|| Intr::Fatal(format!("{} is a structure", var.name)))?;
-        Ok(Loc { bit, ty })
+        let repr = self.module.vars[r.var as usize].repr;
+        Ok(Loc { bit, ty, repr })
     }
 
     // ---- loading and storing scalars -------------------------------------
@@ -1173,13 +1177,24 @@ impl Machine {
                 ..
             } => {
                 let (n, _) = loc.ty.storage(true);
-                let b = self.read(addr, n as usize)?;
+                let mut b = self.read(addr, n as usize)?;
+                if loc.repr & crate::ir::REPR_LITTLE != 0 {
+                    b.reverse();
+                }
                 let v = zeus_decimal::binary::read(&b, !unsigned);
                 Value::fixed(v, *q, false)
             }
             Ty::Float { .. } => {
                 let n = crate::types::float_bytes(&loc.ty);
-                Value::Float(value::hfp_decode(&self.read(addr, n as usize)?))
+                let b = self.read(addr, n as usize)?;
+                if loc.repr & crate::ir::REPR_IEEE != 0 {
+                    Value::Float(match b.len() {
+                        4 => f64::from(f32::from_be_bytes([b[0], b[1], b[2], b[3]])),
+                        _ => f64::from_be_bytes(b[..8].try_into().unwrap_or([0; 8])),
+                    })
+                } else {
+                    Value::Float(value::hfp_decode(&b))
+                }
             }
             Ty::Char { len, var } => {
                 let n = match len {
@@ -1190,7 +1205,7 @@ impl Machine {
                     Varying::Fixed => Value::Char(self.read(addr, n)?),
                     Varying::Varying => {
                         let l = self.read(addr, 2)?;
-                        let cur = (usize::from(u16::from_be_bytes([l[0], l[1]]))).min(n);
+                        let cur = (usize::from(prefix16(&l, loc.repr))).min(n);
                         Value::Char(self.read(addr + 2, cur)?)
                     }
                     Varying::VaryingZ => {
@@ -1209,7 +1224,7 @@ impl Machine {
                     Varying::Fixed => Value::Bit(self.read_bits(loc.bit, n)?),
                     _ => {
                         let l = self.read(addr, 2)?;
-                        let cur = u64::from(u16::from_be_bytes([l[0], l[1]])).min(n);
+                        let cur = u64::from(prefix16(&l, loc.repr)).min(n);
                         Value::Bit(self.read_bits(loc.bit + 16, cur)?)
                     }
                 }
@@ -1220,10 +1235,12 @@ impl Machine {
                 let re = self.load(&Loc {
                     bit: loc.bit,
                     ty: (**t).clone(),
+                    repr: loc.repr,
                 })?;
                 let im = self.load(&Loc {
                     bit: loc.bit + u64::from(n) * 8,
                     ty: (**t).clone(),
+                    repr: loc.repr,
                 })?;
                 Value::cplx(re, im)
             }
@@ -1312,12 +1329,22 @@ impl Machine {
                 let (n, _) = loc.ty.storage(true);
                 let mut b = vec![0u8; n as usize];
                 zeus_decimal::binary::write(&mut b, *m);
+                if loc.repr & crate::ir::REPR_LITTLE != 0 {
+                    b.reverse();
+                }
                 self.write(addr, &b)?;
             }
             (Ty::Float { .. }, Value::Float(f)) => {
                 let n = crate::types::float_bytes(&loc.ty);
                 let mut b = vec![0u8; n as usize];
-                value::hfp_encode(*f, &mut b);
+                if loc.repr & crate::ir::REPR_IEEE != 0 {
+                    match n {
+                        4 => b.copy_from_slice(&(*f as f32).to_be_bytes()),
+                        _ => b[..8].copy_from_slice(&f.to_be_bytes()),
+                    }
+                } else {
+                    value::hfp_encode(*f, &mut b);
+                }
                 self.write(addr, &b)?;
             }
             (Ty::Char { len, var }, Value::Char(s)) => {
@@ -1333,7 +1360,7 @@ impl Machine {
                     }
                     Varying::Varying => {
                         let cur = s.len().min(n);
-                        self.write(addr, &(cur as u16).to_be_bytes())?;
+                        self.write(addr, &prefix16_bytes(cur as u16, loc.repr))?;
                         self.write(addr + 2, &s[..cur])?;
                     }
                     Varying::VaryingZ => {
@@ -1357,7 +1384,7 @@ impl Machine {
                     }
                     _ => {
                         let cur = bits.len().min(n);
-                        self.write(addr, &(cur as u16).to_be_bytes())?;
+                        self.write(addr, &prefix16_bytes(cur as u16, loc.repr))?;
                         self.write_bits(loc.bit + 16, &bits[..cur])?;
                     }
                 }
@@ -1373,6 +1400,7 @@ impl Machine {
                     &Loc {
                         bit: loc.bit,
                         ty: (**t).clone(),
+                        repr: loc.repr,
                     },
                     &c.0,
                 )?;
@@ -1380,6 +1408,7 @@ impl Machine {
                     &Loc {
                         bit: loc.bit + u64::from(n) * 8,
                         ty: (**t).clone(),
+                        repr: loc.repr,
                     },
                     &c.1,
                 )?;
@@ -1562,6 +1591,7 @@ impl Machine {
         let (base, dims) = self.base_of(r, act)?;
         let rb = self.refer_base_for_len(r, act)?;
         let ty = self.resolve_ty(var.ty.as_ref(), r.var, act, rb)?.unwrap();
+        let repr = self.module.vars[r.var as usize].repr;
         let mut fixed_off: i64 = 0;
         let mut free = Vec::new();
         for (k, s) in r.subs.iter().enumerate() {
@@ -1587,6 +1617,7 @@ impl Machine {
                 Loc {
                     bit: (base as i64 + off) as u64,
                     ty: ty.clone(),
+                    repr: repr,
                 }
             })
             .collect())
@@ -1823,6 +1854,7 @@ impl Machine {
                     let loc = Loc {
                         bit: u64::from(p) * 8,
                         ty: ty.clone(),
+                        repr: 0,
                     };
                     self.assign_loc(&loc, v, ty, act)?;
                 }
@@ -2035,6 +2067,7 @@ impl Machine {
                         let loc = Loc {
                             bit: u64::from(p) * 8 + obj.bit_offset,
                             ty: obj.ty.clone().unwrap(),
+                            repr: obj.repr,
                         };
                         self.store(&loc, &Value::int(rv[n]))?;
                     }
@@ -2566,6 +2599,7 @@ impl Machine {
                 let loc = Loc {
                     bit: u64::from(addr) * 8,
                     ty: ty.clone(),
+                    repr: 0,
                 };
                 let v = self.convert(v, &e.ty, &ty, act)?;
                 self.store(&loc, &v)?;
@@ -2633,6 +2667,7 @@ impl Machine {
                         &Loc {
                             bit: u64::from(tmp) * 8,
                             ty: ty.clone(),
+                            repr: 0,
                         },
                         &v,
                     )?;
@@ -2710,6 +2745,7 @@ impl Machine {
                 Ok(Some(self.load(&Loc {
                     bit: u64::from(tmp) * 8,
                     ty: t,
+                    repr: 0,
                 })?))
             }
             (Some(_), None) => err(format!("{name} returned no value")),
@@ -2873,6 +2909,7 @@ impl Machine {
                 let loc = Loc {
                     bit: u64::from(tmp) * 8,
                     ty: t,
+                    repr: 0,
                 };
                 self.store(&loc, &v).map_err(|e| self.report(e))?;
                 Some(self.read(tmp, n as usize).map_err(|e| self.report(e))?)
@@ -3860,5 +3897,22 @@ impl Machine {
             branches,
             functions,
         });
+    }
+}
+
+/// The 2-byte length prefix of a varying string in its representation.
+fn prefix16(l: &[u8], repr: u8) -> u16 {
+    if repr & crate::ir::REPR_LITTLE != 0 {
+        u16::from_le_bytes([l[0], l[1]])
+    } else {
+        u16::from_be_bytes([l[0], l[1]])
+    }
+}
+
+fn prefix16_bytes(n: u16, repr: u8) -> [u8; 2] {
+    if repr & crate::ir::REPR_LITTLE != 0 {
+        n.to_le_bytes()
+    } else {
+        n.to_be_bytes()
     }
 }

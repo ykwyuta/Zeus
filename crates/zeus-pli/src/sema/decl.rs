@@ -1047,6 +1047,21 @@ impl Compiler {
             level: it.level,
             packed_bits: false,
             byvalue: has(attrs, |a| matches!(a, Attr::Byvalue)),
+            // the representation of the parent, then the item's own
+            // (LRM: propagated to members of structures or unions)
+            repr: {
+                let mut r = parent.map_or(0, |p| self.m.vars[p as usize].repr);
+                for a in attrs {
+                    match a {
+                        Attr::Endian(true) => r |= crate::ir::REPR_LITTLE,
+                        Attr::Endian(false) => r &= !crate::ir::REPR_LITTLE,
+                        Attr::Ieee(true) => r |= crate::ir::REPR_IEEE,
+                        Attr::Ieee(false) => r &= !crate::ir::REPR_IEEE,
+                        _ => {}
+                    }
+                }
+                r
+            },
         });
         members.push(id);
         if has(attrs, |a| matches!(a, Attr::DimAcross(_))) {
@@ -1123,6 +1138,28 @@ impl Compiler {
                     off: 0,
                 }
             };
+            // representations Zeus stores: LITTLEENDIAN for FIXED BINARY
+            // and varying length prefixes, IEEE for short and long floats;
+            // the attributes are ignored for other types (LRM) except
+            // POINTER, OFFSET, AREA and ORDINAL, which Zeus refuses
+            let repr = self.m.vars[id as usize].repr;
+            if repr & crate::ir::REPR_LITTLE != 0
+                && (matches!(ty, Ty::Pointer | Ty::Offset(_) | Ty::Area(_))
+                    || matches!(&ty, Ty::Wchar { var, .. } | Ty::Uchar { var, .. } if *var != Varying::Fixed))
+            {
+                return Err(self.err(it.pos, format!(
+                    "LITTLEENDIAN of {} is not supported (Zeus stores it big-endian)", it.name
+                )));
+            }
+            if repr & crate::ir::REPR_IEEE != 0
+                && matches!(ty, Ty::Float { .. } | Ty::Complex(_))
+                && !matches!(ty.storage(true).0, 4 | 8)
+                && !matches!(&ty, Ty::Complex(t) if matches!(t.storage(true).0, 4 | 8))
+            {
+                return Err(self.err(it.pos, format!(
+                    "IEEE extended floating point of {} is not supported", it.name
+                )));
+            }
             let v = &mut self.m.vars[id as usize];
             v.ty = Some(ty);
             v.packed_bits = packed;
@@ -1584,6 +1621,7 @@ impl Compiler {
             level: 1,
             packed_bits: false,
             byvalue: false,
+            repr: 0,
         });
         self.locates.insert(id, h);
         Ok(())

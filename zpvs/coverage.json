@@ -671,6 +671,18 @@
       "VALIDVALUE-ORDINAL"
     ]
   },
+  "PD117A": {
+    "expect": "run",
+    "tests": [
+      "LITTLEENDIAN-STORAGE",
+      "LITTLEENDIAN-HEX",
+      "LITTLEENDIAN-SEMANTICS",
+      "LITTLEENDIAN-STRUCTURE",
+      "LITTLEENDIAN-VARYING",
+      "IEEE-STORAGE",
+      "IEEE-SEMANTICS"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []

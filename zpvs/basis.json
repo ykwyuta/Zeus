@@ -2054,6 +2054,58 @@
       }
     }
   },
+  "PD117A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | The BIGENDIAN and LITTLEENDIAN attributes specify whether the associated variable is stored with the"
+    ],
+    "tests": {
+      "LITTLEENDIAN-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | display( heximage( addr(Y), stg(Y) ) );          /* displays 0201 */"
+        ]
+      },
+      "LITTLEENDIAN-HEX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | display (hex(Y));                                  /* displays 0102     */"
+        ]
+      },
+      "LITTLEENDIAN-SEMANTICS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | BIGENDIAN and LITTLEENDIAN have no effect on the semantics of any operations, or on the storage",
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | The NATIVE and NONNATIVE attributes are synonyms for BIGENDIAN and LITTLEENDIAN, but their"
+        ]
+      },
+      "LITTLEENDIAN-STRUCTURE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | The BIGENDIAN and LITTLEENDIAN attributes are propagated to members of structures or unions."
+        ]
+      },
+      "LITTLEENDIAN-VARYING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | Indicates that the variable (for varying strings, the length prefix part of the variable) is stored with its"
+        ]
+      },
+      "IEEE-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | Indicates that the variable is stored using the IEEE format.",
+          "PLI-LRM: HEXADEC and IEEE attributes | Indicates that the variable is stored in hexadecimal (z/OS) format."
+        ]
+      },
+      "IEEE-SEMANTICS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | The HEXADEC and IEEE attributes specify whether the associated variable is stored using the IBM"
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [

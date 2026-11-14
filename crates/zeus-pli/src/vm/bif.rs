@@ -793,6 +793,7 @@ impl Machine {
                         let loc = Loc {
                             bit: u64::from(addr) * 8,
                             ty: loc_ty,
+                            repr: 0,
                         };
                         if self.store(&loc, x).is_ok() {
                             b = self.read(addr, n as usize)?;
@@ -837,6 +838,7 @@ impl Machine {
                 let loc = Loc {
                     bit: u64::from(addr) * 8,
                     ty: args[0].ty.clone(),
+                    repr: 0,
                 };
                 self.store(&loc, &v[0])?;
                 Value::Bit(self.read_bits(loc.bit, u64::from(n) * 8)?)

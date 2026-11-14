@@ -185,6 +185,10 @@ pub enum Attr {
     /// type's; also implies ALIGNED.
     AlignedTo(u32),
     Dimension(Vec<Bound>),
+    /// BIGENDIAN / NATIVE (false) or LITTLEENDIAN / NONNATIVE (true).
+    Endian(bool),
+    /// HEXADEC (false) or IEEE (true).
+    Ieee(bool),
     /// LOCATES(description): the type an OFFSET locates in its area.
     Locates(Vec<Attr>),
     /// VALUELIST(e, ...): the values the item may have.

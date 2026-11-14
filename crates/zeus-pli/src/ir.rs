@@ -153,7 +153,16 @@ pub struct Var {
     /// A BYVALUE parameter: the procedure receives a copy of the argument.
     #[serde(default)]
     pub byvalue: bool,
+    /// Storage representation: REPR_LITTLE (LITTLEENDIAN), REPR_IEEE.
+    #[serde(default)]
+    pub repr: u8,
 }
+
+/// LITTLEENDIAN: binary values (and varying length prefixes) stored least
+/// significant byte first.
+pub const REPR_LITTLE: u8 = 1;
+/// IEEE: floating-point values stored in IEEE binary format.
+pub const REPR_IEEE: u8 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Init {
