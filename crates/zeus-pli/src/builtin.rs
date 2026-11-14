@@ -163,6 +163,11 @@ pub enum Bif {
     LocVal,
     CharGraphic,
     Regex,
+    PliAscii,
+    PliEbcdic,
+    PliAttn,
+    PliCanc,
+    PliDelete,
     Mpstr,
     LocStg,
     LocNewSpace,
@@ -561,6 +566,11 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "CHARGRAPHIC" | "CHARG" => CharGraphic,
         "MPSTR" => Mpstr,
         "REGEX" => Regex,
+        "PLIASCII" => PliAscii,
+        "PLIEBCDIC" => PliEbcdic,
+        "PLIATTN" => PliAttn,
+        "PLICANC" => PliCanc,
+        "PLIDELETE" => PliDelete,
         "LOCSTG" => LocStg,
         "LOCNEWSPACE" => LocNewSpace,
         "LOCNEWVALUE" => LocNewValue,
@@ -974,7 +984,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             Ty::bit(1)
         }
         LocStg => fixed_bin31(),
-        CharGraphic | Mpstr | Regex => return Err(format!("{b:?} is handled by the compiler")),
+        CharGraphic | Mpstr | Regex | PliAscii | PliEbcdic | PliAttn | PliCanc | PliDelete => return Err(format!("{b:?} is handled by the compiler")),
         LocVal | LocNewSpace | LocNewValue => {
             return Err(format!("{b:?} is handled by the compiler"));
         }

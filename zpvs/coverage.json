@@ -1316,6 +1316,16 @@
       "REGEX-RANGE"
     ]
   },
+  "PM125A": {
+    "expect": "run",
+    "tests": [
+      "PLIASCII",
+      "PLIEBCDIC",
+      "PLIASCII-SAME-LOCATION",
+      "PLIATTN",
+      "PLIDELETE-PLICANC"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

@@ -1260,6 +1260,42 @@ impl Compiler {
                 }
                 Ok(Stmt::CallBuiltin(b, v))
             }
+            // PLIASCII(x, y, z), PLIEBCDIC(x, y, z): z bytes at y converted
+            // to x (LRM); x and y are pointers or OFFSETs with an area
+            PliAscii | PliEbcdic => {
+                let [x, y, z] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs three arguments")));
+                };
+                let mut v = Vec::new();
+                for a in [x, y] {
+                    let e = self.expr(a)?;
+                    if !matches!(e.ty, Ty::Pointer | Ty::Offset(Some(_))) {
+                        return Err(self.err(
+                            pos,
+                            format!("{b:?}: x and y must be POINTER or OFFSET with an AREA"),
+                        ));
+                    }
+                    v.push(self.conv(e, &Ty::Pointer));
+                }
+                let z = self.expr(z)?;
+                let z = self.to_arith(z);
+                v.push(self.conv(z, &Ty::fixed_bin(31, 0)));
+                Ok(Stmt::CallBuiltin(b, v))
+            }
+            // PLIATTN raises ATTENTION (LRM)
+            PliAttn => Ok(Stmt::CallBuiltin(b, Vec::new())),
+            // PLICANC cancels the automatic restart facility, which Zeus
+            // does not have: nothing to do
+            PliCanc => Ok(Stmt::CallBuiltin(PliDump, Vec::new())),
+            // PLIDELETE(x) is PLIFREE(PTRVALUE(x)) (LRM); storage of NEW is
+            // not reused, as for PLIFREE
+            PliDelete => {
+                let [x] = args else {
+                    return Err(self.err(pos, "PLIDELETE needs a handle"));
+                };
+                self.expr(x)?;
+                Ok(Stmt::CallBuiltin(PliDump, Vec::new()))
+            }
             // LOCNEWSPACE(x [,a]), LOCNEWVALUE(v, x [,a]) (LRM)
             LocNewSpace | LocNewValue => {
                 let (v, rest) = if b == LocNewValue {

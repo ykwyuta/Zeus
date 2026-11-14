@@ -2878,6 +2878,36 @@ impl Machine {
                 self.rc = self.eval(&args[0], act)?.as_i64() as i32;
             }
             PliDump => {}
+            PliAttn => self.raise(Cond::Attention, 400, act)?,
+            // the code page of the CODEPAGE option and ISO 8859-1 (a
+            // character without a place in the other set becomes SUB); the
+            // tables of the IBM library have not been compared
+            PliAscii | PliEbcdic => {
+                let p = self.eval(&args[0], act)?;
+                let q = self.eval(&args[1], act)?;
+                let n = self.eval(&args[2], act)?.as_i64().max(0) as usize;
+                let (Value::Ptr(p), Value::Ptr(q)) = (p, q) else {
+                    return err(format!("{b:?} requires pointers"));
+                };
+                let src = self.read(q, n)?;
+                let page = zeus_cobol::codepage::active();
+                let out: Vec<u8> = if b == PliAscii {
+                    src.iter()
+                        .map(|&c| {
+                            let ch = page.decode(&[c]).chars().next().unwrap_or('\u{1a}');
+                            u8::try_from(u32::from(ch)).unwrap_or(0x1A)
+                        })
+                        .collect()
+                } else {
+                    src.iter()
+                        .map(|&c| {
+                            let e = page.encode(&char::from(c).to_string());
+                            if e.len() == 1 { e[0] } else { 0x3F }
+                        })
+                        .collect()
+                };
+                self.write(p, &out)?;
+            }
             QuickSort | QuickSortX => {
                 self.eval(&args[0], act)?;
             }

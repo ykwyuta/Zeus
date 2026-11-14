@@ -4618,6 +4618,45 @@
       }
     }
   },
+  "PM125A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLIASCII | PLIASCII converts z bytes of an EBCDIC value at location y to an ASCII value at location x."
+    ],
+    "tests": {
+      "PLIASCII": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIASCII | PLIASCII converts z bytes of an EBCDIC value at location y to an ASCII value at location x."
+        ]
+      },
+      "PLIEBCDIC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIEBCDIC | PLIEBCDIC converts z bytes of an ASCII value at location y to an EBCDIC value at location x."
+        ]
+      },
+      "PLIASCII-SAME-LOCATION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIASCII | The storage at location x and y must not overlap unless they specify the same location."
+        ]
+      },
+      "PLIATTN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIATTN | PLIATTN causes the ATTENTION condition to be raised at that point in the code. It gives you explicit"
+        ]
+      },
+      "PLIDELETE-PLICANC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIDELETE | CALL PLIDELETE(x) is equivalent to CALL PLIFREE(PTRVALUE(x)).",
+          "PLI-LRM: PLICANC | PLICANC allows you to cancel the automatic restart facility."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [
