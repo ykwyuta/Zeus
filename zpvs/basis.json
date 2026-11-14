@@ -4829,6 +4829,56 @@
       }
     }
   },
+  "PM129A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLISRTA | PLISRTA sorts an input file to produce a sorted output file."
+    ],
+    "tests": {
+      "PLISRTA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISRTA | PLISRTA sorts an input file to produce a sorted output file.",
+          "PLI-PG: Specifying the sorting field | Defines a sorting field. You can specify any number of sorting fields, but there is a limit on the total"
+        ]
+      },
+      "PLISRTA-KEYS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Specifying the sorting field | length of the fields. If more than one field is to be sorted on, the records are sorted first according to"
+        ]
+      },
+      "PLISRTB": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISRTB | PLISRTB sorts input records provided by an E15 PL/I exit procedure to produce a sorted output file.",
+          "PLI-PG: E15—Input handling routine (Sort Exit E15) | return code 12. This return code means that the record passed is to be included in the sort. Sort continues",
+          "PLI-PG: Calling PLISRTA example | information to the Sort program, the return code field is reset to zero; therefore, it is not used as a"
+        ]
+      },
+      "PLISRTC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Calling PLISRTA example | information to the Sort program, the return code field is reset to zero; therefore, it is not used as a",
+          "PLI-LRM: PLISRTC | PLISRTC sorts an input file to produce sorted records that are processed by an E35 PL/I exit procedure.",
+          "PLI-PG: E35—Output handling routine (Sort Exit E35) | subroutine must also pass return code 4 to Sort to indicate that it is ready for another record. You set the"
+        ]
+      },
+      "PLISRTD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: E15—Input handling routine (Sort Exit E15) | to call the routine until return code 8 is passed. Return code 8 means that all records have already been",
+          "PLI-LRM: PLISRTD | PLISRTD sorts input records provided by an E15 PL/I exit procedure to produce sorted records that are"
+        ]
+      },
+      "PLISRT-FAILED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: E15—Input handling routine (Sort Exit E15) | use of return code 16 (Sort failed). This return code ends the sort and causes Sort to return to your PL/I"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

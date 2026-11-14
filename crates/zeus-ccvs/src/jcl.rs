@@ -392,21 +392,32 @@ pub fn export_jcl(
             summary.source_members += 1;
 
             let cfg = manifest.programs.get(&member).cloned().unwrap_or_default();
-            let (extra_dds, symbols) = if let Some(jcl_file) = &cfg.jcl {
+            let (extra_dds, symbols, sysout) = if let Some(jcl_file) = &cfg.jcl {
                 let jcl_path = mod_dir.join(jcl_file);
                 let text = fs::read_to_string(&jcl_path)
                     .with_context(|| format!("reading {}", jcl_path.display()))?;
-                (parse_dd_allocations(&text), exported_symbols(&text))
+                // a SYSOUT DD (the messages of DFSORT for PLISRTx)
+                let sysout = logical_lines(&text)
+                    .iter()
+                    .any(|l| l.to_ascii_uppercase().starts_with("SYSOUT ") && l.contains(" DD "));
+                (parse_dd_allocations(&text), exported_symbols(&text), sysout)
             } else {
-                (Vec::new(), Vec::new())
+                (Vec::new(), Vec::new(), false)
             };
             let mut step = if source_ext == "CBL" {
                 render_program_steps(hlq, &member, &cfg, &extra_dds)
             } else {
                 render_other_steps(hlq, &member, source_ext, &cfg, false, &extra_dds)
             };
-            // exported JCL symbols: EXPORT and SET before the run step
             let go = format!("//G{member:<7} EXEC");
+            if sysout
+                && let Some(at) = step.find(&go)
+                && let Some(p) = step[at..].find("//SYSPRINT DD SYSOUT=*\n")
+            {
+                let end = at + p + "//SYSPRINT DD SYSOUT=*\n".len();
+                step.insert_str(end, "//SYSOUT   DD SYSOUT=*\n");
+            }
+            // exported JCL symbols: EXPORT and SET before the run step
             if !symbols.is_empty()
                 && let Some(at) = step.find(&go)
             {

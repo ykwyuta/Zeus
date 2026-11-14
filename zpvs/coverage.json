@@ -1380,6 +1380,17 @@
       "UHIGH-ULOW-ORDER"
     ]
   },
+  "PM129A": {
+    "expect": "run",
+    "tests": [
+      "PLISRTA",
+      "PLISRTA-KEYS",
+      "PLISRTB",
+      "PLISRTC",
+      "PLISRTD",
+      "PLISRT-FAILED"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

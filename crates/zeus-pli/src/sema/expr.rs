@@ -1282,6 +1282,42 @@ impl Compiler {
                 v.push(self.conv(z, &Ty::fixed_bin(31, 0)));
                 Ok(Stmt::CallBuiltin(b, v))
             }
+            // CALL PLISRTx(sort, record, storage, retcode [,input]
+            // [,output] [,prefix, message level, technique])
+            PliSrtA | PliSrtB | PliSrtC | PliSrtD => {
+                let exits = match b {
+                    PliSrtA => 0,
+                    PliSrtD => 2,
+                    _ => 1,
+                };
+                if args.len() < 4 + exits || args.len() > 7 + exits {
+                    return Err(self.err(pos, format!("{b:?}: wrong number of arguments")));
+                }
+                let sort = self.expr(&args[0])?;
+                let sort = self.to_char(sort);
+                let record = self.expr(&args[1])?;
+                let record = self.to_char(record);
+                self.expr(&args[2])?;
+                let (rc, _) = self.target(&args[3])?;
+                let routine = |c: &mut Compiler, k: usize| c.entry_expr(&args[4 + k]);
+                let (input, output) = match b {
+                    PliSrtA => (None, None),
+                    PliSrtB => (Some(routine(self, 0)?), None),
+                    PliSrtC => (None, Some(routine(self, 0)?)),
+                    _ => (Some(routine(self, 0)?), Some(routine(self, 1)?)),
+                };
+                // data set prefix, message level and technique: no effect
+                for a in &args[4 + exits..] {
+                    self.expr(a)?;
+                }
+                Ok(Stmt::Sort {
+                    sort,
+                    record,
+                    rc,
+                    input,
+                    output,
+                })
+            }
             // PLIATTN raises ATTENTION (LRM)
             PliAttn => Ok(Stmt::CallBuiltin(b, Vec::new())),
             // PLICANC cancels the automatic restart facility, which Zeus

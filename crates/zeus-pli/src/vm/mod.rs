@@ -7,6 +7,7 @@ pub(crate) mod conv;
 mod datefmt;
 mod digest;
 mod ere;
+mod plisrt;
 mod record;
 mod sql;
 mod stream;
@@ -1738,6 +1739,13 @@ impl Machine {
                 Ok(())
             }
             Stmt::CallBuiltin(b, args) => self.call_builtin(*b, args, act),
+            Stmt::Sort {
+                sort,
+                record,
+                rc,
+                input,
+                output,
+            } => self.plisrt(sort, record, rc, input.as_ref(), output.as_ref(), act),
             Stmt::LocNew {
                 target,
                 area,

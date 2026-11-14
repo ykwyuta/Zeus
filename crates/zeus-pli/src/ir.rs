@@ -554,6 +554,16 @@ pub enum Stmt {
     /// LOCNEWSPACE / LOCNEWVALUE: allocate the located type `ty` in the
     /// area, set the offset target, and store the value (already of type
     /// `ty`; a varying string gets only the space its value needs).
+    /// PLISRTA..D (Programming Guide, "Using the Sort program"): the
+    /// SORT and RECORD statements, the return code target, and the input
+    /// (E15) and output (E35) routines of B, C, D.
+    Sort {
+        sort: Expr,
+        record: Expr,
+        rc: Target,
+        input: Option<Expr>,
+        output: Option<Expr>,
+    },
     LocNew {
         target: Target,
         area: Ref,

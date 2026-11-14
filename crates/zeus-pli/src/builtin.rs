@@ -372,6 +372,9 @@ pub enum Bif {
     PliRetC,
     PliDump,
     PliSrtA,
+    PliSrtB,
+    PliSrtC,
+    PliSrtD,
     PliFill,
     PliMove,
     PliFree,
@@ -521,6 +524,9 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "WIDECHAR" | "WCHAR" => Widechar,
         "HANDLE" => Addr,
         "PLISRTA" => PliSrtA,
+        "PLISRTB" => PliSrtB,
+        "PLISRTC" => PliSrtC,
+        "PLISRTD" => PliSrtD,
         "PLIFILL" => PliFill,
         "PLIMOVE" | "PLIOVER" => PliMove,
         "OMITTED" => Omitted,
@@ -1467,7 +1473,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         OnSource | DataField | OnKey => Ty::char_var(32767),
         OnFile | OnLoc => Ty::char_var(31),
         Omitted | Present => Ty::bit(1),
-        PliRetC | PliDump | PliSrtA | PliFill | PliMove | PliFree | PliTran11 | PliTran12
+        PliRetC | PliDump | PliSrtA | PliSrtB | PliSrtC | PliSrtD | PliFill | PliMove | PliFree | PliTran11 | PliTran12
         | PliTran21 | PliTran22 => Ty::Entry,
         Utf8Stg => fixed_bin31(),
         ThreadId => Ty::Pointer,
