@@ -4942,6 +4942,53 @@
       }
     }
   },
+  "PM130A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLIPARSE | PLIPARSE parses a character string into substrings."
+    ],
+    "tests": {
+      "VALUE-CHAR-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALUELIST attribute | Dcl Title2 char     value('SCIDS');/* is CHAR(5)                     */"
+        ]
+      },
+      "PLIPARSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | call pliparse( input, x1, s1, x2, s2, x3, s3, x4           );",
+          "PLI-LRM: PLIPARSE | x2 = '0123';"
+        ]
+      },
+      "PLIPARSE-NOT-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | The first target argument after the first separator that is not found is assigned the remaining input and any",
+          "PLI-LRM: PLIPARSE | x2 = '0123-45678-9';"
+        ]
+      },
+      "PLIPARSE-BLANKS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | input = collapse( ' Alex Bruno', ' ' );"
+        ]
+      },
+      "PLIPARSE-EMPTY-FIELDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | an even number of pairs with each pair consisting of a target reference (or an *) and a separator"
+        ]
+      },
+      "PLIPARSE-STAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | an optional, last target argument that must be a reference (or * )",
+          "PLI-LRM: PLIPARSE | Any target argument that is not an * must have CHARACTER type and must be ASSIGNABLE."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

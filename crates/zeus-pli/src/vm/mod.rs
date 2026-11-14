@@ -1739,6 +1739,53 @@ impl Machine {
                 Ok(())
             }
             Stmt::CallBuiltin(b, args) => self.call_builtin(*b, args, act),
+            // PLIPARSE: each target gets the input up to its separator; the
+            // target of the first separator not found gets the rest of the
+            // input and the later targets the null string; the last target
+            // gets what follows the last separator (LRM)
+            Stmt::Parse { input, pairs, last } => {
+                let Value::Char(mut rest) = self.eval(input, act)? else {
+                    return err("PLIPARSE: the input is not a string");
+                };
+                let mut done = false;
+                let assign = |me: &mut Self, t: &Option<Target>, v: Vec<u8>| -> R<()> {
+                    if let Some(t) = t {
+                        let l = me.target_loc(t, act)?;
+                        me.assign_target(t, l, Value::Char(v), &crate::sema::expr::char_any(), act)?;
+                    }
+                    Ok(())
+                };
+                for (t, s) in pairs {
+                    if done {
+                        assign(self, t, Vec::new())?;
+                        continue;
+                    }
+                    let Value::Char(sep) = self.eval(s, act)? else {
+                        return err("PLIPARSE: a separator is not a string");
+                    };
+                    let at = if sep.is_empty() {
+                        None
+                    } else {
+                        rest.windows(sep.len()).position(|w| w == sep.as_slice())
+                    };
+                    match at {
+                        Some(i) => {
+                            let part = rest[..i].to_vec();
+                            rest = rest[i + sep.len()..].to_vec();
+                            assign(self, t, part)?;
+                        }
+                        None => {
+                            assign(self, t, std::mem::take(&mut rest))?;
+                            done = true;
+                        }
+                    }
+                }
+                if let Some(t) = last {
+                    let v = if done { Vec::new() } else { rest };
+                    assign(self, t, v)?;
+                }
+                Ok(())
+            }
             Stmt::Sort {
                 sort,
                 record,

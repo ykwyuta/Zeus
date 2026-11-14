@@ -818,6 +818,14 @@ impl Compiler {
                 } else {
                     x.ty.clone()
                 };
+                // CHARACTER or BIT without a length takes the length of
+                // the value (LRM, VALUE attribute: "Dcl Title2 char
+                // value('SCIDS'); /* is CHAR(5) */")
+                let unsized_string = has(attrs, |a| matches!(a, Attr::Character(None) | Attr::Bit(None)));
+                let ty = match (unsized_string, x.ty.str_len()) {
+                    (true, Some(l @ Ext::Const(_))) if ty.is_char() || ty.is_bit() => ty.with_len(l),
+                    _ => ty,
+                };
                 let x = self.conv(x, &ty);
                 // keep constant values foldable
                 let x = fold_const(x);

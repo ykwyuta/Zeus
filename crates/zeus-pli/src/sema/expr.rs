@@ -1318,6 +1318,43 @@ impl Compiler {
                     output,
                 })
             }
+            // PLIPARSE(input, x1, s1, ... [,xn+1]) (LRM): 3 to 64 arguments;
+            // the targets are CHARACTER references or *
+            PliParse => {
+                if args.len() < 3 || args.len() > 64 {
+                    return Err(self.err(pos, "PLIPARSE needs 3 to 64 arguments"));
+                }
+                let input = self.expr(&args[0])?;
+                let input = self.to_char(input);
+                let target = |c: &mut Compiler, a: &ast::Expr| -> Result<Option<Target>> {
+                    if matches!(a, ast::Expr::Star(_)) {
+                        return Ok(None);
+                    }
+                    let (t, ty) = c.target(a)?;
+                    if !ty.as_ref().is_some_and(Ty::is_char) {
+                        return Err(c.err(pos, "PLIPARSE: a target must be CHARACTER"));
+                    }
+                    Ok(Some(t))
+                };
+                let rest = &args[1..];
+                let mut pairs = Vec::new();
+                for p in rest.chunks(2) {
+                    if let [t, s] = p {
+                        let t = target(self, t)?;
+                        let s = self.expr(s)?;
+                        if !s.ty.is_char() {
+                            return Err(self.err(pos, "PLIPARSE: a separator must be CHARACTER"));
+                        }
+                        pairs.push((t, s));
+                    }
+                }
+                let last = if rest.len() % 2 == 1 {
+                    Some(target(self, &rest[rest.len() - 1])?)
+                } else {
+                    None
+                };
+                Ok(Stmt::Parse { input, pairs, last })
+            }
             // PLIATTN raises ATTENTION (LRM)
             PliAttn => Ok(Stmt::CallBuiltin(b, Vec::new())),
             // PLICANC cancels the automatic restart facility, which Zeus

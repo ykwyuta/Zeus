@@ -558,6 +558,13 @@ pub enum Stmt {
     /// LOCNEWSPACE / LOCNEWVALUE: allocate the located type `ty` in the
     /// area, set the offset target, and store the value (already of type
     /// `ty`; a varying string gets only the space its value needs).
+    /// PLIPARSE(input, target, separator, ... [,target]): None for a `*`
+    /// target.
+    Parse {
+        input: Expr,
+        pairs: Vec<(Option<Target>, Expr)>,
+        last: Option<Option<Target>>,
+    },
     /// PLISRTA..D (Programming Guide, "Using the Sort program"): the
     /// SORT and RECORD statements, the return code target, and the input
     /// (E15) and output (E35) routines of B, C, D.
