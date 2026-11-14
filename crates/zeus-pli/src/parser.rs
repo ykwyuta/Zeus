@@ -2083,9 +2083,26 @@ impl Parser {
                 let mut reply = None;
                 while let Tok::Ident(o) = self.tok().clone() {
                     self.bump();
-                    let e = self.paren_expr()?;
-                    if o == "REPLY" {
-                        reply = Some(e);
+                    match o.as_str() {
+                        "REPLY" => reply = Some(self.paren_expr()?),
+                        // ROUTCDE(x, ...) and DESC(y, ...): unsigned integer
+                        // constants 1 to 16 for the WTO (LRM); no effect here
+                        "ROUTCDE" | "DESC" => {
+                            self.expect_op("(")?;
+                            loop {
+                                let ok = matches!(self.tok(), Tok::Num { text, .. }
+                                    if text.parse::<u32>().is_ok_and(|n| (1..=16).contains(&n)));
+                                if !ok {
+                                    return Err(self.unexpected("an integer constant from 1 to 16"));
+                                }
+                                self.bump();
+                                if !self.eat_op(",") {
+                                    break;
+                                }
+                            }
+                            self.expect_op(")")?;
+                        }
+                        _ => return Err(self.unexpected("REPLY, ROUTCDE or DESC")),
                     }
                 }
                 self.semi()?;

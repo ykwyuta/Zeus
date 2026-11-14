@@ -367,6 +367,13 @@
       "ORDER-ONUNIT"
     ]
   },
+  "PC124A": {
+    "expect": "run",
+    "tests": [
+      "DISPLAY",
+      "DISPLAY-ROUTCDE-DESC"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

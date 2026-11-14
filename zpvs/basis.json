@@ -1315,6 +1315,28 @@
       }
     }
   },
+  "PC124A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DISPLAY statement | The DISPLAY statement displays a message on the user's screen and optionally requests the user to enter"
+    ],
+    "tests": {
+      "DISPLAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DISPLAY statement | Is converted, where necessary, to a character string. This character string is displayed. It can contain",
+          "PLI-LRM: DISPLAY statement | The REPLY option suspends program execution until the user enters a response."
+        ]
+      },
+      "DISPLAY-ROUTCDE-DESC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DISPLAY statement | Specifies one or more values to be used as the ROUTCDE in the WTO. The values must be unsigned",
+          "PLI-LRM: DISPLAY statement | Specifies one or more values to be used as the DESC in the WTO. The values must be unsigned integer"
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
