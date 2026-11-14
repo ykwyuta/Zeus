@@ -4524,6 +4524,72 @@
       }
     }
   },
+  "PM124A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: REGEX | REGEX returns a FIXED BIN(31) that indicates the success of matching a specified regular expression or"
+    ],
+    "tests": {
+      "REGEX-FIRST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | regex( i, j, p, x ) will return 0 and set i to 3 and j to 5 (because it has found the match for the"
+        ]
+      },
+      "REGEX-FROM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | regex( i, j, p, x, 4 ) will return 0 and set i to 9 and j to 5 (because it has found the match for",
+          "PLI-LRM: REGEX | regex( i, j, p, x, 10 ) will return 0 and set i to 20 and j to 5 (because it has found the match"
+        ]
+      },
+      "REGEX-NO-MATCH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | regex( i, j, p, x , 21 ) will return 1 (because there are no more matches).",
+          "PLI-LRM: REGEX | the length j to 0. Otherwise, REGEX will return the value 0 and set the index i and the length j",
+          "PLI-LRM: REGEX | The search for a match to the regular expression is case sensitive."
+        ]
+      },
+      "REGEX-LOOP": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | The preceding set of matches could also have been found via the following loop, which uses the optional"
+        ]
+      },
+      "REGEX-CLASS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | If p = \"[hc]+at\" and x = \"the cat in the hat\", then regex( i, j, p, x, n ) will find the match for"
+        ]
+      },
+      "REGEX-LONGEST": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | The pattern p must conform to the POSIX standard for Extended Regular Expressions (EREs) (and not"
+        ]
+      },
+      "REGEX-SUBEXPRESSIONS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | the second and subsequent elements of each array will be assigned the index and length of the",
+          "PLI-LRM: REGEX | a_index(4) and a_length(4) will give the index and length for TESTDB"
+        ]
+      },
+      "REGEX-INVALID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | If the string p does not specify a valid regular expression, then REGEX will return a value greater than"
+        ]
+      },
+      "REGEX-RANGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: REGEX | If n is less than 1 or if n is greater than 1 + length(x), the STRINGRANGE condition will be raised if"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

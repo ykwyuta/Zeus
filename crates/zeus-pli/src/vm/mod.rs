@@ -6,6 +6,7 @@ mod cics;
 pub(crate) mod conv;
 mod datefmt;
 mod digest;
+mod ere;
 mod record;
 mod sql;
 mod stream;

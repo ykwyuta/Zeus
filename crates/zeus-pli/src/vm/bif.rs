@@ -1072,6 +1072,56 @@ impl Machine {
                 };
                 Value::bit1(left_ok && right_ok)
             }
+            // REGEX: 0 matched, 1 no match (or n out of range), 2 an
+            // invalid pattern, -1 an unknown code page (LRM, REGEX)
+            Regex => {
+                let (Value::Char(p), Value::Char(x)) = (&v[0], &v[1]) else {
+                    return err("REGEX: not character values");
+                };
+                let n = int(2).unwrap_or(1);
+                let c = int(3).unwrap_or(0);
+                let page = if c == 0 {
+                    Some(zeus_cobol::codepage::active())
+                } else {
+                    u32::try_from(c).ok().and_then(zeus_cobol::codepage::get)
+                };
+                let addr = |k: usize| match &v[k] {
+                    Value::Ptr(a) => *a,
+                    _ => 0,
+                };
+                let (ai, aj) = (addr(4), addr(5));
+                let shape = |k: usize| (int(k).unwrap_or(0) as u32, int(k + 1).unwrap_or(0) as u32, int(k + 2).unwrap_or(0) as u32);
+                let ((count, si, sti), (_, sj, stj)) = (shape(6), shape(9));
+                let Some(page) = page.filter(|p| !p.is_mixed()) else {
+                    return Ok(Value::int(-1));
+                };
+                if n < 1 || n > x.len() as i64 + 1 {
+                    if self.enabled_now(act, crate::ir::cond::STRINGRANGE) {
+                        self.raise(Cond::StringRange, 350, act)?;
+                    }
+                    return Ok(Value::int(1));
+                }
+                let text = |b: &[u8]| -> Vec<char> {
+                    b.iter().map(|&c| page.decode(&[c]).chars().next().unwrap_or('\u{1a}')).collect()
+                };
+                let Ok(re) = super::ere::Regex::new(&text(p).into_iter().collect::<std::string::String>()) else {
+                    return Ok(Value::int(2));
+                };
+                let Ok(found) = re.find(&text(x), n as usize - 1) else {
+                    return err("REGEX: the pattern needs too many steps");
+                };
+                for k in 0..count as usize {
+                    let (i, l) = match found.as_ref().and_then(|m| m.get(k).copied().flatten()) {
+                        Some((s, l)) => (s as i64 + 1, l as i64),
+                        None => (0, 0),
+                    };
+                    for (base, size, stride, val) in [(ai, si, sti, i), (aj, sj, stj, l)] {
+                        let bytes = val.to_be_bytes();
+                        self.write(base + k as u32 * stride, &bytes[8 - size as usize..])?;
+                    }
+                }
+                Value::int(i64::from(found.is_none()))
+            }
             CharGraphic => {
                 let Value::Char(g) = &v[0] else {
                     return err("CHARGRAPHIC: not a GRAPHIC value");

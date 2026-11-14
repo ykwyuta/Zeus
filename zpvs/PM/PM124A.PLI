@@ -1,0 +1,69 @@
+ PM124A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL (I, J, N, RC) FIXED BIN(31);
+ DCL P CHAR(20) VAR INIT('All(a|e)n');
+ DCL X CHAR(40) VAR INIT('12Allan3Allen4Alan5Allan678');
+ DCL S CHAR(40) VAR INIT('');
+ DCL PATTERN CHAR(80) VAR;
+ DCL STRING CHAR(40) VAR INIT(' CREATE DATABASE TESTDB;');
+ DCL (A_INDEX(7), A_LENGTH(7)) FIXED BIN(31);
+
+ OPEN FILE(REPORT);
+
+ /* REGEX-FIRST: the first match */
+ RC = REGEX(I, J, P, X);
+ CALL ZCHECK('REGEX-FIRST',
+   RC=0 & I=3 & J=5);
+
+ /* REGEX-FROM: the search starts at n */
+ CALL ZCHECK('REGEX-FROM',
+   REGEX(I, J, P, X, 4)=0 & I=9 & J=5 &
+   REGEX(I, J, P, X, 10)=0 & I=20 & J=5);
+
+ /* REGEX-NO-MATCH: 1, index and length 0 */
+ CALL ZCHECK('REGEX-NO-MATCH',
+   REGEX(I, J, P, X, 21)=1 & I=0 & J=0 &
+   REGEX(I, J, 'allan', X)=1);
+
+ /* REGEX-LOOP: the loop of the LRM */
+ N = 1;
+ DO LOOP;
+   RC = REGEX(I, J, P, X, N);
+   IF RC ^= 0 THEN LEAVE;
+   S = S || SUBSTR(X, I, J);
+   N = I + J;
+ END;
+ CALL ZCHECK('REGEX-LOOP',
+   S='AllanAllenAllan' & RC=1);
+
+ /* REGEX-CLASS: a bracket expression */
+ CALL ZCHECK('REGEX-CLASS',
+   REGEX(I, J, '[hc]+at', 'the cat in the hat')=0 & I=5 & J=3 &
+   REGEX(I, J, '[hc]+at', 'the cat in the hat', 6)=0 & I=16);
+
+ /* REGEX-LONGEST: the leftmost match, then the longest */
+ CALL ZCHECK('REGEX-LONGEST',
+   REGEX(I, J, 'a|ab|abc', 'xabcd')=0 & I=2 & J=3);
+
+ /* REGEX-SUBEXPRESSIONS: arrays for the subexpressions */
+ PATTERN = '([a-zA-Z]+) * ([a-zA-Z]+) * ' ||
+   '((([a-zA-Z1-9]+)\.){0,1}([a-zA-Z1-9]+))';
+ RC = REGEX(A_INDEX, A_LENGTH, PATTERN, STRING);
+ CALL ZCHECK('REGEX-SUBEXPRESSIONS',
+   RC=0 &
+   SUBSTR(STRING, A_INDEX(2), A_LENGTH(2))='CREATE' &
+   SUBSTR(STRING, A_INDEX(3), A_LENGTH(3))='DATABASE' &
+   SUBSTR(STRING, A_INDEX(4), A_LENGTH(4))='TESTDB');
+
+ /* REGEX-INVALID: a value greater than 1 */
+ CALL ZCHECK('REGEX-INVALID',
+   REGEX(I, J, 'a(b', X) > 1);
+
+ /* REGEX-RANGE: n out of range gives 1 */
+ CALL ZCHECK('REGEX-RANGE',
+   REGEX(I, J, P, X, 0)=1 & REGEX(I, J, P, X, 29)=1 &
+   REGEX(I, J, 'x*', X, 28)=0);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM124A;

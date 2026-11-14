@@ -1294,6 +1294,20 @@
       "MPSTR-TRUNCATE"
     ]
   },
+  "PM124A": {
+    "expect": "run",
+    "tests": [
+      "REGEX-FIRST",
+      "REGEX-FROM",
+      "REGEX-NO-MATCH",
+      "REGEX-LOOP",
+      "REGEX-CLASS",
+      "REGEX-LONGEST",
+      "REGEX-SUBEXPRESSIONS",
+      "REGEX-INVALID",
+      "REGEX-RANGE"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

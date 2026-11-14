@@ -106,7 +106,7 @@ pub enum Bound {
 pub struct Dim {
     pub lb: Bound,
     pub ub: Bound,
-    /// Distance between elements in bytes (bits for packed bit arrays).
+    /// Distance between elements in bits (the VM locates elements by bit).
     pub stride: u32,
 }
 

@@ -1736,6 +1736,70 @@ impl Compiler {
                     ty: Ty::Pic(Box::new(p)),
                 });
             }
+            // REGEX(i, j, p, x [,n [,c]]): i and j are set through their
+            // addresses (scalars, or one-dimensional arrays for the
+            // subexpressions)
+            Regex => {
+                if !(4..=6).contains(&args.len()) {
+                    return Err(self.err(pos, "REGEX: wrong number of arguments"));
+                }
+                let mut v = Vec::new();
+                for a in &args[2..4] {
+                    let x = self.expr(a)?;
+                    v.push(self.to_char(x));
+                }
+                let int = |c: &mut Compiler, a: Option<&ast::Expr>, d: i128| -> Result<Expr> {
+                    Ok(match a {
+                        Some(a) => {
+                            let x = c.expr(a)?;
+                            let x = c.to_arith(x);
+                            c.conv(x, &Ty::fixed_bin(31, 0))
+                        }
+                        None => mk(Ek::Fixed(d, 0), Ty::fixed_bin(31, 0)),
+                    })
+                };
+                v.push(int(self, args.get(4), 1)?);
+                v.push(int(self, args.get(5), 0)?);
+                let mut shape = Vec::new();
+                for a in &args[..2] {
+                    let ast::Expr::Ref(r) = a else {
+                        return Err(self.err(pos, "REGEX: i and j must be references"));
+                    };
+                    let mut rr = self.reference(r, true)?;
+                    let var = &self.m.vars[rr.var as usize];
+                    let size = match &var.ty {
+                        Some(t @ Ty::Fixed { dec: false, q: 0, .. }) => t.storage(true).0,
+                        _ => {
+                            return Err(self.err(pos, "REGEX: i and j must be REAL FIXED BIN(p,0)"));
+                        }
+                    };
+                    let (count, stride) = match (&var.dims[..], &rr.subs[..]) {
+                        ([], _) => (1, size),
+                        ([d], [None]) => match (d.lb, d.ub) {
+                            (crate::ir::Bound::Const(l), crate::ir::Bound::Const(u)) => {
+                                rr.subs = vec![Some(mk(Ek::Fixed(i128::from(l), 0), Ty::fixed_bin(31, 0)))];
+                                // the stride is in bits
+                                ((u - l + 1).max(0) as u32, d.stride / 8)
+                            }
+                            _ => {
+                                return Err(self.err(pos, "REGEX: arrays need constant bounds here"));
+                            }
+                        },
+                        _ => return Err(self.err(pos, "REGEX: i and j must be scalars or vectors")),
+                    };
+                    shape.push((count, size, stride));
+                    v.push(mk(Ek::RefBuiltin(Addr, rr, Vec::new()), Ty::Pointer));
+                }
+                if shape[0].0 != shape[1].0 {
+                    return Err(self.err(pos, "REGEX: i and j must have matching bounds"));
+                }
+                for (count, size, stride) in [shape[0], shape[1]] {
+                    for n in [count, size, stride] {
+                        v.push(mk(Ek::Fixed(i128::from(n), 0), Ty::fixed_bin(31, 0)));
+                    }
+                }
+                return Ok(mk(Ek::Builtin(b, v), Ty::fixed_bin(31, 0)));
+            }
             // CHARGRAPHIC(x [,y]): GRAPHIC to a mixed string; MPSTR(x, r
             // [,y]): a mixed string cut at a DBCS boundary (LRM). Without y,
             // the length of the conversion (SO, the DBCS bytes, SI) or of x.
