@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::jcl::{DdKind, parse_dd_allocations};
+use crate::jcl::{DdKind, exported_symbols, parse_dd_allocations};
 use crate::manifest::{ExpectKind, Manifest, ProgramConfig};
 use crate::report::{self, Counts};
 use crate::special::special;
@@ -389,6 +389,12 @@ fn run_program(
         let jcl_path = dir.join(jcl_name);
         let jcl_text = fs::read_to_string(&jcl_path)
             .with_context(|| format!("reading {}", jcl_path.display()))?;
+        // exported JCL symbols for GETJCLSYMBOL: NAME=VALUE lines
+        let symbols = exported_symbols(&jcl_text);
+        if !symbols.is_empty() {
+            let text: Vec<String> = symbols.iter().map(|(n, v)| format!("{n}={v}")).collect();
+            cmd.env("ZEUS_JCL_SYMBOLS", text.join("\n"));
+        }
         for dd in parse_dd_allocations(&jcl_text) {
             let ext = match dd.kind {
                 DdKind::Tape => "aws",

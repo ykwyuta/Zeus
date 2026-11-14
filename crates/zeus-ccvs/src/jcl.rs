@@ -26,9 +26,8 @@ pub struct DdAllocation {
     pub kind: DdKind,
 }
 
-/// Parses `//<DDNAME> DD ...` statements from a JCL sidecar file, joining
-/// continuation lines and classifying tape vs disk allocations.
-pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
+/// The JCL statements without `//`, continuation lines joined.
+fn logical_lines(jcl_text: &str) -> Vec<String> {
     let mut logical_lines: Vec<String> = Vec::new();
     for raw in jcl_text.lines() {
         let code = if raw.len() > 72 { &raw[..72] } else { raw };
@@ -37,15 +36,98 @@ pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
             continue;
         }
         let body = &trimmed[2..];
-        if body.starts_with(' ') {
-            if let Some(prev) = logical_lines.last_mut() {
-                prev.push(' ');
+        // a line without a name continues the statement before it when
+        // that ends with a comma; otherwise it is a statement without a
+        // name (kept with its leading blank)
+        match logical_lines.last_mut() {
+            Some(prev) if body.starts_with(' ') && prev.ends_with(',') => {
                 prev.push_str(body.trim_start());
             }
-        } else {
-            logical_lines.push(body.to_string());
+            _ => logical_lines.push(body.to_string()),
         }
     }
+    logical_lines
+}
+
+/// The exported JCL symbols (z/OS MVS JCL Reference, EXPORT and SET): the
+/// values given by SET statements to the names in an EXPORT SYMLIST
+/// (`SYMLIST=*` exports every symbol). A value may be quoted ('' is a
+/// quote); an empty value is a symbol set to the null string. Only what the
+/// suites use: SET symbols, not those of PROC or EXEC.
+pub fn exported_symbols(jcl_text: &str) -> Vec<(String, String)> {
+    let mut values: Vec<(String, String)> = Vec::new();
+    let mut exported: Vec<String> = Vec::new();
+    let mut all = false;
+    for stmt in logical_lines(jcl_text) {
+        // [name] operation operands: a statement without a name starts
+        // with a blank
+        let rest = if stmt.starts_with(' ') {
+            stmt.as_str()
+        } else {
+            stmt.split_once(' ').map_or("", |(_, r)| r)
+        };
+        let rest = rest.trim_start();
+        let (op, operands) = rest.split_once(' ').unwrap_or((rest, ""));
+        let operands = operands.trim();
+        match op.to_ascii_uppercase().as_str() {
+            "SET" => {
+                let mut rest = operands;
+                while let Some((name, after)) = rest.split_once('=') {
+                    let name = name.trim().to_ascii_uppercase();
+                    let (value, tail) = if let Some(q) = after.strip_prefix('\'') {
+                        let mut v = String::new();
+                        let mut it = q.char_indices().peekable();
+                        let mut end = q.len();
+                        while let Some((i, c)) = it.next() {
+                            if c == '\'' {
+                                if it.peek().is_some_and(|(_, d)| *d == '\'') {
+                                    v.push('\'');
+                                    it.next();
+                                    continue;
+                                }
+                                end = i + 1;
+                                break;
+                            }
+                            v.push(c);
+                        }
+                        (v, &q[end..])
+                    } else {
+                        let end = after.find([',', ' ']).unwrap_or(after.len());
+                        (after[..end].to_string(), &after[end..])
+                    };
+                    values.retain(|(n, _)| *n != name);
+                    values.push((name, value));
+                    rest = match tail.strip_prefix(',') {
+                        Some(t) => t,
+                        None => break,
+                    };
+                }
+            }
+            "EXPORT" => {
+                let u = operands.to_ascii_uppercase();
+                if let Some(list) = u.strip_prefix("SYMLIST=") {
+                    let list = list.split_whitespace().next().unwrap_or("");
+                    let list = list.trim_start_matches('(').trim_end_matches(')');
+                    for n in list.split(',').filter(|n| !n.is_empty()) {
+                        if n == "*" {
+                            all = true;
+                        } else {
+                            exported.push(n.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    values.retain(|(n, _)| all || exported.contains(n));
+    values
+}
+
+/// Parses `//<DDNAME> DD ...` statements from a JCL sidecar file, joining
+/// continuation lines and classifying tape vs disk allocations.
+pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
+    let logical_lines = logical_lines(jcl_text);
 
     let mut out = Vec::new();
     for stmt in logical_lines {
@@ -242,19 +324,26 @@ pub fn export_jcl(
             summary.source_members += 1;
 
             let cfg = manifest.programs.get(&member).cloned().unwrap_or_default();
-            let extra_dds = if let Some(jcl_file) = &cfg.jcl {
+            let (extra_dds, symbols) = if let Some(jcl_file) = &cfg.jcl {
                 let jcl_path = mod_dir.join(jcl_file);
                 let text = fs::read_to_string(&jcl_path)
                     .with_context(|| format!("reading {}", jcl_path.display()))?;
-                parse_dd_allocations(&text)
+                (parse_dd_allocations(&text), exported_symbols(&text))
             } else {
-                Vec::new()
+                (Vec::new(), Vec::new())
             };
-            let step = if source_ext == "CBL" {
+            let mut step = if source_ext == "CBL" {
                 render_program_steps(hlq, &member, &cfg, &extra_dds)
             } else {
                 render_other_steps(hlq, &member, source_ext, &cfg, false, &extra_dds)
             };
+            // exported JCL symbols: EXPORT and SET before the run step
+            let go = format!("//G{member:<7} EXEC");
+            if !symbols.is_empty()
+                && let Some(at) = step.find(&go)
+            {
+                step.insert_str(at, &render_symbols(&member, &symbols));
+            }
             mod_jcl.push_str(&step);
             all_jcl.push_str(&step);
         }
@@ -266,6 +355,31 @@ pub fn export_jcl(
     fs::write(jcl_dir.join(format!("{all_name}.JCL")), &all_jcl)?;
     summary.jcl_members += 1;
     Ok(summary)
+}
+
+/// EXPORT SYMLIST and SET statements for the exported JCL symbols of a
+/// program; a value that is empty or not a plain word is quoted.
+fn render_symbols(member: &str, symbols: &[(String, String)]) -> String {
+    let names: Vec<&str> = symbols.iter().map(|(n, _)| n.as_str()).collect();
+    let mut s = format!("//X{member:<7} EXPORT SYMLIST=({})\n", names.join(","));
+    // one SET statement (names are at most 8 characters), one symbol per
+    // line, continued after a comma
+    for (k, (n, v)) in symbols.iter().enumerate() {
+        let plain = v.chars().all(|c| c.is_ascii_alphanumeric() || "@#$.".contains(c));
+        let value = if plain {
+            v.clone()
+        } else {
+            format!("'{}'", v.replace('\'', "''"))
+        };
+        let head = if k == 0 {
+            format!("//S{member:<7} SET ")
+        } else {
+            "//             ".to_string()
+        };
+        let comma = if k + 1 < symbols.len() { "," } else { "" };
+        let _ = writeln!(s, "{head}{n}={value}{comma}");
+    }
+    s
 }
 
 fn render_other_steps(
@@ -539,6 +653,21 @@ fn render_program_steps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn exported_jcl_symbols() {
+        let jcl = "//J JOB\n//EX1 EXPORT SYMLIST=(S1,L1,E)\n\
+                   //SET1 SET S1=STEWART,L1='LA GUARDIA'\n\
+                   //         SET E=,H=HIDDEN\n//S EXEC PGM=X\n";
+        assert_eq!(
+            exported_symbols(jcl),
+            vec![
+                ("S1".to_string(), "STEWART".to_string()),
+                ("L1".to_string(), "LA GUARDIA".to_string()),
+                ("E".to_string(), String::new()),
+            ]
+        );
+    }
 
     #[test]
     fn parse_tape_and_disk_dds() {

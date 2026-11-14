@@ -4657,6 +4657,38 @@
       }
     }
   },
+  "PM126A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: GETJCLSYMBOL | GETJCLSYMBOL returns a CHARACTER string value that represents the requested exported JCL symbol."
+    ],
+    "tests": {
+      "GETJCLSYMBOL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETJCLSYMBOL | With the JCL statements shown below, specifying GETJCLSYMBOL('S1') will return STEWART."
+        ]
+      },
+      "GETJCLSYMBOL-NOT-EXPORTED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETJCLSYMBOL | If there is no JCL symbol with the same value as x, a null string is returned."
+        ]
+      },
+      "ISJCLSYMBOL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISJCLSYMBOL | ISJCLSYMBOL returns '1'B if the argument is a valid exported JCL symbol. Otherwise it returns '0'B."
+        ]
+      },
+      "ISJCLSYMBOL-NULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISJCLSYMBOL | whether it is because the symbol is not an exported JCL symbol or because the symbol has been set to a"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

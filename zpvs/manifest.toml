@@ -144,5 +144,8 @@ jcl = "PS107A.JCL"
 [programs.PF108A]
 jcl = "PF108A.JCL"
 
+[programs.PM126A]
+jcl = "PM126A.JCL"
+
 [programs.PS109A]
 parm = "POSIX(ON)/"

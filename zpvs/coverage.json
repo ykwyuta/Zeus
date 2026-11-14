@@ -1326,6 +1326,15 @@
       "PLIDELETE-PLICANC"
     ]
   },
+  "PM126A": {
+    "expect": "run",
+    "tests": [
+      "GETJCLSYMBOL",
+      "GETJCLSYMBOL-NOT-EXPORTED",
+      "ISJCLSYMBOL",
+      "ISJCLSYMBOL-NULL"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

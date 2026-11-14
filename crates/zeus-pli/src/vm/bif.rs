@@ -1751,6 +1751,24 @@ impl Machine {
                     .unwrap_or_default();
                 Value::Char(ebcdic(&val))
             }
+            // the exported JCL symbols of the step: the runner passes them
+            // as NAME=VALUE lines in ZEUS_JCL_SYMBOLS (z/OS takes them from
+            // the JCL); a name that is not exported gives the null string
+            GetJclSymbol | IsJclSymbol => {
+                let name = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let name = name.trim_end().to_string();
+                let found = std::env::var("ZEUS_JCL_SYMBOLS").ok().and_then(|all| {
+                    all.lines()
+                        .filter_map(|l| l.split_once('='))
+                        .find(|(n, _)| *n == name)
+                        .map(|(_, v)| v.to_string())
+                });
+                if b == IsJclSymbol {
+                    Value::bit1(found.is_some())
+                } else {
+                    Value::Char(ebcdic(&found.unwrap_or_default()))
+                }
+            }
             PutEnv => {
                 let text = zeus_cobol::ebcdic::decode(&chars(&v[0]));
                 match text.split_once('=') {
