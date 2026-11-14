@@ -1281,6 +1281,19 @@
       "SQRTF-SQUARE"
     ]
   },
+  "PM123A": {
+    "expect": "run",
+    "tests": [
+      "CHARGRAPHIC-FULL",
+      "CHARGRAPHIC-PAD",
+      "CHARGRAPHIC-TRUNC",
+      "CHARGRAPHIC-ZERO-ONE",
+      "GRAPHIC-MIXED",
+      "CHARACTER-CONVERSION",
+      "MPSTR-SQUEEZE",
+      "MPSTR-TRUNCATE"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

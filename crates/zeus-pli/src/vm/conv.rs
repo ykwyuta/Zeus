@@ -37,6 +37,44 @@ pub fn to_wide(s: &[u8], graphic: bool) -> Vec<u8> {
     out
 }
 
+/// Shift-out and shift-in around the DBCS part of a mixed string.
+pub const SO: u8 = 0x0E;
+pub const SI: u8 = 0x0F;
+
+/// A mixed character string as GRAPHIC: SBCS characters become their DBCS
+/// equivalents ('42xx'X, the blank '4040'X) and the pairs between SO and SI
+/// are kept (LRM, GRAPHIC: "SBCS characters are converted to equivalent
+/// DBCS characters", the content checked as for mixed constants). None
+/// when the string is not a valid mixed string: an SI outside DBCS, no SI
+/// after an SO, or an odd number of bytes between them.
+pub fn mixed_to_graphic(s: &[u8]) -> Option<Vec<u8>> {
+    let mut out = Vec::with_capacity(2 * s.len());
+    let mut i = 0;
+    while i < s.len() {
+        match s[i] {
+            SO => {
+                let end = i + 1 + s[i + 1..].iter().position(|&c| c == SI)?;
+                let dbcs = &s[i + 1..end];
+                if dbcs.len() % 2 != 0 || dbcs.contains(&SO) {
+                    return None;
+                }
+                out.extend_from_slice(dbcs);
+                i = end + 1;
+            }
+            SI => return None,
+            SPACE => {
+                out.extend([0x40, 0x40]);
+                i += 1;
+            }
+            c => {
+                out.extend([0x42, c]);
+                i += 1;
+            }
+        }
+    }
+    Some(out)
+}
+
 /// GRAPHIC or WIDECHAR bytes as EBCDIC characters (those without a
 /// single-byte form: SUB, X'3F').
 pub fn from_wide(b: &[u8], graphic: bool) -> Vec<u8> {
@@ -224,6 +262,15 @@ impl Machine {
                 let Value::Char(b) = v else {
                     return err("wide string value");
                 };
+                // a DBCS character without an SBCS equivalent: CONVERSION
+                // (LRM, CHARACTER: "If a DBCS character cannot be translated
+                // to an SBCS equivalent, the CONVERSION condition is raised")
+                if *fg
+                    && b.chunks(2).any(|p| !matches!(p, [0x40, 0x40] | [0x42, _]))
+                    && self.enabled_now(act, cond::CONVERSION)
+                {
+                    self.raise(Cond::Conversion, 600, act)?;
+                }
                 let c = Value::Char(from_wide(&b, *fg));
                 return self.convert(c, &crate::sema::expr::char_any(), to, act);
             }
@@ -266,7 +313,22 @@ impl Machine {
                         else {
                             return err("wide string value");
                         };
-                        to_wide(&s, *graphic)
+                        if *graphic {
+                            match mixed_to_graphic(&s) {
+                                Some(g) => g,
+                                None => {
+                                    // not a valid mixed string: CONVERSION,
+                                    // then byte by byte (the code of the
+                                    // condition is not compared with z/OS)
+                                    if self.enabled_now(act, cond::CONVERSION) {
+                                        self.raise(Cond::Conversion, 600, act)?;
+                                    }
+                                    to_wide(&s, true)
+                                }
+                            }
+                        } else {
+                            to_wide(&s, false)
+                        }
                     }
                 };
                 // fit to the length in characters

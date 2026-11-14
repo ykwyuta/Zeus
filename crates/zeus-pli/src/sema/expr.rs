@@ -1736,6 +1736,52 @@ impl Compiler {
                     ty: Ty::Pic(Box::new(p)),
                 });
             }
+            // CHARGRAPHIC(x [,y]): GRAPHIC to a mixed string; MPSTR(x, r
+            // [,y]): a mixed string cut at a DBCS boundary (LRM). Without y,
+            // the length of the conversion (SO, the DBCS bytes, SI) or of x.
+            CharGraphic | Mpstr => {
+                let (lo, hi) = if b == CharGraphic { (1, 2) } else { (2, 3) };
+                if args.len() < lo || args.len() > hi {
+                    return Err(self.err(pos, format!("{b:?}: wrong number of arguments")));
+                }
+                let x = if b == CharGraphic {
+                    let x = self.expr_wide(&args[0])?;
+                    if !matches!(x.ty, Ty::Wchar { graphic: true, .. }) {
+                        return Err(self.err(pos, "CHARGRAPHIC needs a GRAPHIC string"));
+                    }
+                    x
+                } else {
+                    let x = self.expr(&args[0])?;
+                    self.to_char(x)
+                };
+                let mut v = vec![x.clone()];
+                if b == Mpstr {
+                    let r = self.expr(&args[1])?;
+                    v.push(self.to_char(r));
+                }
+                let y = match args.get(lo) {
+                    Some(y) => {
+                        let e = self.expr(y)?;
+                        let e = self.to_arith(e);
+                        v.push(self.conv(e, &Ty::fixed_bin(31, 0)));
+                        Some(self.const_int(y))
+                    }
+                    None => None,
+                };
+                let len = match &x.ty {
+                    Ty::Wchar { len: Ext::Const(n), var: Varying::Fixed, .. } => {
+                        Some(if *n == 0 { 0 } else { 2 * n + 2 })
+                    }
+                    Ty::Char { len: Ext::Const(n), var: Varying::Fixed } => Some(*n),
+                    _ => None,
+                };
+                let ty = match (y, len) {
+                    (Some(Some(n)), _) => Ty::char(n.max(0) as u32),
+                    (None, Some(n)) => Ty::char(n),
+                    _ => Ty::char_var(32767),
+                };
+                return Ok(mk(Ek::Builtin(b, v), ty));
+            }
             LocVal => {
                 let (r, _) = self.locval_ref(args, pos)?;
                 return self.load(r, pos);

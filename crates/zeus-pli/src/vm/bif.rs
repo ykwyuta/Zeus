@@ -1072,6 +1072,19 @@ impl Machine {
                 };
                 Value::bit1(left_ok && right_ok)
             }
+            CharGraphic => {
+                let Value::Char(g) = &v[0] else {
+                    return err("CHARGRAPHIC: not a GRAPHIC value");
+                };
+                Value::Char(char_graphic(g, int(1)))
+            }
+            Mpstr => {
+                let (Value::Char(x), Value::Char(r)) = (&v[0], &v[1]) else {
+                    return err("MPSTR: not a character value");
+                };
+                let r = zeus_cobol::ebcdic::decode(r).to_ascii_uppercase();
+                Value::Char(mpstr(x, r.contains('S') && !r.contains('V'), int(2)))
+            }
             InList => {
                 let mut hit = false;
                 for i in 1..v.len() {
@@ -2746,3 +2759,107 @@ fn utf_units(s: &[u8], wide: bool) -> Result<Vec<(usize, usize)>, usize> {
 
 /// The procedure number of NULLENTRY.
 pub(crate) const NULL_ENTRY: u32 = u32::MAX;
+
+/// CHARGRAPHIC (LRM): SO, the DBCS characters, SI; with a length y, padded
+/// with SBCS blanks, or cut after a whole DBCS character with SI and, if
+/// one byte is left, an SBCS blank. y = 1 gives one blank. With fewer than
+/// four bytes no DBCS character fits; Zeus then gives SO SI and blanks,
+/// which has not been compared with z/OS.
+fn char_graphic(g: &[u8], y: Option<i64>) -> Vec<u8> {
+    use super::conv::{SI, SO};
+    let full: Vec<u8> = if g.is_empty() {
+        Vec::new()
+    } else {
+        let mut f = vec![SO];
+        f.extend_from_slice(g);
+        f.push(SI);
+        f
+    };
+    let Some(y) = y else { return full };
+    let y = y.max(0) as usize;
+    if y <= 1 || full.is_empty() {
+        return vec![SPACE; y];
+    }
+    if y >= full.len() {
+        let mut f = full;
+        f.resize(y, SPACE);
+        return f;
+    }
+    let k = (y - 2) / 2;
+    let mut out = vec![SO];
+    out.extend_from_slice(&g[..2 * k]);
+    out.push(SI);
+    out.resize(y, SPACE);
+    out
+}
+
+/// MPSTR (LRM): with S (and not V) the null DBCS strings (SO SI) are
+/// removed; the string is cut to y bytes without splitting a DBCS
+/// character, by dropping SBCS characters or whole DBCS characters from the
+/// right and closing an open DBCS part with SI; it is padded with blanks.
+/// An invalid mixed string under V is left as it is (the LRM does not say
+/// what V does with one).
+fn mpstr(x: &[u8], squeeze: bool, y: Option<i64>) -> Vec<u8> {
+    use super::conv::{SI, SO};
+    let mut s: Vec<u8> = Vec::with_capacity(x.len());
+    let mut i = 0;
+    while i < x.len() {
+        if squeeze && x[i] == SO && x.get(i + 1) == Some(&SI) {
+            i += 2;
+            continue;
+        }
+        s.push(x[i]);
+        i += 1;
+    }
+    let y = match y {
+        Some(y) => y.max(0) as usize,
+        None => x.len(),
+    };
+    if s.len() <= y {
+        s.resize(y, SPACE);
+        return s;
+    }
+    // the longest prefix that fits with its SI
+    let mut out = Vec::new();
+    let mut dbcs = false;
+    let mut i = 0;
+    while i < s.len() {
+        let c = s[i];
+        if dbcs {
+            if c == SI {
+                if out.len() + 1 > y {
+                    break;
+                }
+                out.push(SI);
+                dbcs = false;
+                i += 1;
+                continue;
+            }
+            // a DBCS character and the SI that closes the part
+            if out.len() + 3 > y || i + 1 >= s.len() {
+                break;
+            }
+            out.extend_from_slice(&s[i..i + 2]);
+            i += 2;
+        } else if c == SO {
+            // SO needs room for SI after it
+            if out.len() + 2 > y {
+                break;
+            }
+            out.push(SO);
+            dbcs = true;
+            i += 1;
+        } else {
+            if out.len() + 1 > y {
+                break;
+            }
+            out.push(c);
+            i += 1;
+        }
+    }
+    if dbcs {
+        out.push(SI);
+    }
+    out.resize(y, SPACE);
+    out
+}

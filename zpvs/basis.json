@@ -4461,6 +4461,69 @@
       }
     }
   },
+  "PM123A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CHARGRAPHIC | CHARGRAPHIC converts a GRAPHIC (DBCS) string x to a mixed character string with a length specified by"
+    ],
+    "tests": {
+      "CHARGRAPHIC-FULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | CHARGRAPHIC returns a mixed character string that is converted from x.",
+          "PLI-LRM: CHARGRAPHIC | Abbreviation: CHARG"
+        ]
+      },
+      "CHARGRAPHIC-PAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | If y is greater than the length needed to contain the character string, the result is padded with SBCS"
+        ]
+      },
+      "CHARGRAPHIC-TRUNC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | If y is less than the length needed to contain the character string, the result is truncated. The integrity",
+          "PLI-LRM: CHARGRAPHIC | is preserved by truncating after a graphic and appending an SBCS blank, if necessary, to complete the"
+        ]
+      },
+      "CHARGRAPHIC-ZERO-ONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | If y = 0, the result is the null character string.",
+          "PLI-LRM: CHARGRAPHIC | If y = 1, the result is a character string of 1 blank."
+        ]
+      },
+      "GRAPHIC-MIXED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GRAPHIC | GRAPHIC explicitly converts character (or mixed character) data to GRAPHIC data. All other data first",
+          "PLI-LRM: GRAPHIC | truncation. When x is nongraphic, it is converted to character, if necessary. SBCS characters are",
+          "PLI-LRM: GRAPHIC | If y is greater than the length needed to contain the graphic string, the result is padded with graphic"
+        ]
+      },
+      "CHARACTER-CONVERSION": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHARGRAPHIC | When x is GRAPHIC, CHARACTER returns x converted to SBCS characters. If a DBCS character cannot"
+        ]
+      },
+      "MPSTR-SQUEEZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MPSTR | Removes any null DBCS strings, creates a new string, and returns a mixed string.",
+          "PLI-LRM: MPSTR | It does not truncate a double-byte character between bytes. The length of the returned string is equal to"
+        ]
+      },
+      "MPSTR-TRUNCATE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: MPSTR | blanks. If y is less than the length needed to contain x, the result is truncated by discarding excess",
+          "PLI-LRM: MPSTR | MPSTR truncates a string at a logical boundary and returns a mixed character string."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [
