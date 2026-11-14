@@ -348,6 +348,17 @@
       "FOLDEDSIMPLEMATCH"
     ]
   },
+  "PC122A": {
+    "expect": "run",
+    "tests": [
+      "ONUCHAR-OUT-OF-CONTEXT",
+      "ONWCHAR-OUT-OF-CONTEXT",
+      "ONUSOURCE",
+      "ONUCHAR",
+      "ONWSOURCE",
+      "ONWCHAR"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

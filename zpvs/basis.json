@@ -1241,6 +1241,52 @@
       }
     }
   },
+  "PC122A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ONUSOURCE | ONUSOURCE returns a UCHAR string whose value is the contents of the field that was being processed when a CONVERSION condition was raised."
+    ],
+    "tests": {
+      "ONUCHAR-OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONUCHAR | If the ONUCHAR built-in function is used out of context, a UTF-8 blank is returned.",
+          "PLI-LRM: ONUSOURCE | If the ONUSOURCE built-in function is used out of context, a null string is returned."
+        ]
+      },
+      "ONWCHAR-OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONWCHAR | If the ONWCHAR built-in function is used out of context, a widechar blank is returned.",
+          "PLI-LRM: ONWSOURCE | If ONWSOURCE is used out of context, a null string is returned."
+        ]
+      },
+      "ONUSOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONUSOURCE | ONUSOURCE returns a UCHAR string whose value is the contents of the field that was being processed when a CONVERSION condition was raised."
+        ]
+      },
+      "ONUCHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONUCHAR | ONUCHAR returns a UCHAR(1) string containing the UTF-8 data that caused a CONVERSION condition."
+        ]
+      },
+      "ONWSOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONWSOURCE | ONWSOURCE returns a WIDECHAR string whose value is the contents of the field that was being processed when the CONVERSION condition was raised."
+        ]
+      },
+      "ONWCHAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONWCHAR | ONWCHAR returns a widechar(1) string containing the widechar that caused the CONVERSION condition to be raised."
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

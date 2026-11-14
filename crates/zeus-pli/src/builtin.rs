@@ -246,6 +246,10 @@ pub enum Bif {
     UpperLatin1,
     FoldedFullMatch,
     FoldedSimpleMatch,
+    OnUchar,
+    OnUsource,
+    OnWchar,
+    OnWsource,
     PicSpec,
     CodePage,
     SubTo,
@@ -624,6 +628,10 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "UPPERLATIN1" => UpperLatin1,
         "FOLDEDFULLMATCH" => FoldedFullMatch,
         "FOLDEDSIMPLEMATCH" => FoldedSimpleMatch,
+        "ONUCHAR" => OnUchar,
+        "ONUSOURCE" => OnUsource,
+        "ONWCHAR" => OnWchar,
+        "ONWSOURCE" => OnWsource,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -755,6 +763,10 @@ impl Bif {
                 | Collate
                 | OnCode
                 | OnChar
+                | OnUchar
+                | OnUsource
+                | OnWchar
+                | OnWsource
                 | OnSource
                 | OnKey
                 | OnFile
@@ -1388,6 +1400,24 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         | PliTran21 | PliTran22 => Ty::Entry,
         Utf8Stg => fixed_bin31(),
         ThreadId => Ty::Pointer,
+        OnUchar => Ty::Uchar {
+            len: crate::types::Ext::Const(1),
+            var: crate::types::Var::Fixed,
+        },
+        OnUsource => Ty::Uchar {
+            len: crate::types::Ext::Star,
+            var: crate::types::Var::Varying,
+        },
+        OnWchar => Ty::Wchar {
+            len: crate::types::Ext::Const(1),
+            var: crate::types::Var::Fixed,
+            graphic: false,
+        },
+        OnWsource => Ty::Wchar {
+            len: crate::types::Ext::Const(32767),
+            var: crate::types::Var::Varying,
+            graphic: false,
+        },
         ByteLength | FoldedFullMatch | FoldedSimpleMatch => fixed_bin31(),
         LowerAscii | UpperAscii | LowerLatin1 | UpperLatin1 => Ty::Uchar {
             len: match arg(0)? {

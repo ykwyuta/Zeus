@@ -3519,6 +3519,21 @@ impl Machine {
 
     fn on_value(&self, b: crate::builtin::Bif, act: usize) -> Value {
         use crate::builtin::Bif::*;
+        // ONUCHAR, ONUSOURCE, ONWCHAR, ONWSOURCE: Zeus converts a UCHAR or
+        // WIDECHAR source to arithmetic through CHARACTER, so these are
+        // ONCHAR and ONSOURCE as UTF-8 or UTF-16; out of context, a blank
+        // or a null string (LRM)
+        if matches!(b, OnUchar | OnUsource | OnWchar | OnWsource) {
+            let src = match self.on_value(if matches!(b, OnUchar | OnWchar) { OnChar } else { OnSource }, act) {
+                Value::Char(c) => c,
+                _ => Vec::new(),
+            };
+            let text = zeus_cobol::ebcdic::decode(&src);
+            return Value::Char(match b {
+                OnUchar | OnUsource => text.into_bytes(),
+                _ => text.encode_utf16().flat_map(u16::to_be_bytes).collect(),
+            });
+        }
         if let Some((source, bad)) = PENDING_CONV.with(|p| p.borrow().clone()) {
             if b == OnChar {
                 return Value::Char(vec![bad]);
