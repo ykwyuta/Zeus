@@ -1303,5 +1303,15 @@
       "PACKAGE-SHARED-CHAR",
       "PACKAGENAME"
     ]
+  },
+  "PS109A": {
+    "expect": "run",
+    "tests": [
+      "ATTACH-WAIT",
+      "ATTACH-POINTER-ARG",
+      "THREADID",
+      "ERROR-ENDS-THREAD",
+      "EXIT-ENDS-THREAD"
+    ]
   }
 }

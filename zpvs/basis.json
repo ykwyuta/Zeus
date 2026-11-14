@@ -4400,5 +4400,49 @@
         ]
       }
     }
+  },
+  "PS109A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ATTACH statement | A thread is attached (or created) by the execution of the ATTACH statement.",
+      "PLI-PG: Using the ATTACH statement | The ATTACH statement in a PL/I program uses the underlying pthread library to perform thread management.",
+      "LE-PR: POSIX | POSIX specifies if the enclave can run with the POSIX semantics."
+    ],
+    "tests": {
+      "ATTACH-WAIT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Waiting for a thread to complete | The current thread is suspended until the specified thread terminates.",
+          "PLI-LRM: Detaching a thread | Normally, this statement would be executed immediately after the WAIT statement for the terminating thread."
+        ]
+      },
+      "ATTACH-POINTER-ARG": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ATTACH statement | The ATTACHed entry must be declared as having no parameters or as having exactly one BYVALUE POINTER parameter."
+        ]
+      },
+      "THREADID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: THREADID built-in function | THREADID (short for thread identifier) returns a POINTER value that is the address of the operating system thread identifier for an attached thread.",
+          "PLI-LRM: Task data and attribute | A task variable is associated with a thread by the task reference in the THREAD option of the ATTACH statement creating the thread."
+        ]
+      },
+      "ERROR-ENDS-THREAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Terminating a thread | The ERROR condition is raised and either there is no ERROR ON-unit or the ERROR ON-unit terminates normally",
+          "PLI-LRM: Terminating a thread | The ON-units that are in effect at the time a thread is created are not inherited by the new attached thread."
+        ]
+      },
+      "EXIT-ENDS-THREAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Terminating a thread | The EXIT statement is executed in any procedure within the thread.",
+          "PLI-LRM: Canceling a thread | You can cancel a thread by using the CANCEL THREAD statement."
+        ]
+      }
+    }
   }
 }

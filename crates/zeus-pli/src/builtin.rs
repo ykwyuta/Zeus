@@ -238,6 +238,7 @@ pub enum Bif {
     PliTran21,
     PliTran22,
     Utf8Stg,
+    ThreadId,
     PicSpec,
     CodePage,
     SubTo,
@@ -608,6 +609,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "PLITRAN21" => PliTran21,
         "PLITRAN22" => PliTran22,
         "UTF8STG" => Utf8Stg,
+        "THREADID" => ThreadId,
         "PICSPEC" => PicSpec,
         "CODEPAGE" => CodePage,
         "WLOW" => WLow,
@@ -1371,5 +1373,6 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         PliRetC | PliDump | PliSrtA | PliFill | PliMove | PliFree | PliTran11 | PliTran12
         | PliTran21 | PliTran22 => Ty::Entry,
         Utf8Stg => fixed_bin31(),
+        ThreadId => Ty::Pointer,
     })
 }

@@ -573,6 +573,10 @@ pub enum Stmt {
     Resignal,
     Stop,
     Exit,
+    /// ATTACH: the call, run as a new thread, and the task variable.
+    Attach(Box<Stmt>, Option<Ref>),
+    /// WAIT / DETACH / CANCEL THREAD of the task variable.
+    Thread(crate::ast::ThreadOp, Expr),
     Put(Stream),
     Get(Stream),
     Open(Vec<OpenSpec>),

@@ -77,6 +77,8 @@ pub enum Intr {
     Iterate(LoopId),
     Return(Option<Value>),
     Stop,
+    /// EXIT in an attached thread: that thread ends.
+    ExitThread,
     /// The program ends abnormally after ERROR.
     Terminate,
     Fatal(String),
@@ -184,6 +186,11 @@ pub struct Machine {
     pub env: RunEnv,
     files: Vec<stream::FileState>,
     rc: i32,
+    /// The first activation of the running thread (0: the main thread):
+    /// conditions are not handled across thread boundaries.
+    thread_base: usize,
+    /// Threads attached so far (THREADID tokens).
+    threads: u32,
     /// Heap allocations of ALLOCATE (address, size), each followed by
     /// eight 'FF'X bytes (CHECKSTG, ALLOCSIZE, UNALLOCATED).
     pub(crate) allocs: std::collections::BTreeMap<u32, u32>,
@@ -245,6 +252,8 @@ impl Machine {
             env,
             files,
             rc: 0,
+            thread_base: 0,
+            threads: 0,
             allocs: std::collections::BTreeMap::new(),
             random: 0x2545_F491_4F6C_DD1D,
             depth: 0,
@@ -1788,7 +1797,38 @@ impl Machine {
                 Ok(())
             }
             Stmt::Stop => Err(Intr::Stop),
+            // EXIT ends the thread; in the main thread, the program
+            Stmt::Exit if self.thread_base > 0 => Err(Intr::ExitThread),
             Stmt::Exit => Err(Intr::Stop),
+            // ATTACH: Zeus runs the attached thread to its end at once, one
+            // valid scheduling of the threads. ON-units are not inherited,
+            // and ERROR or EXIT ends only the thread; STOP ends the program
+            // (LRM, Multithreading facility).
+            Stmt::Attach(call, task) => {
+                self.threads += 1;
+                let id = 0x7F00_0000u32 + self.threads;
+                if let Some(t) = task {
+                    let loc = self.locate(t, act)?;
+                    self.assign_loc(&loc, Value::Ptr(id), &Ty::Pointer, act)?;
+                }
+                let save = self.thread_base;
+                let base = self.acts.len();
+                self.thread_base = base;
+                let r = self.exec(call, act);
+                self.thread_base = save;
+                if self.acts.len() > base {
+                    self.deactivate(base);
+                }
+                match r {
+                    Ok(()) | Err(Intr::Terminate | Intr::ExitThread) => Ok(()),
+                    Err(e) => Err(e),
+                }
+            }
+            // the attached thread has ended already
+            Stmt::Thread(_, task) => {
+                self.eval(task, act)?;
+                Ok(())
+            }
             Stmt::Put(s) => self.put(s, act),
             Stmt::Get(s) => self.get(s, act),
             Stmt::Open(specs) => {
@@ -2862,7 +2902,7 @@ impl Machine {
                     }
                 }
             }
-            if i == 0 {
+            if i <= self.thread_base {
                 break;
             }
             i -= 1;
@@ -3097,7 +3137,10 @@ impl Machine {
 
     /// ERROR without recovery: FINISH, then the program ends.
     fn terminate(&mut self, act: usize) -> R<()> {
-        let _ = self.raise(Cond::Finish, 4, act);
+        // FINISH is raised only in the thread that ends the program
+        if self.thread_base == 0 {
+            let _ = self.raise(Cond::Finish, 4, act);
+        }
         Err(Intr::Terminate)
     }
 

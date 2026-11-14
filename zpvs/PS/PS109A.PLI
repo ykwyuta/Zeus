@@ -1,0 +1,66 @@
+ PS109P: PACKAGE EXPORTS(PS109A);
+ /* The multithreading facility (Enterprise PL/I 6.1 Language
+    Reference): ATTACH, WAIT THREAD, DETACH THREAD, CANCEL THREAD,
+    the TASK attribute and THREADID. An attached entry is a level-1
+    procedure with no parameters or one BYVALUE POINTER parameter.
+    WAIT suspends the thread until the attached thread has ended.
+    The new thread inherits no ON-unit: ERROR raised in it with no
+    ON-unit of its own ends that thread only, and the attaching
+    thread's ON ERROR unit is not run. EXIT ends the thread. The run
+    needs the POSIX(ON) run-time option (the PARM of the step). */
+ DCL SHARED FIXED BIN(31) STATIC INIT(0);
+ DCL AFTER FIXED BIN(31) STATIC INIT(0);
+
+ ADDTEN: PROC;
+   SHARED = SHARED + 10;
+ END ADDTEN;
+
+ BUMP: PROC(P);
+   DCL P POINTER BYVALUE;
+   DCL N FIXED BIN(31) BASED(P);
+   N = N + 1;
+ END BUMP;
+
+ FAILS: PROC;
+   SIGNAL ERROR;
+   AFTER = 1;
+ END FAILS;
+
+ LEAVES: PROC;
+   EXIT;
+   AFTER = 2;
+ END LEAVES;
+
+ PS109A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL (T1, T2, T3, T4) TASK;
+ DCL COUNT FIXED BIN(31) INIT(41);
+ DCL HIT BIT(1) INIT('0'B);
+
+ OPEN FILE(REPORT);
+
+ ATTACH ADDTEN THREAD(T1);
+ WAIT THREAD(T1);
+ DETACH THREAD(T1);
+ CALL ZCHECK('ATTACH-WAIT', SHARED = 10);
+ ATTACH BUMP(ADDR(COUNT)) THREAD(T2);
+ WAIT THREAD(T2);
+ DETACH THREAD(T2);
+ CALL ZCHECK('ATTACH-POINTER-ARG', COUNT = 42);
+ CALL ZCHECK('THREADID',
+   THREADID(T1) ^= SYSNULL() & THREADID(T1) ^= THREADID(T2));
+ ON ERROR BEGIN; HIT = '1'B; END;
+ ATTACH FAILS THREAD(T3);
+ WAIT THREAD(T3);
+ DETACH THREAD(T3);
+ CALL ZCHECK('ERROR-ENDS-THREAD', ^HIT & AFTER = 0);
+ ATTACH LEAVES THREAD(T4);
+ WAIT THREAD(T4);
+ CANCEL THREAD(T4);
+ DETACH THREAD(T4);
+ CALL ZCHECK('EXIT-ENDS-THREAD', AFTER = 0);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PS109A;
+ END PS109P;

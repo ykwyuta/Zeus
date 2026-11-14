@@ -1746,7 +1746,7 @@ impl Compiler {
             }
             Utf8ToWchar | MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24
             | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | FileOpen | FileId
-            | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern | Utf8Stg => xs,
+            | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern | Utf8Stg | ThreadId => xs,
             SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();
                 let mut v = vec![it.next().unwrap()];

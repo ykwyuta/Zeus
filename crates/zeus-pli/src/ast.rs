@@ -398,6 +398,10 @@ pub enum StmtKind {
     Resignal,
     Stop,
     Exit,
+    /// ATTACH entry [THREAD(task)]
+    Attach(Ref, Option<Ref>),
+    /// WAIT / DETACH / CANCEL THREAD(task)
+    Thread(ThreadOp, Ref),
     Put(StreamOpts),
     Get(StreamOpts),
     Open(Vec<FileOpen>),
@@ -445,4 +449,12 @@ pub enum AssertKind {
     False,
     Compare,
     Unreachable,
+}
+
+/// WAIT THREAD, DETACH THREAD and CANCEL THREAD.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub enum ThreadOp {
+    Wait,
+    Detach,
+    Cancel,
 }

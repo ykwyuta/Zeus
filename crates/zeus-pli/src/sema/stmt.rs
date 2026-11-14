@@ -816,6 +816,18 @@ impl Compiler {
             StmtKind::Resignal => Stmt::Resignal,
             StmtKind::Stop => Stmt::Stop,
             StmtKind::Exit => Stmt::Exit,
+            StmtKind::Attach(entry, task) => {
+                let call = self.call_stmt(entry)?;
+                let task = match task {
+                    Some(t) => Some(self.reference(t, false)?),
+                    None => None,
+                };
+                Stmt::Attach(Box::new(call), task)
+            }
+            StmtKind::Thread(op, task) => {
+                let r = self.reference(task, false)?;
+                Stmt::Thread(*op, self.load(r, pos)?)
+            }
             StmtKind::Put(o) => Stmt::Put(self.stream(o, false, pos)?),
             StmtKind::Get(o) => Stmt::Get(self.stream(o, true, pos)?),
             StmtKind::Open(files) => {

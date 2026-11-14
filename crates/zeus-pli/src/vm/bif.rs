@@ -1522,6 +1522,12 @@ impl Machine {
                     }
                 }
             }
+            // THREADID(x): the thread identification held in the task
+            // variable x (a token in Zeus, not an operating system address)
+            ThreadId => match &v[0] {
+                Value::Ptr(p) => Value::Ptr(*p),
+                _ => return err("THREADID requires a task variable"),
+            },
             // UTF8STG(x): the bytes of the UTF-8 character that starts with
             // x, zero if x cannot start one (LRM)
             Utf8Stg => Value::int(match chars(&v[0]).first().copied().unwrap_or(0x80) {

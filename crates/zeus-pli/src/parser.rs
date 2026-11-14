@@ -613,7 +613,9 @@ impl Parser {
                     Tok::Str { text, .. } => Attr::Picture(text),
                     _ => return Err(self.unexpected("picture string")),
                 },
-                "POINTER" | "PTR" => Attr::Pointer,
+                // TASK: a task variable holds the thread identification,
+                // kept as a pointer (THREADID)
+                "POINTER" | "PTR" | "TASK" => Attr::Pointer,
                 "OFFSET" => {
                     let area = if self.is_op("(") {
                         Some(self.paren_text()?.trim().to_ascii_uppercase())
@@ -1870,6 +1872,37 @@ impl Parser {
             "STOP" => {
                 self.semi()?;
                 StmtKind::Stop
+            }
+            "ATTACH" => {
+                let entry = self.reference()?;
+                let mut task = None;
+                loop {
+                    if self.eat_word("THREAD") {
+                        self.expect_op("(")?;
+                        task = Some(self.reference()?);
+                        self.expect_op(")")?;
+                    } else if self.is_word("ENVIRONMENT") || self.is_word("ENV") {
+                        self.bump();
+                        self.paren_text()?;
+                    } else {
+                        break;
+                    }
+                }
+                self.semi()?;
+                StmtKind::Attach(entry, task)
+            }
+            "WAIT" | "DETACH" | "CANCEL" if self.is_word("THREAD") => {
+                let op = match w.as_str() {
+                    "WAIT" => crate::ast::ThreadOp::Wait,
+                    "DETACH" => crate::ast::ThreadOp::Detach,
+                    _ => crate::ast::ThreadOp::Cancel,
+                };
+                self.bump();
+                self.expect_op("(")?;
+                let task = self.reference()?;
+                self.expect_op(")")?;
+                self.semi()?;
+                StmtKind::Thread(op, task)
             }
             "EXIT" => {
                 self.semi()?;
