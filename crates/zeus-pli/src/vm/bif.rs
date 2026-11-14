@@ -1819,6 +1819,22 @@ impl Machine {
             // a version 4 UUID: random bits, version nibble 4, variant 10
             // a new version 4 UUID at each reference and in each run
             Uuid4 => Value::Char(ebcdic(&zeus_cobol::vm::uuid4())),
+            // a version 5 UUID (RFC 4122): the SHA-1 of a name with the
+            // version and variant bits set. The LRM names no namespace or
+            // name; Zeus hashes a fresh random UUID, so each call differs.
+            Uuid => {
+                let name = zeus_cobol::vm::uuid4();
+                let h = super::digest::digest(1, 160, name.as_bytes());
+                let mut r = [0u8; 16];
+                r.copy_from_slice(&h[..16]);
+                r[6] = (r[6] & 0x0f) | 0x50;
+                r[8] = (r[8] & 0x3f) | 0x80;
+                let x: std::string::String = r.iter().map(|c| format!("{c:02x}")).collect();
+                let s = format!("{}-{}-{}-{}-{}", &x[0..8], &x[8..12], &x[12..16], &x[16..20], &x[20..32]);
+                Value::Char(ebcdic(&s))
+            }
+            UHigh => Value::Char([0xF4, 0x8F, 0xBF, 0xBF].repeat(int(0).unwrap_or(0).max(0) as usize)),
+            ULow => Value::Char(vec![0; int(0).unwrap_or(0).max(0) as usize]),
             // buffer functions on UTF-16: whitespace \t \f \v \n \r, base 64
             // digits as UTF-16 characters
             // XMLSCRUB(p, m, q, n), XMLSCRUB16: the scrubbed source, its

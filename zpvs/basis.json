@@ -4729,6 +4729,47 @@
       }
     }
   },
+  "PM128A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UUID | UUID returns a CHARACTER(36) string that is a universally unique identifier that is in version 5 format."
+    ],
+    "tests": {
+      "UUID-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UUID | UUID returns a CHARACTER(36) string that is a universally unique identifier that is in version 5 format."
+        ]
+      },
+      "UUID-UNIQUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UUID | UUID returns a CHARACTER(36) string that is a universally unique identifier that is in version 5 format."
+        ]
+      },
+      "UHIGH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UHIGH | UHIGH returns a UCHAR string of length x with each UTF-8 data item having the highest UCHAR value",
+          "PLI-LRM: UHIGH | The value returned by BYTELENGTH(UHIGH(x)) is equal to 4*x."
+        ]
+      },
+      "ULOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULOW | ULOW returns a UCHAR string of length x with each UTF-8 data item having the lowest UCHAR value",
+          "PLI-LRM: ULOW | The value returned by BYTELENGTH(ULOW(x)) is equal to x."
+        ]
+      },
+      "UHIGH-ULOW-ORDER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UHIGH | ('F48FBFBF'ux).",
+          "PLI-LRM: ULOW | ('00'ux)."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

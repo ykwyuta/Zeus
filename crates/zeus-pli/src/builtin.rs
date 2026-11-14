@@ -290,6 +290,9 @@ pub enum Bif {
     IsJclSymbol,
     PutEnv,
     Uuid4,
+    Uuid,
+    UHigh,
+    ULow,
     Valid,
     Microsecs,
     Secs,
@@ -695,6 +698,9 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "ISJCLSYMBOL" => IsJclSymbol,
         "PUTENV" => PutEnv,
         "UUID4" => Uuid4,
+        "UUID" => Uuid,
+        "UHIGH" => UHigh,
+        "ULOW" => ULow,
         "VALID" => Valid,
         "MICROSECS" => Microsecs,
         "SECS" => Secs,
@@ -839,6 +845,7 @@ impl Bif {
                 | NullEntry
                 | FileNew
                 | Uuid4
+                | Uuid
                 | Secs
                 | Timestamp
                 | UtcDatetime
@@ -1119,7 +1126,20 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         GetEnv | GetJclSymbol | GetSysWord => Ty::char_var(32767),
         GetSysInt => fixed_bin31(),
         IsJclSymbol => Ty::bit(1),
-        Uuid4 => Ty::char(36),
+        Uuid4 | Uuid => Ty::char(36),
+        // UHIGH(x), ULOW(x): x uchars (the LRM says "of length x" and gives
+        // BYTELENGTH 4*x and x; its "x must have UCHAR type" contradicts
+        // both and is read as a slip)
+        UHigh | ULow => match cint(0) {
+            Some(n) => Ty::Uchar {
+                len: crate::types::Ext::Const(n.max(0) as u32),
+                var: crate::types::Var::Fixed,
+            },
+            None => Ty::Uchar {
+                len: crate::types::Ext::Star,
+                var: crate::types::Var::Varying,
+            },
+        },
         Microsecs | DaysToMicrosecs | UtcMicrosecs => Ty::fixed_bin(63, 0),
         MicrosecsToDays => fixed_bin31(),
         Secs | UtcSecs => Ty::Float { dec: false, p: 53 },

@@ -1,0 +1,40 @@
+ PM128A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL (U1, U2) CHAR(36);
+ DCL HEXDIG CHAR(22) INIT('0123456789abcdefABCDEF');
+ DCL UZ UCHAR(1);
+
+ OPEN FILE(REPORT);
+
+ /* UUID-FORM: 8-4-4-4-12 hexadecimal digits, version 5 */
+ U1 = UUID();
+ U2 = UUID();
+ CALL ZCHECK('UUID-FORM',
+   LENGTH(UUID())=36 &
+   SUBSTR(U1,9,1)='-' & SUBSTR(U1,14,1)='-' &
+   SUBSTR(U1,19,1)='-' & SUBSTR(U1,24,1)='-' &
+   VERIFY(TRANSLATE(U1,'0','-'),HEXDIG)=0 &
+   SUBSTR(U1,15,1)='5' & INDEX('89abAB',SUBSTR(U1,20,1))>0);
+
+ /* UUID-UNIQUE: each call gives another identifier */
+ CALL ZCHECK('UUID-UNIQUE',
+   U1^=U2);
+
+ /* UHIGH: 'F48FBFBF'ux, four bytes each */
+ CALL ZCHECK('UHIGH',
+   BYTELENGTH(UHIGH(3))=12 & LENGTH(UHIGH(3))=3 &
+   UHIGH(1)='F48FBFBF'UX & UHIGH(2)='F48FBFBFF48FBFBF'UX);
+
+ /* ULOW: '00'ux, one byte each */
+ CALL ZCHECK('ULOW',
+   BYTELENGTH(ULOW(5))=5 & LENGTH(ULOW(5))=5 &
+   ULOW(2)='0000'UX);
+
+ /* UHIGH-ULOW-ORDER */
+ UZ = UTF8('z');
+ CALL ZCHECK('UHIGH-ULOW-ORDER',
+   ULOW(1) < UZ & UZ < UHIGH(1));
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM128A;

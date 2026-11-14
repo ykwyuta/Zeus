@@ -1345,6 +1345,16 @@
       "GETSYSINT-MAXACTINFO"
     ]
   },
+  "PM128A": {
+    "expect": "run",
+    "tests": [
+      "UUID-FORM",
+      "UUID-UNIQUE",
+      "UHIGH",
+      "ULOW",
+      "UHIGH-ULOW-ORDER"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [
