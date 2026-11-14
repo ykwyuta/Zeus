@@ -628,6 +628,17 @@
       "XPROCEDURE-FIRST-KEPT"
     ]
   },
+  "PD115A": {
+    "expect": "run",
+    "tests": [
+      "DIMACROSS-MEMBERS",
+      "DIMACROSS-STORAGE",
+      "BOUNDACROSS",
+      "BY-DIMACROSS-SOURCE",
+      "BY-DIMACROSS-TARGET",
+      "BY-DIMACROSS-BOUNDS"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []

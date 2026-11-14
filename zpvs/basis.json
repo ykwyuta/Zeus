@@ -1892,6 +1892,54 @@
       }
     }
   },
+  "PD115A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DIMACROSS attribute | The DIMACROSS attribute specifies a DIMENSION attribute on a structure, but one which will be removed"
+    ],
+    "tests": {
+      "DIMACROSS-MEMBERS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIMACROSS attribute | The children of the variable are arrays."
+        ]
+      },
+      "DIMACROSS-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DIMACROSS attribute | As an example, the following declarations are equivalent:",
+          "PLI-LRM: DIMACROSS attribute | from the structure and propagated to its members."
+        ]
+      },
+      "BOUNDACROSS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HBOUNDACROSS | HBOUNDACROSS returns a FIXED BINARY value that specifies the current upper bound of a DIMACROSS",
+          "PLI-LRM: LBOUNDACROSS | LBOUNDACROSS returns a FIXED BINARY value that specifies the current lower bound of a DIMACROSS"
+        ]
+      },
+      "BY-DIMACROSS-SOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure assignments using the BY DIMACROSS option | using the DIMACROSS expression as the index into the associated array elements.",
+          "PLI-LRM: HBOUNDACROSS | a = xa, by dimacross(jx);"
+        ]
+      },
+      "BY-DIMACROSS-TARGET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure assignments using the BY DIMACROSS option | using the DIMACROSS expression as the index into the associated array elements."
+        ]
+      },
+      "BY-DIMACROSS-BOUNDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: Structure assignments using the BY DIMACROSS option | using the DIMACROSS expression as the index into the associated array elements.",
+          "PLI-LRM: Assignment statements that use the BY DIMACROSS option | Specifies an expression that is used as the index appended to the associated DIMACROSS structure"
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [

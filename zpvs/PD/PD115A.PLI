@@ -1,0 +1,69 @@
+ PD115A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL 1 A,
+       2 B CHAR(1),
+       2 C CHAR(1);
+ DCL 1 XA(3) LIKE A DIMACROSS;
+ DCL 1 YA DIMACROSS(2:5),
+       2 P FIXED BIN(31),
+       2 Q CHAR(2);
+ DCL 1 ZA(3),
+       2 B CHAR(1),
+       2 C CHAR(1);
+ DCL XS CHAR(6) BASED(ADDR(XA));
+ DCL ZS CHAR(6) BASED(ADDR(ZA));
+ DCL (J, K) FIXED BIN(31);
+ DCL T CHAR(12) VAR INIT('');
+
+ OPEN FILE(REPORT);
+
+ /* DIMACROSS-MEMBERS: the members are arrays */
+ CALL ZCHECK('DIMACROSS-MEMBERS',
+   HBOUND(XA.B,1)=3 & DIM(XA.C,1)=3 &
+   LBOUND(YA.P,1)=2 & HBOUND(YA.Q,1)=5);
+
+ /* DIMACROSS-STORAGE: each member is a whole array */
+ XA.B(1) = 'A'; XA.B(2) = 'B'; XA.B(3) = 'C';
+ XA.C(1) = 'x'; XA.C(2) = 'y'; XA.C(3) = 'z';
+ ZA(1).B = 'A'; ZA(2).B = 'B'; ZA(3).B = 'C';
+ ZA(1).C = 'x'; ZA(2).C = 'y'; ZA(3).C = 'z';
+ CALL ZCHECK('DIMACROSS-STORAGE',
+   XS='ABCxyz' & ZS='AxByCz');
+
+ /* BOUNDACROSS */
+ CALL ZCHECK('BOUNDACROSS',
+   LBOUNDACROSS(XA)=1 & HBOUNDACROSS(XA)=3 &
+   LBOUNDACROSS(YA)=2 & HBOUNDACROSS(YA)=5);
+
+ /* BY-DIMACROSS-SOURCE: the index selects the elements */
+ DO J = 1 TO HBOUNDACROSS(XA);
+   A = XA, BY DIMACROSS(J);
+   T = T || A.B || A.C;
+ END;
+ CALL ZCHECK('BY-DIMACROSS-SOURCE',
+   T='AxByCz');
+
+ /* BY-DIMACROSS-TARGET */
+ A.B = '1'; A.C = '2';
+ K = 2;
+ XA = A, BY DIMACROSS(K);
+ CALL ZCHECK('BY-DIMACROSS-TARGET',
+   XS='A1Cx2z');
+
+ /* BY-DIMACROSS-BOUNDS: an index within LBOUND:HBOUND */
+ DO J = LBOUNDACROSS(YA) TO HBOUNDACROSS(YA);
+   YA.P(J) = J * 10;
+   YA.Q(J) = 'Q' || TRIM(CHAR(J));
+ END;
+ BEGIN;
+   DCL 1 R,
+         2 P FIXED BIN(31),
+         2 Q CHAR(2);
+   R = YA, BY DIMACROSS(4);
+   CALL ZCHECK('BY-DIMACROSS-BOUNDS',
+     R.P=40 & R.Q='Q4');
+ END;
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PD115A;
