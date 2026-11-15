@@ -1334,6 +1334,22 @@ impl Compiler {
                     output,
                 })
             }
+            // CALL PLICKPT [(ddname [,check-id [,org [,code]]])] (PG)
+            PliCkpt => {
+                if args.len() > 4 {
+                    return Err(self.err(pos, "PLICKPT takes at most four arguments"));
+                }
+                let mut v = Vec::new();
+                for a in args.iter().take(3) {
+                    let x = self.expr(a)?;
+                    v.push(self.to_char(x));
+                }
+                let code = match args.get(3) {
+                    Some(a) => Some(self.target(a)?.0),
+                    None => None,
+                };
+                Ok(Stmt::Checkpoint { args: v, code })
+            }
             // PLIPARSE(input, x1, s1, ... [,xn+1]) (LRM): 3 to 64 arguments;
             // the targets are CHARACTER references or *
             PliParse => {

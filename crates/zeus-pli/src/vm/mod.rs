@@ -1825,6 +1825,36 @@ impl Machine {
                 }
                 Ok(())
             }
+            // PLICKPT (Programming Guide, Requesting a checkpoint record):
+            // 0 when the checkpoint record is written, 8 for a bad request
+            // (an organization other than PS or PO), 12 when the data set
+            // is missing. Zeus writes the check-id as the record; it keeps
+            // no program state, so there is nothing to restart from.
+            Stmt::Checkpoint { args, code } => {
+                let mut s = Vec::new();
+                for a in args {
+                    s.push(match self.eval(a, act)? {
+                        Value::Char(b) => zeus_cobol::ebcdic::decode(&b).trim().to_ascii_uppercase(),
+                        _ => std::string::String::new(),
+                    });
+                }
+                let get = |k: usize| s.get(k).cloned().unwrap_or_default();
+                let dd = if get(0).is_empty() { "SYSCHK".to_string() } else { get(0) };
+                let org = if get(2).is_empty() { "PS".to_string() } else { get(2) };
+                let rc = if org != "PS" && org != "PO" {
+                    8
+                } else {
+                    match self.sort_dd(&dd) {
+                        Some(d) if std::fs::write(&d.path, zeus_cobol::ebcdic::encode(&get(1))).is_ok() => 0,
+                        _ => 12,
+                    }
+                };
+                if let Some(t) = code {
+                    let l = self.target_loc(t, act)?;
+                    self.assign_target(t, l, Value::int(rc), &Ty::fixed_bin(31, 0), act)?;
+                }
+                Ok(())
+            }
             Stmt::Sort {
                 sort,
                 record,

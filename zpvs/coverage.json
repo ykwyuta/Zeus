@@ -1473,6 +1473,15 @@
       "PLIDUMP-DEFAULT"
     ]
   },
+  "PM132A": {
+    "expect": "run",
+    "tests": [
+      "PLICKPT",
+      "PLICKPT-DEFAULT-DD",
+      "PLICKPT-DDNAME",
+      "PLICKPT-MISSING-DD"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

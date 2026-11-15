@@ -1,0 +1,32 @@
+ PM132A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* the checkpoints are taken before REPORT is opened: an open
+    member of a library is a restriction of the checkpoint */
+ DCL (RC1, RC2, RC3, RC4) FIXED BIN(31) INIT(-1);
+
+ CALL PLICKPT('SYSCHK', 'ZPVSCK1', 'PS', RC1);
+ CALL PLICKPT('', 'ZPVSCK2', '', RC2);
+ CALL PLICKPT('OTHERCK', 'ZPVSCK3', 'PS', RC3);
+ CALL PLICKPT('NOSUCHDD', 'ZPVSCK4', 'PS', RC4);
+
+ OPEN FILE(REPORT);
+
+ /* PLICKPT: a checkpoint has been taken */
+ CALL ZCHECK('PLICKPT',
+   RC1=0);
+
+ /* PLICKPT-DEFAULT-DD: SYSCHK when the ddname is a null string */
+ CALL ZCHECK('PLICKPT-DEFAULT-DD',
+   RC2=0);
+
+ /* PLICKPT-DDNAME: any valid ddname */
+ CALL ZCHECK('PLICKPT-DDNAME',
+   RC3=0);
+
+ /* PLICKPT-MISSING-DD: 12, no checkpoint */
+ CALL ZCHECK('PLICKPT-MISSING-DD',
+   RC4=12);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM132A;

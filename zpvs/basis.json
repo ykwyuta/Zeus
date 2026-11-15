@@ -5190,6 +5190,39 @@
       }
     }
   },
+  "PM132A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: Requesting a checkpoint record | Each time you want a checkpoint record to be written, you must invoke, from your PL/I program, the"
+    ],
+    "tests": {
+      "PLICKPT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Requesting a checkpoint record | A checkpoint has been successfully taken."
+        ]
+      },
+      "PLICKPT-DEFAULT-DD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Requesting a checkpoint record | data set that is to be used for checkpoint records. If you omit this argument, the system will use the default",
+          "PLI-PG: Requesting a checkpoint record | argument as a null string ('')."
+        ]
+      },
+      "PLICKPT-DDNAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Defining the checkpoint data set | This data set can have either CONSECUTIVE or partitioned organization. You can use any valid ddname. If"
+        ]
+      },
+      "PLICKPT-MISSING-DD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Requesting a checkpoint record | A checkpoint has not been taken. Check for a missing DD statement, a hardware error, or"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

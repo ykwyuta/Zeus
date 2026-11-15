@@ -167,6 +167,9 @@ jcl = "PM127A.JCL"
 [programs.PM129A]
 jcl = "PM129A.JCL"
 
+[programs.PM132A]
+jcl = "PM132A.JCL"
+
 [programs.PF109A]
 jcl = "PF109A.JCL"
 

@@ -571,6 +571,12 @@ pub enum Stmt {
     /// LOCNEWSPACE / LOCNEWVALUE: allocate the located type `ty` in the
     /// area, set the offset target, and store the value (already of type
     /// `ty`; a varying string gets only the space its value needs).
+    /// PLICKPT(ddname, check-id, org, code): the arguments given, null
+    /// strings for those omitted, and the return code target.
+    Checkpoint {
+        args: Vec<Expr>,
+        code: Option<Target>,
+    },
     /// PLIPARSE(input, target, separator, ... [,target]): None for a `*`
     /// target.
     Parse {

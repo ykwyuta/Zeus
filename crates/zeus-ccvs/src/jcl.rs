@@ -24,6 +24,28 @@ pub enum DdKind {
 pub struct DdAllocation {
     pub ddname: String,
     pub kind: DdKind,
+    /// SPACE=(...) of the sidecar, kept for z/OS (a checkpoint data set
+    /// needs more than the default)
+    pub space: Option<String>,
+}
+
+/// The balanced text of `SPACE=(...)` in DD operands.
+fn space_of(operands: &str) -> Option<String> {
+    let at = operands.find("SPACE=(")? + 6;
+    let mut depth = 0;
+    for (i, c) in operands[at..].char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(operands[at..at + i + 1].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
 }
 
 /// The JCL statements without `//`, continuation lines joined.
@@ -248,6 +270,7 @@ pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
             out.push(DdAllocation {
                 ddname: ddname.to_ascii_uppercase(),
                 kind,
+                space: space_of(&rest),
             });
         }
     }
@@ -512,10 +535,8 @@ fn render_other_steps(
             "SYSDA"
         };
         let _ = writeln!(s, "//{:<8} DD DSN={hlq}.{member}.{},", dd.ddname, dd.ddname);
-        let _ = writeln!(
-            s,
-            "//            UNIT={unit},SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)"
-        );
+        let space = dd.space.as_deref().unwrap_or("(TRK,(5,5))");
+        let _ = writeln!(s, "//            UNIT={unit},SPACE={space},DISP=(NEW,DELETE)");
     }
     s
 }
@@ -718,10 +739,8 @@ fn render_program_steps(
             }
             DdKind::Dataset => {
                 let _ = writeln!(s, "//{:<8} DD DSN={hlq}.{member}.{},", dd.ddname, dd.ddname);
-                let _ = writeln!(
-                    s,
-                    "//            UNIT=SYSDA,SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)"
-                );
+                let space = dd.space.as_deref().unwrap_or("(TRK,(5,5))");
+                let _ = writeln!(s, "//            UNIT=SYSDA,SPACE={space},DISP=(NEW,DELETE)");
             }
             DdKind::Path(path) => write_path_dd(&mut s, &dd.ddname, path),
         }
@@ -784,14 +803,17 @@ mod tests {
                 DdAllocation {
                     ddname: "TAPE1".to_string(),
                     kind: DdKind::Tape,
+                    space: None,
                 },
                 DdAllocation {
                     ddname: "TAPE2".to_string(),
                     kind: DdKind::Tape,
+                    space: None,
                 },
                 DdAllocation {
                     ddname: "WORKDS".to_string(),
                     kind: DdKind::Dataset,
+                    space: None,
                 },
             ]
         );

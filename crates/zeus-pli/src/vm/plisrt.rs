@@ -167,7 +167,7 @@ fn compare(keys: &[Key], a: &[u8], b: &[u8]) -> std::cmp::Ordering {
 }
 
 impl Machine {
-    fn sort_dd(&self, dd: &str) -> Option<DdInfo> {
+    pub(super) fn sort_dd(&self, dd: &str) -> Option<DdInfo> {
         self.env.dds.get(dd).cloned().or_else(|| {
             std::env::var_os(format!("DD_{dd}")).map(|path| DdInfo {
                 path: path.into(),
