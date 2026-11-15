@@ -2350,7 +2350,12 @@ impl Machine {
                 }
                 match b {
                     OrdinalName => Value::Char(zeus_cobol::ebcdic::encode(
-                        &k.map(|k| members[k].1.clone()).unwrap_or_default(),
+                        // the member's own name (not the qualify block's)
+                        &k.map(|k| {
+                            let n = &members[k].1;
+                            n.rsplit('.').next().unwrap_or(n).to_string()
+                        })
+                        .unwrap_or_default(),
                     )),
                     OrdinalSucc => {
                         Value::int(k.and_then(|k| members.get(k + 1)).map_or(x + 1, |m| m.0))

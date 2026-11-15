@@ -820,6 +820,14 @@ impl Compiler {
     /// file, function invocation or built-in.
     pub fn ref_expr(&mut self, r: &ast::Ref) -> Result<Expr> {
         let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
+        // q.name: a named constant of a qualify block
+        if names.len() > 1
+            && r.locator.is_none()
+            && r.parts.iter().all(|p| p.1.is_empty())
+            && let Some(Sym::Const(x)) = self.sym(&names.join("."))
+        {
+            return Ok(x);
+        }
         if names.len() == 1 && r.locator.is_none() {
             let name = &names[0];
             let args: &Vec<Vec<ast::Expr>> = &r.parts[0].1;

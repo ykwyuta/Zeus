@@ -521,6 +521,16 @@ impl Parser {
     }
 
     /// DEFINE STRUCTURE / ALIAS / ORDINAL (after the keyword DEFINE).
+    /// name or q.name (a name in a qualify block).
+    fn qualified_ident(&mut self) -> Result<String> {
+        let mut n = self.ident()?;
+        while self.is_op(".") && matches!(self.tok_at(1), Tok::Ident(_)) {
+            self.bump();
+            n = format!("{n}.{}", self.ident()?);
+        }
+        Ok(n)
+    }
+
     fn define_stmt(&mut self, pos: Pos) -> Result<StmtKind> {
         if self.eat_word("STRUCTURE") {
             let mut items = self.declare()?;
@@ -820,7 +830,9 @@ impl Parser {
                 "OPTIONS" => Attr::Options(self.word_list()?),
                 "PARAMETER" | "PARM" => Attr::Parameter,
                 "GENERIC" => Attr::Generic(self.generic_list()?),
-                "ORDINAL" if matches!(self.tok(), Tok::Ident(_)) => Attr::Type(self.ident()?),
+                "ORDINAL" if matches!(self.tok(), Tok::Ident(_)) => {
+                    Attr::Type(self.qualified_ident()?)
+                }
                 "ABNORMAL" => Attr::Abnormal,
                 "NORMAL" => Attr::Normal,
                 "ASSIGNABLE" | "ASGN" => Attr::Assignable,
@@ -832,11 +844,11 @@ impl Parser {
                 "IRREDUCIBLE" | "IRRED" => Attr::Irreducible,
                 "REDUCIBLE" | "RED" => Attr::Reducible,
                 "TYPE" => {
-                    // TYPE name or TYPE(name)
+                    // TYPE name or TYPE(name); q.name for a qualify block
                     let t = if self.is_op("(") {
                         self.paren_text()?
                     } else {
-                        self.ident()?
+                        self.qualified_ident()?
                     };
                     Attr::Type(t.trim().to_ascii_uppercase())
                 }
@@ -1554,6 +1566,45 @@ impl Parser {
         let pos = self.pos();
         let w = self.ident()?;
         Ok(match w.as_str() {
+            // a qualify block (LRM, QUALIFY statement): its types and
+            // named constants are known as label.name; Zeus gives them
+            // those names. Names inside the block refer to each other only
+            // qualified.
+            "QUALIFY" => {
+                let [q] = labels else {
+                    return Err(Diag::error(pos, "QUALIFY needs one statement label"));
+                };
+                self.semi()?;
+                let body = self.body()?;
+                let mut items = Vec::new();
+                for s in body {
+                    match s.kind {
+                        StmtKind::Declare(its) => {
+                            for mut it in its {
+                                if it.level == 1 {
+                                    it.name = format!("{q}.{}", it.name);
+                                }
+                                for a in &mut it.attrs {
+                                    if let Attr::OrdinalDef(ms) = a {
+                                        for m in ms.iter_mut() {
+                                            m.0 = format!("{q}.{}", m.0);
+                                        }
+                                    }
+                                }
+                                items.push(it);
+                            }
+                        }
+                        StmtKind::Null => {}
+                        _ => {
+                            return Err(Diag::error(
+                                s.pos,
+                                "a qualify block can contain only DECLARE, DEFINE and QUALIFY",
+                            ));
+                        }
+                    }
+                }
+                StmtKind::Declare(items)
+            }
             "PROCEDURE" | "PROC" => {
                 let mut params = Vec::new();
                 if self.eat_op("(") && !self.eat_op(")") {

@@ -2147,6 +2147,38 @@
       }
     }
   },
+  "PD118A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: QUALIFY statement | The QUALIFY statement and a corresponding END statement delimit a qualify block."
+    ],
+    "tests": {
+      "QUALIFY-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | means you can declare a variable as having type PAINT.COLOR and that you can refer to the constants"
+        ]
+      },
+      "QUALIFY-NESTED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | Qualify blocks can also be nested. For example, you can nest a qualify block inside the block above:"
+        ]
+      },
+      "QUALIFY-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | DECLARE statements in it must specify scalars with the VALUE attribute."
+        ]
+      },
+      "QUALIFY-NAMESPACE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | The names inside a qualify block must be unique to that block, but not to their containing blocks. This"
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [

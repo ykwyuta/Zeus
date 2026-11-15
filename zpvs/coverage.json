@@ -693,6 +693,15 @@
       "IEEE-SEMANTICS"
     ]
   },
+  "PD118A": {
+    "expect": "run",
+    "tests": [
+      "QUALIFY-TYPE",
+      "QUALIFY-NESTED",
+      "QUALIFY-VALUE",
+      "QUALIFY-NAMESPACE"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []
