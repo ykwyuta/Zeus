@@ -1240,7 +1240,15 @@ impl Compiler {
                     vec![self.conv(x, &Ty::fixed_bin(31, 0))],
                 ))
             }
-            PliDump => Ok(Stmt::CallBuiltin(b, Vec::new())),
+            // PLIDUMP(options, title): the options are kept for S (stop)
+            PliDump => {
+                let mut v = Vec::new();
+                for a in args {
+                    let x = self.expr(a)?;
+                    v.push(self.to_char(x));
+                }
+                Ok(Stmt::CallBuiltin(b, v))
+            }
             // storage of NEW is not reused
             PliFree => {
                 for a in args {

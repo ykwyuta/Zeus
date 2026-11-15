@@ -5103,6 +5103,26 @@
       }
     }
   },
+  "PM131A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLIDUMP | PLIDUMP allows you to obtain a formatted dump of selected parts of storage that is used by your"
+    ],
+    "tests": {
+      "PLIDUMP-CONTINUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Chapter 22. Using PLIDUMP | Continue. The routine continues after the dump."
+        ]
+      },
+      "PLIDUMP-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Chapter 22. Using PLIDUMP | T, F, and C are the default options."
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

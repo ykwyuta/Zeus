@@ -1448,6 +1448,13 @@
       "PLIPARSE-STAR"
     ]
   },
+  "PM131A": {
+    "expect": "run",
+    "tests": [
+      "PLIDUMP-CONTINUE",
+      "PLIDUMP-DEFAULT"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

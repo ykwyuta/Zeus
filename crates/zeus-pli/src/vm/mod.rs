@@ -3018,7 +3018,21 @@ impl Machine {
             PliRetC => {
                 self.rc = self.eval(&args[0], act)?.as_i64() as i32;
             }
-            PliDump => {}
+            // PLIDUMP (Programming Guide, Using PLIDUMP): Zeus writes no
+            // dump; with the option S the enclave ends, otherwise (C, the
+            // default) the routine continues. Ending like STOP has not been
+            // compared with the return code of the LE termination.
+            PliDump => {
+                if let Some(o) = args.first() {
+                    let o = match self.eval(o, act)? {
+                        Value::Char(b) => zeus_cobol::ebcdic::decode(&b).to_ascii_uppercase(),
+                        _ => std::string::String::new(),
+                    };
+                    if o.chars().any(|c| c == 'S') {
+                        return Err(Intr::Stop);
+                    }
+                }
+            }
             PliAttn => self.raise(Cond::Attention, 400, act)?,
             // the code page of the CODEPAGE option and ISO 8859-1 (a
             // character without a place in the other set becomes SUB); the
