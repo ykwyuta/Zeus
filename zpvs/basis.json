@@ -2422,6 +2422,20 @@
       "PLI-PG: LINEDIR | If the LINEDIR option is specified, the compiler will reject all %INCLUDE statements. If the LINEDIR"
     ]
   },
+  "PE118N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: Specifying options in the %PROCESS or *PROCESS statements | The included dataset must contain only %PROCESS and %PROCINC statements (plus any number of"
+    ]
+  },
+  "PE118P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %PROCINC directive | specifies a file that contains %PROCESS, *PROCESS, %PROCINC, and *PROCINC directives.",
+      "PLI-PG: LINEDIR | The LINEDIR option specifies that the compiler should accept %LINE directives.",
+      "PLI-PG: Specifying options in the %PROCESS or *PROCESS statements | You can use the PROCINC statement to include a file containing additional PROCESS statements."
+    ]
+  },
   "PF101A": {
     "basis": "spec",
     "refs": [

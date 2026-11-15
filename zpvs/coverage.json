@@ -847,6 +847,14 @@
     "expect": "compile-only",
     "tests": []
   },
+  "PE118N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE118P": {
+    "expect": "compile-only",
+    "tests": []
+  },
   "PF101A": {
     "expect": "run",
     "tests": [

@@ -197,3 +197,5 @@ CONVERSION は文字から算術への変換誤りが 612 (600 は SIGNAL CONVER
 | [PE116P](PE/PE116P.PLI) | compile-only | 正常なソースを受理 |
 | [PE117N](PE/PE117N.PLI) | compile-error | LINEDIR |
 | [PE117P](PE/PE117P.PLI) | compile-only | 正常なソースを受理 |
+| [PE118N](PE/PE118N.PLI) | compile-error | PROCINC |
+| [PE118P](PE/PE118P.PLI) | compile-only | 正常なソースを受理 |

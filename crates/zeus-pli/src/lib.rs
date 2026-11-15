@@ -64,7 +64,30 @@ fn messages(diags: &[lexer::Diag], files: &[String]) -> Vec<String> {
 /// Compiles a source file. Returns the return code (0, 4 with warnings,
 /// 12 or 16 on errors) and the result.
 pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
-    if let Some(d) = linedir_check(path) {
+    let dirs = {
+        let mut d = opts.include_dirs.clone();
+        if let Some(p) = path.parent() {
+            d.push(p.to_path_buf());
+        }
+        d
+    };
+    let process = match std::fs::read_to_string(path)
+        .map_err(|e| e.to_string())
+        .and_then(|t| lexer::process_lines(&t, &dirs))
+    {
+        Ok(p) => p,
+        Err(m) => {
+            let d = lexer::Diag::error(lexer::Pos { file: 0, line: 1, col: 0 }, m);
+            return (
+                12,
+                Compiled {
+                    module: None,
+                    messages: messages(&[d], &[path.display().to_string()]),
+                },
+            );
+        }
+    };
+    if let Some(d) = linedir_check(path, &process) {
         return (
             12,
             Compiled {
@@ -129,15 +152,8 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
     if cics {
         add_eib(&mut stmts);
     }
-    // *PROCESS / %PROCESS の行 (ソースの先頭) から読む翻訳オプション
-    let process: Vec<String> = std::fs::read_to_string(path)
-        .map(|text| {
-            text.lines()
-                .map(|l| l.trim_start().to_ascii_uppercase())
-                .take_while(|l| l.starts_with("*PROCESS") || l.starts_with("%PROCESS"))
-                .collect()
-        })
-        .unwrap_or_default();
+    // *PROCESS / %PROCESS の行 (ソースの先頭と %PROCINC の先) から読む
+    // 翻訳オプション
     let assert_condition = process.iter().any(|l| l.contains("ASSERT(CONDITION)"));
     // CODEPAGE(n): Zeus が変換できる CCSID のときだけ従う。--ccsid と
     // ZEUS_CCSID の指定はこれより強い
@@ -264,13 +280,8 @@ pub fn run_in(
 /// LINEDIR compiler option is in effect"; Programming Guide, LINEDIR: "the
 /// compiler will reject all %INCLUDE statements"). The line mapping itself
 /// is not kept: Zeus's messages give the lines of the file.
-fn linedir_check(path: &Path) -> Option<lexer::Diag> {
+fn linedir_check(path: &Path, process: &[String]) -> Option<lexer::Diag> {
     let text = std::fs::read_to_string(path).ok()?;
-    let process: Vec<String> = text
-        .lines()
-        .map(|l| l.trim_start().to_ascii_uppercase())
-        .take_while(|l| l.starts_with("*PROCESS") || l.starts_with("%PROCESS"))
-        .collect();
     let linedir = process.iter().any(|l| {
         l.split(|c: char| !c.is_ascii_alphanumeric()).any(|w| w == "LINEDIR")
     });
@@ -287,7 +298,11 @@ fn linedir_check(path: &Path) -> Option<lexer::Diag> {
                 "%LINE is invalid unless the LINEDIR option is in effect",
             ));
         }
-        if linedir && !u.starts_with("*PROCESS") && !u.starts_with("%PROCESS") {
+        if linedir
+            && !u.starts_with("*PROCESS")
+            && !u.starts_with("%PROCESS")
+            && lexer::procinc_name(&u).is_none()
+        {
             let words: Vec<&str> = u.split(|c: char| c == ';' || c.is_whitespace()).collect();
             if words.iter().any(|w| matches!(*w, "%INCLUDE" | "%XINCLUDE")) {
                 return Some(lexer::Diag::error(

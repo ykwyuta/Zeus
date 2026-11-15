@@ -1,0 +1,8 @@
+%PROCINC ZPVSLDIR;
+ /* %PROCINC of a data set with a statement: one rule and its
+    positive control. LINEDIR comes from the included data set. */
+ PE118P: PROC OPTIONS(MAIN);
+ DCL X FIXED BIN(31);
+%LINE(200, ORIGIN.PLI);
+ X = 1;
+ END PE118P;

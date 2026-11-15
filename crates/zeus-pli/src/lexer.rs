@@ -154,7 +154,7 @@ pub fn prepare(text: &str, opts: &LexOptions) -> (String, (usize, usize)) {
         let line = line.trim_end_matches('\r');
         if header {
             let u = line.trim_start().to_ascii_uppercase();
-            if u.starts_with("*PROCESS") || u.starts_with("%PROCESS") {
+            if u.starts_with("*PROCESS") || u.starts_with("%PROCESS") || procinc_name(&u).is_some() {
                 if let Some(m) = margins_option(&u) {
                     margins = m;
                 }
@@ -650,4 +650,53 @@ mod tests {
             binary: true
         }));
     }
+}
+
+/// The data set of a %PROCINC (or *PROCINC) line: the % or * in the first
+/// column, PROCINC after any blanks, then the name (Programming Guide).
+pub fn procinc_name(line: &str) -> Option<String> {
+    let rest = line.strip_prefix('%').or_else(|| line.strip_prefix('*'))?;
+    let rest = rest.trim_start();
+    let u = rest.to_ascii_uppercase();
+    let after = u.strip_prefix("PROCINC")?;
+    if !after.starts_with(' ') {
+        return None;
+    }
+    let name = after.trim().trim_end_matches(';').trim();
+    (!name.is_empty()).then(|| name.to_string())
+}
+
+/// The %PROCESS lines at the top of a source, with those of the data sets
+/// its %PROCINC lines name (found as include members), upper-cased. A
+/// %PROCINC data set may hold only %PROCESS and %PROCINC lines and blank
+/// lines (Programming Guide); anything else is an error.
+pub fn process_lines(text: &str, dirs: &[PathBuf]) -> std::result::Result<Vec<String>, String> {
+    fn walk(text: &str, dirs: &[PathBuf], top: bool, depth: u32, out: &mut Vec<String>) -> std::result::Result<(), String> {
+        if depth > 16 {
+            return Err("%PROCINC is nested too deeply".into());
+        }
+        for line in text.lines() {
+            let u = line.trim_end_matches('\r').to_ascii_uppercase();
+            let t = u.trim_start();
+            if t.starts_with("*PROCESS") || t.starts_with("%PROCESS") {
+                out.push(t.to_string());
+            } else if let Some(name) = procinc_name(&u) {
+                let path = find_include(dirs, &name)
+                    .ok_or_else(|| format!("%PROCINC {name} is not found"))?;
+                let inner = std::fs::read_to_string(&path).map_err(|e| format!("%PROCINC {name}: {e}"))?;
+                walk(&inner, dirs, false, depth + 1, out)?;
+            } else if top {
+                break;
+            } else if !t.is_empty() {
+                return Err(format!(
+                    "a %PROCINC data set may contain only %PROCESS and %PROCINC statements: {}",
+                    t.trim()
+                ));
+            }
+        }
+        Ok(())
+    }
+    let mut out = Vec::new();
+    walk(text, dirs, true, 0, &mut out)?;
+    Ok(out)
 }

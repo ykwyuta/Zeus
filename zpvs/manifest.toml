@@ -132,6 +132,13 @@ diagnostic_contains = "LINEDIR"
 [programs.PE117P]
 expect = "compile-only"
 
+[programs.PE118N]
+expect = "compile-error"
+diagnostic_contains = "PROCINC"
+
+[programs.PE118P]
+expect = "compile-only"
+
 [programs.PF102A]
 jcl = "PF102A.JCL"
 
