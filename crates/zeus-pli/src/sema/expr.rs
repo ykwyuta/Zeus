@@ -2067,7 +2067,7 @@ impl Compiler {
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField | OnText
             | OnActual | OnExpected | OnOperator | OnPackage | OnSubscript | OnLbound
             | OnHbound | OnLine | OnArea | OnCondCond | OnCondId | OnUchar | OnUsource
-            | OnWchar | OnWsource => {
+            | OnWchar | OnWsource | OnSubCode | OnGSource | OnOffset => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
                 return Ok(mk(Ek::OnValue(b), ty));
             }

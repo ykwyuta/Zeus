@@ -124,6 +124,8 @@ struct CondInfo {
     onsub: (i64, i64, i64),
     online: u32,
     onarea: String,
+    /// ONSUBCODE: the index of the offending character of a CONVERSION.
+    subcode: i32,
 }
 
 /// Information of the condition being raised that only its raising
@@ -3213,6 +3215,7 @@ impl Machine {
             info.onkey = self.files[*f as usize].last_key.clone();
         }
         if let Some(x) = PENDING_CONV.with(|p| p.borrow().clone()) {
+            info.subcode = x.0.iter().position(|&c| c == x.1).map_or(0, |i| i as i32 + 1);
             info.onsource = x.0;
             info.onchar = x.1;
         }
@@ -3749,6 +3752,22 @@ impl Machine {
         // WIDECHAR source to arithmetic through CHARACTER, so these are
         // ONCHAR and ONSOURCE as UTF-8 or UTF-16; out of context, a blank
         // or a null string (LRM)
+        // ONGSOURCE: the graphic source of a CONVERSION; Zeus converts
+        // GRAPHIC to arithmetic through CHARACTER, so it is ONSOURCE as
+        // GRAPHIC (out of context, the null string). ONSUBCODE: the index
+        // of the offending character (LRM, CONVERSION condition).
+        if b == OnGSource {
+            let src = match self.on_value(OnSource, act) {
+                Value::Char(c) => c,
+                _ => Vec::new(),
+            };
+            return Value::Char(conv::to_wide(&src, true));
+        }
+        if b == OnSubCode
+            && let Some((source, bad)) = PENDING_CONV.with(|p| p.borrow().clone())
+        {
+            return Value::int(source.iter().position(|&c| c == bad).map_or(0, |i| i as i64 + 1));
+        }
         if matches!(b, OnUchar | OnUsource | OnWchar | OnWsource) {
             let src = match self.on_value(if matches!(b, OnUchar | OnWchar) { OnChar } else { OnSource }, act) {
                 Value::Char(c) => c,
@@ -3797,6 +3816,10 @@ impl Machine {
             ))),
             OnPackage => Value::Char(zeus_cobol::ebcdic::encode(&info.onpackage)),
             OnSubscript => Value::int(info.onsub.0),
+            OnSubCode => Value::int(i64::from(info.subcode)),
+            // ONOFFSET: Zeus has no machine code; it gives the source line
+            // of the statement in the procedure (0 out of context, LRM)
+            OnOffset => Value::int(if info.code == 0 { 0 } else { i64::from(info.online) }),
             OnLbound => Value::int(info.onsub.1),
             OnHbound => Value::int(info.onsub.2),
             OnLine => Value::int(i64::from(info.online)),

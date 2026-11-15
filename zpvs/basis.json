@@ -1399,6 +1399,41 @@
       }
     }
   },
+  "PC127A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONVERSION condition | When the CONVERSION condition is raised, the ONSUBCODE built-in function will return the index of"
+    ],
+    "tests": {
+      "OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONOFFSET | If ONOFFSET is used out of context, a value of zero is returned.",
+          "PLI-LRM: ONGSOURCE | If the ONGSOURCE built-in function is used out of context, a null GRAPHIC string is returned."
+        ]
+      },
+      "ONSUBCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONVERSION condition | When the CONVERSION condition is raised, the ONSUBCODE built-in function will return the index of",
+          "PLI-LRM: ONSUBCODE | ONSUBCODE returns a FIXED BINARY(31,0) value that gives more information about an I/O, JSON, or"
+        ]
+      },
+      "ONOFFSET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONOFFSET | ONOFFSET returns a FIXED BIN(31) value which is the offset from the start of the user procedure (or"
+        ]
+      },
+      "ONGSOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONVERSION condition | the ONCHAR and ONSOURCE built-in functions do not contain valid source data. The ONGSOURCE",
+          "PLI-LRM: ONGSOURCE | It is in context in an ON-unit (or any of its dynamic descendants) for the CONVERSION condition or for the"
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

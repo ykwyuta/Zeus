@@ -1,0 +1,47 @@
+ PC127A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL S CHAR(4) INIT('12X4');
+ DCL G GRAPHIC(4);
+ DCL GS GRAPHIC(8) VARYING;
+ DCL (N, K, OFF) FIXED BIN(31);
+
+ OPEN FILE(REPORT);
+
+ /* OUT-OF-CONTEXT: zero and the null graphic string */
+ CALL ZCHECK('OUT-OF-CONTEXT',
+   ONOFFSET()=0 & LENGTH(ONGSOURCE())=0);
+
+ /* ONSUBCODE: the index of the offending character */
+ K = -1; OFF = -1;
+ ON CONVERSION BEGIN;
+   K = ONSUBCODE();
+   OFF = ONOFFSET();
+   GO TO DONE1;
+ END;
+ N = S;
+ DONE1:
+ REVERT CONVERSION;
+ CALL ZCHECK('ONSUBCODE',
+   K=3);
+
+ /* ONOFFSET: an offset in the procedure, in context */
+ CALL ZCHECK('ONOFFSET',
+   OFF>0);
+
+ /* ONGSOURCE: the original graphic source */
+ G = GRAPHIC('12X4');
+ K = -1; GS = GRAPHIC('');
+ ON CONVERSION BEGIN;
+   GS = ONGSOURCE();
+   K = ONSUBCODE();
+   GO TO DONE2;
+ END;
+ N = G;
+ DONE2:
+ REVERT CONVERSION;
+ CALL ZCHECK('ONGSOURCE',
+   GS=GRAPHIC('12X4') & K=3);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PC127A;

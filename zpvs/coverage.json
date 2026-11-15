@@ -391,6 +391,15 @@
       "VARGSIZE"
     ]
   },
+  "PC127A": {
+    "expect": "run",
+    "tests": [
+      "OUT-OF-CONTEXT",
+      "ONSUBCODE",
+      "ONOFFSET",
+      "ONGSOURCE"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [
