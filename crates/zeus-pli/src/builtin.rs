@@ -296,6 +296,8 @@ pub enum Bif {
     PutEnv,
     Uuid4,
     Uuid,
+    StackAddr,
+    Gtca,
     UHigh,
     ULow,
     Valid,
@@ -715,6 +717,8 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "PUTENV" => PutEnv,
         "UUID4" => Uuid4,
         "UUID" => Uuid,
+        "STACKADDR" => StackAddr,
+        "GTCA" => Gtca,
         "UHIGH" => UHigh,
         "ULOW" => ULow,
         "VALID" => Valid,
@@ -862,6 +866,8 @@ impl Bif {
                 | FileNew
                 | Uuid4
                 | Uuid
+                | StackAddr
+                | Gtca
                 | Secs
                 | Timestamp
                 | UtcDatetime
@@ -1145,6 +1151,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         GetSysInt => fixed_bin31(),
         IsJclSymbol => Ty::bit(1),
         Uuid4 | Uuid => Ty::char(36),
+        StackAddr | Gtca => Ty::Pointer,
         // UHIGH(x), ULOW(x): x uchars (the LRM says "of length x" and gives
         // BYTELENGTH 4*x and x; its "x must have UCHAR type" contradicts
         // both and is read as a slip)

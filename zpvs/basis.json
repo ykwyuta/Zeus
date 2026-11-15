@@ -5392,5 +5392,37 @@
         ]
       }
     }
+  },
+  "PS112A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+    ],
+    "tests": {
+      "STACKADDR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+        ]
+      },
+      "STACKADDR-CALLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+        ]
+      },
+      "STACKADDR-BEGIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+        ]
+      },
+      "GTCA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GTCA | GTCA returns a pointer to the LE control block."
+        ]
+      }
+    }
   }
 }

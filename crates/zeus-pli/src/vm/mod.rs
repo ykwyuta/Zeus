@@ -192,6 +192,8 @@ pub struct Machine {
     pub env: RunEnv,
     files: Vec<stream::FileState>,
     rc: i32,
+    /// The storage GTCA points to (allocated at the first use).
+    caa: Option<u32>,
     /// The first activation of the running thread (0: the main thread):
     /// conditions are not handled across thread boundaries.
     thread_base: usize,
@@ -258,6 +260,7 @@ impl Machine {
             env,
             files,
             rc: 0,
+            caa: None,
             thread_base: 0,
             threads: 0,
             allocs: std::collections::BTreeMap::new(),

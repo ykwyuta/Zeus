@@ -1898,6 +1898,21 @@ impl Machine {
                 let s = format!("{}-{}-{}-{}-{}", &x[0..8], &x[8..12], &x[12..16], &x[16..20], &x[20..32]);
                 Value::Char(ebcdic(&s))
             }
+            // STACKADDR: the storage of the activation of the procedure or
+            // BEGIN block (Zeus's dynamic save area); GTCA: one control
+            // block for the run. Neither has the layout of the LE blocks.
+            StackAddr => Value::Ptr(self.acts[act].frame),
+            Gtca => {
+                let p = match self.caa {
+                    Some(p) => p,
+                    None => {
+                        let p = self.heap_alloc(1024);
+                        self.caa = Some(p);
+                        p
+                    }
+                };
+                Value::Ptr(p)
+            }
             UHigh => Value::Char([0xF4, 0x8F, 0xBF, 0xBF].repeat(int(0).unwrap_or(0).max(0) as usize)),
             ULow => Value::Char(vec![0; int(0).unwrap_or(0).max(0) as usize]),
             // buffer functions on UTF-16: whitespace \t \f \v \n \r, base 64
