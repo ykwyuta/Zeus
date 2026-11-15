@@ -185,6 +185,9 @@ pub enum Attr {
     /// type's; also implies ALIGNED.
     AlignedTo(u32),
     Dimension(Vec<Bound>),
+    /// RESERVED [(IMPORTED)]: STATIC EXTERNAL, initialized only in the
+    /// package that reserves it.
+    Reserved,
     /// LIST: the last parameter; more arguments may follow.
     List,
     /// BIGENDIAN / NATIVE (false) or LITTLEENDIAN / NONNATIVE (true).

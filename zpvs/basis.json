@@ -5465,5 +5465,27 @@
         ]
       }
     }
+  },
+  "PS113A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: RESERVED attribute | The RESERVED attribute implies STATIC EXTERNAL."
+    ],
+    "tests": {
+      "RESERVED-INITIAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RESERVED attribute | If a variable has the RESERVED attribute, any INITIAL values are ignored except in the package reserving",
+          "PLI-LRM: RESERVED attribute | The variable name must appear in the RESERVES option of exactly one package."
+        ]
+      },
+      "RESERVED-EXTERNAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RESERVED attribute | The RESERVED attribute implies STATIC EXTERNAL.",
+          "PLI-LRM: RESERVED attribute | All declarations of the variable must specify RESERVED."
+        ]
+      }
+    }
   }
 }

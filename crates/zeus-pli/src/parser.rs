@@ -31,6 +31,8 @@ pub struct Parser {
     anon: u32,
     /// Attribute lists end at VALUE (in a DEFAULT statement).
     stop_at_value: bool,
+    /// The RESERVES option of the PACKAGE statement.
+    reserves: Vec<String>,
 }
 
 const COMPOUND: &[&str] = &["+=", "-=", "*=", "/=", "|=", "&=", "||=", "**="];
@@ -42,6 +44,7 @@ impl Parser {
             i: 0,
             anon: 0,
             stop_at_value: false,
+            reserves: Vec::new(),
         }
     }
 
@@ -840,12 +843,23 @@ impl Parser {
                 // storage representations (LRM, BIGENDIAN and LITTLEENDIAN,
                 // HEXADEC and IEEE attributes); on z/OS NATIVE is BIGENDIAN
                 "LIST" => Attr::List,
+                "RESERVED" => {
+                    if self.is_op("(") {
+                        self.bump();
+                        if !self.is_word("IMPORTED") {
+                            return Err(self.unexpected("IMPORTED"));
+                        }
+                        self.bump();
+                        self.expect_op(")")?;
+                    }
+                    Attr::Reserved
+                }
                 "LITTLEENDIAN" | "NONNATIVE" => Attr::Endian(true),
                 "BIGENDIAN" | "NATIVE" => Attr::Endian(false),
                 "IEEE" => Attr::Ieee(true),
                 "HEXADEC" => Attr::Ieee(false),
                 "NOINIT" | "NOINITIAL" | "ASSEMBLER"
-                | "LOCAL" | "RESERVED" | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT"
+                | "LOCAL" | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT"
                 | "OUTONLY" => continue,
                 _ => {
                     self.i -= 1;
@@ -921,6 +935,17 @@ impl Parser {
             }
             _ => true,
         });
+        // RESERVED implies STATIC EXTERNAL; its INITIAL counts only in the
+        // package that reserves it (LRM, RESERVED attribute)
+        if attrs.iter().any(|a| matches!(a, Attr::Reserved)) {
+            if !self.reserves.contains(&name) {
+                attrs.retain(|a| !matches!(a, Attr::Initial(_) | Attr::InitialCall(_)));
+            }
+            attrs.push(Attr::Static);
+            if !attrs.iter().any(|a| matches!(a, Attr::External(_))) {
+                attrs.push(Attr::External(None));
+            }
+        }
         out.push(DeclItem {
             level,
             name,
@@ -1588,8 +1613,18 @@ impl Parser {
                 })
             }
             "PACKAGE" => {
-                // the procedures of a package
+                // the procedures of a package; RESERVES(names) is kept for
+                // the RESERVED variables
                 while !self.is_op(";") {
+                    if self.is_word("RESERVES") && matches!(self.tok_at(1), Tok::Op(o) if *o == "(") {
+                        self.i += 2;
+                        while let Tok::Ident(n) = self.tok().clone() {
+                            self.reserves.push(n);
+                            self.bump();
+                            self.eat_op(",");
+                        }
+                        continue;
+                    }
                     self.bump();
                 }
                 self.semi()?;

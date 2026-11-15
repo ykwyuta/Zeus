@@ -1568,5 +1568,12 @@
       "STACKADDR-BEGIN",
       "GTCA"
     ]
+  },
+  "PS113A": {
+    "expect": "run",
+    "tests": [
+      "RESERVED-INITIAL",
+      "RESERVED-EXTERNAL"
+    ]
   }
 }
