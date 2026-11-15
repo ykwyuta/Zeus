@@ -1490,6 +1490,15 @@
       "PLICKPT-MISSING-DD"
     ]
   },
+  "PM133A": {
+    "expect": "run",
+    "tests": [
+      "CHECKSUM-SAME-BUFFER",
+      "CHECKSUM-WORDS",
+      "CHECKSUM-CARRY",
+      "CHECKSUM-PAD"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [

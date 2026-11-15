@@ -300,6 +300,7 @@ pub enum Bif {
     PutEnv,
     Uuid4,
     Uuid,
+    Checksum,
     StackAddr,
     VargList,
     VargSize,
@@ -727,6 +728,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "PUTENV" => PutEnv,
         "UUID4" => Uuid4,
         "UUID" => Uuid,
+        "CHECKSUM" => Checksum,
         "STACKADDR" => StackAddr,
         "VARGLIST" => VargList,
         "VARGSIZE" => VargSize,
@@ -1167,6 +1169,12 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         GetSysInt => fixed_bin31(),
         IsJclSymbol => Ty::bit(1),
         Uuid4 | Uuid => Ty::char(36),
+        Checksum => Ty::Fixed {
+            dec: false,
+            p: 32,
+            q: 0,
+            unsigned: true,
+        },
         StackAddr | Gtca | VargList => Ty::Pointer,
         VargSize => return Err("VARGSIZE is handled by the compiler".into()),
         // UHIGH(x), ULOW(x): x uchars (the LRM says "of length x" and gives

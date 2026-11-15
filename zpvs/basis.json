@@ -5237,6 +5237,41 @@
       }
     }
   },
+  "PM133A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CHECKSUM | CHECKSUM returns an UNSIGNED FIXED BIN(32) value that is the checksum value for a specified buffer."
+    ],
+    "tests": {
+      "CHECKSUM-SAME-BUFFER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHECKSUM | CHECKSUM returns an UNSIGNED FIXED BIN(32) value that is the checksum value for a specified buffer."
+        ]
+      },
+      "CHECKSUM-WORDS": {
+        "basis": "zos",
+        "note": "The Language Reference gives no method for CHECKSUM. The expected value assumes the CHECKSUM instruction CKSM started from zero (Principles of Operation): 4-byte words added as unsigned with the carry added back, the last word padded with zeros.",
+        "refs": [
+          "POP: CHECKSUM | Successive four-byte elements of the second oper-"
+        ]
+      },
+      "CHECKSUM-CARRY": {
+        "basis": "zos",
+        "note": "The Language Reference gives no method for CHECKSUM. The expected value assumes the CHECKSUM instruction CKSM started from zero (Principles of Operation): 4-byte words added as unsigned with the carry added back, the last word padded with zeros.",
+        "refs": [
+          "POP: CHECKSUM | carry out of bit position 32 of the first operand is"
+        ]
+      },
+      "CHECKSUM-PAD": {
+        "basis": "zos",
+        "note": "The Language Reference gives no method for CHECKSUM. The expected value assumes the CHECKSUM instruction CKSM started from zero (Principles of Operation): 4-byte words added as unsigned with the carry added back, the last word padded with zeros.",
+        "refs": [
+          "POP: CHECKSUM | the second operand is not a multiple of four bytes, its"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [

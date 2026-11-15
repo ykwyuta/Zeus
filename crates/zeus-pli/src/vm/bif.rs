@@ -1901,6 +1901,26 @@ impl Machine {
             // STACKADDR: the storage of the activation of the procedure or
             // BEGIN block (Zeus's dynamic save area); GTCA: one control
             // block for the run. Neither has the layout of the LE blocks.
+            // CHECKSUM(q, n): the LRM gives no method. Zeus computes what
+            // the CHECKSUM instruction (CKSM) gives from zero: the 4-byte
+            // big-endian words added as unsigned with the carry out added
+            // back in, the last word padded with zeros (Principles of
+            // Operation). Not compared with the IBM library.
+            Checksum => {
+                let Value::Ptr(q) = v[0] else {
+                    return err("CHECKSUM requires a pointer");
+                };
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let data = self.read(q, n)?;
+                let mut sum: u64 = 0;
+                for w in data.chunks(4) {
+                    let mut b = [0u8; 4];
+                    b[..w.len()].copy_from_slice(w);
+                    sum += u64::from(u32::from_be_bytes(b));
+                    sum = (sum & 0xFFFF_FFFF) + (sum >> 32);
+                }
+                Value::int(sum as i64)
+            }
             StackAddr => Value::Ptr(self.acts[act].frame),
             // the further arguments of the procedure (found from a BEGIN
             // block through the static parents)
