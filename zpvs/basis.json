@@ -1358,6 +1358,47 @@
       }
     }
   },
+  "PC126A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LIST attribute | When the LIST attribute is specified in the declaration of the last parameter in a procedure, it indicates"
+    ],
+    "tests": {
+      "VARGLIST-BYVALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | If the additional parameters to this procedure were passed by value (BYVALUE), successively",
+          "PLI-LRM: VARGLIST | VARGLIST returns the address of the first optional parameter passed to a procedure with a variable"
+        ]
+      },
+      "VARGLIST-BYVALUE-FLOAT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | If the additional parameters to this procedure were passed by value (BYVALUE), successively",
+          "PLI-LRM: VARGLIST | VARGLIST returns the address of the first optional parameter passed to a procedure with a variable"
+        ]
+      },
+      "VARGLIST-NONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | that zero or more additional arguments might have been passed to that procedure."
+        ]
+      },
+      "VARGLIST-BYADDR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | If the additional parameters to this procedure were passed by reference (BYADDR), successively"
+        ]
+      },
+      "VARGSIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VARGSIZE | VARGSIZE(x) returns the number of bytes that x would occupy on the stack if it were passed BYVALUE.",
+          "PLI-LRM: VARGSIZE | This value will be at least as large as SIZE(x); it will be larger if the value returned by SIZE(x) needs to be"
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [

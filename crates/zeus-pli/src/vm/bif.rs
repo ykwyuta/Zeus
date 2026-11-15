@@ -1902,6 +1902,20 @@ impl Machine {
             // BEGIN block (Zeus's dynamic save area); GTCA: one control
             // block for the run. Neither has the layout of the LE blocks.
             StackAddr => Value::Ptr(self.acts[act].frame),
+            // the further arguments of the procedure (found from a BEGIN
+            // block through the static parents)
+            VargList => {
+                let mut a = Some(act);
+                let mut p = 0;
+                while let Some(i) = a {
+                    if self.acts[i].varglist != 0 {
+                        p = self.acts[i].varglist;
+                        break;
+                    }
+                    a = self.acts[i].parent;
+                }
+                Value::Ptr(p)
+            }
             Gtca => {
                 let p = match self.caa {
                     Some(p) => p,

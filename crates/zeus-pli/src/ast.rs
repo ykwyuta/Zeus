@@ -185,6 +185,8 @@ pub enum Attr {
     /// type's; also implies ALIGNED.
     AlignedTo(u32),
     Dimension(Vec<Bound>),
+    /// LIST: the last parameter; more arguments may follow.
+    List,
     /// BIGENDIAN / NATIVE (false) or LITTLEENDIAN / NONNATIVE (true).
     Endian(bool),
     /// HEXADEC (false) or IEEE (true).

@@ -1845,6 +1845,29 @@ impl Compiler {
                     ty: Ty::Pic(Box::new(p)),
                 });
             }
+            // VARGSIZE(x): the bytes x takes when passed BYVALUE, SIZE(x)
+            // rounded up to a multiple of 4 (LRM)
+            VargSize => {
+                let [x] = args else {
+                    return Err(self.err(pos, "VARGSIZE needs one argument"));
+                };
+                let size = match x {
+                    ast::Expr::Ref(r)
+                        if self.resolve_var(&self.ref_names(r)).is_some() =>
+                    {
+                        let rr = self.reference(r, true)?;
+                        match &self.m.vars[rr.var as usize].ty {
+                            Some(t) => t.storage(true).0,
+                            None => self.m.vars[rr.var as usize].size,
+                        }
+                    }
+                    _ => self.expr(x)?.ty.storage(true).0,
+                };
+                return Ok(mk(
+                    Ek::Fixed(i128::from(size.div_ceil(4) * 4), 0),
+                    Ty::fixed_bin(31, 0),
+                ));
+            }
             // REGEX(i, j, p, x [,n [,c]]): i and j are set through their
             // addresses (scalars, or one-dimensional arrays for the
             // subexpressions)

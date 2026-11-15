@@ -153,6 +153,8 @@ struct Act {
     on: Vec<(Cond, Option<(BlockId, usize)>)>,
     stack_mark: (usize, u32),
     le_frame: Option<usize>,
+    /// VARGLIST: the further arguments of a procedure with LIST.
+    varglist: u32,
     /// Indexes of aggregate assignments and repetitive specifications.
     index: Vec<i64>,
     subject: Option<Value>,
@@ -581,6 +583,7 @@ impl Machine {
             on: Vec::new(),
             stack_mark: mark,
             le_frame: None,
+            varglist: 0,
             index: Vec::new(),
             subject: None,
             cond: None,
@@ -2495,6 +2498,46 @@ impl Machine {
                 bindings[k as usize] = b;
             }
         }
+        // LIST: the arguments after the declared parameters, one after
+        // another (LRM, LIST attribute): BYVALUE values, each rounded up to
+        // a multiple of 4 bytes (VARGSIZE), or BYADDR 4-byte addresses
+        let mut varglist = 0;
+        if proc.vararg != 0 {
+            let extra = &args[params.len().min(args.len())..];
+            let mut area = Vec::new();
+            for a in extra {
+                let (addr, ty) = match a {
+                    Arg::Ref(r) => {
+                        let (bit, _) = self.element_or_start(r, act)?;
+                        (bit / 8, m.vars[r.var as usize].ty.clone())
+                    }
+                    Arg::Dummy(e) => {
+                        let v = self.eval(e, act)?;
+                        let (n, _) = e.ty.storage(true);
+                        let at = self.stack_alloc(n.max(1));
+                        dummies.push(at);
+                        let loc = Loc {
+                            bit: u64::from(at) * 8,
+                            ty: e.ty.clone(),
+                            repr: 0,
+                        };
+                        self.store(&loc, &v)?;
+                        (u64::from(at), Some(e.ty.clone()))
+                    }
+                    Arg::Omitted => (0, None),
+                };
+                if proc.vararg == 2 {
+                    let n = ty.map_or(0, |t| t.storage(true).0) as usize;
+                    let mut b = self.read(addr as u32, n)?;
+                    b.resize(n.div_ceil(4) * 4, 0);
+                    area.extend(b);
+                } else {
+                    area.extend((addr as u32).to_be_bytes());
+                }
+            }
+            varglist = self.stack_alloc((area.len() as u32).max(4));
+            self.write(varglist, &area)?;
+        }
         self.depth += 1;
         if self.depth > 2000 {
             return err("procedure calls nested too deeply");
@@ -2512,6 +2555,7 @@ impl Machine {
                 return Err(e);
             }
         };
+        self.acts[a].varglist = varglist;
         let body = &m.blocks[block as usize].body;
         let r = if start > 0 {
             let tail = List {
@@ -3461,6 +3505,7 @@ impl Machine {
             on: Vec::new(),
             stack_mark: mark,
             le_frame: None,
+            varglist: 0,
             index: Vec::new(),
             subject: None,
             cond: None,

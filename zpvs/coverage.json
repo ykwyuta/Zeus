@@ -381,6 +381,16 @@
       "ASSEMBLER-ARGUMENTS"
     ]
   },
+  "PC126A": {
+    "expect": "run",
+    "tests": [
+      "VARGLIST-BYVALUE",
+      "VARGLIST-BYVALUE-FLOAT",
+      "VARGLIST-NONE",
+      "VARGLIST-BYADDR",
+      "VARGSIZE"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [

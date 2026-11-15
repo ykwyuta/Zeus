@@ -385,6 +385,19 @@ impl Compiler {
                     .ok_or_else(|| self.err(proc.pos, format!("parameter {p} is not declared")))?,
             );
         }
+        // LIST on the last parameter (LRM, LIST attribute)
+        let list = params.last().is_some_and(|&v| {
+            let var = &self.m.vars[v as usize];
+            self.decl_ast.get(&var.root).is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|d| d.name == var.name && d.attrs.iter().any(|a| matches!(a, Attr::List)))
+            })
+        });
+        if list {
+            let byvalue = proc.options.iter().any(|o| o == "BYVALUE");
+            self.m.procs[id as usize].vararg = if byvalue { 2 } else { 1 };
+        }
         self.m.procs[id as usize].params = params;
         if let Some(r) = &proc.returns {
             let t = self.scalar_type(r, "R", proc.pos)?;
@@ -532,6 +545,7 @@ impl Compiler {
             noexecops: p.options.iter().any(|o| o == "NOEXECOPS"),
             external,
             recursive: p.recursive,
+            vararg: 0,
             entries: Vec::new(),
         });
         let id = (self.m.procs.len() - 1) as ProcId;

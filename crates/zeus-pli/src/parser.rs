@@ -839,6 +839,7 @@ impl Parser {
                 }
                 // storage representations (LRM, BIGENDIAN and LITTLEENDIAN,
                 // HEXADEC and IEEE attributes); on z/OS NATIVE is BIGENDIAN
+                "LIST" => Attr::List,
                 "LITTLEENDIAN" | "NONNATIVE" => Attr::Endian(true),
                 "BIGENDIAN" | "NATIVE" => Attr::Endian(false),
                 "IEEE" => Attr::Ieee(true),

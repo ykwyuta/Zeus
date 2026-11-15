@@ -297,6 +297,8 @@ pub enum Bif {
     Uuid4,
     Uuid,
     StackAddr,
+    VargList,
+    VargSize,
     Gtca,
     UHigh,
     ULow,
@@ -718,6 +720,8 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "UUID4" => Uuid4,
         "UUID" => Uuid,
         "STACKADDR" => StackAddr,
+        "VARGLIST" => VargList,
+        "VARGSIZE" => VargSize,
         "GTCA" => Gtca,
         "UHIGH" => UHigh,
         "ULOW" => ULow,
@@ -867,6 +871,7 @@ impl Bif {
                 | Uuid4
                 | Uuid
                 | StackAddr
+                | VargList
                 | Gtca
                 | Secs
                 | Timestamp
@@ -1151,7 +1156,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         GetSysInt => fixed_bin31(),
         IsJclSymbol => Ty::bit(1),
         Uuid4 | Uuid => Ty::char(36),
-        StackAddr | Gtca => Ty::Pointer,
+        StackAddr | Gtca | VargList => Ty::Pointer,
+        VargSize => return Err("VARGSIZE is handled by the compiler".into()),
         // UHIGH(x), ULOW(x): x uchars (the LRM says "of length x" and gives
         // BYTELENGTH 4*x and x; its "x must have UCHAR type" contradicts
         // both and is read as a slip)

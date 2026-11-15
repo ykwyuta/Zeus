@@ -87,6 +87,10 @@ pub struct Proc {
     pub noexecops: bool,
     pub external: bool,
     pub recursive: bool,
+    /// The last parameter has LIST: 1 the further arguments are passed
+    /// by address, 2 by value (OPTIONS(BYVALUE)).
+    #[serde(default)]
+    pub vararg: u8,
     /// Secondary entry points: name, parameters, index in the body.
     pub entries: Vec<(String, Vec<VarId>, usize)>,
 }
