@@ -711,6 +711,19 @@
       "QUALIFY-NAMESPACE"
     ]
   },
+  "PD119A": {
+    "expect": "run",
+    "tests": [
+      "DFP-EXACT",
+      "DFP-STORAGE",
+      "DFP-DIVIDE",
+      "ISZERO-ISNORMAL",
+      "ISINF",
+      "ISINF-NEGATIVE",
+      "ISNAN",
+      "ISNORMAL-SUBNORMAL"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []
@@ -852,6 +865,14 @@
     "tests": []
   },
   "PE118P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE119N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE119P": {
     "expect": "compile-only",
     "tests": []
   },

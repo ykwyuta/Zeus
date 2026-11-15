@@ -1921,6 +1921,23 @@ impl Machine {
                 }
                 Value::int(sum as i64)
             }
+            // the class of a decimal floating-point value; no condition is
+            // raised whatever the value (LRM)
+            IsFinite | IsInf | IsNan | IsNormal | IsZero => {
+                let d = super::conv::to_dfp(&v[0]).unwrap_or(super::dfp::Dfp::finite(false, 0, 0));
+                let p = match &args[0].ty {
+                    Ty::Float { p, .. } => *p,
+                    _ => 16,
+                };
+                use super::dfp::Kind;
+                Value::bit1(match b {
+                    IsFinite => d.is_finite(),
+                    IsInf => d.kind == Kind::Inf,
+                    IsNan => matches!(d.kind, Kind::QNan | Kind::SNan),
+                    IsNormal => d.is_normal(super::dfp::fmt_for(p)),
+                    _ => d.is_zero(),
+                })
+            }
             StackAddr => Value::Ptr(self.acts[act].frame),
             // the further arguments of the procedure (found from a BEGIN
             // block through the static parents)

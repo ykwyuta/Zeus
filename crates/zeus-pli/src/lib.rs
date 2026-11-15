@@ -166,8 +166,15 @@ pub fn compile_file(path: &Path, opts: &Options) -> (i32, Compiled) {
         .find(|c| zeus_cobol::codepage::get(*c).is_some())
         .filter(|_| !zeus_cobol::codepage::overridden())
         .unwrap_or_else(|| zeus_cobol::codepage::active().ccsid);
+    // FLOAT(DFP): FLOAT DECIMAL is IEEE decimal floating point
+    let dfp = process.iter().any(|l| {
+        let l: std::string::String = l.chars().filter(|c| !c.is_whitespace()).collect();
+        l.contains("FLOAT(DFP)") || l.contains("FLOAT(DFP,")
+    });
+    sema::DFP.with(|d| d.set(dfp));
     let (module, sema_diags) =
         sema::compile_with(&stmts, ccsid, files.names.clone(), assert_condition);
+    sema::DFP.with(|d| d.set(false));
     let mut diags = pp_diags;
     diags.extend(sema_diags);
     let msgs = messages(&diags, &files.names);

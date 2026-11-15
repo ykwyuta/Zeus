@@ -24,6 +24,9 @@ pub struct Module {
     /// Name of the main (or first) external procedure.
     pub name: String,
     pub ccsid: u32,
+    /// FLOAT(DFP): FLOAT DECIMAL is IEEE decimal floating point.
+    #[serde(default)]
+    pub dfp: bool,
     pub blocks: Vec<Block>,
     pub procs: Vec<Proc>,
     pub vars: Vec<Var>,

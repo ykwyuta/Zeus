@@ -2214,6 +2214,68 @@
       }
     }
   },
+  "PD119A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point"
+    ],
+    "tests": {
+      "DFP-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point"
+        ]
+      },
+      "DFP-DIVIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point"
+        ]
+      },
+      "ISZERO-ISNORMAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISZERO | ISZERO returns a '1'B if if the argument with which it is invoked is a zero. Otherwise it returns a '0'B.",
+          "PLI-LRM: ISNORMAL | ISNORMAL returns a '1'B if if the argument with which it is invoked is not a zero, subnormal, infinity or",
+          "PLI-LRM: ISFINITE | ISFINITE returns a '1'B if if the argument with which it is invoked is not a NAN and not positive or negative"
+        ]
+      },
+      "ISINF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISINF | ISINF returns a '1'B if if the argument with which it is invoked is an infinity. Otherwise it returns a '0'B.",
+          "PLI-LRM: ISNAN | No floating-point exceptions will be raised no matter what the format of the argument."
+        ]
+      },
+      "ISINF-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISINF | ISINF returns a '1'B if if the argument with which it is invoked is an infinity. Otherwise it returns a '0'B."
+        ]
+      },
+      "ISNAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISNAN | ISNAN returns a '1'B if if the argument with which it is invoked is a NAN. Otherwise it returns a '0'B.",
+          "PLI-LRM: ISNAN | No floating-point exceptions will be raised no matter what the format of the argument."
+        ]
+      },
+      "ISNORMAL-SUBNORMAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISNORMAL | ISNORMAL returns a '1'B if if the argument with which it is invoked is not a zero, subnormal, infinity or",
+          "PLI-LRM: ISNAN | No floating-point exceptions will be raised no matter what the format of the argument."
+        ]
+      },
+      "DFP-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point",
+          "PLI-LRM: HEXADEC and IEEE attributes | Indicates that the variable is stored using the IEEE format."
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [
@@ -2434,6 +2496,18 @@
       "PLI-LRM: %PROCINC directive | specifies a file that contains %PROCESS, *PROCESS, %PROCINC, and *PROCINC directives.",
       "PLI-PG: LINEDIR | The LINEDIR option specifies that the compiler should accept %LINE directives.",
       "PLI-PG: Specifying options in the %PROCESS or *PROCESS statements | You can use the PROCINC statement to include a file containing additional PROCESS statements."
+    ]
+  },
+  "PE119N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ISZERO | The FLOAT(DFP) compiler option must be in effect."
+    ]
+  },
+  "PE119P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ISZERO | The FLOAT(DFP) compiler option must be in effect."
     ]
   },
   "PF101A": {

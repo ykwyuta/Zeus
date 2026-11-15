@@ -139,6 +139,13 @@ diagnostic_contains = "PROCINC"
 [programs.PE118P]
 expect = "compile-only"
 
+[programs.PE119N]
+expect = "compile-error"
+diagnostic_contains = "FLOAT(DFP)"
+
+[programs.PE119P]
+expect = "compile-only"
+
 [programs.PF102A]
 jcl = "PF102A.JCL"
 

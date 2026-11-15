@@ -6,6 +6,7 @@ mod cics;
 pub(crate) mod conv;
 mod datefmt;
 mod digest;
+pub(crate) mod dfp;
 mod ere;
 mod plisrt;
 mod record;
@@ -1192,6 +1193,10 @@ impl Machine {
                 let v = zeus_decimal::binary::read(&b, !unsigned);
                 Value::fixed(v, *q, false)
             }
+            Ty::Float { dec: true, p } if self.module.dfp => {
+                let f = dfp::fmt_for(*p);
+                Value::Dfp(dfp::decode(&self.read(addr, f.bytes)?, f))
+            }
             Ty::Float { .. } => {
                 let n = crate::types::float_bytes(&loc.ty);
                 let b = self.read(addr, n as usize)?;
@@ -1341,6 +1346,14 @@ impl Machine {
                     b.reverse();
                 }
                 self.write(addr, &b)?;
+            }
+            (Ty::Float { dec: true, p }, v @ (Value::Float(_) | Value::Dfp(_) | Value::Fixed { .. }))
+                if self.module.dfp =>
+            {
+                let f = dfp::fmt_for(*p);
+                let d = conv::to_dfp(v).unwrap_or(dfp::Dfp::finite(false, 0, 0));
+                let (d, _) = d.round(f);
+                self.write(addr, &dfp::encode(&d, f))?;
             }
             (Ty::Float { .. }, Value::Float(f)) => {
                 let n = crate::types::float_bytes(&loc.ty);
@@ -3648,6 +3661,7 @@ impl Machine {
             Ek::Neg(x) => match self.eval(x, act)? {
                 Value::Fixed { m, q, dec } => Value::fixed(-m, q, dec),
                 Value::Float(f) => Value::Float(-f),
+                Value::Dfp(d) => Value::Dfp(d.neg()),
                 Value::Cplx(c) => {
                     let neg = |v: Value| match v {
                         Value::Fixed { m, q, dec } => Value::fixed(-m, q, dec),

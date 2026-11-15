@@ -125,6 +125,7 @@ impl Compiler {
             m: Module {
                 name: String::new(),
                 ccsid,
+                dfp: false,
                 blocks: Vec::new(),
                 procs: Vec::new(),
                 vars: Vec::new(),
@@ -692,6 +693,12 @@ pub fn align_to(at: u32, align: u32, residue: u32) -> u32 {
     at + (r + align - at % align) % align
 }
 
+thread_local! {
+    /// FLOAT(DFP) for the next compilation (set by the driver from the
+    /// %PROCESS options).
+    pub static DFP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Compiles parsed statements into a module.
 pub fn compile(
     stmts: &[ast::Stmt],
@@ -710,6 +717,7 @@ pub fn compile_with(
 ) -> (Option<Module>, Vec<Diag>) {
     let mut c = Compiler::new(ccsid);
     c.assert_condition = assert_condition;
+    c.m.dfp = DFP.with(|d| d.get());
     c.m.source_paths = sources
         .iter()
         .map(|n| {

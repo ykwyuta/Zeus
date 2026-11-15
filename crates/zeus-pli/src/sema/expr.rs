@@ -324,6 +324,24 @@ impl Compiler {
             ));
         }
         let bad = || self.err(pos, format!("invalid number {text}"));
+        // FLOAT(DFP): a decimal floating-point constant keeps its decimal
+        // value (it is converted to DFP exactly)
+        if self.m.dfp && !binary && let Some(e) = text.find('E') {
+            let mant = &text[..e];
+            let exp: i32 = text[e + 1..].parse().map_err(|_| bad())?;
+            let (i, f) = mant.split_once('.').unwrap_or((mant, ""));
+            let digits = format!("{i}{f}");
+            let m: i128 = digits.parse().map_err(|_| bad())?;
+            let q = i16::try_from(f.len() as i32 - exp).map_err(|_| bad())?;
+            let p = digits.trim_start_matches('0').len().max(digits.len().min(1));
+            return Ok(mk(
+                Ek::Fixed(m, q),
+                Ty::Float {
+                    dec: true,
+                    p: p.clamp(1, 34) as u8,
+                },
+            ));
+        }
         if let Some(e) = text.find('E') {
             let mant = &text[..e];
             let digits = mant.chars().filter(|c| c.is_ascii_digit()).count();
@@ -1876,6 +1894,22 @@ impl Compiler {
                     k: x.k,
                     ty: Ty::Pic(Box::new(p)),
                 });
+            }
+            // ISFINITE, ISINF, ISNAN, ISNORMAL, ISZERO(x): x a REAL FLOAT
+            // DECIMAL expression, under FLOAT(DFP) (LRM)
+            IsFinite | IsInf | IsNan | IsNormal | IsZero => {
+                if !self.m.dfp {
+                    return Err(self.err(pos, format!("{b:?} needs the FLOAT(DFP) option")));
+                }
+                let [x] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs one argument")));
+                };
+                let x = self.expr(x)?;
+                let x = self.to_arith(x);
+                if !matches!(x.ty, Ty::Float { dec: true, .. }) {
+                    return Err(self.err(pos, format!("{b:?} needs a REAL FLOAT DECIMAL argument")));
+                }
+                return Ok(mk(Ek::Builtin(b, vec![x]), Ty::bit(1)));
             }
             // VARGSIZE(x): the bytes x takes when passed BYVALUE, SIZE(x)
             // rounded up to a multiple of 4 (LRM)

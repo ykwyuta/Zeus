@@ -556,7 +556,7 @@ impl Machine {
                 let s: String = b.iter().map(|&x| if x { '1' } else { '0' }).collect();
                 ebcdic(&format!("'{s}'B"))
             }
-            (Value::Fixed { .. } | Value::Float(_), t) => ebcdic(&self.arith_text(v, t)),
+            (Value::Fixed { .. } | Value::Float(_) | Value::Dfp(_), t) => ebcdic(&self.arith_text(v, t)),
             (Value::Ptr(p), _) => ebcdic(&format!("{p:08X}")),
             (Value::File(i), _) => ebcdic(&self.module.files[*i as usize].name.clone()),
             (other, _) => ebcdic(&format!("{other:?}")),

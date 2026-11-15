@@ -193,6 +193,51 @@ impl Machine {
 
     /// Converts a value of type `from` to type `to` (assignment rules).
     pub fn convert(&mut self, v: Value, from: &Ty, to: &Ty, act: usize) -> R<Value> {
+        // FLOAT DECIMAL under FLOAT(DFP)
+        let dfp_target = self.module.dfp && matches!(to, Ty::Float { dec: true, .. });
+        if dfp_target {
+            let Ty::Float { p, .. } = to else { unreachable!() };
+            let v = self.arith_value(v, from, act)?;
+            let Some(d) = to_dfp(&v) else {
+                return err(format!("cannot convert {v:?} to FLOAT DECIMAL"));
+            };
+            let (d, over) = d.round(super::dfp::fmt_for(*p));
+            if over && self.enabled_now(act, cond::OVERFLOW) {
+                self.raise(Cond::Overflow, 300, act)?;
+            }
+            return Ok(Value::Dfp(d));
+        }
+        if let Value::Dfp(d) = &v {
+            let p = match from {
+                Ty::Float { p, .. } => *p,
+                _ => 16,
+            };
+            let string_target = matches!(
+                to,
+                Ty::Char { .. } | Ty::Wchar { .. } | Ty::Uchar { .. } | Ty::Pic(_)
+            ) && !matches!(to, Ty::Pic(pic) if pic.numeric || pic.float.is_some());
+            if string_target {
+                let text = Value::Char(ebcdic(&d.text(p)));
+                return self.convert(text, &crate::sema::expr::char_any(), to, act);
+            }
+            // other targets: through the exact decimal fixed-point value, or
+            // a binary double when it does not fit
+            let fixed = (d.is_finite() && d.exp <= 0 && -d.exp <= 127)
+                .then(|| i128::try_from(d.coef).ok())
+                .flatten()
+                .filter(|_| matches!(to, Ty::Fixed { .. } | Ty::Bit { .. }));
+            let (v, from) = match fixed {
+                Some(c) => {
+                    let digits = c.to_string().len().clamp(1, 31) as u8;
+                    (
+                        Value::fixed(if d.neg { -c } else { c }, (-d.exp) as i16, true),
+                        Ty::fixed_dec(digits.max(((-d.exp) as u8).min(31)), (-d.exp) as i16),
+                    )
+                }
+                None => (Value::Float(d.to_f64()), Ty::Float { dec: false, p: 53 }),
+            };
+            return self.convert(v, &from, to, act);
+        }
         // UCHAR: to another UCHAR, fitted in characters; to WIDECHAR, as
         // UTF-16; to any other type, through CHARACTER in the code page,
         // CONVERSION when a character has no representation there (LRM)
@@ -541,9 +586,51 @@ impl Machine {
         ))
     }
 
+    /// A FLOAT DECIMAL operation under FLOAT(DFP): exact, then rounded to
+    /// the format of the result (ties to even). ** goes through binary
+    /// floating point (not an IEEE decimal operation).
+    fn dfp_arith(&mut self, op: ArOp, x: &Value, y: &Value, p: u8, act: usize) -> R<Value> {
+        use super::dfp::Dfp;
+        let f = super::dfp::fmt_for(p);
+        let (Some(a), Some(b)) = (to_dfp(x), to_dfp(y)) else {
+            return err("FLOAT DECIMAL operands");
+        };
+        let r = match op {
+            ArOp::Add => a.add(b),
+            ArOp::Sub => a.add(b.neg()),
+            ArOp::Mul => a.mul(b),
+            ArOp::Div => {
+                if b.is_zero() {
+                    self.zero_divide(act)?;
+                    return Ok(Value::Dfp(Dfp::finite(false, 0, 0)));
+                }
+                a.div(b, f.digits)
+            }
+            ArOp::Pow => {
+                let (fa, fb) = (a.to_f64(), b.to_f64());
+                Some(Dfp::from_f64(if fb.fract() == 0.0 { fa.powi(fb as i32) } else { fa.powf(fb) }))
+            }
+        };
+        let Some(r) = r else {
+            return err("FLOAT DECIMAL extended precision (more than 16 digits) under FLOAT(DFP) is not supported");
+        };
+        let (r, over) = r.round(f);
+        if over && self.enabled_now(act, cond::OVERFLOW) {
+            self.raise(Cond::Overflow, 300, act)?;
+        }
+        Ok(Value::Dfp(r))
+    }
+
     /// Character form of an arithmetic value.
     pub fn arith_text(&self, v: &Value, from: &Ty) -> String {
         let a = operand_arith(from);
+        if let Value::Dfp(d) = v {
+            let p = match &a {
+                Ty::Float { p, .. } => *p,
+                _ => 16,
+            };
+            return d.text(p);
+        }
         match (v, &a) {
             (Value::Fixed { m, q, dec: true }, Ty::Fixed { p, .. }) => {
                 value::fixed_dec_text(*m, *p, *q)
@@ -588,6 +675,11 @@ impl Machine {
         }
         let x = self.arith_value(x, xt, act)?;
         let y = self.arith_value(y, yt, act)?;
+        if self.module.dfp
+            && let Ty::Float { dec: true, p } = rt
+        {
+            return self.dfp_arith(op, &x, &y, *p, act);
+        }
         match rt {
             Ty::Float { .. } => {
                 let (a, b) = (x.as_f64(), y.as_f64());
@@ -810,6 +902,14 @@ impl Machine {
                     Ordering::Less
                 }
             }
+            (Value::Dfp(_), _) | (_, Value::Dfp(_)) => {
+                let a = self.arith_value(a.clone(), at, 0)?;
+                let b = self.arith_value(b.clone(), bt, 0)?;
+                match (to_dfp(&a), to_dfp(&b)) {
+                    (Some(x), Some(y)) => x.cmp(&y),
+                    _ => return self.cmp_arith(&a, at, &b, bt),
+                }
+            }
             _ => return self.cmp_arith(a, at, b, bt),
         })
     }
@@ -927,4 +1027,28 @@ pub fn uchar_fit(b: &[u8], n: usize) -> Vec<u8> {
     let (mut out, k) = uchar_take(b, n);
     out.resize(out.len() + (n - k), 0x20);
     out
+}
+
+/// An arithmetic value as a decimal floating-point value (exact for
+/// decimal fixed point; a binary double by its shortest decimal form).
+pub fn to_dfp(v: &Value) -> Option<super::dfp::Dfp> {
+    use super::dfp::Dfp;
+    Some(match v {
+        Value::Dfp(d) => *d,
+        Value::Fixed { m, q, dec: true } => Dfp::finite(*m < 0, m.unsigned_abs(), -i32::from(*q)),
+        Value::Fixed { m, q, dec: false } if *q <= 0 => {
+            match m.checked_mul(2i128.checked_pow((-*q) as u32)?) {
+                Some(x) => Dfp::finite(x < 0, x.unsigned_abs(), 0),
+                None => Dfp::from_f64(v.as_f64()),
+            }
+        }
+        Value::Fixed { m, q, dec: false } => match 5i128.checked_pow(*q as u32).and_then(|f| m.checked_mul(f)) {
+            // m / 2^q = m * 5^q / 10^q
+            Some(x) => Dfp::finite(x < 0, x.unsigned_abs(), -i32::from(*q)),
+            None => Dfp::from_f64(v.as_f64()),
+        },
+        Value::Float(f) => Dfp::from_f64(*f),
+        Value::Cplx(c) => return to_dfp(&c.0),
+        _ => return None,
+    })
 }
