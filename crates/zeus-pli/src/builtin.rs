@@ -270,6 +270,7 @@ pub enum Bif {
     FoldedSimpleMatch,
     OnUchar,
     OnSubCode,
+    OnSubCode2,
     OnGSource,
     OnOffset,
     OnUsource,
@@ -700,6 +701,7 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "FOLDEDSIMPLEMATCH" => FoldedSimpleMatch,
         "ONUCHAR" => OnUchar,
         "ONSUBCODE" => OnSubCode,
+        "ONSUBCODE2" => OnSubCode2,
         "ONGSOURCE" => OnGSource,
         "ONOFFSET" => OnOffset,
         "ONUSOURCE" => OnUsource,
@@ -855,6 +857,7 @@ impl Bif {
                 | OnChar
                 | OnUchar
                 | OnSubCode
+                | OnSubCode2
                 | OnGSource
                 | OnOffset
                 | OnUsource
@@ -1532,7 +1535,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         | PliTran21 | PliTran22 => Ty::Entry,
         Utf8Stg => fixed_bin31(),
         ThreadId => Ty::Pointer,
-        OnSubCode | OnOffset => fixed_bin31(),
+        OnSubCode | OnSubCode2 | OnOffset => fixed_bin31(),
         OnGSource => Ty::Wchar {
             len: crate::types::Ext::Const(16383),
             var: crate::types::Var::Varying,

@@ -985,6 +985,17 @@
       "FILESEEK-ORIGINS"
     ]
   },
+  "PF111A": {
+    "expect": "run",
+    "tests": [
+      "SUB2-DUPLICATE",
+      "SUB2-READ-NOTFOUND",
+      "SUB2-REWRITE-NOTFOUND",
+      "SUB2-DELETE-NOTFOUND",
+      "SUB2-SIGNAL",
+      "SUB2-OUT-OF-CONTEXT"
+    ]
+  },
   "PM101A": {
     "expect": "run",
     "tests": [

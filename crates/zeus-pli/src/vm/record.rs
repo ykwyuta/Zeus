@@ -8,6 +8,11 @@ use super::*;
 use zeus_ds::format::RecordFormat;
 use zeus_ds::keyed::{KeySpec, KeyedDataset, Position};
 
+/// VSAM logical error reason codes (DFSMS Macro Instructions for Data
+/// Sets, Table 17): a duplicate key, a record not found.
+const DUPLICATE: i32 = 0x08;
+const NOT_FOUND: i32 = 0x10;
+
 impl Machine {
     pub(crate) fn open_records(&mut self, f: FileId, act: usize) -> R<()> {
         let st = &mut self.files[f as usize];
@@ -216,7 +221,7 @@ impl Machine {
                 }
             };
             let Some((k, rec)) = found else {
-                return self.raise(Cond::Key(f), 51, act);
+                return self.raise_key(f, 51, NOT_FOUND, act);
             };
             self.files[f as usize].last_read = Some(0);
             self.deliver(r, f, rec, act)?;
@@ -264,7 +269,7 @@ impl Machine {
         let rec = self.source_bytes(r, act)?;
         let key = self.key_of(&r.keyfrom, act)?;
         if !self.put_record(f, rec, key)? {
-            return self.raise(Cond::Key(f), 52, act);
+            return self.raise_key(f, 52, DUPLICATE, act);
         }
         Ok(())
     }
@@ -274,7 +279,7 @@ impl Machine {
         if let Some((addr, len, key)) = self.files[f as usize].pending.take() {
             let rec = self.read(addr, len)?;
             if !self.put_record(f, rec, key)? {
-                return self.raise(Cond::Key(f), 52, act);
+                return self.raise_key(f, 52, DUPLICATE, act);
             }
         }
         Ok(())
@@ -348,6 +353,23 @@ impl Machine {
         Ok(true)
     }
 
+    /// Raises KEY. On a VSAM data set (KSDS or RRDS) the request failed
+    /// with register 15 = 8 (logical error) and `reason` in the RPL
+    /// feedback area, which ONSUBCODE2 gives as xxxxyyyy (Language
+    /// Reference, ONSUBCODE2: "xxxx is Register 15 and yyyy is the reason
+    /// code"; DFSMS Macro Instructions for Data Sets, Table 17). REGIONAL
+    /// data sets are not VSAM: 0.
+    ///
+    /// Not compared with z/OS: that the KEY condition (and not only the
+    /// ERROR of messages IBM0236I and IBM0265I) carries the code.
+    fn raise_key(&mut self, f: FileId, code: i32, reason: i32, act: usize) -> R<()> {
+        let st = &self.files[f as usize];
+        if st.keyed_ds.is_some() || st.relative_ds.is_some() {
+            super::SUBCODE2.with(|s| s.set((8 << 16) | reason));
+        }
+        self.raise(Cond::Key(f), code, act)
+    }
+
     // ---- REGIONAL(1) and relative (RRDS) data sets ------------------------
 
     /// Records in numbered slots: REGIONAL(1) (regions from 0, a dummy
@@ -411,7 +433,7 @@ impl Machine {
             }
         };
         let Some((n, rec)) = found else {
-            return self.raise(Cond::Key(f), 51, act);
+            return self.raise_key(f, 51, NOT_FOUND, act);
         };
         self.files[f as usize].last_read = Some(n as usize);
         self.deliver(r, f, rec, act)?;
@@ -479,7 +501,7 @@ impl Machine {
                 None => self.files[f as usize].last_read.map(|n| n as u64),
             };
             let Some(n) = n.filter(|&n| self.slot_get(f, n).is_some()) else {
-                return self.raise(Cond::Key(f), 51, act);
+                return self.raise_key(f, 51, NOT_FOUND, act);
             };
             let st = &mut self.files[f as usize];
             st.dirty = true;
@@ -513,7 +535,7 @@ impl Machine {
             }
             rec[spec.offset..spec.offset + spec.len].copy_from_slice(&k);
             if ds.replace(rec).is_err() {
-                return self.raise(Cond::Key(f), 51, act);
+                return self.raise_key(f, 51, NOT_FOUND, act);
             }
             return Ok(());
         }
@@ -542,7 +564,7 @@ impl Machine {
                 None => self.files[f as usize].last_read.map(|n| n as u64),
             };
             let Some(n) = n.filter(|&n| self.slot_get(f, n).is_some()) else {
-                return self.raise(Cond::Key(f), 51, act);
+                return self.raise_key(f, 51, NOT_FOUND, act);
             };
             let st = &mut self.files[f as usize];
             st.dirty = true;
@@ -567,7 +589,7 @@ impl Machine {
                 None => st.last_key.clone(),
             };
             if ds.delete(&k).is_err() {
-                return self.raise(Cond::Key(f), 51, act);
+                return self.raise_key(f, 51, NOT_FOUND, act);
             }
             return Ok(());
         }

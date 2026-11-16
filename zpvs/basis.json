@@ -2847,6 +2847,55 @@
       }
     }
   },
+  "PF111A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 returns a FIXED BIN(31) value that gives more information about an I/O error that has occurred.",
+      "PLI-LRM: ONSUBCODE2 | A SUBCODE2 value consists of eight hexadecimal digits xxxxyyyy, where xxxx is Register 15 and yyyy is the reason code. The return and reason codes are documented in VSAM Macro Instructions."
+    ],
+    "tests": {
+      "SUB2-DUPLICATE": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | 8(X'8') You attempted to store a record with a duplicate key",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-READ-NOTFOUND": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | Record not found, or the RBA is not found in the buffer pool.",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-REWRITE-NOTFOUND": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | Record not found, or the RBA is not found in the buffer pool.",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-DELETE-NOTFOUND": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | Record not found, or the RBA is not found in the buffer pool.",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-SIGNAL": {
+        "basis": "zos",
+        "note": "SIGNAL は I/O の要求を出さないので 0 と見たが、LRM は書いていない。実機で確かめる"
+      },
+      "SUB2-OUT-OF-CONTEXT": {
+        "basis": "zos",
+        "note": "ON 単位の外の値を LRM は書いていない (ONSUBCODE と同じく 0 と見た)。実機で確かめる"
+      }
+    }
+  },
   "PM101A": {
     "basis": "spec",
     "refs": [

@@ -127,6 +127,9 @@ struct CondInfo {
     onarea: String,
     /// ONSUBCODE: the index of the offending character of a CONVERSION.
     subcode: i32,
+    /// ONSUBCODE2: register 15 and the reason code of the VSAM request
+    /// that failed (xxxxyyyy), 0 for other conditions.
+    subcode2: i32,
 }
 
 /// Information of the condition being raised that only its raising
@@ -145,6 +148,9 @@ struct OnExtra {
 
 thread_local! {
     static ON_EXTRA: std::cell::RefCell<OnExtra> = std::cell::RefCell::new(OnExtra::default());
+    /// ONSUBCODE2 of the condition the next raise reports (set by the
+    /// VSAM record I/O that raises it).
+    pub(crate) static SUBCODE2: std::cell::Cell<i32> = const { std::cell::Cell::new(0) };
 }
 
 struct Act {
@@ -3262,6 +3268,7 @@ impl Machine {
             info.onsource = x.0;
             info.onchar = x.1;
         }
+        info.subcode2 = SUBCODE2.with(|s| s.replace(0));
         info.onloc = self.proc_name(act);
         info.online = CUR_LINE.with(|l| l.get());
         let extra = ON_EXTRA.with(|e| e.borrow().clone());
@@ -3861,6 +3868,7 @@ impl Machine {
             OnPackage => Value::Char(zeus_cobol::ebcdic::encode(&info.onpackage)),
             OnSubscript => Value::int(info.onsub.0),
             OnSubCode => Value::int(i64::from(info.subcode)),
+            OnSubCode2 => Value::int(i64::from(info.subcode2)),
             // ONOFFSET: Zeus has no machine code; it gives the source line
             // of the statement in the procedure (0 out of context, LRM)
             OnOffset => Value::int(if info.code == 0 { 0 } else { i64::from(info.online) }),
