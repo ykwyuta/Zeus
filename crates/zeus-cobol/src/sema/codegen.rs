@@ -710,6 +710,7 @@ impl<'a> Gen<'a> {
             record_key,
             alternate_keys,
             print: false,
+            machine_control: false,
             linage,
             sort: fd.sort,
             error_proc: None,
@@ -1988,14 +1989,14 @@ impl<'a> Gen<'a> {
     }
 
     fn mark_print_files(&mut self, sections: &[Section]) {
-        fn walk(stmts: &[Stmt], out: &mut Vec<DataRef>) {
+        fn walk(stmts: &[Stmt], out: &mut Vec<(DataRef, bool)>) {
             for s in stmts {
                 match s {
                     Stmt::Write {
                         record,
-                        advancing: Some(_),
+                        advancing: Some((before, _)),
                         ..
-                    } => out.push(record.clone()),
+                    } => out.push((record.clone(), *before)),
                     Stmt::If { then, els, .. } => {
                         walk(then, out);
                         if let Some(e) = els {
@@ -2029,9 +2030,12 @@ impl<'a> Gen<'a> {
                 }
             }
         }
-        for r in recs {
+        for (r, before) in recs {
             if let Ok(f) = self.file_of_record(&r) {
                 self.files[f as usize].print = true;
+                // BEFORE ADVANCING anywhere makes the file use machine
+                // control characters (Language Reference, ADVANCING phrase)
+                self.files[f as usize].machine_control |= before;
             }
         }
         // LINAGE files are print files too.

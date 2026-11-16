@@ -1846,6 +1846,17 @@
       "LS-SHORT-AREA"
     ]
   },
+  "ZF116A": {
+    "expect": "run",
+    "tests": [
+      "PRT-C01-SKIP",
+      "PRT-PAGE-SKIP",
+      "PRT-ASA-SPACING",
+      "PRT-ASA-OVERPRINT",
+      "PRT-NO-ADVANCING",
+      "PRT-ADV-LENGTH"
+    ]
+  },
   "ZF201M": {
     "expect": "run",
     "tests": [

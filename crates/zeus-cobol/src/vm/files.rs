@@ -4,12 +4,15 @@
 //! sets with alternate indexes, DD allocation) are in `zeus-ds`. This
 //! module adds what COBOL defines: OPEN modes, FILE STATUS codes, the
 //! record area, AT END / INVALID KEY, RECORD VARYING, and the print files
-//! (ADVANCING, LINAGE, Report Writer), which are written as host text.
+//! (ADVANCING, LINAGE, Report Writer).
 //!
 //! Record formats on disk:
 //!
-//! * print files and LINE SEQUENTIAL files: host text (ISO 8859-1), one
-//!   line per record;
+//! * print files: records one byte longer than the FD record, the first
+//!   byte an ASA or machine control character (RECFM=FBA / FBM, see
+//!   `carriage_records`); on a SYSOUT allocation, host text with line
+//!   feeds, carriage returns (overprint) and form feeds (new page);
+//! * LINE SEQUENTIAL files: host text (ISO 8859-1), one line per record;
 //! * record sequential files: fixed-length EBCDIC records back to back, or
 //!   variable-length records with a record descriptor word (RECFM=F / V);
 //! * relative and indexed files: variable-length records (see `zeus-ds`).
@@ -128,6 +131,147 @@ pub struct FileState {
     lc: u32,
     /// Something was printed on the current line.
     line_used: bool,
+    /// Print files written as data set records: the lines written by
+    /// WRITE, with their spacing (see `carriage_records`).
+    #[serde(default)]
+    pub(super) print_lines: Vec<PrintLine>,
+    /// Print files opened EXTEND: the records already in the data set.
+    #[serde(default)]
+    print_prefix: Vec<u8>,
+}
+
+/// Skip to the next page in `PrintLine` spacing.
+const PAGE: u32 = u32::MAX;
+
+/// One line of a print file: the spacing before it (AFTER ADVANCING) or
+/// after it (BEFORE ADVANCING), in lines or `PAGE`, and the record data
+/// (EBCDIC).
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
+pub(super) struct PrintLine {
+    before: Option<u32>,
+    after: Option<u32>,
+    data: Vec<u8>,
+}
+
+/// The records of a print file data set: one control character, then the
+/// record data (Language Reference, WRITE statement, ADVANCING phrase:
+/// "When only AFTER is specified for the file, ASA control characters are
+/// used"; "When only BEFORE is specified ... machine control characters
+/// are used"; with both, machine control characters).
+///
+/// ASA characters (DFSMS Macro Instructions for Data Sets, ISO/ANSI
+/// control characters) act before printing: blank 1 line, 0 2 lines,
+/// - 3 lines, + no spacing, 1 skip to channel 1. Machine characters act
+/// after printing (X'01' print only, X'09'/X'11'/X'19' space 1-3 lines,
+/// X'89' skip to channel 1) or immediately without printing (X'0B'/X'13'/
+/// X'1B' space 1-3 lines, X'8B' skip to channel 1).
+///
+/// Not compared with z/OS: how the compiler spaces more than 3 lines and
+/// AFTER ADVANCING in a file that uses machine characters. Zeus writes
+/// blank records with '-' (ASA) and control-only records (machine) that
+/// print the same page; the records may differ from z/OS's.
+fn carriage_records(lines: &[PrintLine], machine: bool) -> Vec<Vec<u8>> {
+    let mut out = Vec::new();
+    let record = |code: u8, data: &[u8]| {
+        let mut r = vec![code];
+        r.extend_from_slice(data);
+        r
+    };
+    // immediate spacing of k lines with control-only records
+    let immediate = |out: &mut Vec<Vec<u8>>, mut k: u32| {
+        while k > 0 {
+            let c = k.min(3);
+            out.push(vec![[0, 0x0B, 0x13, 0x1B][c as usize]]);
+            k -= c;
+        }
+    };
+    for l in lines {
+        if machine {
+            match l.before {
+                Some(PAGE) => out.push(vec![0x8B]),
+                Some(k) => immediate(&mut out, k),
+                None => {}
+            }
+            match l.after {
+                None => out.push(record(0x01, &l.data)),
+                Some(PAGE) => out.push(record(0x89, &l.data)),
+                Some(k) => {
+                    let c = k.min(3);
+                    out.push(record([0x01, 0x09, 0x11, 0x19][c as usize], &l.data));
+                    immediate(&mut out, k - c);
+                }
+            }
+        } else {
+            let code = match l.before.unwrap_or(1) {
+                PAGE => 0xF1,
+                mut k => {
+                    while k > 3 {
+                        out.push(vec![0x60]);
+                        k -= 3;
+                    }
+                    [0x4E, 0x40, 0xF0, 0x60][k as usize]
+                }
+            };
+            out.push(record(code, &l.data));
+        }
+    }
+    out
+}
+
+/// The lines of a print file from its host text (LINAGE files and Report
+/// Writer files, which are laid out as text): line feeds before a line
+/// give its spacing, a carriage return overprints, a form feed skips to
+/// a new page. Blank lines become spacing, which prints the same page.
+fn text_print_lines(text: &[u8]) -> Vec<PrintLine> {
+    let mut out = Vec::new();
+    // line feeds since the previous line's end; before the first line, a
+    // line of its own spacing
+    let mut feeds = 1u32;
+    let mut overprint = false;
+    let mut page = false;
+    let mut i = 0;
+    while i < text.len() {
+        match text[i] {
+            b'\n' => feeds += 1,
+            b'\r' => overprint = true,
+            0x0C => {
+                page = true;
+                feeds = 0;
+            }
+            _ => {
+                let end = text[i..]
+                    .iter()
+                    .position(|&b| matches!(b, b'\n' | b'\r' | 0x0C))
+                    .map_or(text.len(), |p| i + p);
+                let before = match (page, feeds) {
+                    (true, 0) => PAGE,
+                    (true, n) => {
+                        // line n+1 of the new page: a blank line on line 1
+                        out.push(PrintLine {
+                            before: Some(PAGE),
+                            after: None,
+                            data: Vec::new(),
+                        });
+                        n
+                    }
+                    (false, 0) if overprint => 0,
+                    (false, n) => n.max(1),
+                };
+                out.push(PrintLine {
+                    before: Some(before),
+                    after: None,
+                    data: ebcdic::from_host(&text[i..end]),
+                });
+                feeds = 0;
+                overprint = false;
+                page = false;
+                i = end;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    out
 }
 
 #[derive(Default, Clone, serde::Serialize, serde::Deserialize)]
@@ -1412,6 +1556,39 @@ impl Machine {
             .unwrap_or_else(|| PathBuf::from(&def.assign))
     }
 
+    /// A print file is written as data set records with carriage control
+    /// characters, as on z/OS; a SYSOUT allocation (host text) keeps the
+    /// printed page as text.
+    fn carriage_control(&self, def: &FileDef) -> bool {
+        def.print
+            && def.org != Org::LineSequential
+            && self
+                .dd
+                .allocation(&[&def.assign, &def.name])
+                .and_then(|a| a.format)
+                != Some(RecordFormat::Text)
+    }
+
+    /// Record format of a print data set: the allocated one when known,
+    /// otherwise one byte longer than the record for the control character
+    /// (Programming Guide, ADV: "the compiler adds 1 byte to the record
+    /// length to account for the printer control character").
+    fn print_format(&self, def: &FileDef) -> RecordFormat {
+        match self
+            .dd
+            .allocation(&[&def.assign, &def.name])
+            .and_then(|a| a.format)
+        {
+            Some(f @ (RecordFormat::Fixed(_) | RecordFormat::Variable)) => f,
+            _ if def.recording_mode == Some('F')
+                || (def.recording_mode.is_none() && fixed_length(def)) =>
+            {
+                RecordFormat::Fixed(def.max_len + 1)
+            }
+            _ => RecordFormat::Variable,
+        }
+    }
+
     /// Record format of a sequential file: the allocated data set's when
     /// known, otherwise derived from the FD.
     fn file_format(&self, def: &FileDef) -> RecordFormat {
@@ -2017,14 +2194,23 @@ impl Machine {
         }
         if matches!(st.data, Data::Seq(_)) {
             st.pos = 0;
-            let fmt = self.file_format(&def);
+            let fmt = if self.carriage_control(&def) {
+                self.print_format(&def)
+            } else {
+                self.file_format(&def)
+            };
             self.opened
                 .push((def.assign.to_ascii_uppercase(), fmt, def.max_len));
         }
         if def.print && media_mode == OpenMode::Extend {
-            st.text = zeus_ds::format::read_file(&path)
+            let old = zeus_ds::format::read_file(&path)
                 .map_err(ds_err)?
                 .unwrap_or_default();
+            if self.carriage_control(&def) {
+                st.print_prefix = old;
+            } else {
+                st.text = old;
+            }
         }
         st.open = Some(mode);
         self.opened_buffers
@@ -2319,6 +2505,19 @@ impl Machine {
                 } else {
                     st.buffers.write(path, &bytes)
                 }
+            } else if def.print && self.carriage_control(&def) {
+                // LINAGE and Report Writer files are laid out as text
+                let lines = if st.print_lines.is_empty() {
+                    text_print_lines(&st.text)
+                } else {
+                    st.print_lines.clone()
+                };
+                let fmt = self.print_format(&def);
+                let mut bytes = st.print_prefix.clone();
+                for r in carriage_records(&lines, def.machine_control) {
+                    zeus_ds::format::encode_into(fmt, &r, ebcdic::SPACE, &mut bytes);
+                }
+                zeus_ds::format::write_file(path, &bytes)
             } else if def.print {
                 let mut t = st.text.clone();
                 if def.linage.is_some() && st.line_used {
@@ -2480,6 +2679,22 @@ impl Machine {
             let mut line = ebcdic::to_host(&rec);
             while line.last() == Some(&b' ') {
                 line.pop();
+            }
+            if def.linage.is_none() {
+                let page = |p: bool, n: u32| if p { PAGE } else { n };
+                let entry = match advance {
+                    Some((true, _)) => PrintLine {
+                        before: None,
+                        after: Some(page(page_after, lines_after)),
+                        data: rec.clone(),
+                    },
+                    _ => PrintLine {
+                        before: Some(page(page_before, lines_before)),
+                        after: None,
+                        data: rec.clone(),
+                    },
+                };
+                self.state(cur, f).print_lines.push(entry);
             }
             if def.linage.is_some() {
                 let (before, n) = if page_before {

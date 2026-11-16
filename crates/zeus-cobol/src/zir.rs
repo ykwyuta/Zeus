@@ -960,6 +960,10 @@ pub struct FileDef {
     pub alternate_keys: Vec<(Loc, bool)>,
     /// The file is written with ADVANCING (a print file).
     pub print: bool,
+    /// Some WRITE uses BEFORE ADVANCING: the records carry machine control
+    /// characters (RECFM=FBM) instead of ASA characters (RECFM=FBA).
+    #[serde(default)]
+    pub machine_control: bool,
     pub linage: Option<LinageDef>,
     pub sort: bool,
     /// Declarative procedure (paragraph index) for errors.

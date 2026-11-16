@@ -266,31 +266,117 @@ pub fn evaluate(style: Style, report: &[u8], stdout: &[u8]) -> Counts {
     c
 }
 
+/// A character of an EBCDIC (code page 037) report record; '?' for the
+/// characters a report does not use.
+fn ebcdic_char(byte: u8) -> u8 {
+    match byte {
+        // LOW-VALUE and HIGH-VALUE: the figurative constant checks compare
+        // the bytes themselves
+        0x00 => 0x00,
+        0xff => 0xff,
+        0x40 => b' ',
+        0x81..=0x89 => b'a' + (byte - 0x81),
+        0x91..=0x99 => b'j' + (byte - 0x91),
+        0xa2..=0xa9 => b's' + (byte - 0xa2),
+        0xc1..=0xc9 => b'A' + (byte - 0xc1),
+        0xd1..=0xd9 => b'J' + (byte - 0xd1),
+        0xe2..=0xe9 => b'S' + (byte - 0xe2),
+        0xf0..=0xf9 => b'0' + (byte - 0xf0),
+        0x4b => b'.',
+        0x4c => b'<',
+        0x4d => b'(',
+        0x4e => b'+',
+        0x50 => b'&',
+        0x5b => b'$',
+        0x5c => b'*',
+        0x5d => b')',
+        0x5e => b';',
+        0x60 => b'-',
+        0x61 => b'/',
+        0x6b => b',',
+        0x6c => b'%',
+        0x6d => b'_',
+        0x6e => b'>',
+        0x6f => b'?',
+        0x7a => b':',
+        0x7b => b'#',
+        0x7c => b'@',
+        0x7d => b'\'',
+        0x7e => b'=',
+        0x7f => b'"',
+        _ => b'?',
+    }
+}
+
+/// ASA control characters (blank, 0, -, +, 1) and the machine control
+/// characters Zeus writes (DFSMS Macro Instructions for Data Sets).
+const ASA: [u8; 5] = [0x40, 0xf0, 0x60, 0x4e, 0xf1];
+const MACHINE_PRINT: [u8; 5] = [0x01, 0x09, 0x11, 0x19, 0x89];
+const MACHINE_IMMEDIATE: [u8; 4] = [0x0b, 0x13, 0x1b, 0x8b];
+
+/// A print file of 120- or 132-byte lines with their control character
+/// (121- or 133-byte records, RECFM=FBA or FBM) as text: the control
+/// character becomes the blank lines it spaces, control-only records are
+/// dropped.
+fn print_records(data: &[u8]) -> Option<Vec<u8>> {
+    [121, 133]
+        .into_iter()
+        .find_map(|lrecl| print_records_of(data, lrecl))
+}
+
+fn print_records_of(data: &[u8], lrecl: usize) -> Option<Vec<u8>> {
+    if data.is_empty() || !data.len().is_multiple_of(lrecl) {
+        return None;
+    }
+    let records: Vec<&[u8]> = data.chunks(lrecl).collect();
+    let asa = records.iter().all(|r| ASA.contains(&r[0]));
+    let machine = records
+        .iter()
+        .all(|r| MACHINE_PRINT.contains(&r[0]) || MACHINE_IMMEDIATE.contains(&r[0]));
+    // 120-byte records whose length is also a multiple of the print
+    // record: keep them fixed unless some control character is not a blank
+    if data.len().is_multiple_of(120) && !(machine || asa && records.iter().any(|r| r[0] != 0x40)) {
+        return None;
+    }
+    if !asa && !machine {
+        return None;
+    }
+    let mut text = Vec::new();
+    for r in records {
+        if machine && MACHINE_IMMEDIATE.contains(&r[0]) {
+            continue;
+        }
+        let blank = match r[0] {
+            0xf0 => 1,
+            0x60 => 2,
+            _ => 0,
+        };
+        text.extend(std::iter::repeat_n(b'\n', blank));
+        text.extend(r[1..].iter().map(|&b| ebcdic_char(b)));
+        while text.last() == Some(&b' ') {
+            text.pop();
+        }
+        text.push(b'\n');
+    }
+    Some(text)
+}
+
 /// Fixed 120-byte REPORT records use invariant EBCDIC letters and digits on
-/// PL/I and assembler. Preserve ASCII reports and their existing line layout.
+/// PL/I and assembler; COBOL print files are 121-byte records with a
+/// control character. Preserve ASCII reports and their existing line layout.
 pub fn normalize(data: &[u8]) -> Vec<u8> {
-    if data.is_ascii() || !data.len().is_multiple_of(120) {
+    if data.is_ascii() {
+        return data.to_vec();
+    }
+    if let Some(text) = print_records(data) {
+        return text;
+    }
+    if !data.len().is_multiple_of(120) {
         return data.to_vec();
     }
     let mut text = Vec::new();
     for record in data.as_chunks::<120>().0 {
-        for &byte in record {
-            text.push(match byte {
-                0x40 => b' ',
-                0xc1..=0xc9 => b'A' + (byte - 0xc1),
-                0xd1..=0xd9 => b'J' + (byte - 0xd1),
-                0xe2..=0xe9 => b'S' + (byte - 0xe2),
-                0xf0..=0xf9 => b'0' + (byte - 0xf0),
-                0x4b => b'.',
-                0x4d => b'(',
-                0x5d => b')',
-                0x5c => b'*',
-                0x60 => b'-',
-                0x7e => b'=',
-                0x4e => b'+',
-                _ => b'?',
-            });
-        }
+        text.extend(record.iter().map(|&b| ebcdic_char(b)));
         text.push(b'\n');
     }
     text
@@ -328,6 +414,17 @@ mod tests {
         assert_eq!(evaluate(Style::Normal, &records, b"").total, 0);
         assert_eq!(evaluate(Style::Normal, b"", b"").total, 0);
         assert_eq!(normalize(b"ASCII\n"), b"ASCII\n");
+        records.push(0x40);
+        // the same lines as 121-byte FBA print records
+        let mut fba = Vec::new();
+        for (k, r) in records.as_slice().chunks(120).enumerate() {
+            fba.push(if k == 1 { 0xf0 } else { 0x40 });
+            fba.extend_from_slice(r);
+        }
+        let text = normalize(&fba);
+        assert!(
+            text.starts_with(b" 2 OF 2 TESTS WERE EXECUTED SUCCESSFULLY\n\n NO TEST(S) FAILED")
+        );
     }
 
     #[test]

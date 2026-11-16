@@ -281,12 +281,15 @@ fn check_suite(native: bool) {
                     assert_eq!(counts.deleted, 0, "{}: deleted assertions", prog.program);
                     assert_eq!(counts.inspect, 0, "{}: manual assertions", prog.program);
                     if kind == "run" {
-                        let report = fs::read_to_string(
+                        // fixed 120-byte EBCDIC records, as on z/OS
+                        let report = fs::read(
                             tmp.path()
                                 .join(&module.module)
                                 .join(format!("{}.log", prog.program)),
                         )
                         .expect("read scenario report");
+                        let report =
+                            String::from_utf8(zeus_ccvs::report::normalize(&report)).unwrap();
                         let names: Vec<_> = report
                             .lines()
                             .filter_map(|line| {

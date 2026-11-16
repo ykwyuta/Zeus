@@ -1,6 +1,6 @@
 # ZCVS 網羅台帳 (Enterprise COBOL for z/OS)
 
-Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 272、CCVS85 だけが測る 49、対象外 23、未網羅 1。
+Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CCVS85 の列は、その要素を使う CCVS85 のプログラム数。ZCVS が使わず CCVS85 だけが使う要素は状態を「CCVS85」とする (CCVS85 も z/OS で流す)。 要素 345、使用あり 274、CCVS85 だけが測る 48、対象外 23、未網羅 0。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -9,12 +9,12 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | 分類 | 要素 | 状態 | スイートでの使用 | CCVS85 | 確認 |
 | --- | --- | --- | --- | --- | --- |
 | Statements | ACCEPT | CCVS85 |  | 118 |  |
-| Statements | ADD | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA109A ほか 33 | 414 |  |
+| Statements | ADD | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA109A ほか 34 | 414 |  |
 | Statements | ALLOCATE | 使用あり | ZP117A | 0 |  |
 | Statements | ALTER | 使用あり | ZE110N | 28 |  |
 | Statements | CALL | 使用あり | ZP101A, ZP102A, ZP103A, ZP104A, ZP105A, ZP106A ほか 14 | 34 |  |
 | Statements | CANCEL | 使用あり | ZA110A, ZP101A, ZP109A, ZP112A, ZP115A | 7 |  |
-| Statements | CLOSE | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 12 | 406 |  |
+| Statements | CLOSE | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 13 | 406 |  |
 | Statements | COMPUTE | 使用あり | ZA102A, ZA104A, ZA105A, ZA107A, ZA108A, ZA109A ほか 27 | 46 |  |
 | Statements | CONTINUE | 使用あり | ZE105N, ZE132N, ZE132P, ZF115A | 45 |  |
 | Statements | DELETE | 使用あり | ZF107A, ZF108A, ZF110A, ZF112A | 16 |  |
@@ -30,7 +30,7 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Statements | GOBACK | 使用あり | ZE102N, ZE110N, ZE111N, ZE112N, ZE113N, ZP106A ほか 23 | 0 |  |
 | Statements | GO TO | 使用あり | ZE110N, ZE111N, ZP114A | 413 |  |
 | Statements | GO TO DEPENDING | 使用あり | ZD105A, ZD113A, ZE144N, ZE144P, ZF101A, ZF102A ほか 2 | 33 |  |
-| Statements | IF | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 117 | 413 |  |
+| Statements | IF | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 118 | 413 |  |
 | Statements | INITIALIZE | 使用あり | ZD107A, ZE106N, ZE107N, ZE108N, ZN102B, ZN103A ほか 8 | 10 |  |
 | Statements | INSPECT TALLYING | 使用あり | ZA127A, ZS106A | 5 |  |
 | Statements | INSPECT REPLACING | CCVS85 |  | 10 |  |
@@ -39,17 +39,17 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Statements | JSON GENERATE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Statements | JSON PARSE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Statements | MERGE | CCVS85 |  | 7 |  |
-| Statements | MOVE | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 136 | 441 |  |
+| Statements | MOVE | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 137 | 441 |  |
 | Statements | MOVE CORRESPONDING | CCVS85 |  | 10 |  |
 | Statements | MULTIPLY | 使用あり | ZA102A, ZA109A, ZA119A | 22 |  |
-| Statements | OPEN | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 12 | 406 |  |
-| Statements | PERFORM | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 114 | 421 |  |
+| Statements | OPEN | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 13 | 406 |  |
+| Statements | PERFORM | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 115 | 421 |  |
 | Statements | PERFORM TIMES | 使用あり | ZX101A | 401 |  |
-| Statements | PERFORM UNTIL | 使用あり | ZE105N, ZE132N, ZE132P, ZF114A, ZX101A, ZX105A ほか 1 | 65 |  |
-| Statements | PERFORM VARYING | 使用あり | ZE132N, ZE132P, ZF114A, ZX101A, ZX105A, ZX110A | 27 |  |
+| Statements | PERFORM UNTIL | 使用あり | ZE105N, ZE132N, ZE132P, ZF114A, ZF116A, ZX101A ほか 2 | 65 |  |
+| Statements | PERFORM VARYING | 使用あり | ZE132N, ZE132P, ZF114A, ZF116A, ZX101A, ZX105A ほか 1 | 27 |  |
 | Statements | PERFORM AFTER | 使用あり | ZX110A | 12 |  |
 | Statements | WITH TEST AFTER | 使用あり | ZE105N, ZX105A | 3 |  |
-| Statements | READ | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 11 | 186 |  |
+| Statements | READ | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 12 | 186 |  |
 | Statements | READ NEXT | 使用あり | ZF107A, ZF108A, ZF110A, ZF111A, ZF112A | 21 |  |
 | Statements | READ PREVIOUS | 対象外 |  | 0 | 対象外: Enterprise COBOL 6.4 の LRM と PG に READ PREVIOUS は無い (逆向きの順読みは COBOL 2002 や他社の拡張)。z/OS で翻訳できない |
 | Statements | RELEASE | CCVS85 |  | 23 |  |
@@ -64,12 +64,12 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Statements | SET ADDRESS OF | 使用あり | ZP105A, ZP108A, ZP117A | 0 |  |
 | Statements | SORT | 使用あり | ZS109A | 47 |  |
 | Statements | START | 使用あり | ZF107A, ZF108A, ZF110A, ZF111A, ZF112A | 16 |  |
-| Statements | STOP RUN | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 177 | 431 |  |
+| Statements | STOP RUN | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 178 | 431 |  |
 | Statements | STRING | 使用あり | ZPS04B, ZPS09A, ZPS09B, ZPS09I | 4 |  |
 | Statements | SUBTRACT | 使用あり | ZA102A, ZA104A, ZA109A, ZA110A, ZA118A, ZA119A | 75 |  |
 | Statements | UNSTRING | CCVS85 |  | 3 |  |
 | Statements | USE | 使用あり | ZP114A | 86 |  |
-| Statements | WRITE | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 12 | 405 |  |
+| Statements | WRITE | 使用あり | ZF101A, ZF102A, ZF103A, ZF104A, ZF105A, ZF106A ほか 13 | 405 |  |
 | Statements | XML GENERATE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Statements | XML PARSE | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Statements | ENTER | CCVS85 |  | 2 |  |
@@ -82,10 +82,10 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Phrases | NOT ON EXCEPTION | CCVS85 |  | 1 |  |
 | Phrases | INVALID KEY | 使用あり | ZF107A, ZF108A, ZF111A | 131 |  |
 | Phrases | NOT INVALID KEY | 使用あり | ZF107A, ZF108A | 6 |  |
-| Phrases | AT END | 使用あり | ZD105A, ZF101A, ZF106A, ZF107A, ZF108A, ZF115A | 160 |  |
-| Phrases | NOT AT END | 使用あり | ZF106A, ZF108A | 9 |  |
+| Phrases | AT END | 使用あり | ZD105A, ZF101A, ZF106A, ZF107A, ZF108A, ZF115A ほか 1 | 160 |  |
+| Phrases | NOT AT END | 使用あり | ZF106A, ZF108A, ZF116A | 9 |  |
 | Phrases | AT END-OF-PAGE | CCVS85 |  | 3 |  |
-| Phrases | ADVANCING | CCVS85 |  | 394 |  |
+| Phrases | ADVANCING | 使用あり | ZF116A | 394 |  |
 | Phrases | BY REFERENCE | 使用あり | ZP104A, ZP107A, ZP111A, ZP113A, ZPS04A, ZPS11A | 4 |  |
 | Phrases | BY CONTENT | 使用あり | ZP104A, ZP107A, ZP113A | 4 |  |
 | Phrases | BY VALUE | 使用あり | ZP104A, ZP107A, ZP111A, ZPS04A, ZPS11A | 0 |  |
@@ -120,7 +120,7 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Data description | SIGN TRAILING | 使用あり | ZA106A, ZA122A, ZD102A, ZD112A, ZF103A, ZS107A | 9 |  |
 | Data description | SEPARATE CHARACTER | 使用あり | ZA106A, ZA122A, ZD102A, ZD112A, ZE136N, ZE136P ほか 3 | 14 |  |
 | Data description | SYNCHRONIZED | 使用あり | ZD104A, ZD114A, ZD115A | 17 |  |
-| Data description | VALUE | 使用あり | ZA105A, ZA109A, ZA121A, ZA123A, ZA125A, ZA126A ほか 72 | 438 |  |
+| Data description | VALUE | 使用あり | ZA105A, ZA109A, ZA121A, ZA123A, ZA125A, ZA126A ほか 73 | 438 |  |
 | Data description | VALUE THRU | 使用あり | ZX102A, ZX110A | 8 |  |
 | Data description | WHEN SET TO FALSE | 使用あり | ZE103N, ZE104N, ZE126N, ZE126P, ZS107A, ZX102A ほか 1 | 11 |  |
 | Data description | VOLATILE | 使用あり | ZS108A | 0 |  |
@@ -149,18 +149,18 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | USAGE | FUNCTION-POINTER | 使用あり | ZP105A | 0 |  |
 | USAGE | OBJECT REFERENCE | 対象外 |  | 0 | 対象外: OO COBOL と Java の連携は JVM を要し、Zeus の範囲の外 (docs/proposal/0007-remaining-work.md の「Java との連携」) |
 | PICTURE symbols | PIC A | 使用あり | ZD107A | 51 |  |
-| PICTURE symbols | PIC X | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 141 | 444 |  |
-| PICTURE symbols | PIC 9 | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 139 | 447 |  |
+| PICTURE symbols | PIC X | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 142 | 444 |  |
+| PICTURE symbols | PIC 9 | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 140 | 447 |  |
 | PICTURE symbols | PIC S | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 66 | 413 |  |
 | PICTURE symbols | PIC V | 使用あり | ZA104A, ZA105A, ZA107A, ZA108A, ZA109A, ZA120A ほか 11 | 95 |  |
 | PICTURE symbols | PIC P | 使用あり | ZD106A | 32 |  |
 | PICTURE symbols | PIC Z | 使用あり | ZD106A, ZE143P, ZN102A, ZN108A | 23 |  |
 | PICTURE symbols | PIC * | 使用あり | ZD106A, ZE143N | 15 |  |
 | PICTURE symbols | PIC B | 使用あり | ZD106A, ZN102A, ZN108A | 21 |  |
-| PICTURE symbols | PIC 0 | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 115 | 420 |  |
+| PICTURE symbols | PIC 0 | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 116 | 420 |  |
 | PICTURE symbols | PIC / | 使用あり | ZD106A, ZN102A | 15 |  |
 | PICTURE symbols | PIC , | 使用あり | ZD106A | 30 |  |
-| PICTURE symbols | PIC . | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 156 | 454 |  |
+| PICTURE symbols | PIC . | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 157 | 454 |  |
 | PICTURE symbols | PIC + | 使用あり | ZA120A, ZD106A, ZE140N, ZE140P, ZE141N, ZE141P ほか 2 | 12 |  |
 | PICTURE symbols | PIC - | 使用あり | ZA103A, ZA109A, ZA125A, ZA126A, ZD106A, ZS109A ほか 1 | 392 |  |
 | PICTURE symbols | PIC CR | 使用あり | ZD106A | 16 |  |
@@ -181,14 +181,14 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | File description and control | ALTERNATE RECORD KEY | 使用あり | ZF107A, ZF108A, ZF112A | 12 |  |
 | File description and control | WITH DUPLICATES | 使用あり | ZF108A, ZF112A | 8 |  |
 | File description and control | RELATIVE KEY | 使用あり | ZF104A, ZF110A | 16 |  |
-| File description and control | FILE STATUS | 使用あり | ZE120N, ZF101A, ZF102A, ZF103A, ZF104A, ZF105A ほか 13 | 77 |  |
+| File description and control | FILE STATUS | 使用あり | ZE120N, ZF101A, ZF102A, ZF103A, ZF104A, ZF105A ほか 14 | 77 |  |
 | File description and control | RESERVE | CCVS85 |  | 13 |  |
 | File description and control | PADDING CHARACTER | 使用あり | ZE121N | 3 |  |
 | File description and control | RECORD DELIMITER | CCVS85 |  | 3 |  |
 | File description and control | BLOCK CONTAINS | 使用あり | ZE118N, ZF101A, ZF102A, ZF105A, ZF109A, ZF114A ほか 2 | 99 |  |
-| File description and control | RECORD CONTAINS | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 109 | 79 |  |
+| File description and control | RECORD CONTAINS | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 110 | 79 |  |
 | File description and control | RECORD VARYING | 使用あり | ZF106A, ZF109A | 8 |  |
-| File description and control | RECORDING MODE | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 111 | 0 |  |
+| File description and control | RECORDING MODE | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 112 | 0 |  |
 | File description and control | LABEL RECORDS | 使用あり | ZE123N, ZF109A, ZF201M, ZF202M | 210 |  |
 | File description and control | CODE-SET | 使用あり | ZE119N, ZF103A | 1 |  |
 | File description and control | LINAGE | CCVS85 |  | 5 |  |
@@ -212,14 +212,14 @@ Enterprise COBOL for z/OS Language Reference の章立てから列挙した。CC
 | Environment and structure | CLASS | CCVS85 |  | 3 |  |
 | Environment and structure | SYMBOLIC CHARACTERS | CCVS85 |  | 1 |  |
 | Environment and structure | UPSI | 使用あり | ZS108A | 0 |  |
-| Environment and structure | C01 | 未網羅 |  | 0 |  |
+| Environment and structure | C01 | 使用あり | ZF116A | 0 |  |
 | Environment and structure | PROGRAM COLLATING SEQUENCE | 使用あり | ZD110A | 13 |  |
 | Environment and structure | XML-SCHEMA | 対象外 |  | 0 | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Environment and structure | NESTED PROGRAM | 使用あり | ZP106A, ZP113A, ZS105A, ZS106A | 8 |  |
 | Environment and structure | COMMON | 使用あり | ZP106A | 1 |  |
 | Environment and structure | INITIAL | 使用あり | ZPS09I | 1 |  |
 | Environment and structure | RECURSIVE | 使用あり | ZE110N, ZE111N, ZE129N, ZE129P, ZP112A, ZPS02A ほか 2 | 0 |  |
-| Environment and structure | COPY | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 110 | 402 |  |
+| Environment and structure | COPY | 使用あり | ZA101A, ZA102A, ZA103A, ZA104A, ZA105A, ZA106A ほか 111 | 402 |  |
 | Environment and structure | COPY REPLACING | 使用あり | ZS106A, ZX103A | 6 |  |
 | Environment and structure | REPLACE | 使用あり | ZE127N, ZE127P, ZE128N, ZE128P, ZE133N, ZE133P ほか 3 | 2 |  |
 | Environment and structure | DECLARATIVES | 使用あり | ZP114A | 88 |  |
