@@ -492,10 +492,14 @@ fn render_other_steps(
     helper: bool,
     extra_dds: &[DdAllocation],
 ) -> String {
+    let asm_options = match &cfg.asm_options {
+        Some(o) => format!("OBJECT,{o}"),
+        None => "OBJECT".to_string(),
+    };
     let (compiler, options, library) = if ext == "PLI" {
         ("IBMZPLI", "OBJECT,MARGINS(2,72)", "IBMZPLI.SIBMZCMP")
     } else {
-        ("ASMA90", "OBJECT", "ASM.SASMMOD1")
+        ("ASMA90", asm_options.as_str(), "ASM.SASMMOD1")
     };
     let mut s =
         format!("//* PROGRAM {member}\n//C{member:<7} EXEC PGM={compiler},PARM='{options}'\n");

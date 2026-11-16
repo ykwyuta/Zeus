@@ -122,6 +122,18 @@
       "COM-SYMBOL-ADDRESS"
     ]
   },
+  "HA113A": {
+    "expect": "run",
+    "tests": [
+      "J-DXD",
+      "JD-DXD",
+      "J-CLASS",
+      "R-PSECT",
+      "RD-PSECT",
+      "CATTR-ALIGN",
+      "CATTR-DATA"
+    ]
+  },
   "HD101A": {
     "expect": "run",
     "tests": [

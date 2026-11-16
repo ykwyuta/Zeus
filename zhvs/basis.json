@@ -459,6 +459,58 @@
       }
     }
   },
+  "HA113A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: CATTR instruction (z/OS and CMS) | The CATTR instruction establishes a program object external class name, and assigns binder attributes for"
+    ],
+    "tests": {
+      "J-DXD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Length constant—J | Use this constant to reserve storage for the length of a DXD, class, or DSECT. The assembler fills the field"
+        ]
+      },
+      "JD-DXD": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Length constant—J | Use this constant to reserve storage for the length of a DXD, class, or DSECT. The assembler fills the field"
+        ]
+      },
+      "J-CLASS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: Length constant—J | In the following example, the value at A is the length of CLASS."
+        ]
+      },
+      "R-PSECT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: PSECT reference—R | The R-type constant reserves storage for the address of the PSECT of symbol1 as specified in the",
+          "HLASM-LR: XATTR instruction (z/OS and CMS) | Identifies the private read-write \"section\" or PSECT associated with name by its being an internal or"
+        ]
+      },
+      "RD-PSECT": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: PSECT reference—R | The R-type constant reserves storage for the address of the PSECT of symbol1 as specified in the",
+          "HLASM-LR: XATTR instruction (z/OS and CMS) | Identifies the private read-write \"section\" or PSECT associated with name by its being an internal or"
+        ]
+      },
+      "CATTR-ALIGN": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CATTR instruction (z/OS and CMS) | Aligns the text on a 2n boundary. n is an integer with value 0, 1, 2, 3, 4, or 12. If not specified, then"
+        ]
+      },
+      "CATTR-DATA": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: CATTR instruction (z/OS and CMS) | Is one or more binder attributes that are assigned to the text in this class:"
+        ]
+      }
+    }
+  },
   "HD101A": {
     "basis": "spec",
     "refs": [
