@@ -1,6 +1,6 @@
 # ZPVS 網羅台帳 (Enterprise PL/I for z/OS)
 
-Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 635、対象外 30、未網羅 43。
+Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 要素 708、使用あり 676、対象外 32、未網羅 0。
 
 状態の「未網羅」と「使用あり」は道具が機械的に決める。「使用あり」は検査がその要素を使う
 ことしか意味しない。境界・内部表現まで確かめたものは人が読んで最後の列 (確認) に
@@ -11,55 +11,55 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Statements | ALLOCATE | 使用あり | PC112A, PD111A, PE113N, PE113P, PE114N, PE114P ほか 4 | - |  |
 | Statements | ASSERT | 使用あり | PC112A | - |  |
 | Statements | ATTACH | 使用あり | PS109A | - |  |
-| Statements | BEGIN | 使用あり | PC104A, PC106A, PC107A, PC108A, PC110A, PC111A ほか 17 | - |  |
-| Statements | CALL | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 85 | - |  |
-| Statements | CLOSE | 使用あり | PF102A, PF103A, PF104M, PF105A, PF106A, PF107A ほか 4 | - |  |
-| Statements | DECLARE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 106 | - |  |
-| Statements | DEFAULT | 使用あり | PC119A, PD105A, PD108A, PD110A, PF106A, PM114A | - |  |
+| Statements | BEGIN | 使用あり | PC104A, PC106A, PC107A, PC108A, PC110A, PC111A ほか 21 | - |  |
+| Statements | CALL | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 105 | - |  |
+| Statements | CLOSE | 使用あり | PF102A, PF103A, PF104M, PF105A, PF106A, PF107A ほか 8 | - |  |
+| Statements | DECLARE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 132 | - |  |
+| Statements | DEFAULT | 使用あり | PC119A, PD105A, PD108A, PD110A, PF106A, PM114A ほか 2 | - |  |
 | Statements | DEFINE ALIAS | 使用あり | PD104A, PD116A | - |  |
-| Statements | DEFINE ORDINAL | 使用あり | PC117A, PD105A, PD116A | - |  |
+| Statements | DEFINE ORDINAL | 使用あり | PC117A, PD105A, PD116A, PD118A | - |  |
 | Statements | DEFINE STRUCTURE | 使用あり | PD104A, PD109A, PM125A, PS106A, PS111A | - |  |
 | Statements | DELAY | 使用あり | PS107A | - |  |
-| Statements | DELETE | 使用あり | PF104M | - |  |
+| Statements | DELETE | 使用あり | PF104M, PF111A | - |  |
 | Statements | DETACH | 使用あり | PS109A | - |  |
-| Statements | DISPLAY | 未網羅 |  | - |  |
-| Statements | DO | 使用あり | PC101A, PC120A, PC123A, PD115A, PD116A, PE108P ほか 10 | - |  |
-| Statements | DO WHILE | 使用あり | PC101A, PF107A, PS107A | - |  |
+| Statements | DISPLAY | 使用あり | PC124A | - |  |
+| Statements | DO | 使用あり | PC101A, PC120A, PC123A, PC126A, PD115A, PD116A ほか 12 | - |  |
+| Statements | DO WHILE | 使用あり | PC101A, PF107A, PM129A, PS107A | - |  |
 | Statements | DO UNTIL | 使用あり | PC101A | - |  |
 | Statements | DO LOOP | 使用あり | PM110A, PM124A | - |  |
 | Statements | DO REPEAT | 使用あり | PC108A, PD109A, PM104M, PM117A | - |  |
-| Statements | END | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 114 | - |  |
+| Statements | END | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 142 | - |  |
 | Statements | ENTRY | 使用あり | PC103A, PC104A, PC116A, PD109A, PD113A, PD114A ほか 4 | - |  |
 | Statements | EXIT | 使用あり | PS109A | - |  |
 | Statements | FETCH | 使用あり | PC104A | - |  |
 | Statements | FLUSH | 使用あり | PS107A | - |  |
 | Statements | FORMAT | 使用あり | PM110A | - |  |
 | Statements | FREE | 使用あり | PD111A, PS101A, PS102A, PS106A | - |  |
-| Statements | GET | 使用あり | PF101A | - |  |
-| Statements | GO TO | 使用あり | PC104A, PC106A, PC110A, PC111A, PC112A, PC113A ほか 11 | - |  |
-| Statements | IF | 使用あり | PA106A, PC101A, PC102A, PD116A, PM101A, PM110A ほか 2 | - |  |
+| Statements | GET | 使用あり | PF101A, PF109A | - |  |
+| Statements | GO TO | 使用あり | PC104A, PC106A, PC110A, PC111A, PC112A, PC113A ほか 12 | - |  |
+| Statements | IF | 使用あり | PA106A, PC101A, PC102A, PC126A, PD116A, PM101A ほか 4 | - |  |
 | Statements | ITERATE | 使用あり | PC101A, PE109N, PE109P, PM110A | - |  |
 | Statements | LEAVE | 使用あり | PC101A, PD116A, PE108N, PE108P, PM110A, PM124A | - |  |
 | Statements | LOCATE | 使用あり | PE111N, PE111P | - |  |
-| Statements | ON | 使用あり | PC104A, PC105A, PC106A, PC107A, PC108A, PC110A ほか 23 | - |  |
-| Statements | OPEN | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 83 | - |  |
-| Statements | PACKAGE | 使用あり | PD113A, PS108A, PS109A | - |  |
-| Statements | PROCEDURE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 114 | - |  |
-| Statements | PUT | 使用あり | PF101A, PF102A, PF106A, PM110A, PM115A | - |  |
-| Statements | READ | 使用あり | PD110A, PF103A, PF104M, PF105A, PF106A, PF107A ほか 1 | - |  |
+| Statements | ON | 使用あり | PC104A, PC105A, PC106A, PC107A, PC108A, PC110A ほか 27 | - |  |
+| Statements | OPEN | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 103 | - |  |
+| Statements | PACKAGE | 使用あり | PC125A, PC126A, PD113A, PS108A, PS109A, PS113A | - |  |
+| Statements | PROCEDURE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 142 | - |  |
+| Statements | PUT | 使用あり | PF101A, PF102A, PF106A, PF109A, PM110A, PM115A | - |  |
+| Statements | READ | 使用あり | PD110A, PF103A, PF104M, PF105A, PF106A, PF107A ほか 3 | - |  |
 | Statements | RELEASE | 使用あり | PC104A | - |  |
 | Statements | RESIGNAL | 使用あり | PM110A | - |  |
-| Statements | RETURN | 使用あり | PA106A, PC102A, PC103A, PC109A, PC117A, PC123A ほか 11 | - |  |
-| Statements | REVERT | 使用あり | PC104A, PC105A, PC110A, PC111A, PC112A, PC113A ほか 8 | - |  |
-| Statements | REWRITE | 使用あり | PF104M | - |  |
+| Statements | RETURN | 使用あり | PA106A, PC102A, PC103A, PC109A, PC117A, PC123A ほか 16 | - |  |
+| Statements | REVERT | 使用あり | PC104A, PC105A, PC110A, PC111A, PC112A, PC113A ほか 9 | - |  |
+| Statements | REWRITE | 使用あり | PF104M, PF111A | - |  |
 | Statements | SELECT | 使用あり | PC101A, PM117A | - |  |
-| Statements | SIGNAL | 使用あり | PC105A, PC110A, PC112A, PC117A, PM110A, PM112A ほか 1 | - |  |
-| Statements | STOP | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 83 | - |  |
+| Statements | SIGNAL | 使用あり | PC105A, PC110A, PC112A, PC117A, PF111A, PM110A ほか 2 | - |  |
+| Statements | STOP | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 103 | - |  |
 | Statements | WAIT | 使用あり | PS109A | - |  |
-| Statements | WRITE | 使用あり | PF103A, PF104M, PF105A, PF106A, PF107A, PF108A ほか 3 | - |  |
+| Statements | WRITE | 使用あり | PF103A, PF104M, PF105A, PF106A, PF107A, PF108A ほか 5 | - |  |
 | Statements | CANCEL THREAD | 使用あり | PS109A | - |  |
 | Statements | OTHERWISE | 使用あり | PC101A, PM117A | - |  |
-| Statements | QUALIFY | 未網羅 |  | - |  |
+| Statements | QUALIFY | 使用あり | PD118A | - |  |
 | Statements | REINIT | 使用あり | PC109A | - |  |
 | Statements | WHEN | 使用あり | PC101A, PC103A, PE112N, PE112P, PM117A | - |  |
 | Statements | XDECLARE | 使用あり | PD114A | - |  |
@@ -70,109 +70,109 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Data attributes | ALIGNED | 使用あり | PC120A, PD103A | - |  |
 | Data attributes | AREA | 使用あり | PC112A, PD109A, PD111A, PE114P, PE115P, PM111A ほか 2 | - |  |
 | Data attributes | AUTOMATIC | 使用あり | PC109A | - |  |
-| Data attributes | BASED | 使用あり | PA106A, PC112A, PC120A, PD110A, PD111A, PD115A ほか 12 | - |  |
-| Data attributes | BIGENDIAN | 使用あり | PD110A | - |  |
-| Data attributes | BINARY | 使用あり | PA101A, PA102A, PA104A, PA106A, PC101A, PC102A ほか 80 | - |  |
-| Data attributes | BIT | 使用あり | PA102A, PC110A, PC111A, PC112A, PC113A, PC114A ほか 19 | - |  |
-| Data attributes | BUILTIN | 使用あり | PD108A, PM109A, PM110A, PM112A | - |  |
-| Data attributes | BYADDR | 使用あり | PD113A | - |  |
-| Data attributes | BYVALUE | 使用あり | PA106A, PD110A, PS109A | - |  |
-| Data attributes | CHARACTER | 使用あり | PA102A, PA104A, PA106A, PC103A, PC107A, PC108A ほか 65 | - |  |
+| Data attributes | BASED | 使用あり | PA106A, PC112A, PC120A, PC126A, PD110A, PD111A ほか 15 | - |  |
+| Data attributes | BIGENDIAN | 使用あり | PD110A, PD117A | - |  |
+| Data attributes | BINARY | 使用あり | PA101A, PA102A, PA104A, PA106A, PC101A, PC102A ほか 98 | - |  |
+| Data attributes | BIT | 使用あり | PA102A, PC110A, PC111A, PC112A, PC113A, PC114A ほか 23 | - |  |
+| Data attributes | BUILTIN | 使用あり | PD108A, PF111A, PM109A, PM110A, PM112A | - |  |
+| Data attributes | BYADDR | 使用あり | PC126A, PD113A | - |  |
+| Data attributes | BYVALUE | 使用あり | PA106A, PC126A, PD110A, PS109A | - |  |
+| Data attributes | CHARACTER | 使用あり | PA102A, PA104A, PA106A, PC103A, PC107A, PC108A ほか 80 | - |  |
 | Data attributes | COMPLEX | 使用あり | PD106A, PE103N, PE103P, PM110A | - |  |
 | Data attributes | CONDITION | 使用あり | PC105A, PC110A, PC112A, PD111A, PM112A | - |  |
 | Data attributes | CONNECTED | 使用あり | PD113A | - |  |
 | Data attributes | CONTROLLED | 使用あり | PE113P, PS102A | - |  |
 | Data attributes | DATE | 使用あり | PM105A, PM110A, PM114A, PM117A | - |  |
-| Data attributes | DECIMAL | 使用あり | PA101A, PA102A, PA105A, PA106A, PC102A, PC106A ほか 27 | - |  |
+| Data attributes | DECIMAL | 使用あり | PA101A, PA102A, PA105A, PA106A, PC102A, PC106A ほか 32 | - |  |
 | Data attributes | DEFINED | 使用あり | PD113A, PS105A | - |  |
 | Data attributes | DIMENSION | 使用あり | PA104A, PD115A, PM120A, PS102A, PS104A | - |  |
 | Data attributes | ENTRY | 使用あり | PC103A, PC104A, PC116A, PD109A, PD113A, PD114A ほか 4 | - |  |
-| Data attributes | EXTERNAL | 使用あり | PC104A | - |  |
-| Data attributes | FILE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 85 | - |  |
-| Data attributes | FIXED | 使用あり | PA101A, PA102A, PA104A, PA105A, PA106A, PC101A ほか 86 | - |  |
-| Data attributes | FLOAT | 使用あり | PA103A, PC110A, PC120A, PD106A, PD109A, PD110A ほか 7 | - |  |
+| Data attributes | EXTERNAL | 使用あり | PC104A, PC126A, PS113A | - |  |
+| Data attributes | FILE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 105 | - |  |
+| Data attributes | FIXED | 使用あり | PA101A, PA102A, PA104A, PA105A, PA106A, PC101A ほか 104 | - |  |
+| Data attributes | FLOAT | 使用あり | PA103A, PC110A, PC120A, PC126A, PD106A, PD109A ほか 12 | - |  |
 | Data attributes | FORMAT | 使用あり | PM110A | - |  |
 | Data attributes | GENERIC | 使用あり | PC103A, PE112N, PE112P | - |  |
-| Data attributes | GRAPHIC | 使用あり | PD106A, PM123A | - |  |
+| Data attributes | GRAPHIC | 使用あり | PC127A, PD106A, PM123A | - |  |
 | Data attributes | HANDLE | 使用あり | PD109A, PM125A, PS106A, PS111A | - |  |
-| Data attributes | HEXADEC | 使用あり | PD110A | - |  |
-| Data attributes | IEEE | 未網羅 |  | - | 未網羅: Zeus は HFP と big-endian の 2 進しか格納しないので、2026-11-12 から黙って既定の表現にせず断る。表現を実装するまで検査は書けない |
-| Data attributes | INITIAL | 使用あり | PA104A, PA106A, PC102A, PC105A, PC106A, PC107A ほか 49 | - |  |
+| Data attributes | HEXADEC | 使用あり | PD110A, PD117A | - |  |
+| Data attributes | IEEE | 使用あり | PD117A | - |  |
+| Data attributes | INITIAL | 使用あり | PA104A, PA106A, PC102A, PC105A, PC106A, PC107A ほか 66 | - |  |
 | Data attributes | INTERNAL | 使用あり | PD113A | - |  |
 | Data attributes | LABEL | 使用あり | PC101A, PD109A | - |  |
 | Data attributes | LIKE | 使用あり | PD104A, PD115A, PE104N, PE104P, PE105N, PE105P | - |  |
 | Data attributes | LIMITED | 使用あり | PD113A | - |  |
-| Data attributes | LITTLEENDIAN | 未網羅 |  | - | 未網羅: Zeus は HFP と big-endian の 2 進しか格納しないので、2026-11-12 から黙って既定の表現にせず断る。表現を実装するまで検査は書けない |
+| Data attributes | LITTLEENDIAN | 使用あり | PD117A | - |  |
 | Data attributes | NONASSIGNABLE | 使用あり | PD110A | - |  |
 | Data attributes | NONVARYING | 使用あり | PD110A | - |  |
 | Data attributes | OFFSET | 使用あり | PD109A, PE115N, PE115P, PM111A, PS103A, PS110A | - |  |
 | Data attributes | OPTIONAL | 使用あり | PD110A | - |  |
-| Data attributes | OPTIONS | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 114 | - |  |
-| Data attributes | ORDINAL | 使用あり | PC117A, PD105A, PD114A, PD116A | - |  |
+| Data attributes | OPTIONS | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 142 | - |  |
+| Data attributes | ORDINAL | 使用あり | PC117A, PD105A, PD114A, PD116A, PD118A | - |  |
 | Data attributes | PARAMETER | 使用あり | PD113A | - |  |
 | Data attributes | PICTURE | 使用あり | PA103A, PA105A, PM115A | - |  |
-| Data attributes | POINTER | 使用あり | PA106A, PC112A, PC116A, PD111A, PM110A, PM111A ほか 6 | - |  |
+| Data attributes | POINTER | 使用あり | PA106A, PC112A, PC116A, PC126A, PD111A, PM110A ほか 8 | - |  |
 | Data attributes | POSITION | 使用あり | PS105A | - |  |
 | Data attributes | PRECISION | 使用あり | PC120A, PM110A, PM115A | - |  |
 | Data attributes | REAL | 使用あり | PD106A, PM110A | - |  |
 | Data attributes | REFER | 使用あり | PE106N, PE106P, PE107N, PE107P, PS104A | - |  |
-| Data attributes | RESERVED | 未網羅 |  | - |  |
-| Data attributes | RETURNS | 使用あり | PA106A, PC102A, PC103A, PC109A, PC123A, PD113A ほか 8 | - |  |
+| Data attributes | RESERVED | 使用あり | PS113A | - |  |
+| Data attributes | RETURNS | 使用あり | PA106A, PC102A, PC103A, PC109A, PC123A, PD113A ほか 11 | - |  |
 | Data attributes | SIGNED | 使用あり | PD110A, PM115A | - |  |
 | Data attributes | STATIC | 使用あり | PC104A, PC109A, PC116A, PC120A, PCS01A, PD109A ほか 4 | - |  |
-| Data attributes | TYPE | 使用あり | PD104A, PD105A, PD114A, PD116A, PF108A, PS106A ほか 1 | - |  |
+| Data attributes | TYPE | 使用あり | PD104A, PD105A, PD114A, PD116A, PD118A, PF108A ほか 4 | - |  |
 | Data attributes | UNALIGNED | 使用あり | PD102A, PD103A | - |  |
 | Data attributes | UNION | 使用あり | PD112A | - |  |
-| Data attributes | UNSIGNED | 使用あり | PC120A, PD107A, PD110A, PM112A, PM114A, PM115A | - |  |
-| Data attributes | VALUE | 使用あり | PA105A, PD105A, PD108A, PD109A, PM106A, PM107A ほか 2 | - |  |
+| Data attributes | UNSIGNED | 使用あり | PC120A, PD107A, PD110A, PM112A, PM114A, PM115A ほか 1 | - |  |
+| Data attributes | VALUE | 使用あり | PA105A, PD105A, PD108A, PD109A, PD118A, PM106A ほか 4 | - |  |
 | Data attributes | VARIABLE | 使用あり | PC103A, PC116A, PD108A, PD109A, PF108A | - |  |
-| Data attributes | VARYING | 使用あり | PC111A, PC112A, PC113A, PC114A, PC118A, PC121A ほか 19 | - |  |
+| Data attributes | VARYING | 使用あり | PC111A, PC112A, PC113A, PC114A, PC118A, PC121A ほか 25 | - |  |
 | Data attributes | VARYINGZ | 使用あり | PD110A, PD111A | - |  |
 | Data attributes | WIDECHAR | 使用あり | PC113A, PC114A, PD106A, PM118A, PM119A | - |  |
 | File attributes and options | BUFFERED | 使用あり | PF107A | - |  |
-| File attributes and options | DIRECT | 使用あり | PF104M, PF106A | - |  |
-| File attributes and options | ENVIRONMENT | 使用あり | PF102A, PF103A, PF104M, PF105A, PF106A, PF107A ほか 1 | - |  |
-| File attributes and options | INPUT | 使用あり | PC107A, PC108A, PC111A, PF103A, PF105A, PF107A ほか 2 | - |  |
-| File attributes and options | KEYED | 使用あり | PF104M, PF106A, PF107A | - |  |
-| File attributes and options | OUTPUT | 使用あり | PE111N, PE111P, PF102A, PF103A, PF104M, PF105A ほか 5 | - |  |
+| File attributes and options | DIRECT | 使用あり | PF104M, PF106A, PF111A | - |  |
+| File attributes and options | ENVIRONMENT | 使用あり | PF102A, PF103A, PF104M, PF105A, PF106A, PF107A ほか 5 | - |  |
+| File attributes and options | INPUT | 使用あり | PC107A, PC108A, PC111A, PF103A, PF105A, PF107A ほか 6 | - |  |
+| File attributes and options | KEYED | 使用あり | PF104M, PF106A, PF107A, PF111A | - |  |
+| File attributes and options | OUTPUT | 使用あり | PE111N, PE111P, PF102A, PF103A, PF104M, PF105A ほか 9 | - |  |
 | File attributes and options | PRINT | 使用あり | PF102A, PF106A, PF108A, PM117A | - |  |
-| File attributes and options | RECORD | 使用あり | PC111A, PE111N, PE111P, PF103A, PF104M, PF105A ほか 5 | - |  |
+| File attributes and options | RECORD | 使用あり | PC111A, PE111N, PE111P, PF103A, PF104M, PF105A ほか 7 | - |  |
 | File attributes and options | SEQUENTIAL | 使用あり | PF107A, PF108A, PS107A | - |  |
-| File attributes and options | STREAM | 使用あり | PF102A, PF106A, PF108A, PM115A, PM116A | - |  |
-| File attributes and options | UPDATE | 使用あり | PF104M, PF106A | - |  |
-| File attributes and options | TITLE | 使用あり | PC104A, PC111A, PF102A, PF103A, PF104M, PF105A ほか 5 | - |  |
+| File attributes and options | STREAM | 使用あり | PF102A, PF106A, PF108A, PF109A, PM115A, PM116A | - |  |
+| File attributes and options | UPDATE | 使用あり | PF104M, PF106A, PF111A | - |  |
+| File attributes and options | TITLE | 使用あり | PC104A, PC111A, PF102A, PF103A, PF104M, PF105A ほか 9 | - |  |
 | File attributes and options | LINESIZE | 使用あり | PF102A, PF106A | - |  |
 | File attributes and options | PAGESIZE | 使用あり | PF102A, PF106A | - |  |
-| File attributes and options | KEY | 使用あり | PF104M, PF106A, PF107A | - |  |
-| File attributes and options | KEYFROM | 使用あり | PF104M, PF106A, PF107A | - |  |
+| File attributes and options | KEY | 使用あり | PF104M, PF106A, PF107A, PF111A, PM130A | - |  |
+| File attributes and options | KEYFROM | 使用あり | PF104M, PF106A, PF107A, PF111A | - |  |
 | File attributes and options | KEYTO | 使用あり | PF107A | - |  |
 | File attributes and options | SET | 使用あり | PC112A, PS103A | - |  |
-| File attributes and options | INTO | 使用あり | PF103A, PF104M, PF105A, PF106A, PF107A, PS107A | - |  |
-| File attributes and options | FROM | 使用あり | PF103A, PF104M, PF105A, PF106A, PF107A, PF108A ほか 4 | - |  |
+| File attributes and options | INTO | 使用あり | PF103A, PF104M, PF105A, PF106A, PF107A, PF111A ほか 2 | - |  |
+| File attributes and options | FROM | 使用あり | PF103A, PF104M, PF105A, PF106A, PF107A, PF108A ほか 6 | - |  |
 | File attributes and options | PAGE | 使用あり | PF102A | - |  |
 | File attributes and options | SKIP | 使用あり | PF102A, PF106A, PM117A, PM119A | - |  |
-| File attributes and options | LINE | 使用あり | PF102A | - |  |
-| File attributes and options | LIST | 使用あり | PD116A, PF101A, PM115A | - |  |
-| File attributes and options | EDIT | 使用あり | PF101A, PF102A, PF106A, PM110A, PS104A | - |  |
-| File attributes and options | DATA | 使用あり | PF101A, PS101A, PS103A, PS110A | - |  |
-| File attributes and options | STRING | 使用あり | PF101A, PM110A, PM124A | - |  |
+| File attributes and options | LINE | 使用あり | PE116N, PE116P, PE118P, PF102A | - |  |
+| File attributes and options | LIST | 使用あり | PC126A, PD116A, PF101A, PM115A | - |  |
+| File attributes and options | EDIT | 使用あり | PF101A, PF102A, PF106A, PF109A, PM110A, PS104A | - |  |
+| File attributes and options | DATA | 使用あり | PF101A, PF109A, PS101A, PS103A, PS110A | - |  |
+| File attributes and options | STRING | 使用あり | PF101A, PM110A, PM124A, PM129A | - |  |
 | File attributes and options | COPY | 使用あり | PC103A, PD104A, PD110A, PM103A, PM117A, PS103A | - |  |
 | Conditions | AREA | 使用あり | PC112A, PD109A, PD111A, PE114P, PE115P, PM111A ほか 2 | - |  |
 | Conditions | ATTENTION | 使用あり | PM125A | - |  |
 | Conditions | CONDITION | 使用あり | PC105A, PC110A, PC112A, PD111A, PM112A | - |  |
-| Conditions | CONVERSION | 使用あり | PC107A, PC108A, PC110A, PC122A, PM123A | - |  |
-| Conditions | ENDFILE | 使用あり | PF103A, PF105A, PF107A, PS107A | - |  |
+| Conditions | CONVERSION | 使用あり | PC107A, PC108A, PC110A, PC122A, PC127A, PM123A | - |  |
+| Conditions | ENDFILE | 使用あり | PF103A, PF105A, PF107A, PM129A, PS107A | - |  |
 | Conditions | ENDPAGE | 使用あり | PF102A, PF106A | - |  |
 | Conditions | ERROR | 使用あり | PC104A, PC110A, PC113A, PC114A, PC117A, PC118A ほか 3 | - |  |
 | Conditions | FINISH | 使用あり | PC112A | - |  |
 | Conditions | FIXEDOVERFLOW | 使用あり | PC111A | - |  |
 | Conditions | INVALIDOP | 使用あり | PC112A | - |  |
-| Conditions | KEY | 使用あり | PF104M, PF106A, PF107A | - |  |
-| Conditions | NAME | 使用あり | PA104A, PF101A, PM106A, PM112A, PS110A | - |  |
+| Conditions | KEY | 使用あり | PF104M, PF106A, PF107A, PF111A, PM130A | - |  |
+| Conditions | NAME | 使用あり | PA104A, PF101A, PF109A, PM106A, PM112A, PM129A ほか 1 | - |  |
 | Conditions | OVERFLOW | 使用あり | PC110A | - |  |
-| Conditions | RECORD | 使用あり | PC111A, PE111N, PE111P, PF103A, PF104M, PF105A ほか 5 | - |  |
+| Conditions | RECORD | 使用あり | PC111A, PE111N, PE111P, PF103A, PF104M, PF105A ほか 7 | - |  |
 | Conditions | SIZE | 使用あり | PC106A, PC110A, PD103A, PD109A, PD112A, PM109A ほか 1 | - |  |
-| Conditions | STORAGE | 使用あり | PC120A, PC121A, PD103A, PD104A, PD105A, PD106A ほか 7 | - |  |
+| Conditions | STORAGE | 使用あり | PC120A, PC121A, PC126A, PD103A, PD104A, PD105A ほか 9 | - |  |
 | Conditions | STRINGRANGE | 使用あり | PC110A | - |  |
 | Conditions | STRINGSIZE | 使用あり | PC111A | - |  |
 | Conditions | SUBSCRIPTRANGE | 使用あり | PC110A, PC112A | - |  |
@@ -186,7 +186,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | ABS | 使用あり | PD106A, PD109A, PM105A, PM109A, PM110A, PM112A ほか 1 | - |  |
 | Built-in functions | ACOS | 使用あり | PM110A | - |  |
 | Built-in functions | ADD | 使用あり | PA101A | - |  |
-| Built-in functions | ADDR | 使用あり | PA106A, PC114A, PC115A, PC120A, PD110A, PD111A ほか 11 | - |  |
+| Built-in functions | ADDR | 使用あり | PA106A, PC114A, PC115A, PC120A, PD110A, PD111A ほか 16 | - |  |
 | Built-in functions | ADDRDATA | 使用あり | PM111A | - |  |
 | Built-in functions | ALL | 使用あり | PM109A, PM124A | - |  |
 | Built-in functions | ALLCOMPARE | 使用あり | PC119A | - |  |
@@ -212,29 +212,29 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | BETWEENEXCLUSIVE | 使用あり | PM112A | - |  |
 | Built-in functions | BETWEENLEFTEXCLUSIVE | 使用あり | PM112A | - |  |
 | Built-in functions | BETWEENRIGHTEXCLUSIVE | 使用あり | PM112A | - |  |
-| Built-in functions | BINARY | 使用あり | PA101A, PA102A, PA104A, PA106A, PC101A, PC102A ほか 80 | - |  |
+| Built-in functions | BINARY | 使用あり | PA101A, PA102A, PA104A, PA106A, PC101A, PC102A ほか 98 | - |  |
 | Built-in functions | BINARYVALUE | 使用あり | PD114A, PM110A, PM111A | - |  |
 | Built-in functions | BINSEARCH | 使用あり | PA106A | - |  |
 | Built-in functions | BINSEARCHX | 使用あり | PA106A | - |  |
-| Built-in functions | BIT | 使用あり | PA102A, PC110A, PC111A, PC112A, PC113A, PC114A ほか 19 | - |  |
+| Built-in functions | BIT | 使用あり | PA102A, PC110A, PC111A, PC112A, PC113A, PC114A ほか 23 | - |  |
 | Built-in functions | BITLOCATION | 使用あり | PM111A | - |  |
 | Built-in functions | BOOL | 使用あり | PA102A | - |  |
 | Built-in functions | BYTE | 使用あり | PM109A | - |  |
-| Built-in functions | BYTELENGTH | 使用あり | PC121A | - |  |
+| Built-in functions | BYTELENGTH | 使用あり | PC121A, PM128A | - |  |
 | Built-in functions | CDS | 使用あり | PM111A | - |  |
 | Built-in functions | CEIL | 使用あり | PM103A | - |  |
 | Built-in functions | CENTERLEFT | 使用あり | PM103A, PM110A | - |  |
 | Built-in functions | CENTERRIGHT | 使用あり | PM115A | - |  |
 | Built-in functions | CENTRELEFT | 使用あり | PM103A, PM110A | - |  |
 | Built-in functions | CENTRERIGHT | 使用あり | PM115A | - |  |
-| Built-in functions | CHARACTER | 使用あり | PA102A, PA104A, PA106A, PC103A, PC107A, PC108A ほか 65 | - |  |
+| Built-in functions | CHARACTER | 使用あり | PA102A, PA104A, PA106A, PC103A, PC107A, PC108A ほか 80 | - |  |
 | Built-in functions | CHARGRAPHIC | 使用あり | PM123A | - |  |
 | Built-in functions | CHARVAL | 使用あり | PM109A | - |  |
 | Built-in functions | CHECKSTG | 使用あり | PD111A | - |  |
-| Built-in functions | CHECKSUM | 未網羅 |  | - |  |
+| Built-in functions | CHECKSUM | 使用あり | PM133A | - |  |
 | Built-in functions | CODEPAGE | 使用あり | PM118A | - |  |
 | Built-in functions | COLLATE | 使用あり | PC120A, PM109A | - |  |
-| Built-in functions | COLLAPSE | 使用あり | PM113A | - |  |
+| Built-in functions | COLLAPSE | 使用あり | PM113A, PM130A | - |  |
 | Built-in functions | COMPARE | 使用あり | PC112A, PM112A | - |  |
 | Built-in functions | COMPLEX | 使用あり | PM110A | - |  |
 | Built-in functions | CONJG | 使用あり | PD106A | - |  |
@@ -246,19 +246,19 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | CS | 使用あり | PM111A | - |  |
 | Built-in functions | CURRENTSIZE | 使用あり | PS104A | - |  |
 | Built-in functions | CURRENTSTORAGE | 使用あり | PM109A | - |  |
-| Built-in functions | DATAFIELD | 未網羅 |  | - |  |
+| Built-in functions | DATAFIELD | 使用あり | PF109A | - |  |
 | Built-in functions | DATE | 使用あり | PM110A | - |  |
 | Built-in functions | DATETIME | 使用あり | PM110A | - |  |
 | Built-in functions | DAYS | 使用あり | PM105A, PM114A | - |  |
 | Built-in functions | DAYSTODATE | 使用あり | PM105A, PM114A | - |  |
 | Built-in functions | DAYSTOMICROSECS | 使用あり | PM114A | - |  |
 | Built-in functions | DAYSTOSECS | 使用あり | PM109A | - |  |
-| Built-in functions | DECIMAL | 使用あり | PA101A, PA102A, PA105A, PA106A, PC102A, PC106A ほか 27 | - |  |
+| Built-in functions | DECIMAL | 使用あり | PA101A, PA102A, PA105A, PA106A, PC102A, PC106A ほか 32 | - |  |
 | Built-in functions | DIMENSION | 使用あり | PA104A, PD115A, PM120A, PS102A, PS104A | - |  |
 | Built-in functions | DIVIDE | 使用あり | PA101A | - |  |
-| Built-in functions | EDIT | 使用あり | PF101A, PF102A, PF106A, PM110A | - |  |
+| Built-in functions | EDIT | 使用あり | PF101A, PF102A, PF106A, PF109A, PM110A | - |  |
 | Built-in functions | EMPTY | 使用あり | PS103A | - |  |
-| Built-in functions | ENDFILE | 使用あり | PF103A, PF105A, PF107A, PS107A | - |  |
+| Built-in functions | ENDFILE | 使用あり | PF103A, PF105A, PF107A, PM129A, PS107A | - |  |
 | Built-in functions | ENTRYADDR | 使用あり | PC116A | - |  |
 | Built-in functions | EPSILON | 使用あり | PM109A | - |  |
 | Built-in functions | ERF | 使用あり | PM112A | - |  |
@@ -271,14 +271,14 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | FILEID | 使用あり | PF108A | - |  |
 | Built-in functions | FILENEW | 使用あり | PF108A | - |  |
 | Built-in functions | FILEOPEN | 使用あり | PF108A | - |  |
-| Built-in functions | FILEREAD | 未網羅 |  | - |  |
-| Built-in functions | FILESEEK | 未網羅 |  | - |  |
-| Built-in functions | FILETELL | 未網羅 |  | - |  |
-| Built-in functions | FILEWRITE | 未網羅 |  | - |  |
+| Built-in functions | FILEREAD | 使用あり | PF110A | - |  |
+| Built-in functions | FILESEEK | 使用あり | PF110A | - |  |
+| Built-in functions | FILETELL | 使用あり | PF110A | - |  |
+| Built-in functions | FILEWRITE | 使用あり | PF110A | - |  |
 | Built-in functions | FIXED | 使用あり | PD108A | - |  |
 | Built-in functions | FIXEDBIN | 使用あり | PM115A | - |  |
 | Built-in functions | FIXEDDEC | 使用あり | PM115A, PM117A | - |  |
-| Built-in functions | FLOAT | 使用あり | PM110A | - |  |
+| Built-in functions | FLOAT | 使用あり | PD119A, PE119P, PM110A | - |  |
 | Built-in functions | FLOATBIN | 使用あり | PM115A | - |  |
 | Built-in functions | FLOATDEC | 使用あり | PM115A | - |  |
 | Built-in functions | FLOOR | 使用あり | PM103A | - |  |
@@ -286,21 +286,21 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | FOLDEDSIMPLEMATCH | 使用あり | PC121A | - |  |
 | Built-in functions | GAMMA | 使用あり | PM112A | - |  |
 | Built-in functions | GETENV | 使用あり | PM115A | - |  |
-| Built-in functions | GETJCLSYMBOL | 未網羅 |  | - |  |
-| Built-in functions | GETSYSINT | 未網羅 |  | - |  |
-| Built-in functions | GETSYSWORD | 未網羅 |  | - |  |
-| Built-in functions | GRAPHIC | 使用あり | PD106A, PM123A | - |  |
-| Built-in functions | GTCA | 未網羅 |  | - |  |
+| Built-in functions | GETJCLSYMBOL | 使用あり | PM126A | - |  |
+| Built-in functions | GETSYSINT | 使用あり | PM127A | - |  |
+| Built-in functions | GETSYSWORD | 使用あり | PM127A | - |  |
+| Built-in functions | GRAPHIC | 使用あり | PC127A, PD106A, PM123A | - |  |
+| Built-in functions | GTCA | 使用あり | PS112A | - |  |
 | Built-in functions | HANDLE | 使用あり | PS106A, PS111A | - |  |
 | Built-in functions | HBOUND | 使用あり | PC118A, PD115A, PM109A, PM120A | - |  |
 | Built-in functions | HBOUNDACROSS | 使用あり | PD115A | - |  |
-| Built-in functions | HEX | 使用あり | PA103A, PA105A, PD101A, PD102A, PD103A, PD106A ほか 8 | - |  |
+| Built-in functions | HEX | 使用あり | PA103A, PA105A, PD101A, PD102A, PD103A, PD106A ほか 10 | - |  |
 | Built-in functions | HEX8 | 使用あり | PM113A | - |  |
 | Built-in functions | HEXDECODE | 使用あり | PM113A | - |  |
 | Built-in functions | HEXDECODE8 | 使用あり | PM115A | - |  |
 | Built-in functions | HEXENCODE | 使用あり | PM113A | - |  |
 | Built-in functions | HEXENCODE8 | 使用あり | PM113A | - |  |
-| Built-in functions | HEXIMAGE | 使用あり | PM112A | - |  |
+| Built-in functions | HEXIMAGE | 使用あり | PD117A, PD119A, PM112A | - |  |
 | Built-in functions | HEXIMAGE8 | 使用あり | PM115A | - |  |
 | Built-in functions | HIGH | 使用あり | PM109A | - |  |
 | Built-in functions | HUGE | 使用あり | PM109A | - |  |
@@ -310,7 +310,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | IFTHENELSE | 使用あり | PM112A | - |  |
 | Built-in functions | IMAG | 使用あり | PD106A, PM110A | - |  |
 | Built-in functions | INARRAY | 使用あり | PM118A | - |  |
-| Built-in functions | INDEX | 使用あり | PF101A, PM103A, PM115A, PM117A | - |  |
+| Built-in functions | INDEX | 使用あり | PF101A, PM103A, PM115A, PM117A, PM127A, PM128A | - |  |
 | Built-in functions | INDEXR | 使用あり | PM113A | - |  |
 | Built-in functions | INDICATORS | 使用あり | PC118A | - |  |
 | Built-in functions | INLIST | 使用あり | PM112A | - |  |
@@ -318,16 +318,16 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | IOR | 使用あり | PM109A | - |  |
 | Built-in functions | IRLL | 使用あり | PM112A | - |  |
 | Built-in functions | IRRL | 使用あり | PM112A | - |  |
-| Built-in functions | ISFINITE | 未網羅 |  | - |  |
+| Built-in functions | ISFINITE | 使用あり | PD119A | - |  |
 | Built-in functions | ISIGNED | 使用あり | PM112A | - |  |
-| Built-in functions | ISINF | 未網羅 |  | - |  |
-| Built-in functions | ISJCLSYMBOL | 未網羅 |  | - |  |
+| Built-in functions | ISINF | 使用あり | PD119A | - |  |
+| Built-in functions | ISJCLSYMBOL | 使用あり | PM126A | - |  |
 | Built-in functions | ISLL | 使用あり | PM109A | - |  |
 | Built-in functions | ISMAIN | 使用あり | PM115A | - |  |
-| Built-in functions | ISNAN | 未網羅 |  | - |  |
-| Built-in functions | ISNORMAL | 未網羅 |  | - |  |
+| Built-in functions | ISNAN | 使用あり | PD119A | - |  |
+| Built-in functions | ISNORMAL | 使用あり | PD119A | - |  |
 | Built-in functions | ISRL | 使用あり | PM109A | - |  |
-| Built-in functions | ISZERO | 未網羅 |  | - |  |
+| Built-in functions | ISZERO | 使用あり | PD119A, PE119N, PE119P | - |  |
 | Built-in functions | IUNSIGNED | 使用あり | PM112A | - |  |
 | Built-in functions | JSONGETARRAYEND | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | JSONGETARRAYSTART | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
@@ -350,7 +350,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | LBOUND | 使用あり | PD115A, PM109A, PM120A | - |  |
 | Built-in functions | LBOUNDACROSS | 使用あり | PD115A | - |  |
 | Built-in functions | LEFT | 使用あり | PM103A | - |  |
-| Built-in functions | LENGTH | 使用あり | PC103A, PC121A, PC122A, PD102A, PD110A, PM103A ほか 10 | - |  |
+| Built-in functions | LENGTH | 使用あり | PC103A, PC121A, PC122A, PC127A, PD102A, PD110A ほか 18 | - |  |
 | Built-in functions | LINENO | 使用あり | PF102A, PF106A | - |  |
 | Built-in functions | LOCATION | 使用あり | PM112A | - |  |
 | Built-in functions | LOCNEWSPACE | 使用あり | PS110A | - |  |
@@ -399,7 +399,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | MOD | 使用あり | PC101A, PC120A, PM103A | - |  |
 | Built-in functions | MPSTR | 使用あり | PM123A | - |  |
 | Built-in functions | MULTIPLY | 使用あり | PA101A | - |  |
-| Built-in functions | NULL | 使用あり | PD109A, PS101A | - |  |
+| Built-in functions | NULL | 使用あり | PD109A, PS101A, PS112A | - |  |
 | Built-in functions | NULLENTRY | 使用あり | PC116A | - |  |
 | Built-in functions | OFFSET | 使用あり | PD109A, PE115N, PE115P, PM111A, PS103A, PS110A | - |  |
 | Built-in functions | OFFSETADD | 使用あり | PM111A | - |  |
@@ -410,35 +410,35 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | ONACTUAL | 使用あり | PC112A | - |  |
 | Built-in functions | ONAREA | 使用あり | PC112A | - |  |
 | Built-in functions | ONCHAR | 使用あり | PC107A | - |  |
-| Built-in functions | ONCODE | 使用あり | PC104A, PC106A, PC110A, PC111A, PC112A, PC117A ほか 4 | - |  |
+| Built-in functions | ONCODE | 使用あり | PC104A, PC106A, PC110A, PC111A, PC112A, PC117A ほか 5 | - |  |
 | Built-in functions | ONCONDCOND | 使用あり | PM112A | - |  |
 | Built-in functions | ONCONDID | 使用あり | PC112A, PM112A | - |  |
 | Built-in functions | ONCOUNT | 使用あり | PM110A | - |  |
 | Built-in functions | ONEXPECTED | 使用あり | PC112A | - |  |
 | Built-in functions | ONFILE | 使用あり | PM115A | - |  |
-| Built-in functions | ONGSOURCE | 未網羅 |  | - |  |
+| Built-in functions | ONGSOURCE | 使用あり | PC127A | - |  |
 | Built-in functions | ONHBOUND | 使用あり | PC112A | - |  |
 | Built-in functions | ONJSONNAME | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | ONKEY | 使用あり | PF107A | - |  |
 | Built-in functions | ONLBOUND | 使用あり | PC112A | - |  |
 | Built-in functions | ONLINE | 使用あり | PC112A | - |  |
 | Built-in functions | ONLOC | 使用あり | PM115A | - |  |
-| Built-in functions | ONOFFSET | 未網羅 |  | - |  |
+| Built-in functions | ONOFFSET | 使用あり | PC127A | - |  |
 | Built-in functions | ONOPERATOR | 使用あり | PC112A | - |  |
 | Built-in functions | ONPACKAGE | 使用あり | PC112A | - |  |
 | Built-in functions | ONPROCEDURE | 使用あり | PM115A | - |  |
 | Built-in functions | ONSOURCE | 使用あり | PC108A | - |  |
-| Built-in functions | ONSUBCODE | 未網羅 |  | - |  |
-| Built-in functions | ONSUBCODE2 | 未網羅 |  | - |  |
+| Built-in functions | ONSUBCODE | 使用あり | PC127A | - |  |
+| Built-in functions | ONSUBCODE2 | 使用あり | PF111A | - |  |
 | Built-in functions | ONSUBSCRIPT | 使用あり | PC112A | - |  |
 | Built-in functions | ONTEXT | 使用あり | PC112A | - |  |
 | Built-in functions | ONUCHAR | 使用あり | PC122A | - |  |
 | Built-in functions | ONUSOURCE | 使用あり | PC122A | - |  |
 | Built-in functions | ONWCHAR | 使用あり | PC122A | - |  |
 | Built-in functions | ONWSOURCE | 使用あり | PC122A | - |  |
-| Built-in functions | ORDINALNAME | 使用あり | PD105A | - |  |
+| Built-in functions | ORDINALNAME | 使用あり | PD105A, PD118A | - |  |
 | Built-in functions | ORDINALPRED | 使用あり | PC117A, PD105A | - |  |
-| Built-in functions | ORDINALSUCC | 使用あり | PC117A, PD105A | - |  |
+| Built-in functions | ORDINALSUCC | 使用あり | PC117A, PD105A, PD118A | - |  |
 | Built-in functions | PACKAGENAME | 使用あり | PM115A, PS108A | - |  |
 | Built-in functions | PAGENO | 使用あり | PF102A, PF106A | - |  |
 | Built-in functions | PICSPEC | 使用あり | PM118A | - |  |
@@ -446,26 +446,26 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | PLIASCII | 使用あり | PM125A | - |  |
 | Built-in functions | PLIATTN | 使用あり | PM125A | - |  |
 | Built-in functions | PLICANC | 使用あり | PM125A | - |  |
-| Built-in functions | PLICKPT | 未網羅 |  | - |  |
+| Built-in functions | PLICKPT | 使用あり | PM132A | - |  |
 | Built-in functions | PLIDELETE | 使用あり | PM125A | - |  |
-| Built-in functions | PLIDUMP | 未網羅 |  | - |  |
+| Built-in functions | PLIDUMP | 使用あり | PM131A | - |  |
 | Built-in functions | PLIEBCDIC | 使用あり | PM125A | - |  |
 | Built-in functions | PLIFILL | 使用あり | PM115A | - |  |
 | Built-in functions | PLIFREE | 使用あり | PS106A | - |  |
 | Built-in functions | PLIMOVE | 使用あり | PM115A | - |  |
 | Built-in functions | PLIOVER | 使用あり | PM115A | - |  |
-| Built-in functions | PLIPARSE | 未網羅 |  | - |  |
-| Built-in functions | PLIREST | 未網羅 |  | - |  |
-| Built-in functions | PLIRETC | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 83 | - |  |
-| Built-in functions | PLIRETV | 使用あり | PM104M, PM107A, PM108A | - |  |
+| Built-in functions | PLIPARSE | 使用あり | PM130A | - |  |
+| Built-in functions | PLIREST | 対象外 |  | - | 対象外: プログラムをシステム完了コード 4092 で異常終了させて再始動を求める (PG)。再始動には操作員の許可が要り、無人のバッチの検査では結果を判定できない |
+| Built-in functions | PLIRETC | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 103 | - |  |
+| Built-in functions | PLIRETV | 使用あり | PC125A, PM104M, PM107A, PM108A, PM129A | - |  |
 | Built-in functions | PLISAXA | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | PLISAXB | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | PLISAXC | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
 | Built-in functions | PLISAXD | 対象外 |  | - | 対象外: JSON/XML の対応は範囲の外とする (利用者の判断、2026-11-13) |
-| Built-in functions | PLISRTA | 未網羅 |  | - |  |
-| Built-in functions | PLISRTB | 未網羅 |  | - |  |
-| Built-in functions | PLISRTC | 未網羅 |  | - |  |
-| Built-in functions | PLISRTD | 未網羅 |  | - |  |
+| Built-in functions | PLISRTA | 使用あり | PM129A | - |  |
+| Built-in functions | PLISRTB | 使用あり | PM129A | - |  |
+| Built-in functions | PLISRTC | 使用あり | PM129A | - |  |
+| Built-in functions | PLISRTD | 使用あり | PM129A | - |  |
 | Built-in functions | PLISTCK | 使用あり | PM114A | - |  |
 | Built-in functions | PLISTCKE | 使用あり | PM114A | - |  |
 | Built-in functions | PLISTCKELOCAL | 使用あり | PM114A | - |  |
@@ -480,8 +480,8 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | PLITRAN12 | 使用あり | PC120A | - |  |
 | Built-in functions | PLITRAN21 | 使用あり | PC120A | - |  |
 | Built-in functions | PLITRAN22 | 使用あり | PC120A | - |  |
-| Built-in functions | POINTER | 使用あり | PA106A, PC112A, PC116A, PD111A, PM110A, PM111A ほか 6 | - |  |
-| Built-in functions | POINTERADD | 使用あり | PM115A, PM116A, PS101A | - |  |
+| Built-in functions | POINTER | 使用あり | PA106A, PC112A, PC116A, PC126A, PD111A, PM110A ほか 8 | - |  |
+| Built-in functions | POINTERADD | 使用あり | PC126A, PM115A, PM116A, PS101A | - |  |
 | Built-in functions | POINTERDIFF | 使用あり | PM109A | - |  |
 | Built-in functions | POINTERSUBTRACT | 使用あり | PM111A | - |  |
 | Built-in functions | POINTERVALUE | 使用あり | PM110A, PM111A | - |  |
@@ -569,19 +569,19 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | SQRT | 使用あり | PM105A, PM122A | - |  |
 | Built-in functions | SQRTF | 使用あり | PM122A | - |  |
 | Built-in functions | SQUEEZE | 使用あり | PM113A | - |  |
-| Built-in functions | STACKADDR | 未網羅 |  | - |  |
+| Built-in functions | STACKADDR | 使用あり | PS112A | - |  |
 | Built-in functions | STCKETODATE | 使用あり | PM114A | - |  |
 | Built-in functions | STCKTODATE | 使用あり | PM114A | - |  |
-| Built-in functions | STORAGE | 使用あり | PC120A, PC121A, PD103A, PD104A, PD105A, PD106A ほか 7 | - |  |
+| Built-in functions | STORAGE | 使用あり | PC120A, PC121A, PC126A, PD103A, PD104A, PD105A ほか 9 | - |  |
 | Built-in functions | STRING | 使用あり | PF101A, PM110A | - |  |
-| Built-in functions | SUBSTR | 使用あり | PA104A, PC110A, PC115A, PC120A, PD102A, PD108A ほか 10 | - |  |
+| Built-in functions | SUBSTR | 使用あり | PA104A, PC110A, PC115A, PC120A, PC126A, PD102A ほか 14 | - |  |
 | Built-in functions | SUBTO | 使用あり | PM115A | - |  |
 | Built-in functions | SUBTRACT | 使用あり | PM110A | - |  |
 | Built-in functions | SUCC | 使用あり | PM112A | - |  |
 | Built-in functions | SUM | 使用あり | PA104A, PS102A, PS105A | - |  |
 | Built-in functions | SYSNULL | 使用あり | PC116A, PD109A, PD111A, PM113A, PM116A, PM119A ほか 2 | - |  |
-| Built-in functions | SYSTEM | 未網羅 |  | - |  |
-| Built-in functions | TALLY | 使用あり | PM103A | - |  |
+| Built-in functions | SYSTEM | 対象外 |  | - | 対象外: LRM の SYSTEM は 20 章のプリプロセッサの組込み関数で、言語の組込み関数ではない (在庫の取り出しの分類違い)。プリプロセッサの行は PM117A が使う |
+| Built-in functions | TALLY | 使用あり | PM103A, PM127A | - |  |
 | Built-in functions | TAN | 使用あり | PM110A | - |  |
 | Built-in functions | TAND | 使用あり | PM109A | - |  |
 | Built-in functions | TANH | 使用あり | PM109A | - |  |
@@ -589,15 +589,15 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | TIME | 使用あり | PM110A | - |  |
 | Built-in functions | TIMESTAMP | 使用あり | PM114A | - |  |
 | Built-in functions | TINY | 使用あり | PM109A | - |  |
-| Built-in functions | TRANSLATE | 使用あり | PM103A, PM117A | - |  |
-| Built-in functions | TRIM | 使用あり | PA102A, PC112A, PD115A, PM103A, PM117A | - |  |
+| Built-in functions | TRANSLATE | 使用あり | PM103A, PM117A, PM128A | - |  |
+| Built-in functions | TRIM | 使用あり | PA102A, PC112A, PC124A, PD115A, PF109A, PM103A ほか 3 | - |  |
 | Built-in functions | TRUNC | 使用あり | PM109A | - |  |
-| Built-in functions | TYPE | 使用あり | PS111A | - |  |
-| Built-in functions | UHIGH | 未網羅 |  | - |  |
+| Built-in functions | TYPE | 使用あり | PF110A, PS111A | - |  |
+| Built-in functions | UHIGH | 使用あり | PM128A | - |  |
 | Built-in functions | ULENGTH | 使用あり | PC113A | - |  |
 | Built-in functions | ULENGTH8 | 使用あり | PC113A | - |  |
 | Built-in functions | ULENGTH16 | 使用あり | PC113A | - |  |
-| Built-in functions | ULOW | 未網羅 |  | - |  |
+| Built-in functions | ULOW | 使用あり | PM128A | - |  |
 | Built-in functions | UNALLOCATED | 使用あり | PD111A | - |  |
 | Built-in functions | UNHEX | 使用あり | PM113A | - |  |
 | Built-in functions | UNSIGNED | 使用あり | PM115A | - |  |
@@ -611,20 +611,20 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Built-in functions | UTCDATETIME | 使用あり | PM114A | - |  |
 | Built-in functions | UTCMICROSECS | 使用あり | PM114A | - |  |
 | Built-in functions | UTCSECS | 使用あり | PM114A | - |  |
-| Built-in functions | UTF8 | 使用あり | PC114A | - |  |
+| Built-in functions | UTF8 | 使用あり | PC114A, PM128A | - |  |
 | Built-in functions | UTF8STG | 使用あり | PC120A | - |  |
 | Built-in functions | UTF8TOCHAR | 使用あり | PC114A | - |  |
 | Built-in functions | UTF8TOWCHAR | 使用あり | PC114A | - |  |
-| Built-in functions | UUID | 未網羅 |  | - |  |
+| Built-in functions | UUID | 使用あり | PM128A | - |  |
 | Built-in functions | UUID4 | 使用あり | PM115A | - |  |
 | Built-in functions | UVALID | 使用あり | PC113A | - |  |
 | Built-in functions | UWIDTH | 使用あり | PC113A | - |  |
 | Built-in functions | VALID | 使用あり | PM115A | - |  |
 | Built-in functions | VALIDDATE | 使用あり | PM109A | - |  |
 | Built-in functions | VALIDVALUE | 使用あり | PD116A | - |  |
-| Built-in functions | VARGLIST | 未網羅 |  | - |  |
-| Built-in functions | VARGSIZE | 未網羅 |  | - |  |
-| Built-in functions | VERIFY | 使用あり | PM103A, PM110A, PM114A, PM117A | - |  |
+| Built-in functions | VARGLIST | 使用あり | PC126A | - |  |
+| Built-in functions | VARGSIZE | 使用あり | PC126A | - |  |
+| Built-in functions | VERIFY | 使用あり | PM103A, PM110A, PM114A, PM117A, PM127A, PM128A | - |  |
 | Built-in functions | VERIFYR | 使用あり | PM109A | - |  |
 | Built-in functions | WCHARVAL | 使用あり | PM118A | - |  |
 | Built-in functions | WEEKDAY | 使用あり | PM109A | - |  |
@@ -650,7 +650,7 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Preprocessor | %END | 使用あり | PD114A, PM101A, PM102A, PM106A, PM110A, PM117A ほか 2 | - |  |
 | Preprocessor | %GO TO | 使用あり | PM110A | - |  |
 | Preprocessor | %IF | 使用あり | PM101A, PM110A | - |  |
-| Preprocessor | %INCLUDE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 83 | - |  |
+| Preprocessor | %INCLUDE | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 105 | - |  |
 | Preprocessor | %INSCAN | 使用あり | PM117A | - |  |
 | Preprocessor | %ITERATE | 使用あり | PM110A | - |  |
 | Preprocessor | %LEAVE | 使用あり | PM110A | - |  |
@@ -663,13 +663,13 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Preprocessor | RETURN (preprocessor) | 使用あり | PM102A, PM106A, PM117A, PM120A, PM121A | - |  |
 | Preprocessor | ANSWER (preprocessor) | 使用あり | PM117A | - |  |
 | Preprocessor | CALL (preprocessor) | 使用あり | PM117A | - |  |
-| Preprocessor | %LINE | 未網羅 |  | - |  |
+| Preprocessor | %LINE | 使用あり | PE116N, PE116P, PE118P | - |  |
 | Preprocessor | %NOPRINT | 使用あり | PM117A | - |  |
 | Preprocessor | %PAGE | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | %POP | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | %PRINT | 使用あり | PM117A | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | %PROCESS | 使用あり | PM117A | - |  |
-| Preprocessor | %PROCINC | 未網羅 |  | - |  |
+| Preprocessor | %PROCINC | 使用あり | PE118N, PE118P | - |  |
 | Preprocessor | %PUSH | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | %SKIP | 対象外 |  | - | 対象外: リストと診断の制御で、実行時の値に出ない |
 | Preprocessor | STATEMENT | 使用あり | PM106A | - |  |
@@ -705,14 +705,14 @@ Enterprise PL/I for z/OS Language Reference の章立てから列挙した。 �
 | Preprocessor built-in functions | TRIM | 使用あり | PM117A | - |  |
 | Preprocessor built-in functions | UPPERCASE | 使用あり | PM117A | - |  |
 | Preprocessor built-in functions | VERIFY | 使用あり | PM117A | - |  |
-| Procedure options | OPTIONS(MAIN) | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 113 | - |  |
+| Procedure options | OPTIONS(MAIN) | 使用あり | PA101A, PA102A, PA103A, PA104A, PA105A, PA106A ほか 141 | - |  |
 | Procedure options | NOEXECOPS | 使用あり | PM108A | - |  |
 | Procedure options | FETCHABLE | 使用あり | PCS01A | - |  |
 | Procedure options | RECURSIVE | 使用あり | PC102A | - |  |
 | Procedure options | REORDER | 使用あり | PC123A | - |  |
-| Procedure options | BYVALUE | 使用あり | PA106A, PD110A, PS109A | - |  |
+| Procedure options | BYVALUE | 使用あり | PA106A, PC126A, PD110A, PS109A | - |  |
 | Procedure options | LINKAGE | 使用あり | PA106A | - |  |
-| Procedure options | ASSEMBLER | 未網羅 |  | - |  |
+| Procedure options | ASSEMBLER | 使用あり | PC125A | - |  |
 | Procedure options | COBOL | 使用あり | PM104M | - |  |
 | Procedure options | INTER | 対象外 |  | - | 対象外: 互換のために受け付けるだけで、Enterprise PL/I では効果が無い |
 | Procedure options | RETCODE | 使用あり | PM104M | - |  |

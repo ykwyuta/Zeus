@@ -164,6 +164,8 @@ pub enum Bif {
     CharGraphic,
     Regex,
     PliAscii,
+    PliParse,
+    PliCkpt,
     PliEbcdic,
     PliAttn,
     PliCanc,
@@ -241,6 +243,10 @@ pub enum Bif {
     NullEntry,
     EntryAddr,
     FileOpen,
+    FileRead,
+    FileWrite,
+    FileSeek,
+    FileTell,
     FileId,
     FileNew,
     FileDdTest,
@@ -263,6 +269,10 @@ pub enum Bif {
     FoldedFullMatch,
     FoldedSimpleMatch,
     OnUchar,
+    OnSubCode,
+    OnSubCode2,
+    OnGSource,
+    OnOffset,
     OnUsource,
     OnWchar,
     OnWsource,
@@ -284,8 +294,25 @@ pub enum Bif {
     SourceLine,
     IsMain,
     GetEnv,
+    GetJclSymbol,
+    GetSysWord,
+    GetSysInt,
+    IsJclSymbol,
     PutEnv,
     Uuid4,
+    Uuid,
+    Checksum,
+    IsFinite,
+    IsInf,
+    IsNan,
+    IsNormal,
+    IsZero,
+    StackAddr,
+    VargList,
+    VargSize,
+    Gtca,
+    UHigh,
+    ULow,
     Valid,
     Microsecs,
     Secs,
@@ -365,6 +392,9 @@ pub enum Bif {
     PliRetC,
     PliDump,
     PliSrtA,
+    PliSrtB,
+    PliSrtC,
+    PliSrtD,
     PliFill,
     PliMove,
     PliFree,
@@ -514,6 +544,9 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "WIDECHAR" | "WCHAR" => Widechar,
         "HANDLE" => Addr,
         "PLISRTA" => PliSrtA,
+        "PLISRTB" => PliSrtB,
+        "PLISRTC" => PliSrtC,
+        "PLISRTD" => PliSrtD,
         "PLIFILL" => PliFill,
         "PLIMOVE" | "PLIOVER" => PliMove,
         "OMITTED" => Omitted,
@@ -567,6 +600,8 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "MPSTR" => Mpstr,
         "REGEX" => Regex,
         "PLIASCII" => PliAscii,
+        "PLIPARSE" => PliParse,
+        "PLICKPT" => PliCkpt,
         "PLIEBCDIC" => PliEbcdic,
         "PLIATTN" => PliAttn,
         "PLICANC" => PliCanc,
@@ -639,6 +674,10 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "NULLENTRY" => NullEntry,
         "ENTRYADDR" => EntryAddr,
         "FILEOPEN" => FileOpen,
+        "FILEREAD" => FileRead,
+        "FILEWRITE" => FileWrite,
+        "FILESEEK" => FileSeek,
+        "FILETELL" => FileTell,
         "FILEID" => FileId,
         "FILENEW" => FileNew,
         "FILEDDTEST" => FileDdTest,
@@ -661,6 +700,10 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "FOLDEDFULLMATCH" => FoldedFullMatch,
         "FOLDEDSIMPLEMATCH" => FoldedSimpleMatch,
         "ONUCHAR" => OnUchar,
+        "ONSUBCODE" => OnSubCode,
+        "ONSUBCODE2" => OnSubCode2,
+        "ONGSOURCE" => OnGSource,
+        "ONOFFSET" => OnOffset,
         "ONUSOURCE" => OnUsource,
         "ONWCHAR" => OnWchar,
         "ONWSOURCE" => OnWsource,
@@ -685,8 +728,25 @@ pub fn lookup(name: &str) -> Option<Bif> {
         "SOURCELINE" => SourceLine,
         "ISMAIN" => IsMain,
         "GETENV" => GetEnv,
+        "GETJCLSYMBOL" => GetJclSymbol,
+        "GETSYSWORD" => GetSysWord,
+        "GETSYSINT" => GetSysInt,
+        "ISJCLSYMBOL" => IsJclSymbol,
         "PUTENV" => PutEnv,
         "UUID4" => Uuid4,
+        "UUID" => Uuid,
+        "CHECKSUM" => Checksum,
+        "ISFINITE" => IsFinite,
+        "ISINF" => IsInf,
+        "ISNAN" => IsNan,
+        "ISNORMAL" => IsNormal,
+        "ISZERO" => IsZero,
+        "STACKADDR" => StackAddr,
+        "VARGLIST" => VargList,
+        "VARGSIZE" => VargSize,
+        "GTCA" => Gtca,
+        "UHIGH" => UHigh,
+        "ULOW" => ULow,
         "VALID" => Valid,
         "MICROSECS" => Microsecs,
         "SECS" => Secs,
@@ -796,6 +856,10 @@ impl Bif {
                 | OnCode
                 | OnChar
                 | OnUchar
+                | OnSubCode
+                | OnSubCode2
+                | OnGSource
+                | OnOffset
                 | OnUsource
                 | OnWchar
                 | OnWsource
@@ -831,6 +895,10 @@ impl Bif {
                 | NullEntry
                 | FileNew
                 | Uuid4
+                | Uuid
+                | StackAddr
+                | VargList
+                | Gtca
                 | Secs
                 | Timestamp
                 | UtcDatetime
@@ -984,7 +1052,7 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             Ty::bit(1)
         }
         LocStg => fixed_bin31(),
-        CharGraphic | Mpstr | Regex | PliAscii | PliEbcdic | PliAttn | PliCanc | PliDelete => return Err(format!("{b:?} is handled by the compiler")),
+        CharGraphic | Mpstr | Regex | PliAscii | PliParse | PliCkpt | PliEbcdic | PliAttn | PliCanc | PliDelete => return Err(format!("{b:?} is handled by the compiler")),
         LocVal | LocNewSpace | LocNewValue => {
             return Err(format!("{b:?} is handled by the compiler"));
         }
@@ -1082,6 +1150,8 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         | MemConvert => Ty::fixed_bin(63, 0),
         NullEntry => Ty::Entry,
         FileOpen => Ty::bit(1),
+        FileRead | FileWrite | FileTell => Ty::fixed_bin(31, 0),
+        FileSeek => fixed_bin31(),
         FileId | FileDdInt => Ty::fixed_bin(63, 0),
         FileDdTest => fixed_bin31(),
         FileDdWord => Ty::char_var(64),
@@ -1108,8 +1178,32 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
             graphic: false,
         },
         IsMain | PutEnv | Valid => Ty::bit(1),
-        GetEnv => Ty::char_var(32767),
-        Uuid4 => Ty::char(36),
+        GetEnv | GetJclSymbol | GetSysWord => Ty::char_var(32767),
+        GetSysInt => fixed_bin31(),
+        IsJclSymbol => Ty::bit(1),
+        Uuid4 | Uuid => Ty::char(36),
+        IsFinite | IsInf | IsNan | IsNormal | IsZero => Ty::bit(1),
+        Checksum => Ty::Fixed {
+            dec: false,
+            p: 32,
+            q: 0,
+            unsigned: true,
+        },
+        StackAddr | Gtca | VargList => Ty::Pointer,
+        VargSize => return Err("VARGSIZE is handled by the compiler".into()),
+        // UHIGH(x), ULOW(x): x uchars (the LRM says "of length x" and gives
+        // BYTELENGTH 4*x and x; its "x must have UCHAR type" contradicts
+        // both and is read as a slip)
+        UHigh | ULow => match cint(0) {
+            Some(n) => Ty::Uchar {
+                len: crate::types::Ext::Const(n.max(0) as u32),
+                var: crate::types::Var::Fixed,
+            },
+            None => Ty::Uchar {
+                len: crate::types::Ext::Star,
+                var: crate::types::Var::Varying,
+            },
+        },
         Microsecs | DaysToMicrosecs | UtcMicrosecs => Ty::fixed_bin(63, 0),
         MicrosecsToDays => fixed_bin31(),
         Secs | UtcSecs => Ty::Float { dec: false, p: 53 },
@@ -1437,10 +1531,16 @@ pub fn result_type(b: Bif, args: &[Ty], consts: &[Option<i64>]) -> Result<Ty, St
         OnSource | DataField | OnKey => Ty::char_var(32767),
         OnFile | OnLoc => Ty::char_var(31),
         Omitted | Present => Ty::bit(1),
-        PliRetC | PliDump | PliSrtA | PliFill | PliMove | PliFree | PliTran11 | PliTran12
+        PliRetC | PliDump | PliSrtA | PliSrtB | PliSrtC | PliSrtD | PliFill | PliMove | PliFree | PliTran11 | PliTran12
         | PliTran21 | PliTran22 => Ty::Entry,
         Utf8Stg => fixed_bin31(),
         ThreadId => Ty::Pointer,
+        OnSubCode | OnSubCode2 | OnOffset => fixed_bin31(),
+        OnGSource => Ty::Wchar {
+            len: crate::types::Ext::Const(16383),
+            var: crate::types::Var::Varying,
+            graphic: true,
+        },
         OnUchar => Ty::Uchar {
             len: crate::types::Ext::Const(1),
             var: crate::types::Var::Fixed,

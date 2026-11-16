@@ -177,6 +177,11 @@ pub(in crate::hlasm) fn bytes(module: &Module) -> Result<Vec<u8>, String> {
     }) {
         return Err("GOFF output nondefault entry mode requires an exported label".into());
     }
+    // common sections: the GOFF form of COM is not written (no public
+    // record layout at hand); refused rather than dropped
+    if !module.bindings.commons.is_empty() {
+        return Err("GOFF output cannot encode common sections (COM)".into());
+    }
     if !module.dcbs.is_empty()
         || !module.bindings.quantities.is_empty()
         || !module.bindings.psects.is_empty()

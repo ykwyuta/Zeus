@@ -12,6 +12,8 @@ pub enum Value {
         dec: bool,
     },
     Float(f64),
+    /// FLOAT DECIMAL under FLOAT(DFP): an IEEE decimal value.
+    Dfp(super::dfp::Dfp),
     /// COMPLEX: real and imaginary parts.
     Cplx(Box<(Value, Value)>),
     /// Character string (EBCDIC bytes); also the image of a picture.
@@ -55,6 +57,7 @@ impl Value {
                 *m as f64 / b.powi(i32::from(*q))
             }
             Value::Float(f) => *f,
+            Value::Dfp(d) => d.to_f64(),
             Value::Bit(b) => bits_to_u128(b) as f64,
             Value::Cplx(c) => c.0.as_f64(),
             _ => 0.0,
@@ -74,6 +77,7 @@ impl Value {
                 }
             }
             Value::Float(f) => f.trunc() as i64,
+            Value::Dfp(d) => d.to_f64().trunc() as i64,
             Value::Bit(b) => bits_to_u128(b) as i64,
             Value::Ptr(p) => i64::from(*p),
             _ => 0,

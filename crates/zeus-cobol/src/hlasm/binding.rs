@@ -11,6 +11,18 @@ pub struct Bindings {
     pub psects: Vec<Psect>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub labels: Vec<Label>,
+    /// Common control sections (COM): their storage in the image. The
+    /// linker keeps one per name, the longest (HLASM Language Reference,
+    /// COM instruction).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub commons: Vec<Common>,
+}
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Common {
+    /// The section name; empty for the unnamed common section.
+    pub name: String,
+    pub offset: u32,
+    pub length: u32,
 }
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Section {
@@ -64,7 +76,7 @@ pub struct Quantity {
 }
 impl Bindings {
     pub fn is_empty(&self) -> bool {
-        !self.requires_extended() && self.labels.is_empty()
+        !self.requires_extended() && self.labels.is_empty() && self.commons.is_empty()
     }
     pub(super) fn requires_extended(&self) -> bool {
         !self.sections.is_empty() || !self.quantities.is_empty() || !self.psects.is_empty()
@@ -81,6 +93,11 @@ impl Bindings {
                 l.offset += origin;
                 l.section += origin;
                 l
+            }));
+        self.commons
+            .extend(other.commons.iter().cloned().map(|mut c| {
+                c.offset += origin;
+                c
             }));
         self.psects
             .extend(other.psects.iter().cloned().map(|mut p| {

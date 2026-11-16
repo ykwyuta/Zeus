@@ -156,6 +156,49 @@ pub fn link_modules(modules: &[Module]) -> Result<Module, String> {
                 .or_insert(*weak);
         }
     }
+    // COM: common sections of the same name (or the unnamed one) share the
+    // storage of the longest (HLASM Language Reference, COM instruction).
+    // Address constants into the other copies are moved to that storage.
+    // Relative-immediate operands (LARL) resolved inside a module are not
+    // moved: a module reaching its common section only that way keeps its
+    // own copy (not checked).
+    let mut keep = HashMap::<String, (u32, u32)>::new();
+    for c in &linked.bindings.commons {
+        let e = keep.entry(c.name.clone()).or_insert((c.offset, c.length));
+        if c.length > e.1 {
+            *e = (c.offset, c.length);
+        }
+    }
+    for c in &linked.bindings.commons {
+        let (to, _) = keep[&c.name];
+        if to == c.offset {
+            continue;
+        }
+        let from = c.offset..c.offset + c.length;
+        // an internal address constant: its target plus addend is the
+        // address in the linked image
+        let shift = i64::from(to) - i64::from(c.offset);
+        for r in &mut linked.relocations {
+            if r.symbol.is_some() {
+                continue;
+            }
+            match &mut r.expression {
+                None => {
+                    if u32::try_from(i64::from(r.target) + r.addend).is_ok_and(|a| from.contains(&a)) {
+                        r.addend += shift;
+                    }
+                }
+                // a local address (from an object deck)
+                Some(e) if e.local_coefficient == 1 && e.terms.is_empty() => {
+                    if u32::try_from(e.addend).is_ok_and(|a| from.contains(&a)) {
+                        e.addend += shift;
+                    }
+                }
+                Some(_) => {}
+            }
+        }
+    }
+    linked.bindings.commons.retain(|c| keep[&c.name].0 == c.offset);
     for (symbol, weak) in &linked.externals {
         if !weak && !linked.entries.contains_key(symbol) {
             return Err(format!("unresolved external symbol {symbol}"));

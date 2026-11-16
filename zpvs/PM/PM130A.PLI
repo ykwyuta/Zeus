@@ -1,0 +1,47 @@
+ PM130A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL (X1, X2, X3, X4) CHAR(16) VARYING;
+ DCL S1 CHAR VALUE('KEY:');
+ DCL S2 CHAR VALUE('--');
+ DCL S3 CHAR VALUE('-');
+ DCL INPUT CHAR(40) VARYING;
+ DCL F CHAR(6);
+
+ OPEN FILE(REPORT);
+
+ /* VALUE-CHAR-LENGTH: CHAR without a length takes the value's */
+ CALL ZCHECK('VALUE-CHAR-LENGTH',
+   LENGTH(S1)=4 & LENGTH(S2)=2 & S1='KEY:');
+
+ /* PLIPARSE: Example 1 of the LRM */
+ INPUT = '31415KEY:0123--45678-9';
+ CALL PLIPARSE(INPUT, X1, S1, X2, S2, X3, S3, X4);
+ CALL ZCHECK('PLIPARSE',
+   X1='31415' & X2='0123' & X3='45678' & X4='9');
+
+ /* PLIPARSE-NOT-FOUND: Example 2, the rest and then null */
+ INPUT = '31415KEY:0123-45678-9';
+ CALL PLIPARSE(INPUT, X1, S1, X2, S2, X3, S3, X4);
+ CALL ZCHECK('PLIPARSE-NOT-FOUND',
+   X1='31415' & X2='0123-45678-9' & X3='' & X4='');
+
+ /* PLIPARSE-BLANKS: Example 4, and an empty field */
+ INPUT = COLLAPSE(' Alex Bruno', ' ');
+ CALL PLIPARSE(INPUT, X1, ' ', X2, ' ', X3, ' ', X4);
+ CALL ZCHECK('PLIPARSE-BLANKS',
+   X1='Alex' & X2='Bruno' & X3='' & X4='');
+ CALL PLIPARSE(' Alex  Bruno', X1, ' ', X2, ' ', X3, ' ', X4);
+ CALL ZCHECK('PLIPARSE-EMPTY-FIELDS',
+   X1='' & X2='Alex' & X3='' & X4='Bruno');
+
+ /* PLIPARSE-STAR: * skips a target; no last target */
+ X1 = 'OLD'; X2 = 'OLD';
+ CALL PLIPARSE('A,B,C', *, ',', X1, ',');
+ F = 'XXXXXX';
+ CALL PLIPARSE('LEFT=RIGHT', F, '=', X2);
+ CALL ZCHECK('PLIPARSE-STAR',
+   X1='B' & F='LEFT' & X2='RIGHT');
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PM130A;

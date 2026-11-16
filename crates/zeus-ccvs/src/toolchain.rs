@@ -259,6 +259,17 @@ impl Toolchain {
     }
 
     /// Command running the compiled program inside `dir` with optional JCL `PARM=` text.
+    /// The executable a native toolchain leaves for a program (it holds
+    /// the whole run-time, about 170 MB in a debug build).
+    pub fn native_executable(&self, dir: &Path, program: &str) -> Option<std::path::PathBuf> {
+        match self {
+            Self::ZeusNative { .. } | Self::Zpli { native: true, .. } => {
+                Some(dir.join(format!("{program}{}", std::env::consts::EXE_SUFFIX)))
+            }
+            _ => None,
+        }
+    }
+
     pub fn run_in(&self, dir: &Path, program: &str, parm: Option<&str>) -> Command {
         let exe = dir.join(format!("{program}{}", std::env::consts::EXE_SUFFIX));
         match self {

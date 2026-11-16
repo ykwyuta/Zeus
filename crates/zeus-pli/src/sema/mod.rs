@@ -125,6 +125,7 @@ impl Compiler {
             m: Module {
                 name: String::new(),
                 ccsid,
+                dfp: false,
                 blocks: Vec::new(),
                 procs: Vec::new(),
                 vars: Vec::new(),
@@ -267,6 +268,7 @@ impl Compiler {
             regional: false,
             record_format: None,
             record_keys: None,
+            unformatted: false,
         };
         for a in attrs {
             match a {
@@ -285,6 +287,7 @@ impl Compiler {
                         .filter(|s| !s.is_empty())
                         .collect();
                     f.regional |= words.contains(&"REGIONAL");
+                    f.unformatted |= words.windows(2).any(|w| w == ["TYPE", "U"]);
                     let number = |key: &str| {
                         words
                             .iter()
@@ -382,6 +385,19 @@ impl Compiler {
                 var_of(self, p)
                     .ok_or_else(|| self.err(proc.pos, format!("parameter {p} is not declared")))?,
             );
+        }
+        // LIST on the last parameter (LRM, LIST attribute)
+        let list = params.last().is_some_and(|&v| {
+            let var = &self.m.vars[v as usize];
+            self.decl_ast.get(&var.root).is_some_and(|items| {
+                items
+                    .iter()
+                    .any(|d| d.name == var.name && d.attrs.iter().any(|a| matches!(a, Attr::List)))
+            })
+        });
+        if list {
+            let byvalue = proc.options.iter().any(|o| o == "BYVALUE");
+            self.m.procs[id as usize].vararg = if byvalue { 2 } else { 1 };
         }
         self.m.procs[id as usize].params = params;
         if let Some(r) = &proc.returns {
@@ -530,6 +546,7 @@ impl Compiler {
             noexecops: p.options.iter().any(|o| o == "NOEXECOPS"),
             external,
             recursive: p.recursive,
+            vararg: 0,
             entries: Vec::new(),
         });
         let id = (self.m.procs.len() - 1) as ProcId;
@@ -676,6 +693,12 @@ pub fn align_to(at: u32, align: u32, residue: u32) -> u32 {
     at + (r + align - at % align) % align
 }
 
+thread_local! {
+    /// FLOAT(DFP) for the next compilation (set by the driver from the
+    /// %PROCESS options).
+    pub static DFP: std::cell::Cell<bool> = const { std::cell::Cell::new(false) };
+}
+
 /// Compiles parsed statements into a module.
 pub fn compile(
     stmts: &[ast::Stmt],
@@ -694,6 +717,7 @@ pub fn compile_with(
 ) -> (Option<Module>, Vec<Diag>) {
     let mut c = Compiler::new(ccsid);
     c.assert_condition = assert_condition;
+    c.m.dfp = DFP.with(|d| d.get());
     c.m.source_paths = sources
         .iter()
         .map(|n| {

@@ -238,6 +238,7 @@ pub(super) fn directive(op: &str) -> bool {
     matches!(
         op,
         "CSECT"
+            | "COM"
             | "DCB"
             | "LOCTR"
             | "CNOP"
@@ -1410,6 +1411,8 @@ fn compile_layout(
     let mut area_alignment = HashMap::<String, u32>::new();
     let mut class_attributes = HashMap::<String, super::classes::Attributes>::new();
     let mut class_controls = HashMap::<String, String>::new();
+    // COM: the controls of common sections (named "$C:$COM:name")
+    let mut common_controls = std::collections::BTreeSet::<String>::new();
     let mut part_attributes = HashMap::<String, super::classes::Attributes>::new();
     let mut parent_control = String::new();
     let mut entry = 0;
@@ -1480,6 +1483,29 @@ fn compile_layout(
                 "24" => rmode = 24,
                 _ => return Err(s.error("supported RMODE declarations are 24 and ANY")),
             }
+        }
+        if s.op == "COM" && !symbol_name(&s.label) && !s.label.is_empty() && !s.label.starts_with('.') {
+            return Err(s.error("COM name must be an ordinary or sequence symbol"));
+        }
+        if s.op == "COM" {
+            // a common section: laid out like a control section; its
+            // statements are not assembled into object code (LRM)
+            let label = if symbol_name(&s.label) { s.label.clone() } else { String::new() };
+            current_control = format!("$C:$COM:{label}");
+            common_controls.insert(current_control.clone());
+            section_types.insert(current_control.clone(), "COM".to_string());
+            let area = format!("{current_control}:");
+            if !control_areas
+                .iter()
+                .any(|(control, _)| control == &current_control)
+            {
+                control_areas.push((current_control.clone(), vec![area.clone()]));
+            }
+            area_images.insert(section.clone(), std::mem::take(&mut image));
+            area_ranges.insert(section.clone(), std::mem::take(&mut instruction_ranges));
+            section = last_areas.get(&current_control).cloned().unwrap_or(area);
+            image = area_images.remove(&section).unwrap_or_default();
+            instruction_ranges = area_ranges.remove(&section).unwrap_or_default();
         }
         if matches!(s.op.as_str(), "CSECT" | "RSECT" | "START") {
             if s.label.is_empty() {
@@ -1622,7 +1648,7 @@ fn compile_layout(
         let layout_statement = matches!(
             s.op.as_str(),
             "CSECT" | "RSECT" | "START" | "DSECT" | "LOCTR"
-        );
+        ) || (s.op == "COM" && symbol_name(&s.label));
         let reopening =
             (layout_statement && !s.label.is_empty() && layout_labels.contains_key(&s.label))
                 || (s.op == "CATTR" && symbols.contains_key(&s.label));
@@ -2045,6 +2071,7 @@ fn compile_layout(
                 .then(|| (name.clone(), control.to_string()))
         })
         .collect();
+    let mut common_ranges = Vec::new();
     for (control, areas) in &control_areas {
         let mut dummy_offset = 0u32;
         let section_start = image.len() as u32;
@@ -2104,6 +2131,14 @@ fn compile_layout(
                     },
                 ),
             );
+        }
+        if common_controls.contains(control) {
+            let start = control_origins[control];
+            common_ranges.push(super::binding::Common {
+                name: control["$C:$COM:".len()..].to_string(),
+                offset: start,
+                length: image.len() as u32 - start,
+            });
         }
         if control.starts_with("$C:") && !class_controls.contains_key(control) {
             continue;
@@ -3570,6 +3605,16 @@ fn compile_layout(
             }
         }
     }
+    // COM: no object code for the statements of a common section; its
+    // storage is reserved (zeros) and kept by the linker
+    for c in &common_ranges {
+        let r = c.offset..c.offset + c.length;
+        image[r.start as usize..r.end as usize].fill(0);
+        code.retain(|i: &super::Instruction| !r.contains(&i.offset));
+        relocations.retain(|x: &super::Relocation| !r.contains(&x.offset));
+        bindings.quantities.retain(|q| !r.contains(&q.offset));
+    }
+    bindings.commons = common_ranges;
     let module = Module {
         zeus_hlasm: super::format_version(&code, &relocations).max(
             if amode != 31 || !entry_modes.is_empty() {

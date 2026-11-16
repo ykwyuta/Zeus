@@ -16,7 +16,7 @@ use std::time::{Duration, Instant};
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 
-use crate::jcl::{DdKind, parse_dd_allocations};
+use crate::jcl::{DdKind, exported_symbols, job_words, parse_dd_allocations};
 use crate::manifest::{ExpectKind, Manifest, ProgramConfig};
 use crate::report::{self, Counts};
 use crate::special::special;
@@ -389,6 +389,16 @@ fn run_program(
         let jcl_path = dir.join(jcl_name);
         let jcl_text = fs::read_to_string(&jcl_path)
             .with_context(|| format!("reading {}", jcl_path.display()))?;
+        // the job for GETSYSWORD
+        for (k, v) in job_words(&jcl_text, program) {
+            cmd.env(format!("ZEUS_JOB_{k}"), v);
+        }
+        // exported JCL symbols for GETJCLSYMBOL: NAME=VALUE lines
+        let symbols = exported_symbols(&jcl_text);
+        if !symbols.is_empty() {
+            let text: Vec<String> = symbols.iter().map(|(n, v)| format!("{n}={v}")).collect();
+            cmd.env("ZEUS_JCL_SYMBOLS", text.join("\n"));
+        }
         for dd in parse_dd_allocations(&jcl_text) {
             let ext = match dd.kind {
                 DdKind::Tape => "aws",
@@ -434,6 +444,15 @@ fn run_program(
         let stdout = fs::read(&stdout_file).unwrap_or_default();
         report::evaluate(sp.style, &report, &stdout)
     };
+    // a native executable of a program that passed is removed: one per
+    // program fills the disk of a whole suite (about 32 GB for ZCVS), and
+    // the tool must not make compile errors of its own. A failing one is
+    // kept for inspection.
+    if counts.fail == 0
+        && let Some(exe) = tc.native_executable(dir, program)
+    {
+        let _ = fs::remove_file(exe);
+    }
     Ok(Outcome::Ran { counts })
 }
 

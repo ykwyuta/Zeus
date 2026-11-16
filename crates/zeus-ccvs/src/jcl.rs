@@ -24,11 +24,32 @@ pub enum DdKind {
 pub struct DdAllocation {
     pub ddname: String,
     pub kind: DdKind,
+    /// SPACE=(...) of the sidecar, kept for z/OS (a checkpoint data set
+    /// needs more than the default)
+    pub space: Option<String>,
 }
 
-/// Parses `//<DDNAME> DD ...` statements from a JCL sidecar file, joining
-/// continuation lines and classifying tape vs disk allocations.
-pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
+/// The balanced text of `SPACE=(...)` in DD operands.
+fn space_of(operands: &str) -> Option<String> {
+    let at = operands.find("SPACE=(")? + 6;
+    let mut depth = 0;
+    for (i, c) in operands[at..].char_indices() {
+        match c {
+            '(' => depth += 1,
+            ')' => {
+                depth -= 1;
+                if depth == 0 {
+                    return Some(operands[at..at + i + 1].to_string());
+                }
+            }
+            _ => {}
+        }
+    }
+    None
+}
+
+/// The JCL statements without `//`, continuation lines joined.
+fn logical_lines(jcl_text: &str) -> Vec<String> {
     let mut logical_lines: Vec<String> = Vec::new();
     for raw in jcl_text.lines() {
         let code = if raw.len() > 72 { &raw[..72] } else { raw };
@@ -37,15 +58,166 @@ pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
             continue;
         }
         let body = &trimmed[2..];
-        if body.starts_with(' ') {
-            if let Some(prev) = logical_lines.last_mut() {
-                prev.push(' ');
+        // a line without a name continues the statement before it when
+        // that ends with a comma; otherwise it is a statement without a
+        // name (kept with its leading blank)
+        match logical_lines.last_mut() {
+            Some(prev) if body.starts_with(' ') && prev.ends_with(',') => {
                 prev.push_str(body.trim_start());
             }
-        } else {
-            logical_lines.push(body.to_string());
+            _ => logical_lines.push(body.to_string()),
         }
     }
+    logical_lines
+}
+
+/// The exported JCL symbols (z/OS MVS JCL Reference, EXPORT and SET): the
+/// values given by SET statements to the names in an EXPORT SYMLIST
+/// (`SYMLIST=*` exports every symbol). A value may be quoted ('' is a
+/// quote); an empty value is a symbol set to the null string. Only what the
+/// suites use: SET symbols, not those of PROC or EXEC.
+pub fn exported_symbols(jcl_text: &str) -> Vec<(String, String)> {
+    let mut values: Vec<(String, String)> = Vec::new();
+    let mut exported: Vec<String> = Vec::new();
+    let mut all = false;
+    for stmt in logical_lines(jcl_text) {
+        // [name] operation operands: a statement without a name starts
+        // with a blank
+        let rest = if stmt.starts_with(' ') {
+            stmt.as_str()
+        } else {
+            stmt.split_once(' ').map_or("", |(_, r)| r)
+        };
+        let rest = rest.trim_start();
+        let (op, operands) = rest.split_once(' ').unwrap_or((rest, ""));
+        let operands = operands.trim();
+        match op.to_ascii_uppercase().as_str() {
+            "SET" => {
+                let mut rest = operands;
+                while let Some((name, after)) = rest.split_once('=') {
+                    let name = name.trim().to_ascii_uppercase();
+                    let (value, tail) = if let Some(q) = after.strip_prefix('\'') {
+                        let mut v = String::new();
+                        let mut it = q.char_indices().peekable();
+                        let mut end = q.len();
+                        while let Some((i, c)) = it.next() {
+                            if c == '\'' {
+                                if it.peek().is_some_and(|(_, d)| *d == '\'') {
+                                    v.push('\'');
+                                    it.next();
+                                    continue;
+                                }
+                                end = i + 1;
+                                break;
+                            }
+                            v.push(c);
+                        }
+                        (v, &q[end..])
+                    } else {
+                        let end = after.find([',', ' ']).unwrap_or(after.len());
+                        (after[..end].to_string(), &after[end..])
+                    };
+                    values.retain(|(n, _)| *n != name);
+                    values.push((name, value));
+                    rest = match tail.strip_prefix(',') {
+                        Some(t) => t,
+                        None => break,
+                    };
+                }
+            }
+            "EXPORT" => {
+                let u = operands.to_ascii_uppercase();
+                if let Some(list) = u.strip_prefix("SYMLIST=") {
+                    let list = list.split_whitespace().next().unwrap_or("");
+                    let list = list.trim_start_matches('(').trim_end_matches(')');
+                    for n in list.split(',').filter(|n| !n.is_empty()) {
+                        if n == "*" {
+                            all = true;
+                        } else {
+                            exported.push(n.to_string());
+                        }
+                    }
+                }
+            }
+            _ => {}
+        }
+    }
+    values.retain(|(n, _)| all || exported.contains(n));
+    values
+}
+
+/// The job of a JCL sidecar as GETSYSWORD sees it: JOBNAME, ACTINFO (the
+/// accounting information without its parentheses and apostrophes),
+/// JOBCLASS, MSGCLASS, and STEPNAME (the step that runs `program`).
+pub fn job_words(jcl_text: &str, program: &str) -> Vec<(&'static str, String)> {
+    let mut out = Vec::new();
+    for stmt in logical_lines(jcl_text) {
+        if stmt.starts_with(' ') {
+            continue;
+        }
+        let Some((name, rest)) = stmt.split_once(' ') else {
+            continue;
+        };
+        let rest = rest.trim_start();
+        let (op, operands) = rest.split_once(' ').unwrap_or((rest, ""));
+        let operands = operands.trim();
+        match op.to_ascii_uppercase().as_str() {
+            "JOB" => {
+                out.push(("NAME", name.to_ascii_uppercase()));
+                // the accounting information: the first positional operand
+                let acct = if let Some(r) = operands.strip_prefix('(') {
+                    let mut depth = 1;
+                    let mut quoted = false;
+                    let mut end = r.len();
+                    for (i, c) in r.char_indices() {
+                        match c {
+                            '\'' => quoted = !quoted,
+                            '(' if !quoted => depth += 1,
+                            ')' if !quoted => {
+                                depth -= 1;
+                                if depth == 0 {
+                                    end = i;
+                                    break;
+                                }
+                            }
+                            _ => {}
+                        }
+                    }
+                    r[..end].to_string()
+                } else {
+                    operands.split(',').next().unwrap_or("").to_string()
+                };
+                if !acct.contains('=') {
+                    out.push(("ACTINFO", acct.replace('\'', "")));
+                }
+                for (key, var) in [("CLASS=", "CLASS"), ("MSGCLASS=", "MSGCLASS")] {
+                    let found = operands.split(',').find_map(|p| {
+                        p.trim().strip_prefix(key).map(str::to_string)
+                    });
+                    if let Some(v) = found {
+                        out.push((var, v));
+                    }
+                }
+            }
+            "EXEC" => {
+                let pgm = operands
+                    .split(',')
+                    .find_map(|p| p.trim().strip_prefix("PGM="))
+                    .unwrap_or("");
+                if pgm.eq_ignore_ascii_case(program) {
+                    out.push(("STEPNAME", name.to_ascii_uppercase()));
+                }
+            }
+            _ => {}
+        }
+    }
+    out
+}
+
+/// Parses `//<DDNAME> DD ...` statements from a JCL sidecar file, joining
+/// continuation lines and classifying tape vs disk allocations.
+pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
+    let logical_lines = logical_lines(jcl_text);
 
     let mut out = Vec::new();
     for stmt in logical_lines {
@@ -98,6 +270,7 @@ pub fn parse_dd_allocations(jcl_text: &str) -> Vec<DdAllocation> {
             out.push(DdAllocation {
                 ddname: ddname.to_ascii_uppercase(),
                 kind,
+                space: space_of(&rest),
             });
         }
     }
@@ -242,19 +415,37 @@ pub fn export_jcl(
             summary.source_members += 1;
 
             let cfg = manifest.programs.get(&member).cloned().unwrap_or_default();
-            let extra_dds = if let Some(jcl_file) = &cfg.jcl {
+            let (extra_dds, symbols, sysout) = if let Some(jcl_file) = &cfg.jcl {
                 let jcl_path = mod_dir.join(jcl_file);
                 let text = fs::read_to_string(&jcl_path)
                     .with_context(|| format!("reading {}", jcl_path.display()))?;
-                parse_dd_allocations(&text)
+                // a SYSOUT DD (the messages of DFSORT for PLISRTx)
+                let sysout = logical_lines(&text)
+                    .iter()
+                    .any(|l| l.to_ascii_uppercase().starts_with("SYSOUT ") && l.contains(" DD "));
+                (parse_dd_allocations(&text), exported_symbols(&text), sysout)
             } else {
-                Vec::new()
+                (Vec::new(), Vec::new(), false)
             };
-            let step = if source_ext == "CBL" {
+            let mut step = if source_ext == "CBL" {
                 render_program_steps(hlq, &member, &cfg, &extra_dds)
             } else {
                 render_other_steps(hlq, &member, source_ext, &cfg, false, &extra_dds)
             };
+            let go = format!("//G{member:<7} EXEC");
+            if sysout
+                && let Some(at) = step.find(&go)
+                && let Some(p) = step[at..].find("//SYSPRINT DD SYSOUT=*\n")
+            {
+                let end = at + p + "//SYSPRINT DD SYSOUT=*\n".len();
+                step.insert_str(end, "//SYSOUT   DD SYSOUT=*\n");
+            }
+            // exported JCL symbols: EXPORT and SET before the run step
+            if !symbols.is_empty()
+                && let Some(at) = step.find(&go)
+            {
+                step.insert_str(at, &render_symbols(&member, &symbols));
+            }
             mod_jcl.push_str(&step);
             all_jcl.push_str(&step);
         }
@@ -268,6 +459,31 @@ pub fn export_jcl(
     Ok(summary)
 }
 
+/// EXPORT SYMLIST and SET statements for the exported JCL symbols of a
+/// program; a value that is empty or not a plain word is quoted.
+fn render_symbols(member: &str, symbols: &[(String, String)]) -> String {
+    let names: Vec<&str> = symbols.iter().map(|(n, _)| n.as_str()).collect();
+    let mut s = format!("//X{member:<7} EXPORT SYMLIST=({})\n", names.join(","));
+    // one SET statement (names are at most 8 characters), one symbol per
+    // line, continued after a comma
+    for (k, (n, v)) in symbols.iter().enumerate() {
+        let plain = v.chars().all(|c| c.is_ascii_alphanumeric() || "@#$.".contains(c));
+        let value = if plain {
+            v.clone()
+        } else {
+            format!("'{}'", v.replace('\'', "''"))
+        };
+        let head = if k == 0 {
+            format!("//S{member:<7} SET ")
+        } else {
+            "//             ".to_string()
+        };
+        let comma = if k + 1 < symbols.len() { "," } else { "" };
+        let _ = writeln!(s, "{head}{n}={value}{comma}");
+    }
+    s
+}
+
 fn render_other_steps(
     hlq: &str,
     member: &str,
@@ -276,10 +492,14 @@ fn render_other_steps(
     helper: bool,
     extra_dds: &[DdAllocation],
 ) -> String {
+    let asm_options = match &cfg.asm_options {
+        Some(o) => format!("OBJECT,{o}"),
+        None => "OBJECT".to_string(),
+    };
     let (compiler, options, library) = if ext == "PLI" {
         ("IBMZPLI", "OBJECT,MARGINS(2,72)", "IBMZPLI.SIBMZCMP")
     } else {
-        ("ASMA90", "OBJECT", "ASM.SASMMOD1")
+        ("ASMA90", asm_options.as_str(), "ASM.SASMMOD1")
     };
     let mut s =
         format!("//* PROGRAM {member}\n//C{member:<7} EXEC PGM={compiler},PARM='{options}'\n");
@@ -319,10 +539,8 @@ fn render_other_steps(
             "SYSDA"
         };
         let _ = writeln!(s, "//{:<8} DD DSN={hlq}.{member}.{},", dd.ddname, dd.ddname);
-        let _ = writeln!(
-            s,
-            "//            UNIT={unit},SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)"
-        );
+        let space = dd.space.as_deref().unwrap_or("(TRK,(5,5))");
+        let _ = writeln!(s, "//            UNIT={unit},SPACE={space},DISP=(NEW,DELETE)");
     }
     s
 }
@@ -525,10 +743,8 @@ fn render_program_steps(
             }
             DdKind::Dataset => {
                 let _ = writeln!(s, "//{:<8} DD DSN={hlq}.{member}.{},", dd.ddname, dd.ddname);
-                let _ = writeln!(
-                    s,
-                    "//            UNIT=SYSDA,SPACE=(TRK,(5,5)),DISP=(NEW,DELETE)"
-                );
+                let space = dd.space.as_deref().unwrap_or("(TRK,(5,5))");
+                let _ = writeln!(s, "//            UNIT=SYSDA,SPACE={space},DISP=(NEW,DELETE)");
             }
             DdKind::Path(path) => write_path_dd(&mut s, &dd.ddname, path),
         }
@@ -539,6 +755,37 @@ fn render_program_steps(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn job_words_of_the_job_card() {
+        let jcl = "//JOB44   JOB   (D548-8686,'12/8/85',PGMBIN),CLASS=B,\n\
+                   //  MSGCLASS=X\n//GO EXEC PGM=GETSYM\n";
+        assert_eq!(
+            job_words(jcl, "GETSYM"),
+            vec![
+                ("NAME", "JOB44".to_string()),
+                ("ACTINFO", "D548-8686,12/8/85,PGMBIN".to_string()),
+                ("CLASS", "B".to_string()),
+                ("MSGCLASS", "X".to_string()),
+                ("STEPNAME", "GO".to_string()),
+            ]
+        );
+    }
+
+    #[test]
+    fn exported_jcl_symbols() {
+        let jcl = "//J JOB\n//EX1 EXPORT SYMLIST=(S1,L1,E)\n\
+                   //SET1 SET S1=STEWART,L1='LA GUARDIA'\n\
+                   //         SET E=,H=HIDDEN\n//S EXEC PGM=X\n";
+        assert_eq!(
+            exported_symbols(jcl),
+            vec![
+                ("S1".to_string(), "STEWART".to_string()),
+                ("L1".to_string(), "LA GUARDIA".to_string()),
+                ("E".to_string(), String::new()),
+            ]
+        );
+    }
 
     #[test]
     fn parse_tape_and_disk_dds() {
@@ -560,14 +807,17 @@ mod tests {
                 DdAllocation {
                     ddname: "TAPE1".to_string(),
                     kind: DdKind::Tape,
+                    space: None,
                 },
                 DdAllocation {
                     ddname: "TAPE2".to_string(),
                     kind: DdKind::Tape,
+                    space: None,
                 },
                 DdAllocation {
                     ddname: "WORKDS".to_string(),
                     kind: DdKind::Dataset,
+                    space: None,
                 },
             ]
         );

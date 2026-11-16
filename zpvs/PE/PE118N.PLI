@@ -1,0 +1,7 @@
+%PROCINC ZPVSBADP;
+ /* %PROCINC of a data set with a statement: one rule and its
+    positive control. */
+ PE118N: PROC OPTIONS(MAIN);
+ DCL X FIXED BIN(31);
+ X = 1;
+ END PE118N;

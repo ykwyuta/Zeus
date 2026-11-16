@@ -24,6 +24,9 @@ pub struct Module {
     /// Name of the main (or first) external procedure.
     pub name: String,
     pub ccsid: u32,
+    /// FLOAT(DFP): FLOAT DECIMAL is IEEE decimal floating point.
+    #[serde(default)]
+    pub dfp: bool,
     pub blocks: Vec<Block>,
     pub procs: Vec<Proc>,
     pub vars: Vec<Var>,
@@ -87,6 +90,10 @@ pub struct Proc {
     pub noexecops: bool,
     pub external: bool,
     pub recursive: bool,
+    /// The last parameter has LIST: 1 the further arguments are passed
+    /// by address, 2 by value (OPTIONS(BYVALUE)).
+    #[serde(default)]
+    pub vararg: u8,
     /// Secondary entry points: name, parameters, index in the body.
     pub entries: Vec<(String, Vec<VarId>, usize)>,
 }
@@ -153,7 +160,16 @@ pub struct Var {
     /// A BYVALUE parameter: the procedure receives a copy of the argument.
     #[serde(default)]
     pub byvalue: bool,
+    /// Storage representation: REPR_LITTLE (LITTLEENDIAN), REPR_IEEE.
+    #[serde(default)]
+    pub repr: u8,
 }
+
+/// LITTLEENDIAN: binary values (and varying length prefixes) stored least
+/// significant byte first.
+pub const REPR_LITTLE: u8 = 1;
+/// IEEE: floating-point values stored in IEEE binary format.
+pub const REPR_IEEE: u8 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Init {
@@ -184,6 +200,10 @@ pub struct FileDecl {
     pub record_format: Option<zeus_ds::format::RecordFormat>,
     #[serde(default)]
     pub record_keys: Option<(u32, u32)>,
+    /// ENVIRONMENT(TYPE(U)): an unformatted (byte) file, used only by
+    /// FILEREAD, FILEWRITE, FILESEEK and FILETELL.
+    #[serde(default)]
+    pub unformatted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -554,6 +574,29 @@ pub enum Stmt {
     /// LOCNEWSPACE / LOCNEWVALUE: allocate the located type `ty` in the
     /// area, set the offset target, and store the value (already of type
     /// `ty`; a varying string gets only the space its value needs).
+    /// PLICKPT(ddname, check-id, org, code): the arguments given, null
+    /// strings for those omitted, and the return code target.
+    Checkpoint {
+        args: Vec<Expr>,
+        code: Option<Target>,
+    },
+    /// PLIPARSE(input, target, separator, ... [,target]): None for a `*`
+    /// target.
+    Parse {
+        input: Expr,
+        pairs: Vec<(Option<Target>, Expr)>,
+        last: Option<Option<Target>>,
+    },
+    /// PLISRTA..D (Programming Guide, "Using the Sort program"): the
+    /// SORT and RECORD statements, the return code target, and the input
+    /// (E15) and output (E35) routines of B, C, D.
+    Sort {
+        sort: Expr,
+        record: Expr,
+        rc: Target,
+        input: Option<Expr>,
+        output: Option<Expr>,
+    },
     LocNew {
         target: Target,
         area: Ref,

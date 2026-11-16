@@ -793,6 +793,7 @@ impl Machine {
                         let loc = Loc {
                             bit: u64::from(addr) * 8,
                             ty: loc_ty,
+                            repr: 0,
                         };
                         if self.store(&loc, x).is_ok() {
                             b = self.read(addr, n as usize)?;
@@ -837,6 +838,7 @@ impl Machine {
                 let loc = Loc {
                     bit: u64::from(addr) * 8,
                     ty: args[0].ty.clone(),
+                    repr: 0,
                 };
                 self.store(&loc, &v[0])?;
                 Value::Bit(self.read_bits(loc.bit, u64::from(n) * 8)?)
@@ -1656,6 +1658,69 @@ impl Machine {
                 _ => 0,
             }),
             // FILEOPEN: whether the file is open
+            // TYPE(U) files (LRM): FILEREAD and FILEWRITE move z bytes
+            // between the file position and storage, FILESEEK moves the
+            // position (origin -1 the start, 0 the position, 1 the end;
+            // 0 when it worked), FILETELL gives it. ERROR with ONCODE 1010
+            // when the file is not open (as for FILEID); a file that is not
+            // TYPE(U) is refused.
+            FileRead | FileWrite | FileSeek | FileTell => {
+                let Value::File(f) = &v[0] else {
+                    return err(format!("{b:?} requires a file"));
+                };
+                let f = *f as usize;
+                if !self.files[f].decl.unformatted {
+                    return err(format!("{b:?} needs a TYPE(U) file"));
+                }
+                if !self.files[f].open {
+                    self.raise(Cond::Error, 1010, act)?;
+                    return Ok(Value::int(0));
+                }
+                match b {
+                    FileTell => Value::int(self.files[f].bpos as i64),
+                    FileSeek => {
+                        let y = int(1).unwrap_or(0).max(0) as usize;
+                        let st = &mut self.files[f];
+                        let base = match int(2).unwrap_or(-1) {
+                            -1 => Some(0),
+                            0 => Some(st.bpos),
+                            1 => Some(st.bytes.len()),
+                            _ => None,
+                        };
+                        match base {
+                            Some(b) => {
+                                st.bpos = b + y;
+                                Value::int(0)
+                            }
+                            None => Value::int(-1),
+                        }
+                    }
+                    _ => {
+                        let Value::Ptr(p) = v[1] else {
+                            return err(format!("{b:?} requires a pointer"));
+                        };
+                        let z = int(2).unwrap_or(0).max(0) as usize;
+                        if b == FileRead {
+                            let st = &self.files[f];
+                            let from = st.bpos.min(st.bytes.len());
+                            let n = z.min(st.bytes.len() - from);
+                            let data = st.bytes[from..from + n].to_vec();
+                            self.write(p, &data)?;
+                            self.files[f].bpos = from + n;
+                            Value::int(n as i64)
+                        } else {
+                            let data = self.read(p, z)?;
+                            let st = &mut self.files[f];
+                            if st.bytes.len() < st.bpos + z {
+                                st.bytes.resize(st.bpos + z, 0);
+                            }
+                            st.bytes[st.bpos..st.bpos + z].copy_from_slice(&data);
+                            st.bpos += z;
+                            Value::int(z as i64)
+                        }
+                    }
+                }
+            }
             FileOpen => match &v[0] {
                 Value::File(f) => Value::bit1(self.files[*f as usize].open),
                 _ => return err("FILEOPEN requires a file"),
@@ -1751,6 +1816,61 @@ impl Machine {
                     .unwrap_or_default();
                 Value::Char(ebcdic(&val))
             }
+            // the exported JCL symbols of the step: the runner passes them
+            // as NAME=VALUE lines in ZEUS_JCL_SYMBOLS (z/OS takes them from
+            // the JCL); a name that is not exported gives the null string
+            GetJclSymbol | IsJclSymbol => {
+                let name = zeus_cobol::ebcdic::decode(&chars(&v[0]));
+                let name = name.trim_end().to_string();
+                let found = std::env::var("ZEUS_JCL_SYMBOLS").ok().and_then(|all| {
+                    all.lines()
+                        .filter_map(|l| l.split_once('='))
+                        .find(|(n, _)| *n == name)
+                        .map(|(_, v)| v.to_string())
+                });
+                if b == IsJclSymbol {
+                    Value::bit1(found.is_some())
+                } else {
+                    Value::Char(ebcdic(&found.unwrap_or_default()))
+                }
+            }
+            // the job and the system (LRM, GETSYSWORD and GETSYSINT): the
+            // runner passes the JOB statement of the program's JCL in
+            // ZEUS_JOB_* variables; without them the job is named after the
+            // program. The system names are Zeus's own. An unknown keyword
+            // gives the null string (the LRM does not say what it gives).
+            GetSysWord | GetSysInt => {
+                let key = zeus_cobol::ebcdic::decode(&chars(&v[0])).trim().to_ascii_uppercase();
+                let env = |n: &str| std::env::var(format!("ZEUS_JOB_{n}")).ok();
+                let actinfo = env("ACTINFO").unwrap_or_default();
+                if b == GetSysInt {
+                    let n = match key.as_str() {
+                        "MAXACTINFO" if actinfo.is_empty() => 0,
+                        "MAXACTINFO" => actinfo.split(',').count() as i64,
+                        _ => 0,
+                    };
+                    Value::int(n)
+                } else {
+                    let mut job = self.module.name.to_ascii_uppercase();
+                    job.truncate(8);
+                    let val = match key.as_str() {
+                        "ASID" => "0001".to_string(),
+                        "ACTINFO" => actinfo,
+                        "JESNODE" | "SYSNODE" => "ZEUS".to_string(),
+                        "JOBCLASS" => env("CLASS").unwrap_or_else(|| "A".into()),
+                        "JOBNAME" => env("NAME").unwrap_or(job),
+                        "JOBNUMBER" => "JOB00001".to_string(),
+                        "MSGCLASS" => env("MSGCLASS").unwrap_or_else(|| "A".into()),
+                        "PROCSTEP" => std::string::String::new(),
+                        "SMFID" => "ZEUS".to_string(),
+                        "STEPNAME" => env("STEPNAME").unwrap_or_else(|| "STEP1".into()),
+                        "SYSNAME" => "ZEUS".to_string(),
+                        "SYSPLEX" => "ZEUSPLEX".to_string(),
+                        _ => std::string::String::new(),
+                    };
+                    Value::Char(ebcdic(&val))
+                }
+            }
             PutEnv => {
                 let text = zeus_cobol::ebcdic::decode(&chars(&v[0]));
                 match text.split_once('=') {
@@ -1764,6 +1884,88 @@ impl Machine {
             // a version 4 UUID: random bits, version nibble 4, variant 10
             // a new version 4 UUID at each reference and in each run
             Uuid4 => Value::Char(ebcdic(&zeus_cobol::vm::uuid4())),
+            // a version 5 UUID (RFC 4122): the SHA-1 of a name with the
+            // version and variant bits set. The LRM names no namespace or
+            // name; Zeus hashes a fresh random UUID, so each call differs.
+            Uuid => {
+                let name = zeus_cobol::vm::uuid4();
+                let h = super::digest::digest(1, 160, name.as_bytes());
+                let mut r = [0u8; 16];
+                r.copy_from_slice(&h[..16]);
+                r[6] = (r[6] & 0x0f) | 0x50;
+                r[8] = (r[8] & 0x3f) | 0x80;
+                let x: std::string::String = r.iter().map(|c| format!("{c:02x}")).collect();
+                let s = format!("{}-{}-{}-{}-{}", &x[0..8], &x[8..12], &x[12..16], &x[16..20], &x[20..32]);
+                Value::Char(ebcdic(&s))
+            }
+            // STACKADDR: the storage of the activation of the procedure or
+            // BEGIN block (Zeus's dynamic save area); GTCA: one control
+            // block for the run. Neither has the layout of the LE blocks.
+            // CHECKSUM(q, n): the LRM gives no method. Zeus computes what
+            // the CHECKSUM instruction (CKSM) gives from zero: the 4-byte
+            // big-endian words added as unsigned with the carry out added
+            // back in, the last word padded with zeros (Principles of
+            // Operation). Not compared with the IBM library.
+            Checksum => {
+                let Value::Ptr(q) = v[0] else {
+                    return err("CHECKSUM requires a pointer");
+                };
+                let n = int(1).unwrap_or(0).max(0) as usize;
+                let data = self.read(q, n)?;
+                let mut sum: u64 = 0;
+                for w in data.chunks(4) {
+                    let mut b = [0u8; 4];
+                    b[..w.len()].copy_from_slice(w);
+                    sum += u64::from(u32::from_be_bytes(b));
+                    sum = (sum & 0xFFFF_FFFF) + (sum >> 32);
+                }
+                Value::int(sum as i64)
+            }
+            // the class of a decimal floating-point value; no condition is
+            // raised whatever the value (LRM)
+            IsFinite | IsInf | IsNan | IsNormal | IsZero => {
+                let d = super::conv::to_dfp(&v[0]).unwrap_or(super::dfp::Dfp::finite(false, 0, 0));
+                let p = match &args[0].ty {
+                    Ty::Float { p, .. } => *p,
+                    _ => 16,
+                };
+                use super::dfp::Kind;
+                Value::bit1(match b {
+                    IsFinite => d.is_finite(),
+                    IsInf => d.kind == Kind::Inf,
+                    IsNan => matches!(d.kind, Kind::QNan | Kind::SNan),
+                    IsNormal => d.is_normal(super::dfp::fmt_for(p)),
+                    _ => d.is_zero(),
+                })
+            }
+            StackAddr => Value::Ptr(self.acts[act].frame),
+            // the further arguments of the procedure (found from a BEGIN
+            // block through the static parents)
+            VargList => {
+                let mut a = Some(act);
+                let mut p = 0;
+                while let Some(i) = a {
+                    if self.acts[i].varglist != 0 {
+                        p = self.acts[i].varglist;
+                        break;
+                    }
+                    a = self.acts[i].parent;
+                }
+                Value::Ptr(p)
+            }
+            Gtca => {
+                let p = match self.caa {
+                    Some(p) => p,
+                    None => {
+                        let p = self.heap_alloc(1024);
+                        self.caa = Some(p);
+                        p
+                    }
+                };
+                Value::Ptr(p)
+            }
+            UHigh => Value::Char([0xF4, 0x8F, 0xBF, 0xBF].repeat(int(0).unwrap_or(0).max(0) as usize)),
+            ULow => Value::Char(vec![0; int(0).unwrap_or(0).max(0) as usize]),
             // buffer functions on UTF-16: whitespace \t \f \v \n \r, base 64
             // digits as UTF-16 characters
             // XMLSCRUB(p, m, q, n), XMLSCRUB16: the scrubbed source, its
@@ -2185,7 +2387,12 @@ impl Machine {
                 }
                 match b {
                     OrdinalName => Value::Char(zeus_cobol::ebcdic::encode(
-                        &k.map(|k| members[k].1.clone()).unwrap_or_default(),
+                        // the member's own name (not the qualify block's)
+                        &k.map(|k| {
+                            let n = &members[k].1;
+                            n.rsplit('.').next().unwrap_or(n).to_string()
+                        })
+                        .unwrap_or_default(),
                     )),
                     OrdinalSucc => {
                         Value::int(k.and_then(|k| members.get(k + 1)).map_or(x + 1, |m| m.0))

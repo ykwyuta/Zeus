@@ -6,7 +6,9 @@ mod cics;
 pub(crate) mod conv;
 mod datefmt;
 mod digest;
+pub(crate) mod dfp;
 mod ere;
+mod plisrt;
 mod record;
 mod sql;
 mod stream;
@@ -123,6 +125,11 @@ struct CondInfo {
     onsub: (i64, i64, i64),
     online: u32,
     onarea: String,
+    /// ONSUBCODE: the index of the offending character of a CONVERSION.
+    subcode: i32,
+    /// ONSUBCODE2: register 15 and the reason code of the VSAM request
+    /// that failed (xxxxyyyy), 0 for other conditions.
+    subcode2: i32,
 }
 
 /// Information of the condition being raised that only its raising
@@ -135,10 +142,15 @@ struct OnExtra {
     operator: String,
     sub: (i64, i64, i64),
     area: String,
+    /// The data field that raised NAME (DATAFIELD).
+    datafield: Vec<u8>,
 }
 
 thread_local! {
     static ON_EXTRA: std::cell::RefCell<OnExtra> = std::cell::RefCell::new(OnExtra::default());
+    /// ONSUBCODE2 of the condition the next raise reports (set by the
+    /// VSAM record I/O that raises it).
+    pub(crate) static SUBCODE2: std::cell::Cell<i32> = const { std::cell::Cell::new(0) };
 }
 
 struct Act {
@@ -150,6 +162,8 @@ struct Act {
     on: Vec<(Cond, Option<(BlockId, usize)>)>,
     stack_mark: (usize, u32),
     le_frame: Option<usize>,
+    /// VARGLIST: the further arguments of a procedure with LIST.
+    varglist: u32,
     /// Indexes of aggregate assignments and repetitive specifications.
     index: Vec<i64>,
     subject: Option<Value>,
@@ -164,6 +178,8 @@ struct Act {
 pub struct Loc {
     pub bit: u64,
     pub ty: Ty,
+    /// The storage representation (REPR_LITTLE, REPR_IEEE).
+    pub repr: u8,
 }
 
 pub struct Machine {
@@ -187,6 +203,8 @@ pub struct Machine {
     pub env: RunEnv,
     files: Vec<stream::FileState>,
     rc: i32,
+    /// The storage GTCA points to (allocated at the first use).
+    caa: Option<u32>,
     /// The first activation of the running thread (0: the main thread):
     /// conditions are not handled across thread boundaries.
     thread_base: usize,
@@ -253,6 +271,7 @@ impl Machine {
             env,
             files,
             rc: 0,
+            caa: None,
             thread_base: 0,
             threads: 0,
             allocs: std::collections::BTreeMap::new(),
@@ -573,6 +592,7 @@ impl Machine {
             on: Vec::new(),
             stack_mark: mark,
             le_frame: None,
+            varglist: 0,
             index: Vec::new(),
             subject: None,
             cond: None,
@@ -745,6 +765,7 @@ impl Machine {
         let loc = Loc {
             bit: rb + obj.bit_offset,
             ty: obj.ty.clone().unwrap_or(Ty::fixed_bin(31, 0)),
+            repr: obj.repr,
         };
         Ok(self.load(&loc)?.as_i64())
     }
@@ -1146,7 +1167,8 @@ impl Machine {
         let ty = self
             .resolve_ty(var.ty.as_ref(), r.var, act, rb)?
             .ok_or_else(|| Intr::Fatal(format!("{} is a structure", var.name)))?;
-        Ok(Loc { bit, ty })
+        let repr = self.module.vars[r.var as usize].repr;
+        Ok(Loc { bit, ty, repr })
     }
 
     // ---- loading and storing scalars -------------------------------------
@@ -1170,13 +1192,28 @@ impl Machine {
                 ..
             } => {
                 let (n, _) = loc.ty.storage(true);
-                let b = self.read(addr, n as usize)?;
+                let mut b = self.read(addr, n as usize)?;
+                if loc.repr & crate::ir::REPR_LITTLE != 0 {
+                    b.reverse();
+                }
                 let v = zeus_decimal::binary::read(&b, !unsigned);
                 Value::fixed(v, *q, false)
             }
+            Ty::Float { dec: true, p } if self.module.dfp => {
+                let f = dfp::fmt_for(*p);
+                Value::Dfp(dfp::decode(&self.read(addr, f.bytes)?, f))
+            }
             Ty::Float { .. } => {
                 let n = crate::types::float_bytes(&loc.ty);
-                Value::Float(value::hfp_decode(&self.read(addr, n as usize)?))
+                let b = self.read(addr, n as usize)?;
+                if loc.repr & crate::ir::REPR_IEEE != 0 {
+                    Value::Float(match b.len() {
+                        4 => f64::from(f32::from_be_bytes([b[0], b[1], b[2], b[3]])),
+                        _ => f64::from_be_bytes(b[..8].try_into().unwrap_or([0; 8])),
+                    })
+                } else {
+                    Value::Float(value::hfp_decode(&b))
+                }
             }
             Ty::Char { len, var } => {
                 let n = match len {
@@ -1187,7 +1224,7 @@ impl Machine {
                     Varying::Fixed => Value::Char(self.read(addr, n)?),
                     Varying::Varying => {
                         let l = self.read(addr, 2)?;
-                        let cur = (usize::from(u16::from_be_bytes([l[0], l[1]]))).min(n);
+                        let cur = (usize::from(prefix16(&l, loc.repr))).min(n);
                         Value::Char(self.read(addr + 2, cur)?)
                     }
                     Varying::VaryingZ => {
@@ -1206,7 +1243,7 @@ impl Machine {
                     Varying::Fixed => Value::Bit(self.read_bits(loc.bit, n)?),
                     _ => {
                         let l = self.read(addr, 2)?;
-                        let cur = u64::from(u16::from_be_bytes([l[0], l[1]])).min(n);
+                        let cur = u64::from(prefix16(&l, loc.repr)).min(n);
                         Value::Bit(self.read_bits(loc.bit + 16, cur)?)
                     }
                 }
@@ -1217,10 +1254,12 @@ impl Machine {
                 let re = self.load(&Loc {
                     bit: loc.bit,
                     ty: (**t).clone(),
+                    repr: loc.repr,
                 })?;
                 let im = self.load(&Loc {
                     bit: loc.bit + u64::from(n) * 8,
                     ty: (**t).clone(),
+                    repr: loc.repr,
                 })?;
                 Value::cplx(re, im)
             }
@@ -1309,12 +1348,30 @@ impl Machine {
                 let (n, _) = loc.ty.storage(true);
                 let mut b = vec![0u8; n as usize];
                 zeus_decimal::binary::write(&mut b, *m);
+                if loc.repr & crate::ir::REPR_LITTLE != 0 {
+                    b.reverse();
+                }
                 self.write(addr, &b)?;
+            }
+            (Ty::Float { dec: true, p }, v @ (Value::Float(_) | Value::Dfp(_) | Value::Fixed { .. }))
+                if self.module.dfp =>
+            {
+                let f = dfp::fmt_for(*p);
+                let d = conv::to_dfp(v).unwrap_or(dfp::Dfp::finite(false, 0, 0));
+                let (d, _) = d.round(f);
+                self.write(addr, &dfp::encode(&d, f))?;
             }
             (Ty::Float { .. }, Value::Float(f)) => {
                 let n = crate::types::float_bytes(&loc.ty);
                 let mut b = vec![0u8; n as usize];
-                value::hfp_encode(*f, &mut b);
+                if loc.repr & crate::ir::REPR_IEEE != 0 {
+                    match n {
+                        4 => b.copy_from_slice(&(*f as f32).to_be_bytes()),
+                        _ => b[..8].copy_from_slice(&f.to_be_bytes()),
+                    }
+                } else {
+                    value::hfp_encode(*f, &mut b);
+                }
                 self.write(addr, &b)?;
             }
             (Ty::Char { len, var }, Value::Char(s)) => {
@@ -1330,7 +1387,7 @@ impl Machine {
                     }
                     Varying::Varying => {
                         let cur = s.len().min(n);
-                        self.write(addr, &(cur as u16).to_be_bytes())?;
+                        self.write(addr, &prefix16_bytes(cur as u16, loc.repr))?;
                         self.write(addr + 2, &s[..cur])?;
                     }
                     Varying::VaryingZ => {
@@ -1354,7 +1411,7 @@ impl Machine {
                     }
                     _ => {
                         let cur = bits.len().min(n);
-                        self.write(addr, &(cur as u16).to_be_bytes())?;
+                        self.write(addr, &prefix16_bytes(cur as u16, loc.repr))?;
                         self.write_bits(loc.bit + 16, &bits[..cur])?;
                     }
                 }
@@ -1370,6 +1427,7 @@ impl Machine {
                     &Loc {
                         bit: loc.bit,
                         ty: (**t).clone(),
+                        repr: loc.repr,
                     },
                     &c.0,
                 )?;
@@ -1377,6 +1435,7 @@ impl Machine {
                     &Loc {
                         bit: loc.bit + u64::from(n) * 8,
                         ty: (**t).clone(),
+                        repr: loc.repr,
                     },
                     &c.1,
                 )?;
@@ -1559,6 +1618,7 @@ impl Machine {
         let (base, dims) = self.base_of(r, act)?;
         let rb = self.refer_base_for_len(r, act)?;
         let ty = self.resolve_ty(var.ty.as_ref(), r.var, act, rb)?.unwrap();
+        let repr = self.module.vars[r.var as usize].repr;
         let mut fixed_off: i64 = 0;
         let mut free = Vec::new();
         for (k, s) in r.subs.iter().enumerate() {
@@ -1584,6 +1644,7 @@ impl Machine {
                 Loc {
                     bit: (base as i64 + off) as u64,
                     ty: ty.clone(),
+                    repr: repr,
                 }
             })
             .collect())
@@ -1736,6 +1797,90 @@ impl Machine {
                 Ok(())
             }
             Stmt::CallBuiltin(b, args) => self.call_builtin(*b, args, act),
+            // PLIPARSE: each target gets the input up to its separator; the
+            // target of the first separator not found gets the rest of the
+            // input and the later targets the null string; the last target
+            // gets what follows the last separator (LRM)
+            Stmt::Parse { input, pairs, last } => {
+                let Value::Char(mut rest) = self.eval(input, act)? else {
+                    return err("PLIPARSE: the input is not a string");
+                };
+                let mut done = false;
+                let assign = |me: &mut Self, t: &Option<Target>, v: Vec<u8>| -> R<()> {
+                    if let Some(t) = t {
+                        let l = me.target_loc(t, act)?;
+                        me.assign_target(t, l, Value::Char(v), &crate::sema::expr::char_any(), act)?;
+                    }
+                    Ok(())
+                };
+                for (t, s) in pairs {
+                    if done {
+                        assign(self, t, Vec::new())?;
+                        continue;
+                    }
+                    let Value::Char(sep) = self.eval(s, act)? else {
+                        return err("PLIPARSE: a separator is not a string");
+                    };
+                    let at = if sep.is_empty() {
+                        None
+                    } else {
+                        rest.windows(sep.len()).position(|w| w == sep.as_slice())
+                    };
+                    match at {
+                        Some(i) => {
+                            let part = rest[..i].to_vec();
+                            rest = rest[i + sep.len()..].to_vec();
+                            assign(self, t, part)?;
+                        }
+                        None => {
+                            assign(self, t, std::mem::take(&mut rest))?;
+                            done = true;
+                        }
+                    }
+                }
+                if let Some(t) = last {
+                    let v = if done { Vec::new() } else { rest };
+                    assign(self, t, v)?;
+                }
+                Ok(())
+            }
+            // PLICKPT (Programming Guide, Requesting a checkpoint record):
+            // 0 when the checkpoint record is written, 8 for a bad request
+            // (an organization other than PS or PO), 12 when the data set
+            // is missing. Zeus writes the check-id as the record; it keeps
+            // no program state, so there is nothing to restart from.
+            Stmt::Checkpoint { args, code } => {
+                let mut s = Vec::new();
+                for a in args {
+                    s.push(match self.eval(a, act)? {
+                        Value::Char(b) => zeus_cobol::ebcdic::decode(&b).trim().to_ascii_uppercase(),
+                        _ => std::string::String::new(),
+                    });
+                }
+                let get = |k: usize| s.get(k).cloned().unwrap_or_default();
+                let dd = if get(0).is_empty() { "SYSCHK".to_string() } else { get(0) };
+                let org = if get(2).is_empty() { "PS".to_string() } else { get(2) };
+                let rc = if org != "PS" && org != "PO" {
+                    8
+                } else {
+                    match self.sort_dd(&dd) {
+                        Some(d) if std::fs::write(&d.path, zeus_cobol::ebcdic::encode(&get(1))).is_ok() => 0,
+                        _ => 12,
+                    }
+                };
+                if let Some(t) = code {
+                    let l = self.target_loc(t, act)?;
+                    self.assign_target(t, l, Value::int(rc), &Ty::fixed_bin(31, 0), act)?;
+                }
+                Ok(())
+            }
+            Stmt::Sort {
+                sort,
+                record,
+                rc,
+                input,
+                output,
+            } => self.plisrt(sort, record, rc, input.as_ref(), output.as_ref(), act),
             Stmt::LocNew {
                 target,
                 area,
@@ -1766,6 +1911,7 @@ impl Machine {
                     let loc = Loc {
                         bit: u64::from(p) * 8,
                         ty: ty.clone(),
+                        repr: 0,
                     };
                     self.assign_loc(&loc, v, ty, act)?;
                 }
@@ -1978,6 +2124,7 @@ impl Machine {
                         let loc = Loc {
                             bit: u64::from(p) * 8 + obj.bit_offset,
                             ty: obj.ty.clone().unwrap(),
+                            repr: obj.repr,
                         };
                         self.store(&loc, &Value::int(rv[n]))?;
                     }
@@ -2402,6 +2549,46 @@ impl Machine {
                 bindings[k as usize] = b;
             }
         }
+        // LIST: the arguments after the declared parameters, one after
+        // another (LRM, LIST attribute): BYVALUE values, each rounded up to
+        // a multiple of 4 bytes (VARGSIZE), or BYADDR 4-byte addresses
+        let mut varglist = 0;
+        if proc.vararg != 0 {
+            let extra = &args[params.len().min(args.len())..];
+            let mut area = Vec::new();
+            for a in extra {
+                let (addr, ty) = match a {
+                    Arg::Ref(r) => {
+                        let (bit, _) = self.element_or_start(r, act)?;
+                        (bit / 8, m.vars[r.var as usize].ty.clone())
+                    }
+                    Arg::Dummy(e) => {
+                        let v = self.eval(e, act)?;
+                        let (n, _) = e.ty.storage(true);
+                        let at = self.stack_alloc(n.max(1));
+                        dummies.push(at);
+                        let loc = Loc {
+                            bit: u64::from(at) * 8,
+                            ty: e.ty.clone(),
+                            repr: 0,
+                        };
+                        self.store(&loc, &v)?;
+                        (u64::from(at), Some(e.ty.clone()))
+                    }
+                    Arg::Omitted => (0, None),
+                };
+                if proc.vararg == 2 {
+                    let n = ty.map_or(0, |t| t.storage(true).0) as usize;
+                    let mut b = self.read(addr as u32, n)?;
+                    b.resize(n.div_ceil(4) * 4, 0);
+                    area.extend(b);
+                } else {
+                    area.extend((addr as u32).to_be_bytes());
+                }
+            }
+            varglist = self.stack_alloc((area.len() as u32).max(4));
+            self.write(varglist, &area)?;
+        }
         self.depth += 1;
         if self.depth > 2000 {
             return err("procedure calls nested too deeply");
@@ -2419,6 +2606,7 @@ impl Machine {
                 return Err(e);
             }
         };
+        self.acts[a].varglist = varglist;
         let body = &m.blocks[block as usize].body;
         let r = if start > 0 {
             let tail = List {
@@ -2509,6 +2697,7 @@ impl Machine {
                 let loc = Loc {
                     bit: u64::from(addr) * 8,
                     ty: ty.clone(),
+                    repr: 0,
                 };
                 let v = self.convert(v, &e.ty, &ty, act)?;
                 self.store(&loc, &v)?;
@@ -2576,6 +2765,7 @@ impl Machine {
                         &Loc {
                             bit: u64::from(tmp) * 8,
                             ty: ty.clone(),
+                            repr: 0,
                         },
                         &v,
                     )?;
@@ -2653,6 +2843,7 @@ impl Machine {
                 Ok(Some(self.load(&Loc {
                     bit: u64::from(tmp) * 8,
                     ty: t,
+                    repr: 0,
                 })?))
             }
             (Some(_), None) => err(format!("{name} returned no value")),
@@ -2816,6 +3007,7 @@ impl Machine {
                 let loc = Loc {
                     bit: u64::from(tmp) * 8,
                     ty: t,
+                    repr: 0,
                 };
                 self.store(&loc, &v).map_err(|e| self.report(e))?;
                 Some(self.read(tmp, n as usize).map_err(|e| self.report(e))?)
@@ -2877,7 +3069,21 @@ impl Machine {
             PliRetC => {
                 self.rc = self.eval(&args[0], act)?.as_i64() as i32;
             }
-            PliDump => {}
+            // PLIDUMP (Programming Guide, Using PLIDUMP): Zeus writes no
+            // dump; with the option S the enclave ends, otherwise (C, the
+            // default) the routine continues. Ending like STOP has not been
+            // compared with the return code of the LE termination.
+            PliDump => {
+                if let Some(o) = args.first() {
+                    let o = match self.eval(o, act)? {
+                        Value::Char(b) => zeus_cobol::ebcdic::decode(&b).to_ascii_uppercase(),
+                        _ => std::string::String::new(),
+                    };
+                    if o.chars().any(|c| c == 'S') {
+                        return Err(Intr::Stop);
+                    }
+                }
+            }
             PliAttn => self.raise(Cond::Attention, 400, act)?,
             // the code page of the CODEPAGE option and ISO 8859-1 (a
             // character without a place in the other set becomes SUB); the
@@ -3058,9 +3264,11 @@ impl Machine {
             info.onkey = self.files[*f as usize].last_key.clone();
         }
         if let Some(x) = PENDING_CONV.with(|p| p.borrow().clone()) {
+            info.subcode = x.0.iter().position(|&c| c == x.1).map_or(0, |i| i as i32 + 1);
             info.onsource = x.0;
             info.onchar = x.1;
         }
+        info.subcode2 = SUBCODE2.with(|s| s.replace(0));
         info.onloc = self.proc_name(act);
         info.online = CUR_LINE.with(|l| l.get());
         let extra = ON_EXTRA.with(|e| e.borrow().clone());
@@ -3076,6 +3284,10 @@ impl Machine {
                 .or_else(|| self.module.procs.first().map(|_| 0))
                 .map(|p| self.module.procs[p as usize].name.clone())
                 .unwrap_or_default();
+        }
+        // DATAFIELD: the field of a data-directed GET that raised NAME
+        if matches!(c, Cond::Name(_)) {
+            info.onsource = extra.datafield.clone();
         }
         if matches!(c, Cond::SubscriptRange) {
             info.onsub = extra.sub;
@@ -3360,6 +3572,7 @@ impl Machine {
             on: Vec::new(),
             stack_mark: mark,
             le_frame: None,
+            varglist: 0,
             index: Vec::new(),
             subject: None,
             cond: None,
@@ -3455,6 +3668,7 @@ impl Machine {
             Ek::Neg(x) => match self.eval(x, act)? {
                 Value::Fixed { m, q, dec } => Value::fixed(-m, q, dec),
                 Value::Float(f) => Value::Float(-f),
+                Value::Dfp(d) => Value::Dfp(d.neg()),
                 Value::Cplx(c) => {
                     let neg = |v: Value| match v {
                         Value::Fixed { m, q, dec } => Value::fixed(-m, q, dec),
@@ -3589,6 +3803,22 @@ impl Machine {
         // WIDECHAR source to arithmetic through CHARACTER, so these are
         // ONCHAR and ONSOURCE as UTF-8 or UTF-16; out of context, a blank
         // or a null string (LRM)
+        // ONGSOURCE: the graphic source of a CONVERSION; Zeus converts
+        // GRAPHIC to arithmetic through CHARACTER, so it is ONSOURCE as
+        // GRAPHIC (out of context, the null string). ONSUBCODE: the index
+        // of the offending character (LRM, CONVERSION condition).
+        if b == OnGSource {
+            let src = match self.on_value(OnSource, act) {
+                Value::Char(c) => c,
+                _ => Vec::new(),
+            };
+            return Value::Char(conv::to_wide(&src, true));
+        }
+        if b == OnSubCode
+            && let Some((source, bad)) = PENDING_CONV.with(|p| p.borrow().clone())
+        {
+            return Value::int(source.iter().position(|&c| c == bad).map_or(0, |i| i as i64 + 1));
+        }
         if matches!(b, OnUchar | OnUsource | OnWchar | OnWsource) {
             let src = match self.on_value(if matches!(b, OnUchar | OnWchar) { OnChar } else { OnSource }, act) {
                 Value::Char(c) => c,
@@ -3637,6 +3867,11 @@ impl Machine {
             ))),
             OnPackage => Value::Char(zeus_cobol::ebcdic::encode(&info.onpackage)),
             OnSubscript => Value::int(info.onsub.0),
+            OnSubCode => Value::int(i64::from(info.subcode)),
+            OnSubCode2 => Value::int(i64::from(info.subcode2)),
+            // ONOFFSET: Zeus has no machine code; it gives the source line
+            // of the statement in the procedure (0 out of context, LRM)
+            OnOffset => Value::int(if info.code == 0 { 0 } else { i64::from(info.online) }),
             OnLbound => Value::int(info.onsub.1),
             OnHbound => Value::int(info.onsub.2),
             OnLine => Value::int(i64::from(info.online)),
@@ -3799,5 +4034,22 @@ impl Machine {
             branches,
             functions,
         });
+    }
+}
+
+/// The 2-byte length prefix of a varying string in its representation.
+fn prefix16(l: &[u8], repr: u8) -> u16 {
+    if repr & crate::ir::REPR_LITTLE != 0 {
+        u16::from_le_bytes([l[0], l[1]])
+    } else {
+        u16::from_be_bytes([l[0], l[1]])
+    }
+}
+
+fn prefix16_bytes(n: u16, repr: u8) -> [u8; 2] {
+    if repr & crate::ir::REPR_LITTLE != 0 {
+        n.to_le_bytes()
+    } else {
+        n.to_be_bytes()
     }
 }

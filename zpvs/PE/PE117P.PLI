@@ -1,0 +1,4 @@
+ /* %INCLUDE under LINEDIR: one rule and its positive control. */
+ PE117P: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ END PE117P;

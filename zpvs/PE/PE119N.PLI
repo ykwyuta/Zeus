@@ -1,0 +1,6 @@
+ /* ISZERO without FLOAT(DFP): one rule and its positive control. */
+ PE119N: PROC OPTIONS(MAIN);
+ DCL A FLOAT DEC(16) INIT(0);
+ DCL Z BIT(1);
+ Z = ISZERO(A);
+ END PE119N;

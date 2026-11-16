@@ -154,5 +154,12 @@ jcl = "HS103A.JCL"
 [programs.HA109A]
 object_formats = ["zeus"]
 
+[programs.HA112A]
+object_formats = ["zeus", "obj"]
+
+[programs.HA113A]
+object_formats = ["zeus"]
+asm_options = "GOFF"
+
 [programs.HD109A]
 ccsid = 939

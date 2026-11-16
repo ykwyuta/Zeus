@@ -1,0 +1,54 @@
+ PF111A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ /* ONSUBCODE2 (Enterprise PL/I 6.1 Language Reference): for an I/O
+    error on a VSAM data set, eight hexadecimal digits xxxxyyyy,
+    register 15 and the reason code of the request. A duplicate key
+    is register 15 = 8 with reason X'08', a record that is not found
+    reason X'10' (DFSMS Macro Instructions for Data Sets, Table 17).
+    A condition that is not an I/O error gives 0. */
+ DCL KF FILE RECORD KEYED DIRECT UPDATE
+   ENV(VSAM F RECSIZE(8) KEYLENGTH(2) KEYLOC(1));
+ DCL REC CHAR(8);
+ DCL (S2, CODE) FIXED BIN(31) INIT(-1);
+ DCL HEX BUILTIN;
+
+ OPEN FILE(REPORT);
+ ON KEY(KF) BEGIN; S2 = ONSUBCODE2(); CODE = ONCODE(); END;
+ OPEN FILE(KF) OUTPUT TITLE('XXXXX001');
+ REC = '01FIRST '; WRITE FILE(KF) FROM(REC) KEYFROM('01');
+ CLOSE FILE(KF);
+ OPEN FILE(KF) UPDATE TITLE('XXXXX001');
+
+ /* SUB2-DUPLICATE */
+ WRITE FILE(KF) FROM(REC) KEYFROM('01');
+ CALL ZCHECK('SUB2-DUPLICATE',
+   HEX(S2) = '00080008');
+
+ /* SUB2-READ-NOTFOUND */
+ S2 = -1; READ FILE(KF) INTO(REC) KEY('02');
+ CALL ZCHECK('SUB2-READ-NOTFOUND',
+   HEX(S2) = '00080010');
+
+ /* SUB2-REWRITE-NOTFOUND */
+ S2 = -1; REWRITE FILE(KF) FROM(REC) KEY('03');
+ CALL ZCHECK('SUB2-REWRITE-NOTFOUND',
+   HEX(S2) = '00080010');
+
+ /* SUB2-DELETE-NOTFOUND */
+ S2 = -1; DELETE FILE(KF) KEY('04');
+ CALL ZCHECK('SUB2-DELETE-NOTFOUND',
+   HEX(S2) = '00080010');
+
+ /* SUB2-SIGNAL */
+ S2 = -1; SIGNAL KEY(KF);
+ CALL ZCHECK('SUB2-SIGNAL',
+   S2 = 0);
+
+ /* SUB2-OUT-OF-CONTEXT */
+ CALL ZCHECK('SUB2-OUT-OF-CONTEXT',
+   ONSUBCODE2() = 0);
+ CLOSE FILE(KF);
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+ END PF111A;

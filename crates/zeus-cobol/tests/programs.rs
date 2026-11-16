@@ -27,6 +27,17 @@ fn run(body: &str, debug: bool) -> String {
 }
 
 fn run_with(body: &str, debug: bool, dds: &[(&str, std::path::PathBuf)]) -> String {
+    run_allocated(body, debug, dds, None)
+}
+
+/// `run_with` with every DD allocated in record format `format` (a SYSOUT
+/// DD is host text).
+fn run_allocated(
+    body: &str,
+    debug: bool,
+    dds: &[(&str, std::path::PathBuf)],
+    format: Option<zeus_ds::format::RecordFormat>,
+) -> String {
     let dir = tempfile::tempdir().unwrap();
     let path = dir.path().join("T.cbl");
     let text: String = body.lines().map(|l| format!("       {l}\n")).collect();
@@ -37,7 +48,16 @@ fn run_with(body: &str, debug: bool, dds: &[(&str, std::path::PathBuf)]) -> Stri
     m.set_stdout(Box::new(out.clone()));
     m.set_debug(debug);
     for (n, p) in dds {
-        m.set_dd(n, p.clone());
+        match format {
+            Some(f) => m.allocate(
+                n,
+                zeus_ds::dd::Allocation {
+                    path: p.clone(),
+                    format: Some(f),
+                },
+            ),
+            None => m.set_dd(n, p.clone()),
+        }
     }
     m.run_main(module).unwrap();
     String::from_utf8(out.0.borrow().clone()).unwrap()
@@ -155,7 +175,13 @@ PROCEDURE DIVISION.
     TERMINATE SALES.
     CLOSE RFILE.
     STOP RUN.";
-    run_with(src, false, &[("RWTEST1", rep.clone())]);
+    // a SYSOUT DD: the printed page as host text
+    run_allocated(
+        src,
+        false,
+        &[("RWTEST1", rep.clone())],
+        Some(zeus_ds::format::RecordFormat::Text),
+    );
     let out = std::fs::read_to_string(&rep).unwrap();
     let lines: Vec<&str> = out.lines().collect();
     assert_eq!(
@@ -345,6 +371,22 @@ PROCEDURE DIVISION.
     CLOSE P.
     STOP RUN.";
     run_with(src, false, &[("PRT", prt.clone())]);
+    // a data set: 11-byte records with ASA control characters (blank,
+    // + and 1)
+    let mut expect = Vec::new();
+    for line in [" AAA", "+___", "1BBB"] {
+        let mut r = zeus_cobol::ebcdic::from_host(line.as_bytes());
+        r.resize(11, 0x40);
+        expect.extend(r);
+    }
+    assert_eq!(std::fs::read(&prt).unwrap(), expect);
+    // a SYSOUT DD: host text
+    run_allocated(
+        src,
+        false,
+        &[("PRT", prt.clone())],
+        Some(zeus_ds::format::RecordFormat::Text),
+    );
     assert_eq!(std::fs::read(&prt).unwrap(), b"AAA\r___\n\x0cBBB\n");
 
     let path = dir.path().join("C.cbl");

@@ -367,6 +367,39 @@
       "ORDER-ONUNIT"
     ]
   },
+  "PC124A": {
+    "expect": "run",
+    "tests": [
+      "DISPLAY",
+      "DISPLAY-ROUTCDE-DESC"
+    ]
+  },
+  "PC125A": {
+    "expect": "run",
+    "tests": [
+      "ASSEMBLER-RETURN-CODE",
+      "ASSEMBLER-ARGUMENTS"
+    ]
+  },
+  "PC126A": {
+    "expect": "run",
+    "tests": [
+      "VARGLIST-BYVALUE",
+      "VARGLIST-BYVALUE-FLOAT",
+      "VARGLIST-NONE",
+      "VARGLIST-BYADDR",
+      "VARGSIZE"
+    ]
+  },
+  "PC127A": {
+    "expect": "run",
+    "tests": [
+      "OUT-OF-CONTEXT",
+      "ONSUBCODE",
+      "ONOFFSET",
+      "ONGSOURCE"
+    ]
+  },
   "PD101A": {
     "expect": "run",
     "tests": [
@@ -657,6 +690,40 @@
       "VALIDVALUE-ORDINAL"
     ]
   },
+  "PD117A": {
+    "expect": "run",
+    "tests": [
+      "LITTLEENDIAN-STORAGE",
+      "LITTLEENDIAN-HEX",
+      "LITTLEENDIAN-SEMANTICS",
+      "LITTLEENDIAN-STRUCTURE",
+      "LITTLEENDIAN-VARYING",
+      "IEEE-STORAGE",
+      "IEEE-SEMANTICS"
+    ]
+  },
+  "PD118A": {
+    "expect": "run",
+    "tests": [
+      "QUALIFY-TYPE",
+      "QUALIFY-NESTED",
+      "QUALIFY-VALUE",
+      "QUALIFY-NAMESPACE"
+    ]
+  },
+  "PD119A": {
+    "expect": "run",
+    "tests": [
+      "DFP-EXACT",
+      "DFP-STORAGE",
+      "DFP-DIVIDE",
+      "ISZERO-ISNORMAL",
+      "ISINF",
+      "ISINF-NEGATIVE",
+      "ISNAN",
+      "ISNORMAL-SUBNORMAL"
+    ]
+  },
   "PE101N": {
     "expect": "compile-error",
     "tests": []
@@ -777,6 +844,38 @@
     "expect": "compile-only",
     "tests": []
   },
+  "PE116N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE116P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE117N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE117P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE118N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE118P": {
+    "expect": "compile-only",
+    "tests": []
+  },
+  "PE119N": {
+    "expect": "compile-error",
+    "tests": []
+  },
+  "PE119P": {
+    "expect": "compile-only",
+    "tests": []
+  },
   "PF101A": {
     "expect": "run",
     "tests": [
@@ -865,6 +964,36 @@
       "FILEDDTEST-PRINT",
       "FILENEW-NOT-OPEN",
       "FILEOPEN-AFTER-CLOSE"
+    ]
+  },
+  "PF109A": {
+    "expect": "run",
+    "tests": [
+      "DATAFIELD-OUT-OF-CONTEXT",
+      "NAME-RAISED",
+      "DATAFIELD",
+      "NAME-NORMAL-RETURN"
+    ]
+  },
+  "PF110A": {
+    "expect": "run",
+    "tests": [
+      "FILEWRITE",
+      "FILEREAD",
+      "FILESEEK-CURRENT",
+      "FILEREAD-SHORT",
+      "FILESEEK-ORIGINS"
+    ]
+  },
+  "PF111A": {
+    "expect": "run",
+    "tests": [
+      "SUB2-DUPLICATE",
+      "SUB2-READ-NOTFOUND",
+      "SUB2-REWRITE-NOTFOUND",
+      "SUB2-DELETE-NOTFOUND",
+      "SUB2-SIGNAL",
+      "SUB2-OUT-OF-CONTEXT"
     ]
   },
   "PM101A": {
@@ -1326,6 +1455,82 @@
       "PLIDELETE-PLICANC"
     ]
   },
+  "PM126A": {
+    "expect": "run",
+    "tests": [
+      "GETJCLSYMBOL",
+      "GETJCLSYMBOL-NOT-EXPORTED",
+      "ISJCLSYMBOL",
+      "ISJCLSYMBOL-NULL"
+    ]
+  },
+  "PM127A": {
+    "expect": "run",
+    "tests": [
+      "GETSYSWORD-NAMES",
+      "GETSYSWORD-JOBNUMBER",
+      "GETSYSWORD-ASID",
+      "GETSYSWORD-CLASSES",
+      "GETSYSINT-MAXACTINFO"
+    ]
+  },
+  "PM128A": {
+    "expect": "run",
+    "tests": [
+      "UUID-FORM",
+      "UUID-UNIQUE",
+      "UHIGH",
+      "ULOW",
+      "UHIGH-ULOW-ORDER"
+    ]
+  },
+  "PM129A": {
+    "expect": "run",
+    "tests": [
+      "PLISRTA",
+      "PLISRTA-KEYS",
+      "PLISRTB",
+      "PLISRTC",
+      "PLISRTD",
+      "PLISRT-FAILED"
+    ]
+  },
+  "PM130A": {
+    "expect": "run",
+    "tests": [
+      "VALUE-CHAR-LENGTH",
+      "PLIPARSE",
+      "PLIPARSE-NOT-FOUND",
+      "PLIPARSE-BLANKS",
+      "PLIPARSE-EMPTY-FIELDS",
+      "PLIPARSE-STAR"
+    ]
+  },
+  "PM131A": {
+    "expect": "run",
+    "tests": [
+      "PLIDUMP-CONTINUE",
+      "PLIDUMP-DEFAULT"
+    ]
+  },
+  "PM132A": {
+    "expect": "run",
+    "tests": [
+      "PLICKPT",
+      "PLICKPT-DEFAULT-DD",
+      "PLICKPT-DDNAME",
+      "PLICKPT-MISSING-DD"
+    ]
+  },
+  "PM133A": {
+    "expect": "run",
+    "tests": [
+      "CHECKSUM-SAME-BUFFER",
+      "CHECKSUM-WORDS",
+      "CHECKSUM-CARRY",
+      "CHECKSUM-PAD"
+    ]
+  },
   "PS101A": {
     "expect": "run",
     "tests": [
@@ -1436,6 +1641,22 @@
       "TYPE-PSEUDO-TYPE",
       "TYPE-PSEUDO-VAR",
       "TYPE-OF-HANDLE"
+    ]
+  },
+  "PS112A": {
+    "expect": "run",
+    "tests": [
+      "STACKADDR",
+      "STACKADDR-CALLED",
+      "STACKADDR-BEGIN",
+      "GTCA"
+    ]
+  },
+  "PS113A": {
+    "expect": "run",
+    "tests": [
+      "RESERVED-INITIAL",
+      "RESERVED-EXTERNAL"
     ]
   }
 }

@@ -1315,6 +1315,125 @@
       }
     }
   },
+  "PC124A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DISPLAY statement | The DISPLAY statement displays a message on the user's screen and optionally requests the user to enter"
+    ],
+    "tests": {
+      "DISPLAY": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DISPLAY statement | Is converted, where necessary, to a character string. This character string is displayed. It can contain",
+          "PLI-LRM: DISPLAY statement | The REPLY option suspends program execution until the user enters a response."
+        ]
+      },
+      "DISPLAY-ROUTCDE-DESC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DISPLAY statement | Specifies one or more values to be used as the ROUTCDE in the WTO. The values must be unsigned",
+          "PLI-LRM: DISPLAY statement | Specifies one or more values to be used as the DESC in the WTO. The values must be unsigned integer"
+        ]
+      }
+    }
+  },
+  "PC125A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ASSEMBLER | The ASSEMBLER option has the same effect as NODESCRIPTOR."
+    ],
+    "tests": {
+      "ASSEMBLER-RETURN-CODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSEMBLER | If a procedure has the ASSEMBLER option, then upon exit from that procedure, the PLIRETV() value"
+        ]
+      },
+      "ASSEMBLER-ARGUMENTS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ASSEMBLER | The ASSEMBLER option has the same effect as NODESCRIPTOR.",
+          "PLI-LRM: BYADDR or BYVALUE | These specify how arguments and parameters are passed and received. BYADDR is the default."
+        ]
+      }
+    }
+  },
+  "PC126A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: LIST attribute | When the LIST attribute is specified in the declaration of the last parameter in a procedure, it indicates"
+    ],
+    "tests": {
+      "VARGLIST-BYVALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | If the additional parameters to this procedure were passed by value (BYVALUE), successively",
+          "PLI-LRM: VARGLIST | VARGLIST returns the address of the first optional parameter passed to a procedure with a variable"
+        ]
+      },
+      "VARGLIST-BYVALUE-FLOAT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | If the additional parameters to this procedure were passed by value (BYVALUE), successively",
+          "PLI-LRM: VARGLIST | VARGLIST returns the address of the first optional parameter passed to a procedure with a variable"
+        ]
+      },
+      "VARGLIST-NONE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | that zero or more additional arguments might have been passed to that procedure."
+        ]
+      },
+      "VARGLIST-BYADDR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: LIST attribute | If the additional parameters to this procedure were passed by reference (BYADDR), successively"
+        ]
+      },
+      "VARGSIZE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VARGSIZE | VARGSIZE(x) returns the number of bytes that x would occupy on the stack if it were passed BYVALUE.",
+          "PLI-LRM: VARGSIZE | This value will be at least as large as SIZE(x); it will be larger if the value returned by SIZE(x) needs to be"
+        ]
+      }
+    }
+  },
+  "PC127A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CONVERSION condition | When the CONVERSION condition is raised, the ONSUBCODE built-in function will return the index of"
+    ],
+    "tests": {
+      "OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONOFFSET | If ONOFFSET is used out of context, a value of zero is returned.",
+          "PLI-LRM: ONGSOURCE | If the ONGSOURCE built-in function is used out of context, a null GRAPHIC string is returned."
+        ]
+      },
+      "ONSUBCODE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONVERSION condition | When the CONVERSION condition is raised, the ONSUBCODE built-in function will return the index of",
+          "PLI-LRM: ONSUBCODE | ONSUBCODE returns a FIXED BINARY(31,0) value that gives more information about an I/O, JSON, or"
+        ]
+      },
+      "ONOFFSET": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ONOFFSET | ONOFFSET returns a FIXED BIN(31) value which is the offset from the start of the user procedure (or"
+        ]
+      },
+      "ONGSOURCE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CONVERSION condition | the ONCHAR and ONSOURCE built-in functions do not contain valid source data. The ONGSOURCE",
+          "PLI-LRM: ONGSOURCE | It is in context in an ON-unit (or any of its dynamic descendants) for the CONVERSION condition or for the"
+        ]
+      }
+    }
+  },
   "PD101A": {
     "basis": "spec",
     "refs": [
@@ -2011,6 +2130,152 @@
       }
     }
   },
+  "PD117A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | The BIGENDIAN and LITTLEENDIAN attributes specify whether the associated variable is stored with the"
+    ],
+    "tests": {
+      "LITTLEENDIAN-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | display( heximage( addr(Y), stg(Y) ) );          /* displays 0201 */"
+        ]
+      },
+      "LITTLEENDIAN-HEX": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | display (hex(Y));                                  /* displays 0102     */"
+        ]
+      },
+      "LITTLEENDIAN-SEMANTICS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | BIGENDIAN and LITTLEENDIAN have no effect on the semantics of any operations, or on the storage",
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | The NATIVE and NONNATIVE attributes are synonyms for BIGENDIAN and LITTLEENDIAN, but their"
+        ]
+      },
+      "LITTLEENDIAN-STRUCTURE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | The BIGENDIAN and LITTLEENDIAN attributes are propagated to members of structures or unions."
+        ]
+      },
+      "LITTLEENDIAN-VARYING": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: BIGENDIAN and LITTLEENDIAN attributes | Indicates that the variable (for varying strings, the length prefix part of the variable) is stored with its"
+        ]
+      },
+      "IEEE-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | Indicates that the variable is stored using the IEEE format.",
+          "PLI-LRM: HEXADEC and IEEE attributes | Indicates that the variable is stored in hexadecimal (z/OS) format."
+        ]
+      },
+      "IEEE-SEMANTICS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | The HEXADEC and IEEE attributes specify whether the associated variable is stored using the IBM"
+        ]
+      }
+    }
+  },
+  "PD118A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: QUALIFY statement | The QUALIFY statement and a corresponding END statement delimit a qualify block."
+    ],
+    "tests": {
+      "QUALIFY-TYPE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | means you can declare a variable as having type PAINT.COLOR and that you can refer to the constants"
+        ]
+      },
+      "QUALIFY-NESTED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | Qualify blocks can also be nested. For example, you can nest a qualify block inside the block above:"
+        ]
+      },
+      "QUALIFY-VALUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | DECLARE statements in it must specify scalars with the VALUE attribute."
+        ]
+      },
+      "QUALIFY-NAMESPACE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: QUALIFY statement | The names inside a qualify block must be unique to that block, but not to their containing blocks. This"
+        ]
+      }
+    }
+  },
+  "PD119A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point"
+    ],
+    "tests": {
+      "DFP-EXACT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point"
+        ]
+      },
+      "DFP-DIVIDE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point"
+        ]
+      },
+      "ISZERO-ISNORMAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISZERO | ISZERO returns a '1'B if if the argument with which it is invoked is a zero. Otherwise it returns a '0'B.",
+          "PLI-LRM: ISNORMAL | ISNORMAL returns a '1'B if if the argument with which it is invoked is not a zero, subnormal, infinity or",
+          "PLI-LRM: ISFINITE | ISFINITE returns a '1'B if if the argument with which it is invoked is not a NAN and not positive or negative"
+        ]
+      },
+      "ISINF": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISINF | ISINF returns a '1'B if if the argument with which it is invoked is an infinity. Otherwise it returns a '0'B.",
+          "PLI-LRM: ISNAN | No floating-point exceptions will be raised no matter what the format of the argument."
+        ]
+      },
+      "ISINF-NEGATIVE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISINF | ISINF returns a '1'B if if the argument with which it is invoked is an infinity. Otherwise it returns a '0'B."
+        ]
+      },
+      "ISNAN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISNAN | ISNAN returns a '1'B if if the argument with which it is invoked is a NAN. Otherwise it returns a '0'B.",
+          "PLI-LRM: ISNAN | No floating-point exceptions will be raised no matter what the format of the argument."
+        ]
+      },
+      "ISNORMAL-SUBNORMAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISNORMAL | ISNORMAL returns a '1'B if if the argument with which it is invoked is not a zero, subnormal, infinity or",
+          "PLI-LRM: ISNAN | No floating-point exceptions will be raised no matter what the format of the argument."
+        ]
+      },
+      "DFP-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: HEXADEC and IEEE attributes | All computations that would yield a FLOAT DEC result are done using the IEEE decimal floating-point",
+          "PLI-LRM: HEXADEC and IEEE attributes | Indicates that the variable is stored using the IEEE format."
+        ]
+      }
+    }
+  },
   "PE101N": {
     "basis": "spec",
     "refs": [
@@ -2192,6 +2457,57 @@
     "basis": "spec",
     "refs": [
       "PLI-LRM: Offset data and attribute"
+    ]
+  },
+  "PE116N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %LINE directive | The %LINE directive is invalid unless the LINEDIR compiler option is in effect."
+    ]
+  },
+  "PE116P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %LINE directive | The %LINE directive specifies that the next line should be treated in messages and in information",
+      "PLI-PG: LINEDIR | The LINEDIR option specifies that the compiler should accept %LINE directives."
+    ]
+  },
+  "PE117N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: LINEDIR | If the LINEDIR option is specified, the compiler will reject all %INCLUDE statements. If the LINEDIR"
+    ]
+  },
+  "PE117P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: LINEDIR | If the LINEDIR option is specified, the compiler will reject all %INCLUDE statements. If the LINEDIR"
+    ]
+  },
+  "PE118N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: Specifying options in the %PROCESS or *PROCESS statements | The included dataset must contain only %PROCESS and %PROCINC statements (plus any number of"
+    ]
+  },
+  "PE118P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: %PROCINC directive | specifies a file that contains %PROCESS, *PROCESS, %PROCINC, and *PROCINC directives.",
+      "PLI-PG: LINEDIR | The LINEDIR option specifies that the compiler should accept %LINE directives.",
+      "PLI-PG: Specifying options in the %PROCESS or *PROCESS statements | You can use the PROCINC statement to include a file containing additional PROCESS statements."
+    ]
+  },
+  "PE119N": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ISZERO | The FLOAT(DFP) compiler option must be in effect."
+    ]
+  },
+  "PE119P": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ISZERO | The FLOAT(DFP) compiler option must be in effect."
     ]
   },
   "PF101A": {
@@ -2453,6 +2769,130 @@
         "refs": [
           "PLI-LRM: FILENEW | If x has been specified, the attributes in the declaration of that file are used."
         ]
+      }
+    }
+  },
+  "PF109A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: DATAFIELD | DATAFIELD is in context in a NAME condition ON-unit (or any of its dynamic descendants). It returns a"
+    ],
+    "tests": {
+      "DATAFIELD-OUT-OF-CONTEXT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: DATAFIELD | If DATAFIELD is used out of context, a null string is returned."
+        ]
+      },
+      "NAME-RAISED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NAME condition | No counterpart is found in the data list.",
+          "PLI-LRM: NAME condition | The NAME input/output condition can be raised only during execution of a data-directed GET"
+        ]
+      },
+      "DATAFIELD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NAME condition | You can retrieve the incorrect data field by using the built-in function DATAFIELD in the ON-unit.",
+          "PLI-LRM: DATAFIELD | character string whose value is the contents of the field that raised the condition. It is also in context in"
+        ]
+      },
+      "NAME-NORMAL-RETURN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: NAME condition | The execution of the GET statement continues with the next name in the stream."
+        ]
+      }
+    }
+  },
+  "PF110A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: FILEREAD | FILEREAD can read only zFS TYPE(U) files."
+    ],
+    "tests": {
+      "FILEWRITE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEWRITE | FILEWRITE attempts to write z storage units (bytes) to file x from location y It returns the number of",
+          "PLI-LRM: FILETELL | FILETELL returns a size_t 1 value that indicates the current position of the file x. The return value is an"
+        ]
+      },
+      "FILEREAD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEREAD | FILEREAD attempts to read z storage units (bytes) from file x into location y. It returns the number of"
+        ]
+      },
+      "FILESEEK-CURRENT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILESEEK | FILESEEK changes the current file position associated with file x to a new location within the file. The next",
+          "PLI-LRM: FILESEEK | FILESEEK returns a FIXED BIN(31) value. The value is 0 if the change in file position is successful; it is"
+        ]
+      },
+      "FILEREAD-SHORT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILEREAD | storage units actually read."
+        ]
+      },
+      "FILESEEK-ORIGINS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: FILESEEK | Beginning of the file",
+          "PLI-LRM: FILESEEK | End of the file"
+        ]
+      }
+    }
+  },
+  "PF111A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 returns a FIXED BIN(31) value that gives more information about an I/O error that has occurred.",
+      "PLI-LRM: ONSUBCODE2 | A SUBCODE2 value consists of eight hexadecimal digits xxxxyyyy, where xxxx is Register 15 and yyyy is the reason code. The return and reason codes are documented in VSAM Macro Instructions."
+    ],
+    "tests": {
+      "SUB2-DUPLICATE": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | 8(X'8') You attempted to store a record with a duplicate key",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-READ-NOTFOUND": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | Record not found, or the RBA is not found in the buffer pool.",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-REWRITE-NOTFOUND": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | Record not found, or the RBA is not found in the buffer pool.",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-DELETE-NOTFOUND": {
+        "basis": "spec",
+        "refs": [
+          "DFSMS-MAC: Return codes (RPLRTNCD) | 8(X'8') Logical error; specific error is indicated in the RPL feedback area.",
+          "DFSMS-MAC: Table 17. Logical Error Reason Codes in the Feedback Area of the Request Parameter List | Record not found, or the RBA is not found in the buffer pool.",
+          "PLI-LRM: ONSUBCODE2 | ONSUBCODE2 corresponds to the SUBCODE2 values documented for messages IBM0236I and IBM0265I."
+        ]
+      },
+      "SUB2-SIGNAL": {
+        "basis": "zos",
+        "note": "SIGNAL は I/O の要求を出さないので 0 と見たが、LRM は書いていない。実機で確かめる"
+      },
+      "SUB2-OUT-OF-CONTEXT": {
+        "basis": "zos",
+        "note": "ON 単位の外の値を LRM は書いていない (ONSUBCODE と同じく 0 と見た)。実機で確かめる"
       }
     }
   },
@@ -4657,6 +5097,304 @@
       }
     }
   },
+  "PM126A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: GETJCLSYMBOL | GETJCLSYMBOL returns a CHARACTER string value that represents the requested exported JCL symbol."
+    ],
+    "tests": {
+      "GETJCLSYMBOL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETJCLSYMBOL | With the JCL statements shown below, specifying GETJCLSYMBOL('S1') will return STEWART."
+        ]
+      },
+      "GETJCLSYMBOL-NOT-EXPORTED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETJCLSYMBOL | If there is no JCL symbol with the same value as x, a null string is returned."
+        ]
+      },
+      "ISJCLSYMBOL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISJCLSYMBOL | ISJCLSYMBOL returns '1'B if the argument is a valid exported JCL symbol. Otherwise it returns '0'B."
+        ]
+      },
+      "ISJCLSYMBOL-NULL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ISJCLSYMBOL | whether it is because the symbol is not an exported JCL symbol or because the symbol has been set to a"
+        ]
+      }
+    }
+  },
+  "PM127A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: GETSYSWORD | GETSYSWORD returns a CHARACTER string that is the value of the requested system information."
+    ],
+    "tests": {
+      "GETSYSWORD-NAMES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The JOBNAME keyword returns the JOB or TASK name that calls the built-in function."
+        ]
+      },
+      "GETSYSWORD-JOBNUMBER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The JOBNUMBER keyword returns the JES JOBID that is assigned to the batch job for the program that"
+        ]
+      },
+      "GETSYSWORD-ASID": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The ASID keyword returns the Address Space Identifier value in hexadecimal of the program that calls the"
+        ]
+      },
+      "GETSYSWORD-CLASSES": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSWORD | The JOBCLASS keyword returns the Job Class that is assigned to the batch job for the program that calls"
+        ]
+      },
+      "GETSYSINT-MAXACTINFO": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GETSYSINT | The MAXACTINFO keyword returns the number of job accounting fields in the JOB accounting information",
+          "PLI-LRM: GETSYSWORD | The ACTINFO keyword returns a comma-delimited string that is the JOB accounting information specified",
+          "PLI-LRM: GETSYSWORD | be included in the accounting information string. For example, given the jobcard:"
+        ]
+      }
+    }
+  },
+  "PM128A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: UUID | UUID returns a CHARACTER(36) string that is a universally unique identifier that is in version 5 format."
+    ],
+    "tests": {
+      "UUID-FORM": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UUID | UUID returns a CHARACTER(36) string that is a universally unique identifier that is in version 5 format."
+        ]
+      },
+      "UUID-UNIQUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UUID | UUID returns a CHARACTER(36) string that is a universally unique identifier that is in version 5 format."
+        ]
+      },
+      "UHIGH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UHIGH | UHIGH returns a UCHAR string of length x with each UTF-8 data item having the highest UCHAR value",
+          "PLI-LRM: UHIGH | The value returned by BYTELENGTH(UHIGH(x)) is equal to 4*x."
+        ]
+      },
+      "ULOW": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: ULOW | ULOW returns a UCHAR string of length x with each UTF-8 data item having the lowest UCHAR value",
+          "PLI-LRM: ULOW | The value returned by BYTELENGTH(ULOW(x)) is equal to x."
+        ]
+      },
+      "UHIGH-ULOW-ORDER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: UHIGH | ('F48FBFBF'ux).",
+          "PLI-LRM: ULOW | ('00'ux)."
+        ]
+      }
+    }
+  },
+  "PM129A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLISRTA | PLISRTA sorts an input file to produce a sorted output file."
+    ],
+    "tests": {
+      "PLISRTA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISRTA | PLISRTA sorts an input file to produce a sorted output file.",
+          "PLI-PG: Specifying the sorting field | Defines a sorting field. You can specify any number of sorting fields, but there is a limit on the total"
+        ]
+      },
+      "PLISRTA-KEYS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Specifying the sorting field | length of the fields. If more than one field is to be sorted on, the records are sorted first according to"
+        ]
+      },
+      "PLISRTB": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLISRTB | PLISRTB sorts input records provided by an E15 PL/I exit procedure to produce a sorted output file.",
+          "PLI-PG: E15—Input handling routine (Sort Exit E15) | return code 12. This return code means that the record passed is to be included in the sort. Sort continues",
+          "PLI-PG: Calling PLISRTA example | information to the Sort program, the return code field is reset to zero; therefore, it is not used as a"
+        ]
+      },
+      "PLISRTC": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Calling PLISRTA example | information to the Sort program, the return code field is reset to zero; therefore, it is not used as a",
+          "PLI-LRM: PLISRTC | PLISRTC sorts an input file to produce sorted records that are processed by an E35 PL/I exit procedure.",
+          "PLI-PG: E35—Output handling routine (Sort Exit E35) | subroutine must also pass return code 4 to Sort to indicate that it is ready for another record. You set the"
+        ]
+      },
+      "PLISRTD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: E15—Input handling routine (Sort Exit E15) | to call the routine until return code 8 is passed. Return code 8 means that all records have already been",
+          "PLI-LRM: PLISRTD | PLISRTD sorts input records provided by an E15 PL/I exit procedure to produce sorted records that are"
+        ]
+      },
+      "PLISRT-FAILED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: E15—Input handling routine (Sort Exit E15) | use of return code 16 (Sort failed). This return code ends the sort and causes Sort to return to your PL/I"
+        ]
+      }
+    }
+  },
+  "PM130A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLIPARSE | PLIPARSE parses a character string into substrings."
+    ],
+    "tests": {
+      "VALUE-CHAR-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: VALUELIST attribute | Dcl Title2 char     value('SCIDS');/* is CHAR(5)                     */"
+        ]
+      },
+      "PLIPARSE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | call pliparse( input, x1, s1, x2, s2, x3, s3, x4           );",
+          "PLI-LRM: PLIPARSE | x2 = '0123';"
+        ]
+      },
+      "PLIPARSE-NOT-FOUND": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | The first target argument after the first separator that is not found is assigned the remaining input and any",
+          "PLI-LRM: PLIPARSE | x2 = '0123-45678-9';"
+        ]
+      },
+      "PLIPARSE-BLANKS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | input = collapse( ' Alex Bruno', ' ' );"
+        ]
+      },
+      "PLIPARSE-EMPTY-FIELDS": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | an even number of pairs with each pair consisting of a target reference (or an *) and a separator"
+        ]
+      },
+      "PLIPARSE-STAR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: PLIPARSE | an optional, last target argument that must be a reference (or * )",
+          "PLI-LRM: PLIPARSE | Any target argument that is not an * must have CHARACTER type and must be ASSIGNABLE."
+        ]
+      }
+    }
+  },
+  "PM131A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: PLIDUMP | PLIDUMP allows you to obtain a formatted dump of selected parts of storage that is used by your"
+    ],
+    "tests": {
+      "PLIDUMP-CONTINUE": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Chapter 22. Using PLIDUMP | Continue. The routine continues after the dump."
+        ]
+      },
+      "PLIDUMP-DEFAULT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Chapter 22. Using PLIDUMP | T, F, and C are the default options."
+        ]
+      }
+    }
+  },
+  "PM132A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-PG: Requesting a checkpoint record | Each time you want a checkpoint record to be written, you must invoke, from your PL/I program, the"
+    ],
+    "tests": {
+      "PLICKPT": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Requesting a checkpoint record | A checkpoint has been successfully taken."
+        ]
+      },
+      "PLICKPT-DEFAULT-DD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Requesting a checkpoint record | data set that is to be used for checkpoint records. If you omit this argument, the system will use the default",
+          "PLI-PG: Requesting a checkpoint record | argument as a null string ('')."
+        ]
+      },
+      "PLICKPT-DDNAME": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Defining the checkpoint data set | This data set can have either CONSECUTIVE or partitioned organization. You can use any valid ddname. If"
+        ]
+      },
+      "PLICKPT-MISSING-DD": {
+        "basis": "spec",
+        "refs": [
+          "PLI-PG: Requesting a checkpoint record | A checkpoint has not been taken. Check for a missing DD statement, a hardware error, or"
+        ]
+      }
+    }
+  },
+  "PM133A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: CHECKSUM | CHECKSUM returns an UNSIGNED FIXED BIN(32) value that is the checksum value for a specified buffer."
+    ],
+    "tests": {
+      "CHECKSUM-SAME-BUFFER": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: CHECKSUM | CHECKSUM returns an UNSIGNED FIXED BIN(32) value that is the checksum value for a specified buffer."
+        ]
+      },
+      "CHECKSUM-WORDS": {
+        "basis": "zos",
+        "note": "The Language Reference gives no method for CHECKSUM. The expected value assumes the CHECKSUM instruction CKSM started from zero (Principles of Operation): 4-byte words added as unsigned with the carry added back, the last word padded with zeros.",
+        "refs": [
+          "POP: CHECKSUM | Successive four-byte elements of the second oper-"
+        ]
+      },
+      "CHECKSUM-CARRY": {
+        "basis": "zos",
+        "note": "The Language Reference gives no method for CHECKSUM. The expected value assumes the CHECKSUM instruction CKSM started from zero (Principles of Operation): 4-byte words added as unsigned with the carry added back, the last word padded with zeros.",
+        "refs": [
+          "POP: CHECKSUM | carry out of bit position 32 of the first operand is"
+        ]
+      },
+      "CHECKSUM-PAD": {
+        "basis": "zos",
+        "note": "The Language Reference gives no method for CHECKSUM. The expected value assumes the CHECKSUM instruction CKSM started from zero (Principles of Operation): 4-byte words added as unsigned with the carry added back, the last word padded with zeros.",
+        "refs": [
+          "POP: CHECKSUM | the second operand is not a multiple of four bytes, its"
+        ]
+      }
+    }
+  },
   "PS101A": {
     "basis": "spec",
     "refs": [
@@ -4984,6 +5722,60 @@
         "refs": [
           "PLI-LRM: TYPE pseudovariable | type(P1) = D2;           /* Assigns D2 to the storage located by P1 */",
           "PLI-LRM: TYPE pseudovariable | The TYPE pseudovariable assigns a typed structure or union to the storage located by the handle x."
+        ]
+      }
+    }
+  },
+  "PS112A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+    ],
+    "tests": {
+      "STACKADDR": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+        ]
+      },
+      "STACKADDR-CALLED": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+        ]
+      },
+      "STACKADDR-BEGIN": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: STACKADDR | STACKADDR returns the address of the dynamic save area (DSA) for the procedure (or BEGIN block) in"
+        ]
+      },
+      "GTCA": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: GTCA | GTCA returns a pointer to the LE control block."
+        ]
+      }
+    }
+  },
+  "PS113A": {
+    "basis": "spec",
+    "refs": [
+      "PLI-LRM: RESERVED attribute | The RESERVED attribute implies STATIC EXTERNAL."
+    ],
+    "tests": {
+      "RESERVED-INITIAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RESERVED attribute | If a variable has the RESERVED attribute, any INITIAL values are ignored except in the package reserving",
+          "PLI-LRM: RESERVED attribute | The variable name must appear in the RESERVES option of exactly one package."
+        ]
+      },
+      "RESERVED-EXTERNAL": {
+        "basis": "spec",
+        "refs": [
+          "PLI-LRM: RESERVED attribute | The RESERVED attribute implies STATIC EXTERNAL.",
+          "PLI-LRM: RESERVED attribute | All declarations of the variable must specify RESERVED."
         ]
       }
     }

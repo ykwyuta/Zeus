@@ -324,6 +324,24 @@ impl Compiler {
             ));
         }
         let bad = || self.err(pos, format!("invalid number {text}"));
+        // FLOAT(DFP): a decimal floating-point constant keeps its decimal
+        // value (it is converted to DFP exactly)
+        if self.m.dfp && !binary && let Some(e) = text.find('E') {
+            let mant = &text[..e];
+            let exp: i32 = text[e + 1..].parse().map_err(|_| bad())?;
+            let (i, f) = mant.split_once('.').unwrap_or((mant, ""));
+            let digits = format!("{i}{f}");
+            let m: i128 = digits.parse().map_err(|_| bad())?;
+            let q = i16::try_from(f.len() as i32 - exp).map_err(|_| bad())?;
+            let p = digits.trim_start_matches('0').len().max(digits.len().min(1));
+            return Ok(mk(
+                Ek::Fixed(m, q),
+                Ty::Float {
+                    dec: true,
+                    p: p.clamp(1, 34) as u8,
+                },
+            ));
+        }
         if let Some(e) = text.find('E') {
             let mant = &text[..e];
             let digits = mant.chars().filter(|c| c.is_ascii_digit()).count();
@@ -820,6 +838,14 @@ impl Compiler {
     /// file, function invocation or built-in.
     pub fn ref_expr(&mut self, r: &ast::Ref) -> Result<Expr> {
         let names: Vec<String> = r.parts.iter().map(|p| p.0.clone()).collect();
+        // q.name: a named constant of a qualify block
+        if names.len() > 1
+            && r.locator.is_none()
+            && r.parts.iter().all(|p| p.1.is_empty())
+            && let Some(Sym::Const(x)) = self.sym(&names.join("."))
+        {
+            return Ok(x);
+        }
         if names.len() == 1 && r.locator.is_none() {
             let name = &names[0];
             let args: &Vec<Vec<ast::Expr>> = &r.parts[0].1;
@@ -1240,7 +1266,15 @@ impl Compiler {
                     vec![self.conv(x, &Ty::fixed_bin(31, 0))],
                 ))
             }
-            PliDump => Ok(Stmt::CallBuiltin(b, Vec::new())),
+            // PLIDUMP(options, title): the options are kept for S (stop)
+            PliDump => {
+                let mut v = Vec::new();
+                for a in args {
+                    let x = self.expr(a)?;
+                    v.push(self.to_char(x));
+                }
+                Ok(Stmt::CallBuiltin(b, v))
+            }
             // storage of NEW is not reused
             PliFree => {
                 for a in args {
@@ -1281,6 +1315,95 @@ impl Compiler {
                 let z = self.to_arith(z);
                 v.push(self.conv(z, &Ty::fixed_bin(31, 0)));
                 Ok(Stmt::CallBuiltin(b, v))
+            }
+            // CALL PLISRTx(sort, record, storage, retcode [,input]
+            // [,output] [,prefix, message level, technique])
+            PliSrtA | PliSrtB | PliSrtC | PliSrtD => {
+                let exits = match b {
+                    PliSrtA => 0,
+                    PliSrtD => 2,
+                    _ => 1,
+                };
+                if args.len() < 4 + exits || args.len() > 7 + exits {
+                    return Err(self.err(pos, format!("{b:?}: wrong number of arguments")));
+                }
+                let sort = self.expr(&args[0])?;
+                let sort = self.to_char(sort);
+                let record = self.expr(&args[1])?;
+                let record = self.to_char(record);
+                self.expr(&args[2])?;
+                let (rc, _) = self.target(&args[3])?;
+                let routine = |c: &mut Compiler, k: usize| c.entry_expr(&args[4 + k]);
+                let (input, output) = match b {
+                    PliSrtA => (None, None),
+                    PliSrtB => (Some(routine(self, 0)?), None),
+                    PliSrtC => (None, Some(routine(self, 0)?)),
+                    _ => (Some(routine(self, 0)?), Some(routine(self, 1)?)),
+                };
+                // data set prefix, message level and technique: no effect
+                for a in &args[4 + exits..] {
+                    self.expr(a)?;
+                }
+                Ok(Stmt::Sort {
+                    sort,
+                    record,
+                    rc,
+                    input,
+                    output,
+                })
+            }
+            // CALL PLICKPT [(ddname [,check-id [,org [,code]]])] (PG)
+            PliCkpt => {
+                if args.len() > 4 {
+                    return Err(self.err(pos, "PLICKPT takes at most four arguments"));
+                }
+                let mut v = Vec::new();
+                for a in args.iter().take(3) {
+                    let x = self.expr(a)?;
+                    v.push(self.to_char(x));
+                }
+                let code = match args.get(3) {
+                    Some(a) => Some(self.target(a)?.0),
+                    None => None,
+                };
+                Ok(Stmt::Checkpoint { args: v, code })
+            }
+            // PLIPARSE(input, x1, s1, ... [,xn+1]) (LRM): 3 to 64 arguments;
+            // the targets are CHARACTER references or *
+            PliParse => {
+                if args.len() < 3 || args.len() > 64 {
+                    return Err(self.err(pos, "PLIPARSE needs 3 to 64 arguments"));
+                }
+                let input = self.expr(&args[0])?;
+                let input = self.to_char(input);
+                let target = |c: &mut Compiler, a: &ast::Expr| -> Result<Option<Target>> {
+                    if matches!(a, ast::Expr::Star(_)) {
+                        return Ok(None);
+                    }
+                    let (t, ty) = c.target(a)?;
+                    if !ty.as_ref().is_some_and(Ty::is_char) {
+                        return Err(c.err(pos, "PLIPARSE: a target must be CHARACTER"));
+                    }
+                    Ok(Some(t))
+                };
+                let rest = &args[1..];
+                let mut pairs = Vec::new();
+                for p in rest.chunks(2) {
+                    if let [t, s] = p {
+                        let t = target(self, t)?;
+                        let s = self.expr(s)?;
+                        if !s.ty.is_char() {
+                            return Err(self.err(pos, "PLIPARSE: a separator must be CHARACTER"));
+                        }
+                        pairs.push((t, s));
+                    }
+                }
+                let last = if rest.len() % 2 == 1 {
+                    Some(target(self, &rest[rest.len() - 1])?)
+                } else {
+                    None
+                };
+                Ok(Stmt::Parse { input, pairs, last })
             }
             // PLIATTN raises ATTENTION (LRM)
             PliAttn => Ok(Stmt::CallBuiltin(b, Vec::new())),
@@ -1772,6 +1895,45 @@ impl Compiler {
                     ty: Ty::Pic(Box::new(p)),
                 });
             }
+            // ISFINITE, ISINF, ISNAN, ISNORMAL, ISZERO(x): x a REAL FLOAT
+            // DECIMAL expression, under FLOAT(DFP) (LRM)
+            IsFinite | IsInf | IsNan | IsNormal | IsZero => {
+                if !self.m.dfp {
+                    return Err(self.err(pos, format!("{b:?} needs the FLOAT(DFP) option")));
+                }
+                let [x] = args else {
+                    return Err(self.err(pos, format!("{b:?} needs one argument")));
+                };
+                let x = self.expr(x)?;
+                let x = self.to_arith(x);
+                if !matches!(x.ty, Ty::Float { dec: true, .. }) {
+                    return Err(self.err(pos, format!("{b:?} needs a REAL FLOAT DECIMAL argument")));
+                }
+                return Ok(mk(Ek::Builtin(b, vec![x]), Ty::bit(1)));
+            }
+            // VARGSIZE(x): the bytes x takes when passed BYVALUE, SIZE(x)
+            // rounded up to a multiple of 4 (LRM)
+            VargSize => {
+                let [x] = args else {
+                    return Err(self.err(pos, "VARGSIZE needs one argument"));
+                };
+                let size = match x {
+                    ast::Expr::Ref(r)
+                        if self.resolve_var(&self.ref_names(r)).is_some() =>
+                    {
+                        let rr = self.reference(r, true)?;
+                        match &self.m.vars[rr.var as usize].ty {
+                            Some(t) => t.storage(true).0,
+                            None => self.m.vars[rr.var as usize].size,
+                        }
+                    }
+                    _ => self.expr(x)?.ty.storage(true).0,
+                };
+                return Ok(mk(
+                    Ek::Fixed(i128::from(size.div_ceil(4) * 4), 0),
+                    Ty::fixed_bin(31, 0),
+                ));
+            }
             // REGEX(i, j, p, x [,n [,c]]): i and j are set through their
             // addresses (scalars, or one-dimensional arrays for the
             // subexpressions)
@@ -1955,7 +2117,7 @@ impl Compiler {
             OnCode | OnChar | OnSource | OnKey | OnFile | OnLoc | OnCount | DataField | OnText
             | OnActual | OnExpected | OnOperator | OnPackage | OnSubscript | OnLbound
             | OnHbound | OnLine | OnArea | OnCondCond | OnCondId | OnUchar | OnUsource
-            | OnWchar | OnWsource => {
+            | OnWchar | OnWsource | OnSubCode | OnSubCode2 | OnGSource | OnOffset => {
                 let ty = crate::builtin::result_type(b, &[], &[]).map_err(|e| self.err(pos, e))?;
                 return Ok(mk(Ek::OnValue(b), ty));
             }
@@ -2169,7 +2331,7 @@ impl Compiler {
                 vec![x, c]
             }
             Utf8ToWchar | MemUvalid8 | MemUvalid16 | MemCu12 | MemCu14 | MemCu21 | MemCu24
-            | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | FileOpen | FileId
+            | MemCu41 | MemCu42 | MemConvert | NullEntry | EntryAddr | Checksum | FileOpen | FileRead | FileWrite | FileSeek | FileTell | FileId
             | FileNew | FileDdTest | FileDdInt | FileDdWord | Repattern | Utf8Stg | ThreadId => xs,
             SubTo | Upos | Usubstr | Uwidth => {
                 let mut it = xs.into_iter();
@@ -2224,6 +2386,10 @@ impl Compiler {
             | Base64Encode16
             | Base64Decode16
             | GetEnv
+            | GetJclSymbol
+            | GetSysWord
+            | GetSysInt
+            | IsJclSymbol
             | PutEnv
             | Microsecs
             | Secs

@@ -34,6 +34,9 @@ pub struct ProgramConfig {
     /// program in. Under another format the run records that Zeus cannot
     /// write it, instead of failing (z/OS assembles it as usual).
     pub object_formats: Option<Vec<String>>,
+    /// HLASM on z/OS: options added to the assembler PARM (e.g. "GOFF" for
+    /// programs that use classes, PSECTs or J and R constants).
+    pub asm_options: Option<String>,
 }
 
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
@@ -152,6 +155,9 @@ impl Manifest {
                         }
                         "diagnostic_contains" => {
                             cfg.diagnostic_contains = Some(parse_str(val, lineno + 1)?);
+                        }
+                        "asm_options" => {
+                            cfg.asm_options = Some(parse_str(val, lineno + 1)?);
                         }
                         _ => bail!("line {}: unknown [programs.{prog}] key '{key}'", lineno + 1),
                     }

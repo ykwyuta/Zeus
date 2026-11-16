@@ -31,6 +31,8 @@ pub struct Parser {
     anon: u32,
     /// Attribute lists end at VALUE (in a DEFAULT statement).
     stop_at_value: bool,
+    /// The RESERVES option of the PACKAGE statement.
+    reserves: Vec<String>,
 }
 
 const COMPOUND: &[&str] = &["+=", "-=", "*=", "/=", "|=", "&=", "||=", "**="];
@@ -42,6 +44,7 @@ impl Parser {
             i: 0,
             anon: 0,
             stop_at_value: false,
+            reserves: Vec::new(),
         }
     }
 
@@ -518,6 +521,16 @@ impl Parser {
     }
 
     /// DEFINE STRUCTURE / ALIAS / ORDINAL (after the keyword DEFINE).
+    /// name or q.name (a name in a qualify block).
+    fn qualified_ident(&mut self) -> Result<String> {
+        let mut n = self.ident()?;
+        while self.is_op(".") && matches!(self.tok_at(1), Tok::Ident(_)) {
+            self.bump();
+            n = format!("{n}.{}", self.ident()?);
+        }
+        Ok(n)
+    }
+
     fn define_stmt(&mut self, pos: Pos) -> Result<StmtKind> {
         if self.eat_word("STRUCTURE") {
             let mut items = self.declare()?;
@@ -817,7 +830,9 @@ impl Parser {
                 "OPTIONS" => Attr::Options(self.word_list()?),
                 "PARAMETER" | "PARM" => Attr::Parameter,
                 "GENERIC" => Attr::Generic(self.generic_list()?),
-                "ORDINAL" if matches!(self.tok(), Tok::Ident(_)) => Attr::Type(self.ident()?),
+                "ORDINAL" if matches!(self.tok(), Tok::Ident(_)) => {
+                    Attr::Type(self.qualified_ident()?)
+                }
                 "ABNORMAL" => Attr::Abnormal,
                 "NORMAL" => Attr::Normal,
                 "ASSIGNABLE" | "ASGN" => Attr::Assignable,
@@ -829,28 +844,34 @@ impl Parser {
                 "IRREDUCIBLE" | "IRRED" => Attr::Irreducible,
                 "REDUCIBLE" | "RED" => Attr::Reducible,
                 "TYPE" => {
-                    // TYPE name or TYPE(name)
+                    // TYPE name or TYPE(name); q.name for a qualify block
                     let t = if self.is_op("(") {
                         self.paren_text()?
                     } else {
-                        self.ident()?
+                        self.qualified_ident()?
                     };
                     Attr::Type(t.trim().to_ascii_uppercase())
                 }
-                // IEEE and LITTLEENDIAN select another storage representation;
-                // Zeus stores HFP and big-endian binary only, so it refuses them
-                // instead of silently storing the default form
-                "IEEE" | "LITTLEENDIAN" | "NONNATIVE" => {
-                    return Err(Diag::error(
-                        self.pos(),
-                        format!(
-                            "the {w} attribute is not supported (Zeus stores hexadecimal \
-                             floating point and big-endian binary)"
-                        ),
-                    ));
+                // storage representations (LRM, BIGENDIAN and LITTLEENDIAN,
+                // HEXADEC and IEEE attributes); on z/OS NATIVE is BIGENDIAN
+                "LIST" => Attr::List,
+                "RESERVED" => {
+                    if self.is_op("(") {
+                        self.bump();
+                        if !self.is_word("IMPORTED") {
+                            return Err(self.unexpected("IMPORTED"));
+                        }
+                        self.bump();
+                        self.expect_op(")")?;
+                    }
+                    Attr::Reserved
                 }
-                "NOINIT" | "NOINITIAL" | "NATIVE" | "HEXADEC" | "BIGENDIAN" | "ASSEMBLER"
-                | "LOCAL" | "RESERVED" | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT"
+                "LITTLEENDIAN" | "NONNATIVE" => Attr::Endian(true),
+                "BIGENDIAN" | "NATIVE" => Attr::Endian(false),
+                "IEEE" => Attr::Ieee(true),
+                "HEXADEC" => Attr::Ieee(false),
+                "NOINIT" | "NOINITIAL" | "ASSEMBLER"
+                | "LOCAL" | "CONSTANT" | "LIMITED" | "INONLY" | "INOUT"
                 | "OUTONLY" => continue,
                 _ => {
                     self.i -= 1;
@@ -926,6 +947,17 @@ impl Parser {
             }
             _ => true,
         });
+        // RESERVED implies STATIC EXTERNAL; its INITIAL counts only in the
+        // package that reserves it (LRM, RESERVED attribute)
+        if attrs.iter().any(|a| matches!(a, Attr::Reserved)) {
+            if !self.reserves.contains(&name) {
+                attrs.retain(|a| !matches!(a, Attr::Initial(_) | Attr::InitialCall(_)));
+            }
+            attrs.push(Attr::Static);
+            if !attrs.iter().any(|a| matches!(a, Attr::External(_))) {
+                attrs.push(Attr::External(None));
+            }
+        }
         out.push(DeclItem {
             level,
             name,
@@ -1534,6 +1566,45 @@ impl Parser {
         let pos = self.pos();
         let w = self.ident()?;
         Ok(match w.as_str() {
+            // a qualify block (LRM, QUALIFY statement): its types and
+            // named constants are known as label.name; Zeus gives them
+            // those names. Names inside the block refer to each other only
+            // qualified.
+            "QUALIFY" => {
+                let [q] = labels else {
+                    return Err(Diag::error(pos, "QUALIFY needs one statement label"));
+                };
+                self.semi()?;
+                let body = self.body()?;
+                let mut items = Vec::new();
+                for s in body {
+                    match s.kind {
+                        StmtKind::Declare(its) => {
+                            for mut it in its {
+                                if it.level == 1 {
+                                    it.name = format!("{q}.{}", it.name);
+                                }
+                                for a in &mut it.attrs {
+                                    if let Attr::OrdinalDef(ms) = a {
+                                        for m in ms.iter_mut() {
+                                            m.0 = format!("{q}.{}", m.0);
+                                        }
+                                    }
+                                }
+                                items.push(it);
+                            }
+                        }
+                        StmtKind::Null => {}
+                        _ => {
+                            return Err(Diag::error(
+                                s.pos,
+                                "a qualify block can contain only DECLARE, DEFINE and QUALIFY",
+                            ));
+                        }
+                    }
+                }
+                StmtKind::Declare(items)
+            }
             "PROCEDURE" | "PROC" => {
                 let mut params = Vec::new();
                 if self.eat_op("(") && !self.eat_op(")") {
@@ -1593,8 +1664,18 @@ impl Parser {
                 })
             }
             "PACKAGE" => {
-                // the procedures of a package
+                // the procedures of a package; RESERVES(names) is kept for
+                // the RESERVED variables
                 while !self.is_op(";") {
+                    if self.is_word("RESERVES") && matches!(self.tok_at(1), Tok::Op(o) if *o == "(") {
+                        self.i += 2;
+                        while let Tok::Ident(n) = self.tok().clone() {
+                            self.reserves.push(n);
+                            self.bump();
+                            self.eat_op(",");
+                        }
+                        continue;
+                    }
                     self.bump();
                 }
                 self.semi()?;
@@ -2083,9 +2164,26 @@ impl Parser {
                 let mut reply = None;
                 while let Tok::Ident(o) = self.tok().clone() {
                     self.bump();
-                    let e = self.paren_expr()?;
-                    if o == "REPLY" {
-                        reply = Some(e);
+                    match o.as_str() {
+                        "REPLY" => reply = Some(self.paren_expr()?),
+                        // ROUTCDE(x, ...) and DESC(y, ...): unsigned integer
+                        // constants 1 to 16 for the WTO (LRM); no effect here
+                        "ROUTCDE" | "DESC" => {
+                            self.expect_op("(")?;
+                            loop {
+                                let ok = matches!(self.tok(), Tok::Num { text, .. }
+                                    if text.parse::<u32>().is_ok_and(|n| (1..=16).contains(&n)));
+                                if !ok {
+                                    return Err(self.unexpected("an integer constant from 1 to 16"));
+                                }
+                                self.bump();
+                                if !self.eat_op(",") {
+                                    break;
+                                }
+                            }
+                            self.expect_op(")")?;
+                        }
+                        _ => return Err(self.unexpected("REPLY, ROUTCDE or DESC")),
                     }
                 }
                 self.semi()?;

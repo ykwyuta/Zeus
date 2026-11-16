@@ -118,6 +118,34 @@ diagnostic_contains = "not declared"
 [programs.PE115P]
 expect = "compile-only"
 
+[programs.PE116N]
+expect = "compile-error"
+diagnostic_contains = "LINEDIR"
+
+[programs.PE116P]
+expect = "compile-only"
+
+[programs.PE117N]
+expect = "compile-error"
+diagnostic_contains = "LINEDIR"
+
+[programs.PE117P]
+expect = "compile-only"
+
+[programs.PE118N]
+expect = "compile-error"
+diagnostic_contains = "PROCINC"
+
+[programs.PE118P]
+expect = "compile-only"
+
+[programs.PE119N]
+expect = "compile-error"
+diagnostic_contains = "FLOAT(DFP)"
+
+[programs.PE119P]
+expect = "compile-only"
+
 [programs.PF102A]
 jcl = "PF102A.JCL"
 
@@ -143,6 +171,27 @@ jcl = "PS107A.JCL"
 
 [programs.PF108A]
 jcl = "PF108A.JCL"
+
+[programs.PM126A]
+jcl = "PM126A.JCL"
+
+[programs.PM127A]
+jcl = "PM127A.JCL"
+
+[programs.PM129A]
+jcl = "PM129A.JCL"
+
+[programs.PM132A]
+jcl = "PM132A.JCL"
+
+[programs.PF109A]
+jcl = "PF109A.JCL"
+
+[programs.PF110A]
+jcl = "PF110A.JCL"
+
+[programs.PF111A]
+jcl = "PF111A.JCL"
 
 [programs.PS109A]
 parm = "POSIX(ON)/"

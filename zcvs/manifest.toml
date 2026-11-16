@@ -21,6 +21,9 @@ ccsid = 939
 [programs.ZF115A]
 jcl = "ZF115A.JCL"
 
+[programs.ZF116A]
+jcl = "ZF116A.JCL"
+
 [programs.ZF201M]
 jcl = "ZF201M.JCL"
 

@@ -211,13 +211,31 @@ impl Deck {
         let mut modes = BTreeMap::new();
         let mut rmode = 31;
         let mut first = None;
+        let mut commons = Vec::new();
         for (&id, s) in &self.symbols {
             if matches!(s.kind, 2 | 10) {
                 externals.insert(s.name.clone(), s.kind == 10);
                 continue;
             }
+            if s.kind == 5 {
+                // a common section (CM): storage without text; the linker
+                // keeps the longest of each name
+                let start = storage.len().next_multiple_of(8);
+                let end = start
+                    .checked_add(s.length as usize)
+                    .filter(|n| *n <= 16 << 20)
+                    .ok_or("OBJ image exceeds 16 MiB")?;
+                storage.resize(end, 0);
+                placement.insert(id, start as u32);
+                commons.push(super::binding::Common {
+                    name: s.name.clone(),
+                    offset: start as u32,
+                    length: s.length,
+                });
+                continue;
+            }
             if !matches!(s.kind, 0 | 4) {
-                return Err("OBJ common/pseudo-register allocation is not yet supported".into());
+                return Err("OBJ pseudo-register allocation is not yet supported".into());
             }
             let start = storage.len().next_multiple_of(8);
             let end = start
@@ -322,7 +340,7 @@ impl Deck {
             });
             let target = &self.symbols[&fix.reference];
             match target.kind {
-                0 | 4 => {
+                0 | 4 | 5 => {
                     expr.local_coefficient += fix.sign;
                     expr.addend = expr
                         .addend
@@ -373,7 +391,10 @@ impl Deck {
             entries,
             externals,
             dcbs: Vec::new(),
-            bindings: super::Bindings::default(),
+            bindings: super::Bindings {
+                commons,
+                ..Default::default()
+            },
         };
         super::machine::validate(&module)?;
         Ok(module)

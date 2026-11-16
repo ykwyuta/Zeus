@@ -1,0 +1,41 @@
+ PS112A: PROC OPTIONS(MAIN);
+ %INCLUDE ZPVSRPT;
+ DCL (P, Q, C1, C2) POINTER;
+
+ OPEN FILE(REPORT);
+
+ /* STACKADDR: the DSA of this procedure, the same each time */
+ P = STACKADDR();
+ CALL ZCHECK('STACKADDR',
+   P ^= NULL() & P = STACKADDR());
+
+ /* STACKADDR-CALLED: another DSA in a called procedure */
+ Q = INNER();
+ CALL ZCHECK('STACKADDR-CALLED',
+   Q ^= NULL() & Q ^= P);
+
+ /* STACKADDR-BEGIN: a BEGIN block has its own DSA */
+ BEGIN;
+   DCL B POINTER;
+   B = STACKADDR();
+   CALL ZCHECK('STACKADDR-BEGIN',
+     B ^= NULL() & B ^= P);
+ END;
+
+ /* GTCA: one LE control block for the program */
+ C1 = GTCA();
+ C2 = CAA_OF_INNER();
+ CALL ZCHECK('GTCA',
+   C1 ^= NULL() & C1 = C2 & C1 = GTCA());
+ CALL ZFINISH;
+ CALL PLIRETC(0);
+ STOP;
+
+ INNER: PROC RETURNS(POINTER);
+   RETURN(STACKADDR());
+ END INNER;
+
+ CAA_OF_INNER: PROC RETURNS(POINTER);
+   RETURN(GTCA());
+ END CAA_OF_INNER;
+ END PS112A;

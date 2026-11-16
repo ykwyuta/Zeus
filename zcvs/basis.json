@@ -2058,6 +2058,59 @@
       }
     }
   },
+  "ZF116A": {
+    "basis": "spec",
+    "refs": [
+      "COB-LRM: ADVANCING phrase rules | The ADVANCING phrase of the WRITE statement, or the presence of a LINAGE clause on the file, causes a carriage control character to be generated in the record that is written.",
+      "COB-PG: ADV | With ADV in effect, the compiler adds 1 byte to the record length to account for the printer control character."
+    ],
+    "tests": {
+      "PRT-C01-SKIP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: Table 5. Meanings of environment names | C01 through C12 Skip to channel 1 through channel 12,",
+          "COB-LRM: ADVANCING phrase rules | When only AFTER is specified for the file, ASA control characters are used (FBA is required).",
+          "DFSMS-MAC: ISO/ANSI | 1 Skip to channel 1"
+        ]
+      },
+      "PRT-PAGE-SKIP": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ADVANCING phrase rules | When only AFTER is specified for the file, ASA control characters are used (FBA is required).",
+          "DFSMS-MAC: ISO/ANSI | 1 Skip to channel 1",
+          "COB-LRM: ADVANCING phrase rules | If the LINAGE clause is omitted, the repositioning is to line 1 of the next succeeding page."
+        ]
+      },
+      "PRT-ASA-SPACING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ADVANCING phrase rules | When only AFTER is specified for the file, ASA control characters are used (FBA is required).",
+          "DFSMS-MAC: ISO/ANSI | b Space one line (blank code) 0 Space two lines - Space three lines"
+        ]
+      },
+      "PRT-ASA-OVERPRINT": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ADVANCING phrase rules | When only AFTER is specified for the file, ASA control characters are used (FBA is required).",
+          "DFSMS-MAC: ISO/ANSI | + Suppress space (overprint existing line)",
+          "COB-LRM: ADVANCING phrase rules | Integer or the value in identifier-2 can be zero."
+        ]
+      },
+      "PRT-NO-ADVANCING": {
+        "basis": "spec",
+        "refs": [
+          "COB-LRM: ADVANCING phrase rules | When only AFTER is specified for the file, ASA control characters are used (FBA is required).",
+          "COB-LRM: ADVANCING phrase rules | When the ADVANCING phrase is omitted, automatic line advancing is provided, as if AFTER ADVANCING 1 LINE had been specified."
+        ]
+      },
+      "PRT-ADV-LENGTH": {
+        "basis": "spec",
+        "refs": [
+          "COB-PG: ADV | With ADV in effect, the compiler adds 1 byte to the record length to account for the printer control character."
+        ]
+      }
+    }
+  },
   "ZF201M": {
     "basis": "spec",
     "refs": [
