@@ -426,6 +426,39 @@
       }
     }
   },
+  "HA112A": {
+    "basis": "spec",
+    "refs": [
+      "HLASM-LR: COM instruction | The COM instruction identifies the beginning or continuation of a common control section."
+    ],
+    "tests": {
+      "COM-STORAGE": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: COM instruction | can only be placed in a common control section through execution of the program."
+        ]
+      },
+      "COM-NOT-ASSEMBLED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: COM instruction | The assembler language statements that appear in a common control section are not assembled into"
+        ]
+      },
+      "COM-SHARED": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: COM instruction | If a common section with the same name (or unnamed) is specified in two or more source modules, the",
+          "HLASM-LR: COM instruction | amount of storage reserved for this common section is equal to that required by the longest common"
+        ]
+      },
+      "COM-SYMBOL-ADDRESS": {
+        "basis": "spec",
+        "refs": [
+          "HLASM-LR: COM instruction | The ordinary symbol denoted by symbol represents the address of the first byte in the common section,"
+        ]
+      }
+    }
+  },
   "HD101A": {
     "basis": "spec",
     "refs": [

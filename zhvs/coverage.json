@@ -113,6 +113,15 @@
       "PROCESS-OPTABLE"
     ]
   },
+  "HA112A": {
+    "expect": "run",
+    "tests": [
+      "COM-STORAGE",
+      "COM-NOT-ASSEMBLED",
+      "COM-SHARED",
+      "COM-SYMBOL-ADDRESS"
+    ]
+  },
   "HD101A": {
     "expect": "run",
     "tests": [

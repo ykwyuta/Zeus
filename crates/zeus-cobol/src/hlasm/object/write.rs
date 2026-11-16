@@ -16,7 +16,8 @@ fn number(bytes: &mut [u8], at: usize, width: usize, value: u32) {
 }
 fn symbol(name: &str, kind: u8, address: u32, flags: u8, length: u32) -> Result<[u8; 16], String> {
     let bytes = ebcdic::encode(name);
-    if name.is_empty()
+    // the unnamed common section (CM) has a blank name
+    if (name.is_empty() && kind != 5)
         || bytes.len() > 8
         || !name.bytes().all(|b| b.is_ascii_graphic())
         || ebcdic::decode(&bytes) != name
@@ -29,7 +30,7 @@ fn symbol(name: &str, kind: u8, address: u32, flags: u8, length: u32) -> Result<
     s[..bytes.len()].copy_from_slice(&bytes);
     s[8] = kind;
     // ER/WX address and length fields are blank, not binary zero.
-    if matches!(kind, 0 | 1) {
+    if matches!(kind, 0 | 1 | 5) {
         number(&mut s, 9, 3, address);
         number(&mut s, 13, 3, length);
     }
@@ -183,7 +184,29 @@ pub(in crate::hlasm) fn bytes(module: &Module) -> Result<Vec<u8>, String> {
                 .and_modify(|weak| *weak &= term.weak)
                 .or_insert(term.weak);
         }
-        relocations.push((r.offset, r.width, expression));
+        // an address in a common section: relative to the CM item
+        let common = (expression.local_coefficient == 1 && expression.terms.is_empty())
+            .then(|| {
+                module.bindings.commons.iter().position(|c| {
+                    u32::try_from(expression.addend)
+                        .is_ok_and(|a| (c.offset..c.offset + c.length).contains(&a))
+                })
+            })
+            .flatten();
+        let expression = match common {
+            Some(k) => {
+                let e = RelocationExpression {
+                    addend: expression.addend - i64::from(module.bindings.commons[k].offset),
+                    local_coefficient: 0,
+                    terms: vec![],
+                };
+                storage[start..end]
+                    .copy_from_slice(&e.addend.to_be_bytes()[8 - r.width as usize..]);
+                e
+            }
+            None => expression,
+        };
+        relocations.push((r.offset, r.width, expression, common));
     }
     if externals.contains_key(&module.name)
         || externals
@@ -192,7 +215,7 @@ pub(in crate::hlasm) fn bytes(module: &Module) -> Result<Vec<u8>, String> {
     {
         return Err("OBJ output name is both defined and external".into());
     }
-    if externals.len() > 65533 {
+    if externals.len() + module.bindings.commons.len() > 65533 {
         return Err("OBJ output exceeds the ESD identifier limit".into());
     }
     let flags = (if module.amode == 64 {
@@ -235,6 +258,15 @@ pub(in crate::hlasm) fn bytes(module: &Module) -> Result<Vec<u8>, String> {
         at += count;
     }
     items.clear();
+    // common sections: CM items after the external references
+    let first_common = externals.len() as u16 + 2;
+    for c in &module.bindings.commons {
+        items.push(symbol(&c.name, 5, 0, ebcdic::SPACE, c.length)?);
+    }
+    for (k, chunk) in items.chunks(3).enumerate() {
+        esd(&mut output, Some(first_common + 3 * k as u16), chunk);
+    }
+    items.clear();
     let entries = module.entries.iter().collect::<BTreeMap<_, _>>();
     for (name, at) in entries {
         if *at as usize >= storage.len() {
@@ -258,8 +290,12 @@ pub(in crate::hlasm) fn bytes(module: &Module) -> Result<Vec<u8>, String> {
         output.extend(c);
     }
     let mut rld = Vec::new();
-    for (at, width, expression) in relocations {
-        let terms = std::iter::once((1, expression.local_coefficient, false)).chain(
+    for (at, width, expression, common) in relocations {
+        let local = match common {
+            Some(k) => (first_common + k as u16, 1, false),
+            None => (1, expression.local_coefficient, false),
+        };
+        let terms = std::iter::once(local).chain(
             expression
                 .terms
                 .iter()
